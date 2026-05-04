@@ -6,11 +6,12 @@ A suite of data simulation and marketing tools designed to optimize donor acquis
 
 ## 🚀 Key Features
 
-### 1. Behavioral Bias Simulation
-Generate high-signal donor datasets to solve the "Cold Start" problem for machine learning models.
+### 1. Behavioral Bias Simulation (Amazon Personalize Ready)
+Generate high-signal donor datasets specifically formatted for **Amazon Personalize**.
 *   **Location**: `generate_datasets.py`
 *   **Method**: Splits users into Group A/B and injects a 70% weighted distribution toward specific causes (e.g., Clean Water).
 *   **Verification**: Use `uncover_signal_no_pandas.py` to detect statistical "bulges" in donor interests.
+*   **AWS Sync**: Use `personalize_sync.py` to upload these datasets to Amazon S3 and trigger Personalize Import Jobs.
 
 ### 2. Meta Growth Engine
 Automate the integration with Meta's Custom and Lookalike Audience APIs.
