@@ -63,7 +63,84 @@ The output of the simulations feeds directly into the Meta growth engine:
 
 ---
 
-## 5. Benefits of This Approach
-*   **Risk Mitigation**: We debug the conversion flow with synthetic data before spending budget.
-*   **Optimized ROAS**: By seeding Meta with "Group A" (High Signal) VIPs instead of random users, the Lookalike algorithm finds much more relevant leads.
-*   **Personalization at Scale**: We know before the user even says "Hi" on WhatsApp whether they are likely motivated by "Efficiency" or "Impact."
+## 5. Getting Started
+
+### 5.1 Prerequisites
+*   **Python 3.11+**: Ensure you have a modern Python environment.
+*   **Meta Business App**: You need a "System User" token with `ads_management` and `ads_read` permissions.
+*   **AWS Account**: Permissions for **Amazon Personalize** (if running ML training).
+*   **Environment Variables**: Create a `.env` file based on `.env.example`.
+
+### 5.2 Installation Steps
+1.  **Navigate to toolkit**: `cd aws_nonprofit_toolkit`
+2.  **Create Virtual Env**: `python3 -m venv venv`
+3.  **Activate**: `source venv/bin/activate`
+4.  **Install**: `pip install -r requirements.txt`
+
+---
+
+## 6. Usage Examples & Real Output
+
+### 6.1 Step 1: Generate Synthetic Data
+Run the generator to create your baseline and biased datasets.
+```bash
+python3 generate_datasets.py
+```
+**Output:**
+```text
+Generating Small Nonprofit Dataset...
+Generating Large Nonprofit Dataset...
+Datasets generated in datasets/
+```
+
+### 6.2 Step 2: Verify Signal Strength
+Analyze the interactions to ensure the behavioral bias was injected correctly.
+```bash
+python3 uncover_signal_no_pandas.py
+```
+**Example Output:**
+```text
+--- Analyzing datasets/large_nonprofit_interactions.csv ---
+Total Interactions: 10000
+Group A Interactions: 2468 | Group B Interactions: 7532
+------------------------------
+Item ID              | Group A %  | Group B % 
+---------------------------------------------
+CLEAN_WATER          |    38.78% |    16.04%
+ENVIRONMENT          |    41.13% |    16.56%
+------------------------------
+MATH REVEALS: Group A has a disproportionate interest in 'ENVIRONMENT'.
+Difference: 24.57% shift compared to the neutral group.
+```
+
+### 6.3 Step 3: Seed Meta Custom Audience
+Synchronize your VIP donor list with Meta for Lookalike generation.
+```bash
+python3 meta_growth_engine.py
+```
+**Example Output:**
+```text
+--- STEP 1: Creating Custom Audience on Meta ---
+SUCCESS: Created Audience ID
+
+--- STEP 2: Uploading VIPs from datasets/small_nonprofit_users.csv ---
+Found 23 VIP donors. Uploading to Meta...
+SUCCESS: VIP list synchronized with Meta.
+```
+
+---
+
+## 7. Troubleshooting Guide
+
+| Issue | Potential Cause | Resolution |
+| :--- | :--- | :--- |
+| **`ModuleNotFoundError`** | Missing dependencies | Run `pip install -r requirements.txt`. |
+| **Meta `403 Forbidden`** | Invalid token or permissions | Ensure your Meta System User has been added to the Ad Account in Business Manager. |
+| **Meta `400 Bad Request`** | Wrong Account ID format | Ensure `META_AD_ACCOUNT_ID` does **not** include the `act_` prefix in your `.env`. |
+| **AWS `AccessDenied`** | IAM Permission issues | Ensure your CLI user has `AmazonPersonalizeFullAccess`. |
+| **Low Signal Shift (<10%)** | Generation randomness | Re-run `generate_datasets.py` to refresh the distribution. |
+
+---
+
+## 8. Benefits of This Approach
+... (rest of the file) ...

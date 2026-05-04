@@ -17,8 +17,10 @@ Automate the integration with Meta's Custom and Lookalike Audience APIs.
 *   **Location**: `meta_growth_engine.py`
 *   **Flow**: Extract VIP donors -> SHA256 Hash -> Upload to Meta -> Simulate Lookalike growth.
 
-### 3. Strategy Documentation
-For a deep dive into the underlying data science and marketing methodology, see **[MARKETING_STRATEGY.md](MARKETING_STRATEGY.md)**.
+### 3. Strategy & Governance Documentation
+*   **[MARKETING_STRATEGY.md](MARKETING_STRATEGY.md)**: Deep dive into simulation methodologies and growth loops.
+*   **[VALIDATION.md](VALIDATION.md)**: Mathematical success criteria and empirical test results.
+*   **[COMPLIANCE.md](COMPLIANCE.md)**: Data handling standards and production readiness roadmap.
 
 ---
 
