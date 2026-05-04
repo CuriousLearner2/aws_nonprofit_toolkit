@@ -16,6 +16,7 @@ Parameters:
     Description: Bucket for synthetic dataset storage
 
 Resources:
+  # --- Compute: Lambda Function ---
   ToolkitFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -29,6 +30,9 @@ Resources:
           META_ACCESS_TOKEN: !Ref MetaAccessToken
           META_AD_ACCOUNT_ID: !Ref MetaAdAccountId
           AWS_PERSONALIZ_BUCKET: !Ref S3BucketName
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt ToolkitDLQ.Arn
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref S3BucketName
@@ -44,7 +48,49 @@ Resources:
             Schedule: rate(1 day)
             Description: Daily donor synchronization and ML signal refresh
 
+  # --- Reliability: Dead Letter Queue ---
+  ToolkitDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  # --- Monitoring: CloudWatch Alarms ---
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Alarm if Toolkit Lambda fails more than once in 5 minutes"
+      Namespace: "AWS/Lambda"
+      MetricName: "Errors"
+      Dimensions:
+        - Name: "FunctionName"
+          Value: !Ref ToolkitFunction
+      Statistic: "Sum"
+      ComparisonOperator: "GreaterThanThreshold"
+      Threshold: 1
+      EvaluationPeriods: 1
+      Period: 300
+      TreatMissingData: "notBreaching"
+
+  DLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Alarm if there are messages in the Toolkit DLQ"
+      Namespace: "AWS/SQS"
+      MetricName: "ApproximateNumberOfMessagesVisible"
+      Dimensions:
+        - Name: "QueueName"
+          Value: !GetAtt ToolkitDLQ.QueueName
+      Statistic: "Sum"
+      ComparisonOperator: "GreaterThanThreshold"
+      Threshold: 0
+      EvaluationPeriods: 1
+      Period: 300
+      TreatMissingData: "notBreaching"
+
 Outputs:
   ToolkitFunctionArn:
     Description: "Lambda Function ARN"
     Value: !GetAtt ToolkitFunction.Arn
+  DLQUrl:
+    Description: "Dead Letter Queue URL"
+    Value: !Ref ToolkitDLQ

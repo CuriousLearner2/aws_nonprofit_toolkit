@@ -23,7 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger("meta_growth_engine")
 
 # Load configuration
-load_dotenv('replate/.env')
+load_dotenv()
 
 class MetaConfig:
     """Centralized configuration management for Meta API."""

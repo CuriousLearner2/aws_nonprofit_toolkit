@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger("personalize_sync")
 
 # Load configuration
-load_dotenv('replate/.env')
+load_dotenv()
 
 class AWSConfig:
     ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")

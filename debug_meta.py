@@ -3,7 +3,7 @@ import requests
 import os
 from dotenv import load_dotenv
 
-load_dotenv('replate/.env')
+load_dotenv()
 ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 AD_ACCOUNT_ID = "1475686827393876"
 API_VERSION = "v21.0"

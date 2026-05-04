@@ -4,6 +4,28 @@ This guide will walk you through obtaining the necessary credentials to run the 
 
 ---
 
+## Dependency Matrix
+
+┌───────────────────────┬────────────────────┬─────────────────────────┐
+│       Variable        │     Required?      │        Used For         │
+├───────────────────────┼────────────────────┼─────────────────────────┤
+│ META_ACCESS_TOKEN     │ ✅ Yes             │ Creating Meta Custom    │
+│                       │                    │ Audiences               │
+├───────────────────────┼────────────────────┼─────────────────────────┤
+│ META_AD_ACCOUNT_ID    │ ✅ Yes             │ Meta API authentication │
+├───────────────────────┼────────────────────┼─────────────────────────┤
+│ AWS_ACCESS_KEY_ID     │ ⚠️  If using        │ S3 upload + Personalize │
+│                       │ Personalize        │ import                  │
+├───────────────────────┼────────────────────┼─────────────────────────┤
+│ AWS_PERSONALIZ_BUCKET │ ⚠️  If using        │ Donor interaction data  │
+│                       │ Personalize        │ storage                 │
+├───────────────────────┼────────────────────┼─────────────────────────┤
+│ GEMINI_API_KEY        │ ❌ No              │ Not currently used in   │
+│                       │                    │ toolkit                 │
+└───────────────────────┴────────────────────┴─────────────────────────┘
+
+---
+
 ## 1. Meta API Credentials
 
 ### 1.1 META_AD_ACCOUNT_ID
@@ -88,7 +110,7 @@ python3 meta_growth_engine.py --dry-run
 Before spending any money, we create "Fake" data that looks like your real donors.
 ```bash
 # Generate 500 potential donors
-python3 generate_datasets.py --count 500 --vip-ratio 0.10
+python3 generate_datasets.py --count 500 --bias-ratio 0.10
 ```
 
 ### Step 2: The Signal Check

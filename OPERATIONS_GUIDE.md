@@ -18,10 +18,11 @@ Your Lambda handler should follow the standard workflow:
 1.  Initialize `SimulationConfig`.
 2.  Call `generate_datasets.py` logic.
 3.  Execute `meta_growth_engine.py` and `personalize_sync.py` functions.
+
 ---
 
 ## 2. Automated Deployment (AWS SAM)
-The toolkit includes an **AWS SAM (Serverless Application Model)** template for one-click deployment.
+The toolkit includes an **AWS SAM (Serverless Application Model)** template for one-click deployment with built-in reliability and monitoring.
 
 ### 2.1 Prerequisites
 *   Install the [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
@@ -37,32 +38,36 @@ The toolkit includes an **AWS SAM (Serverless Application Model)** template for 
     *   **Parameter MetaAdAccountId**: Enter your account ID.
     *   **Parameter S3BucketName**: Enter your target S3 bucket.
 
-### 2.3 CloudWatch Integration
-The SAM template automatically configures:
+### 2.3 Built-in Infrastructure Features
+The SAM template (`template.yaml`) automatically configures:
 *   **Daily Schedule**: Runs every 24 hours via EventBridge.
-*   **Permissions**: Grants the Lambda function minimal S3 and Personalize permissions required for sync.
-*   **Logging**: All logs are automatically streamed to `/aws/lambda/nonprofit-toolkit`.
+*   **Permissions**: Grants the Lambda function minimal S3 and Personalize permissions.
+*   **Reliability (DLQ)**: A **Dead Letter Queue (SQS)** is attached to handle failed executions. If the Lambda fails all retries, the event is moved here for manual replay.
+*   **Monitoring (Alarms)**: Automated **CloudWatch Alarms** are created for:
+    *   **Lambda Errors**: Alerts if the function fails more than once in 5 minutes.
+    *   **DLQ Depth**: Alerts if there are messages waiting in the DLQ.
 
 ---
 
 ## 3. Monitoring & Observability
-...
-
 Use **Amazon CloudWatch** to track the health of your automated synchronization.
 
-### 2.1 CloudWatch Logs
+### 3.1 CloudWatch Logs
 *   The toolkit uses the Python `logging` module, which automatically streams to CloudWatch Logs when running on Lambda.
 *   **Filter Pattern**: Create a metric filter for the term `ERROR` or `CRITICAL` to track failed batches.
 
-### 2.2 CloudWatch Alarms
-*   Set up an SNS notification to alert your marketing team if the error rate exceeds 5% in a single run.
+### 3.2 CloudWatch Alarms
+The toolkit includes two pre-configured alarms in `template.yaml`:
+1.  **LambdaErrorAlarm**: Triggers if the sync fails.
+2.  **DLQDepthAlarm**: Triggers if a failure is persistent and requires manual intervention.
+*Note: You can attach these to an SNS Topic to receive email or SMS alerts.*
 
 ---
 
-## 3. Credential Rotation
+## 4. Credential Rotation
 To maintain security, rotate your API keys every 90 days.
 
-### 3.1 Rotation Protocol
+### 4.1 Rotation Protocol
 1.  **Generate New Key**: Create a new token in Meta Events Manager or AWS IAM.
 2.  **Update Config**: Add the new key to your environment variables.
 3.  **Verify**: Run a `meta_growth_engine.py --dry-run` to ensure the new key is active.
@@ -70,7 +75,7 @@ To maintain security, rotate your API keys every 90 days.
 
 ---
 
-## 4. Troubleshooting Meta API Errors
+## 5. Troubleshooting Meta API Errors
 
 | Error Code | Description | Resolution |
 | :--- | :--- | :--- |
