@@ -19,7 +19,7 @@ def handler(event, context):
     try:
         # 1. Generate Latest Synthetic Data
         logger.info("Generating synthetic data...")
-        generate_large_nonprofit(tmp_dir, count=2000, vip_ratio=0.25)
+        generate_large_nonprofit(tmp_dir, count=2000, bias_ratio=0.25)
         
         interactions_path = tmp_dir / "large_nonprofit_interactions.csv"
         users_path = tmp_dir / "large_nonprofit_users.csv"
