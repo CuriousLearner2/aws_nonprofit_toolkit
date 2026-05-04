@@ -33,5 +33,5 @@ Before moving from synthetic simulations to real donor data, the following steps
 
 1.  **PII Audit**: Final verification that no raw PII (Phone, Email, Name) is leaked in logs or error traces.
 2.  **Access Rotation**: Rotate all sandbox tokens and replace them with production-scoped tokens (with limited permissions).
-3.  **Data Retention Policy**: Implement the automated masking of `donor_whatsapp_id` after 30 days, as documented in the [Architecture Overview](../replate/ARCHITECTURE.md).
+3.  **Data Retention Policy**: Implement automated masking of `donor_whatsapp_id`. While the default is 30 days, this MUST be configurable per organization to support stricter privacy requirements (e.g., 7 or 14 days), as documented in the [Architecture Overview](../replate/ARCHITECTURE.md).
 4.  **Legal Review**: Ensure the donor-facing WhatsApp bot includes a clear Privacy Policy link and an "Opt-Out" (STOP/CANCEL) mechanism.
