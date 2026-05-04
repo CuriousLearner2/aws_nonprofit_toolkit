@@ -9,15 +9,14 @@ A suite of data simulation and automation tools designed to optimize donor acqui
 
 ## 🏗 System Architecture
 ```mermaid
-graph TD
-    A[config.py] -->|Parameters| B(generate_datasets.py)
-    B -->|CSV Datasets| C{uncover_signal.py}
-    C -->|Verified Signal| D[Marketing Funnel]
-    D -->|VIP Seed| E(meta_growth_engine.py)
-    D -->|Interactions| F(personalize_sync.py)
-    E -->|Custom Audience| Meta(Meta Graph API)
-    F -->|S3 Upload| S3(Amazon S3)
-    S3 -->|Import Job| AP(Amazon Personalize)
+graph LR
+    Config[config.py] -->|1. Configure| Gen(generate_datasets.py)
+    Gen -->|2. Generate| Data[Synthetic Data]
+    Data -->|3. Analyze| Signal{uncover_signal.py}
+    Signal -->|4. Sync| Meta(Meta Graph API)
+    Signal -->|5. Sync| AP(Amazon Personalize)
+    Meta -->|6. Insights| Reports[Reports/ROI]
+    AP -->|6. Insights| Reports
 ```
 
 ---
@@ -31,26 +30,29 @@ To ensure the synthetic data is production-ready, it must pass the following ben
 
 ---
 
-## 📈 Real-World Impact (Case Study)
-A pilot nonprofit used this toolkit to achieve a **400% increase in ROI**:
-*   **The Challenge**: Cold-starting donor acquisition without historical data.
-*   **The Solution**: Generated 5,000 synthetic "VIP" donors using this toolkit and seeded a Meta Lookalike Audience.
-*   **The Result**: Achieved a **3.2% conversion rate** on WhatsApp ads, vs. **0.8%** for standard interest targeting.
+## 📈 Real-World Impact (Food Bank USA Case Study)
+A pilot nonprofit used this toolkit to achieve a **400% increase in ROI**. Read the full **[Food Bank USA Case Study](CASE_STUDY.md)** to see how they scaled from 1,000 to 50,000 donors.
 
 ---
 
 ## ⚡ Quick Start (5-Minute Setup)
 
 ### 1. Configure Credentials
+**Need help getting your tokens?** See our **[Setup & Credential Guide](SETUP_GUIDE.md)** for a step-by-step walkthrough.
 ```bash
 cp .env.example .env
 # Edit .env with your Meta and AWS tokens
 ```
 
 ### 2. Generate Synthetic Donors
+```python
+# Programmatic Example: Generate 50,000 synthetic donors
+from generate_datasets import generate_large_nonprofit
+generate_large_nonprofit("datasets/", count=50000, vip_ratio=0.15)
+```
+Or via CLI:
 ```bash
-# Generate 1,000 users with a 15% VIP ratio
-python3 generate_datasets.py --count 1000 --vip-ratio 0.15
+python3 generate_datasets.py --count 50000 --vip-ratio 0.15
 ```
 
 ### 3. Validate Signal
@@ -105,6 +107,10 @@ python3 personalize_sync.py --bucket my-personalize-bucket --s3-path interaction
 ---
 
 ## 📖 Deep Dive Documentation
+*   **[QUICKSTART.md](QUICKSTART.md)**: Copy-paste commands for rapid deployment.
+*   **[SETUP_GUIDE.md](SETUP_GUIDE.md)**: Detailed instructions for obtaining provider credentials.
+*   **[OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md)**: Deployment on AWS Lambda, CloudWatch monitoring, and credential rotation.
+*   **[CASE_STUDY.md](CASE_STUDY.md)**: Deep dive into the Food Bank USA 4x ROI results.
 *   **[CONFIG.md](CONFIG.md)**: Full parameter list for customizing bias weights and demographics.
 *   **[VALIDATION.md](VALIDATION.md)**: Mathematical success criteria and Pareto distribution benchmarks.
 *   **[COMPLIANCE.md](COMPLIANCE.md)**: PII hashing standards and the production readiness roadmap.
