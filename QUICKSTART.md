@@ -21,7 +21,7 @@ python3 generate_datasets.py --count 1000 --bias-ratio 0.15
 ### 3. Validate Signal
 Verify that the behavioral bias is strong enough for machine learning.
 ```bash
-python3 uncover_signal_no_pandas.py aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv
+python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
 ```
 
 ### 4. Upload to Meta (Dry Run)
@@ -41,11 +41,11 @@ python3 meta_growth_engine.py --audience-name "Donor VIPs Fall 2026"
 Upload your interactions to S3 and trigger a Personalize Import Job. **(Requires AWS Credentials in .env)**
 ```bash
 # Basic upload only
-python3 personalize_sync.py --dataset aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv
+python3 personalize_sync.py --dataset datasets/large_nonprofit_interactions.csv
 
 # Upload AND trigger import (requires ARNs)
 python3 personalize_sync.py \
-  --dataset aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv \
+  --dataset datasets/large_nonprofit_interactions.csv \
   --dataset-arn "arn:aws:personalize:..." \
   --role-arn "arn:aws:iam:..."
 ```
@@ -53,6 +53,6 @@ python3 personalize_sync.py \
 ---
 
 ### ✅ Success Criteria
-- **Validation**: "SIGNAL DETECTED" message appears with >10% shift intensity.
+- **Validation**: "SIGNAL DETECTED" message appears with >20% shift intensity.
 - **Meta Sync**: "SUCCESS: Batch 1 synchronized" appears in logs.
 - **S3 Sync**: "SUCCESS: File uploaded to S3" appears in logs.
