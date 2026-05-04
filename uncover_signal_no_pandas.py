@@ -1,4 +1,5 @@
 import csv
+import argparse
 from collections import Counter
 
 def analyze_bias(file_path: str):
@@ -20,7 +21,7 @@ def analyze_bias(file_path: str):
                 user_id = row.get('USER_ID', '')
                 item_id = row.get('ITEM_ID', '')
                 
-                # Logic: Users 0-499 are Group A (Biased)
+                # Logic: Users 0-499 are Group A (Biased) by default in our generator
                 try:
                     user_num = int(user_id.replace('user_', ''))
                     if user_num < 500:
@@ -30,7 +31,7 @@ def analyze_bias(file_path: str):
                         counts_b[item_id] += 1
                         total_b += 1
                 except ValueError:
-                    continue # Skip invalid user IDs
+                    continue 
 
         if total_a == 0 or total_b == 0:
             print("Error: One or more groups have zero interactions.")
@@ -62,7 +63,6 @@ def analyze_bias(file_path: str):
         print("-" * 30)
         print(f"SIGNAL DETECTED: Group A shows a bias toward '{top_diff_item}'.")
         print(f"Shift Intensity: {max_diff:.2f}%")
-        print("\nSCALABILITY NOTE: This analysis used streaming (line-by-line) to minimize memory footprint.")
 
     except FileNotFoundError:
         print(f"Error: File {file_path} not found.")
@@ -70,4 +70,8 @@ def analyze_bias(file_path: str):
         print(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
-    analyze_bias("aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv")
+    parser = argparse.ArgumentParser(description="Analyze bias signal in interaction datasets.")
+    parser.add_argument("file", type=str, help="Path to the interactions CSV file")
+    
+    args = parser.parse_args()
+    analyze_bias(args.file)

@@ -6,11 +6,11 @@ This document details the configurable parameters in `aws_nonprofit_toolkit/conf
 
 ## 1. Scale & Interaction Targets
 
-| Parameter | Default | Range | Description |
+| Parameter | Default | Reasonable Range | Description |
 | :--- | :--- | :--- | :--- |
-| `SMALL_USER_COUNT` | `200` | 10 - 5,000 | Number of users for the attribute-focused dataset (Custom Audiences). |
-| `LARGE_USER_COUNT` | `2000` | 500 - 1M+ | Number of users for the ML-focused dataset (Amazon Personalize). |
-| `INTERACTIONS_PER_USER`| `5` | 1 - 50 | Average number of views/donations per donor profile. |
+| `SMALL_USER_COUNT` | `200` | 100 - 1,000 | Number of users for Custom Audience seeding. Meta requires ~100 matches minimum. |
+| `LARGE_USER_COUNT` | `2000` | 1,000 - 100K | Number of users for ML training. Personalize performs best with higher user variety. |
+| `INTERACTIONS_PER_USER`| `5` | 3 - 15 | Average donor interactions. < 3 is too sparse for ML; > 20 is rare for casual donors. |
 
 ---
 
@@ -18,7 +18,7 @@ This document details the configurable parameters in `aws_nonprofit_toolkit/conf
 
 | Parameter | Default | Example Customization |
 | :--- | :--- | :--- |
-| `ITEMS` | `['CLEAN_WATER', 'ANIMAL_RESCUE', 'EDUCATION', ...]` | `['LITERACY', 'SCHOLARSHIPS', 'SCHOOL_SUPPLIES']` |
+| `ITEMS` | `['CLEAN_WATER', ...]` | `['LITERACY', 'SCHOLARSHIPS', 'SCHOOL_SUPPLIES']` |
 
 ---
 
@@ -26,20 +26,20 @@ This document details the configurable parameters in `aws_nonprofit_toolkit/conf
 
 These parameters control the statistical "bulge" used to train the machine learning models.
 
-| Parameter | Default | Range | Description |
+| Parameter | Default | Realistic Range | Description |
 | :--- | :--- | :--- | :--- |
-| `CAUSE_BIAS_WEIGHT` | `0.70` | 0.0 - 1.0 | Probability that "Group A" users interact with a biased cause. |
-| `BIASED_ITEMS` | `['CLEAN_WATER', 'ENVIRONMENT']` | N/A | The specific items Group A is biased toward. |
+| `CAUSE_BIAS_WEIGHT` | `0.70` | 0.40 - 0.85 | 0.7 is a strong but realistic preference. < 0.4 is too noisy; > 0.9 is "too perfect" (overfit). |
+| `BIASED_ITEMS` | `['CLEAN_WATER', ...]` | N/A | The specific items Group A is biased toward. |
 
 ---
 
 ## 4. Demographics & Loyalty Distributions
 
-| Parameter | Defaults | Valid Sum | Description |
+| Parameter | Defaults | Realistic Context | Description |
 | :--- | :--- | :--- | :--- |
-| `LOYALTY_DISTRIBUTION` | `NEW: 0.50, REGULAR: 0.35, VIP: 0.15` | **1.0** | Probability weights for assigning user loyalty tiers. |
-| `SOURCE_WEIGHTS` | `ORGANIC: 0.60, WHATSAPP: 0.25, FB: 0.15` | **1.0** | Probability weights for donor acquisition sources. |
-| `CONSENT_RATE` | `0.80` | 0.0 - 1.0 | Percentage of users who opt-in to marketing (PII hashing). |
+| `LOYALTY_DISTRIBUTION` | `VIP: 0.15` | 5% - 20% | High-value donors (VIPs) typically make up 10-15% of a healthy nonprofit base. |
+| `SOURCE_WEIGHTS` | `FB: 0.15` | 10% - 40% | Social media leads (Meta) usually account for 15-30% of multi-channel traffic. |
+| `CONSENT_RATE` | `0.80` | 0.60 - 0.90 | Industry standard opt-in rates range from 70% to 85% for direct donors. |
 
 ---
 

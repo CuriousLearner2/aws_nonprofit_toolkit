@@ -53,3 +53,16 @@ class SimulationConfig:
     @classmethod
     def get_source_weights(cls) -> List[float]:
         return list(cls.SOURCE_WEIGHTS.values())
+
+    @classmethod
+    def validate(cls):
+        """Ensures probability distributions sum to approximately 1.0."""
+        loyalty_sum = sum(cls.LOYALTY_DISTRIBUTION.values())
+        source_sum = sum(cls.SOURCE_WEIGHTS.values())
+        
+        if not (0.99 <= loyalty_sum <= 1.01):
+            raise ValueError(f"LOYALTY_DISTRIBUTION weights must sum to 1.0 (got {loyalty_sum})")
+        if not (0.99 <= source_sum <= 1.01):
+            raise ValueError(f"SOURCE_WEIGHTS weights must sum to 1.0 (got {source_sum})")
+        if not (0.0 <= cls.CAUSE_BIAS_WEIGHT <= 1.0):
+            raise ValueError("CAUSE_BIAS_WEIGHT must be between 0.0 and 1.0")

@@ -47,7 +47,7 @@ def test_config_validation_error(monkeypatch):
     """Verify that missing config raises ValueError."""
     monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", None)
     with pytest.raises(ValueError, match="Missing META_ACCESS_TOKEN"):
-        create_custom_audience()
+        create_custom_audience("Test Audience")
 
 @responses.activate
 def test_upload_donors_batching(tmp_path, monkeypatch):

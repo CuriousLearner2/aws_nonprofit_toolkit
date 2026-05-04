@@ -1,6 +1,7 @@
 import boto3
 import os
 import logging
+import argparse
 from typing import Optional
 from dotenv import load_dotenv
 from botocore.exceptions import ClientError
@@ -20,15 +21,14 @@ class AWSConfig:
     S3_BUCKET = os.getenv("AWS_PERSONALIZ_BUCKET")
     
     @classmethod
-    def validate(cls):
-        if not all([cls.ACCESS_KEY, cls.SECRET_KEY, cls.S3_BUCKET]):
-            raise ValueError("Missing AWS credentials or S3 bucket in environment.")
+    def validate(cls, bucket_override=None):
+        bucket = bucket_override or cls.S3_BUCKET
+        if not all([cls.ACCESS_KEY, cls.SECRET_KEY, bucket]):
+            raise ValueError("Missing AWS credentials or S3 bucket configuration.")
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def upload_to_s3(file_path: str, object_name: Optional[str] = None):
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10), reraise=True)
+def upload_to_s3(file_path: str, bucket: str, object_name: Optional[str] = None):
     """Uploads a synthetic dataset to S3 for Amazon Personalize import."""
-    AWSConfig.validate()
-    
     if object_name is None:
         object_name = os.path.basename(file_path)
 
@@ -40,8 +40,8 @@ def upload_to_s3(file_path: str, object_name: Optional[str] = None):
     )
 
     try:
-        logger.info(f"Uploading {file_path} to s3://{AWSConfig.S3_BUCKET}/{object_name}...")
-        s3_client.upload_file(file_path, AWSConfig.S3_BUCKET, object_name)
+        logger.info(f"Uploading {file_path} to s3://{bucket}/{object_name}...")
+        s3_client.upload_file(file_path, bucket, object_name)
         logger.info("SUCCESS: File uploaded to S3.")
     except ClientError as e:
         logger.error(f"S3 Upload failed: {e}")
@@ -71,13 +71,21 @@ def trigger_personalize_import(dataset_arn: str, s3_path: str, role_arn: str):
         raise
 
 if __name__ == "__main__":
-    # Example usage for local validation
+    parser = argparse.ArgumentParser(description="Upload datasets to Amazon S3 for Personalize.")
+    parser.add_argument("--dataset", type=str, default="aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv", help="Path to CSV dataset")
+    parser.add_argument("--bucket", type=str, help="S3 bucket name (overrides .env)")
+    parser.add_argument("--s3-path", type=str, help="Destination path in S3")
+    
+    args = parser.parse_args()
+    
+    target_bucket = args.bucket or AWSConfig.S3_BUCKET
+    
     try:
-        DATASET_PATH = "aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv"
-        if os.path.exists(DATASET_PATH):
-            upload_to_s3(DATASET_PATH)
-            print("\nREADY: Data is in S3. Use the AWS Console or trigger_personalize_import() to sync.")
+        AWSConfig.validate(bucket_override=target_bucket)
+        if os.path.exists(args.dataset):
+            upload_to_s3(args.dataset, target_bucket, object_name=args.s3_path)
+            logger.info("Sync process completed.")
         else:
-            logger.error(f"Dataset not found at {DATASET_PATH}. Run generate_datasets.py first.")
+            logger.error(f"Dataset not found at {args.dataset}")
     except Exception as e:
-        logger.error(f"Sync process failed: {e}")
+        logger.error(f"Personalize sync failed: {e}")
