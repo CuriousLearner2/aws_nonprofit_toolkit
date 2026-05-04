@@ -29,7 +29,7 @@ Resources:
         Variables:
           META_ACCESS_TOKEN: !Ref MetaAccessToken
           META_AD_ACCOUNT_ID: !Ref MetaAdAccountId
-          AWS_PERSONALIZ_BUCKET: !Ref S3BucketName
+          AWS_PERSONALIZE_BUCKET: !Ref S3BucketName
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt ToolkitDLQ.Arn
