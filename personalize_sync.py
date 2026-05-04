@@ -71,19 +71,31 @@ def trigger_personalize_import(dataset_arn: str, s3_path: str, role_arn: str):
         raise
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Upload datasets to Amazon S3 for Personalize.")
+    parser = argparse.ArgumentParser(description="Upload datasets to Amazon S3 and trigger Personalize Import.")
     parser.add_argument("--dataset", type=str, default="aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv", help="Path to CSV dataset")
     parser.add_argument("--bucket", type=str, help="S3 bucket name (overrides .env)")
-    parser.add_argument("--s3-path", type=str, help="Destination path in S3")
+    parser.add_argument("--s3-path", type=str, help="Destination path in S3 (e.g., data/interactions.csv)")
+    parser.add_argument("--dataset-arn", type=str, help="Amazon Personalize Dataset ARN (to trigger import)")
+    parser.add_argument("--role-arn", type=str, help="IAM Role ARN with Personalize access")
     
     args = parser.parse_args()
     
     target_bucket = args.bucket or AWSConfig.S3_BUCKET
+    s3_path = args.s3_path or os.path.basename(args.dataset)
     
     try:
         AWSConfig.validate(bucket_override=target_bucket)
         if os.path.exists(args.dataset):
-            upload_to_s3(args.dataset, target_bucket, object_name=args.s3_path)
+            # Step 1: Upload to S3
+            upload_to_s3(args.dataset, target_bucket, object_name=s3_path)
+            
+            # Step 2: Trigger Personalize Import (Optional based on ARNs)
+            if args.dataset_arn and args.role_arn:
+                trigger_personalize_import(args.dataset_arn, s3_path, args.role_arn)
+            else:
+                logger.info("SKIP: Personalize import not triggered (Missing --dataset-arn or --role-arn).")
+                logger.info("Data is ready in S3. Use the AWS Console to finish synchronization.")
+
             logger.info("Sync process completed.")
         else:
             logger.error(f"Dataset not found at {args.dataset}")

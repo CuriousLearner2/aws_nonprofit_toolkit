@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS Nonprofit Toolkit: Automated Donor Growth & Personalize Sync
+
+Parameters:
+  MetaAccessToken:
+    Type: String
+    NoEcho: true
+    Description: Meta System User Token
+  MetaAdAccountId:
+    Type: String
+    Description: Meta Ad Account ID (numbers only)
+  S3BucketName:
+    Type: String
+    Description: Bucket for synthetic dataset storage
+
+Resources:
+  ToolkitFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda_handler.handler
+      Runtime: python3.11
+      MemorySize: 512
+      Timeout: 300
+      Environment:
+        Variables:
+          META_ACCESS_TOKEN: !Ref MetaAccessToken
+          META_AD_ACCOUNT_ID: !Ref MetaAdAccountId
+          AWS_PERSONALIZ_BUCKET: !Ref S3BucketName
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref S3BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - personalize:CreateDatasetImportJob
+              Resource: "*"
+      Events:
+        DailySync:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Description: Daily donor synchronization and ML signal refresh
+
+Outputs:
+  ToolkitFunctionArn:
+    Description: "Lambda Function ARN"
+    Value: !GetAtt ToolkitFunction.Arn

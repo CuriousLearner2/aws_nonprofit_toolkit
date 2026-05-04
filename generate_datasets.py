@@ -42,8 +42,12 @@ def generate_small_nonprofit(base_path, count):
                 None
             ])
 
-def generate_large_nonprofit(base_path, count, vip_ratio):
-    """Generates a dataset optimized for ML with configurable bias."""
+def generate_large_nonprofit(base_path, count, bias_ratio):
+    """
+    Generates a dataset optimized for ML with configurable bias.
+    Note: bias_ratio controls the size of Group A (the biased target group),
+    while SimulationConfig.LOYALTY_DISTRIBUTION controls VIP/REGULAR labeling.
+    """
     users_file = base_path / 'large_nonprofit_users.csv'
     interactions_file = base_path / 'large_nonprofit_interactions.csv'
     
@@ -63,18 +67,20 @@ def generate_large_nonprofit(base_path, count, vip_ratio):
         writer = csv.writer(f)
         writer.writerow(['USER_ID', 'ITEM_ID', 'TIMESTAMP', 'EVENT_TYPE'])
         
-        # Determine the Group A threshold based on vip_ratio
-        group_a_threshold = int(count * vip_ratio)
+        # Group A threshold is determined by bias_ratio (e.g. 0.25 of total users)
+        group_a_threshold = int(count * bias_ratio)
 
         for i in range(total_interactions):
             user_idx = random.randint(0, count-1)
             
+            # Users below threshold fall into the biased Group A
             if user_idx < group_a_threshold:
                 if random.random() < SimulationConfig.CAUSE_BIAS_WEIGHT:
                     item = random.choice(SimulationConfig.BIASED_ITEMS)
                 else:
                     item = random.choice(SimulationConfig.ITEMS)
             else:
+                # Group B remains neutral/random
                 item = random.choice(SimulationConfig.ITEMS)
                 
             writer.writerow([
@@ -87,7 +93,9 @@ def generate_large_nonprofit(base_path, count, vip_ratio):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate synthetic nonprofit datasets.")
     parser.add_argument("--count", type=int, default=2000, help="Number of users to generate (Large dataset)")
-    parser.add_argument("--vip-ratio", type=float, default=0.25, help="Ratio of users in biased Group A (0.0 to 1.0)")
+    parser.add_argument("--bias-ratio", type=float, default=0.25, 
+                        help="Ratio of users in the biased Group A pool (default: 0.25). "
+                             "This controls the ML 'signal' target size, NOT loyalty labels.")
     parser.add_argument("--output", type=str, default="aws_nonprofit_toolkit/datasets", help="Output directory")
     
     args = parser.parse_args()
@@ -96,8 +104,8 @@ if __name__ == "__main__":
     
     SimulationConfig.validate()
     
-    print(f"--- Generating Datasets (Count: {args.count}, VIP Ratio: {args.vip_ratio}) ---")
+    print(f"--- Generating Datasets (Count: {args.count}, Bias Ratio: {args.bias_ratio}) ---")
     generate_small_nonprofit(output_dir, SimulationConfig.SMALL_USER_COUNT)
-    generate_large_nonprofit(output_dir, args.count, args.vip_ratio)
+    generate_large_nonprofit(output_dir, args.count, args.bias_ratio)
     
     print(f"SUCCESS: Datasets generated in {output_dir}/")

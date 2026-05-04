@@ -25,7 +25,7 @@ def test_small_dataset_schema(tmp_path):
 
 def test_large_dataset_signal_integrity(tmp_path):
     """Verify that the large dataset meets minimum requirements for Amazon Personalize."""
-    generate_large_nonprofit(tmp_path, 2000, 0.25)
+    generate_large_nonprofit(tmp_path, 2000, 0.25) # 0.25 is bias_ratio
     
     interactions_file = tmp_path / 'large_nonprofit_interactions.csv'
     assert interactions_file.exists()

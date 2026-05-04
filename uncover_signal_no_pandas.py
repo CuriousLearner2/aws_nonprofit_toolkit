@@ -2,10 +2,12 @@ import csv
 import argparse
 from collections import Counter
 
-def analyze_bias(file_path: str):
+def analyze_bias(file_path: str, threshold: float = 20.0):
     """
     Analyzes donor interaction bias using a memory-efficient streaming approach.
     Scales to millions of records by avoiding loading the full CSV into RAM.
+    
+    :param threshold: Minimum % shift required to confirm a 'Strong Signal'
     """
     print(f"--- Analyzing {file_path} (Streaming Mode) ---")
     
@@ -61,8 +63,13 @@ def analyze_bias(file_path: str):
             print(f"{item:<20} | {perc_a:>8.2f}% | {perc_b:>8.2f}%")
 
         print("-" * 30)
-        print(f"SIGNAL DETECTED: Group A shows a bias toward '{top_diff_item}'.")
-        print(f"Shift Intensity: {max_diff:.2f}%")
+        
+        if max_diff >= threshold:
+            print(f"✅ STRONG SIGNAL DETECTED: Group A shows a clear bias toward '{top_diff_item}'.")
+        else:
+            print(f"❌ WEAK SIGNAL: No cause exceeded the {threshold}% detection threshold.")
+            
+        print(f"Peak Shift Intensity: {max_diff:.2f}% (Threshold: {threshold}%)")
 
     except FileNotFoundError:
         print(f"Error: File {file_path} not found.")
@@ -72,6 +79,7 @@ def analyze_bias(file_path: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyze bias signal in interaction datasets.")
     parser.add_argument("file", type=str, help="Path to the interactions CSV file")
+    parser.add_argument("--threshold", type=float, default=20.0, help="Minimum % shift for signal detection (default: 20.0)")
     
     args = parser.parse_args()
-    analyze_bias(args.file)
+    analyze_bias(args.file, threshold=args.threshold)

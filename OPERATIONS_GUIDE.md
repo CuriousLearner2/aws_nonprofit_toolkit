@@ -18,10 +18,36 @@ Your Lambda handler should follow the standard workflow:
 1.  Initialize `SimulationConfig`.
 2.  Call `generate_datasets.py` logic.
 3.  Execute `meta_growth_engine.py` and `personalize_sync.py` functions.
+---
+
+## 2. Automated Deployment (AWS SAM)
+The toolkit includes an **AWS SAM (Serverless Application Model)** template for one-click deployment.
+
+### 2.1 Prerequisites
+*   Install the [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
+*   Configured AWS credentials (`aws configure`).
+
+### 2.2 Deployment Steps
+1.  **Navigate to toolkit**: `cd aws_nonprofit_toolkit`
+2.  **Build**: `sam build`
+3.  **Deploy**: `sam deploy --guided`
+    *   **Stack Name**: `nonprofit-toolkit`
+    *   **AWS Region**: Select your region (e.g., `us-east-1`).
+    *   **Parameter MetaAccessToken**: Enter your system user token.
+    *   **Parameter MetaAdAccountId**: Enter your account ID.
+    *   **Parameter S3BucketName**: Enter your target S3 bucket.
+
+### 2.3 CloudWatch Integration
+The SAM template automatically configures:
+*   **Daily Schedule**: Runs every 24 hours via EventBridge.
+*   **Permissions**: Grants the Lambda function minimal S3 and Personalize permissions required for sync.
+*   **Logging**: All logs are automatically streamed to `/aws/lambda/nonprofit-toolkit`.
 
 ---
 
-## 2. Monitoring & Observability
+## 3. Monitoring & Observability
+...
+
 Use **Amazon CloudWatch** to track the health of your automated synchronization.
 
 ### 2.1 CloudWatch Logs

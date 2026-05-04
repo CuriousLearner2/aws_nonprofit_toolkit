@@ -48,12 +48,13 @@ cp .env.example .env
 ```python
 # Programmatic Example: Generate 50,000 synthetic donors
 from generate_datasets import generate_large_nonprofit
-generate_large_nonprofit("datasets/", count=50000, vip_ratio=0.15)
+generate_large_nonprofit("datasets/", count=50000, bias_ratio=0.15)
 ```
 Or via CLI:
 ```bash
-python3 generate_datasets.py --count 50000 --vip-ratio 0.15
+python3 generate_datasets.py --count 50000 --bias-ratio 0.15
 ```
+
 
 ### 3. Validate Signal
 ```bash
@@ -78,7 +79,7 @@ python3 personalize_sync.py --dataset datasets/donors.csv --s3-path data/donors_
 | Argument | Default | Description |
 | :--- | :--- | :--- |
 | `--count` | `2000` | Number of users for the large dataset. |
-| `--vip-ratio` | `0.25` | Percentage of users in the biased Group A. |
+| `--bias-ratio` | `0.25` | Percentage of users in the biased Group A (Signal target). |
 | `--output` | `datasets/` | Directory to save generated CSVs. |
 
 ### 2. Meta Synchronization (`meta_growth_engine.py`)

@@ -30,7 +30,7 @@ def test_e2e_toolkit_flow(mock_boto, mock_post, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(SimulationConfig, "LOYALTY_DISTRIBUTION", {"VIP": 1.0})
     
     generate_small_nonprofit(tmp_path, 10)
-    generate_large_nonprofit(tmp_path, 1000, 0.25)
+    generate_large_nonprofit(tmp_path, 1000, 0.25) # 0.25 is now bias_ratio
     
     interactions_path = tmp_path / "large_nonprofit_interactions.csv"
     users_path = tmp_path / "small_nonprofit_users.csv"
