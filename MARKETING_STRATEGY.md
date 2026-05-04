@@ -51,19 +51,19 @@ The script automatically categorizes donors based on their response:
 
 ---
 
-## 4. The Growth Loop (Meta Lookalike Integration)
-**Location:** `aws_nonprofit_toolkit/meta_growth_engine.py`
+## 4. Customization & Domain Adaptability
+Nonprofits can customize the entire simulation to match their specific mission by editing **`aws_nonprofit_toolkit/config.py`**.
 
-The output of the simulations feeds directly into the Meta growth engine:
-1.  **VIP Extraction**: We extract only the `VIP` loyalty level from our datasets.
-2.  **Hashing**: Emails are SHA256 hashed to comply with Meta's privacy requirements.
-3.  **Audience Seeding**: The hashed VIP list is uploaded to a **Meta Custom Audience**.
-4.  **Lookalike Generation**: Meta uses this "High Signal" seed to find 1% of the population that "looks like" our best donors.
-5.  **Conversion**: These new leads are driven to the **WhatsApp Bot**, which uses the archetype data to personalize the initial greeting.
+### 4.1 Configurable Parameters
+*   **Scale**: Adjust `LARGE_USER_COUNT` and `INTERACTIONS_PER_USER` to simulate different volumes of donor traffic.
+*   **Cause Categories**: Modify the `ITEMS` list (e.g., change `CLEAN_WATER` to `LITERACY_PROGRAMS`).
+*   **Signal Strength**: Tune `CAUSE_BIAS_WEIGHT` (default 0.70) to test how sensitive your ML model is to varying levels of behavioral bias.
+*   **Donor Demographics**: Edit `LOYALTY_DISTRIBUTION` and `SOURCE_WEIGHTS` to reflect your real-world donor base (e.g., if most of your donors come from Facebook vs. Organic).
 
 ---
 
 ## 5. Getting Started
+... (rest of the file) ...
 
 ### 5.1 Prerequisites
 *   **Python 3.11+**: Ensure you have a modern Python environment.

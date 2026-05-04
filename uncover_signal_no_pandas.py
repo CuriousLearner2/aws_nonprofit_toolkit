@@ -1,58 +1,73 @@
 import csv
 from collections import Counter
 
-def analyze_bias(file_path):
-    print(f"--- Analyzing {file_path} (Pure Python) ---")
+def analyze_bias(file_path: str):
+    """
+    Analyzes donor interaction bias using a memory-efficient streaming approach.
+    Scales to millions of records by avoiding loading the full CSV into RAM.
+    """
+    print(f"--- Analyzing {file_path} (Streaming Mode) ---")
     
-    group_a_items = []
-    group_b_items = []
+    counts_a = Counter()
+    counts_b = Counter()
+    total_a = 0
+    total_b = 0
     
-    with open(file_path, mode='r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            user_id = row['USER_ID']
-            item_id = row['ITEM_ID']
-            user_num = int(user_id.replace('user_', ''))
-            
-            if user_num < 500:
-                group_a_items.append(item_id)
-            else:
-                group_b_items.append(item_id)
-    
-    total_a = len(group_a_items)
-    total_b = len(group_b_items)
-    
-    counts_a = Counter(group_a_items)
-    counts_b = Counter(group_b_items)
-    
-    all_items = sorted(list(set(group_a_items) | set(group_b_items)))
-    
-    print(f"Total Interactions: {total_a + total_b}")
-    print(f"Group A (Users 0-499) Interactions: {total_a}")
-    print(f"Group B (Users 500-1999) Interactions: {total_b}")
-    print("-" * 30)
-    print(f"{'Item ID':<20} | {'Group A %':<10} | {'Group B %':<10}")
-    print("-" * 45)
-    
-    max_diff = 0
-    top_diff_item = ""
+    try:
+        with open(file_path, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                user_id = row.get('USER_ID', '')
+                item_id = row.get('ITEM_ID', '')
+                
+                # Logic: Users 0-499 are Group A (Biased)
+                try:
+                    user_num = int(user_id.replace('user_', ''))
+                    if user_num < 500:
+                        counts_a[item_id] += 1
+                        total_a += 1
+                    else:
+                        counts_b[item_id] += 1
+                        total_b += 1
+                except ValueError:
+                    continue # Skip invalid user IDs
 
-    for item in all_items:
-        perc_a = (counts_a[item] / total_a) * 100
-        perc_b = (counts_b[item] / total_b) * 100
-        diff = perc_a - perc_b
+        if total_a == 0 or total_b == 0:
+            print("Error: One or more groups have zero interactions.")
+            return
+
+        all_items = sorted(list(set(counts_a.keys()) | set(counts_b.keys())))
         
-        if abs(diff) > max_diff:
-            max_diff = abs(diff)
-            top_diff_item = item
-            
-        print(f"{item:<20} | {perc_a:>8.2f}% | {perc_b:>8.2f}%")
+        print(f"Total Interactions Analyzed: {total_a + total_b}")
+        print(f"Group A (Biased) Count: {total_a}")
+        print(f"Group B (Baseline) Count: {total_b}")
+        print("-" * 30)
+        print(f"{'Item ID':<20} | {'Group A %':<10} | {'Group B %':<10}")
+        print("-" * 45)
+        
+        max_diff = 0
+        top_diff_item = ""
 
-    print("-" * 30)
-    print(f"MATH REVEALS: Group A has a disproportionate interest in '{top_diff_item}'.")
-    print(f"Difference: {max_diff:.2f}% shift compared to the neutral group.")
-    print("\nThis statistical 'bulge' is exactly what Amazon Personalize detects")
-    print("to know that it should recommend certain items to specific user types.")
+        for item in all_items:
+            perc_a = (counts_a[item] / total_a) * 100
+            perc_b = (counts_b[item] / total_b) * 100
+            diff = perc_a - perc_b
+            
+            if abs(diff) > max_diff:
+                max_diff = abs(diff)
+                top_diff_item = item
+                
+            print(f"{item:<20} | {perc_a:>8.2f}% | {perc_b:>8.2f}%")
+
+        print("-" * 30)
+        print(f"SIGNAL DETECTED: Group A shows a bias toward '{top_diff_item}'.")
+        print(f"Shift Intensity: {max_diff:.2f}%")
+        print("\nSCALABILITY NOTE: This analysis used streaming (line-by-line) to minimize memory footprint.")
+
+    except FileNotFoundError:
+        print(f"Error: File {file_path} not found.")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
     analyze_bias("aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv")

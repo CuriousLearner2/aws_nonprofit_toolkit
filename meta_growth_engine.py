@@ -85,13 +85,16 @@ def create_custom_audience(name: str = "VIP Donors (Replate Growth Lab)") -> Opt
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type(requests.exceptions.RequestException)
 )
-def upload_donors_to_audience(audience_id: str, users_file: str):
-    """Extracts VIPs and uploads hashed emails to a specific Meta audience."""
+def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int = 5000):
+    """
+    Extracts VIPs and uploads hashed emails to a specific Meta audience.
+    Implements batching to support large datasets (Meta limit is typically 10k per call).
+    """
     if not os.path.exists(users_file):
         logger.error(f"File not found: {users_file}")
         return
 
-    logger.info(f"Uploading VIPs from {users_file}...")
+    logger.info(f"Extracting VIPs from {users_file}...")
     
     # Extract VIP emails
     hashed_emails = []
@@ -105,29 +108,38 @@ def upload_donors_to_audience(audience_id: str, users_file: str):
         logger.error(f"Error reading users file: {str(e)}")
         return
 
-    if not hashed_emails:
+    total_vip_count = len(hashed_emails)
+    if not total_vip_count:
         logger.warning("No VIP donors found to upload.")
         return
 
-    logger.info(f"Found {len(hashed_emails)} VIP donors. Syncing with Meta...")
+    logger.info(f"Found {total_vip_count} VIP donors. Syncing with Meta in batches of {batch_size}...")
     
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}/users"
     
-    payload = {
-        'payload': json.dumps({
-            'schema': ['EMAIL'],
-            'data': hashed_emails
-        }),
-        'access_token': MetaConfig.ACCESS_TOKEN
-    }
-    
-    try:
-        response = requests.post(url, data=payload, timeout=30)
-        response.raise_for_status()
-        logger.info("SUCCESS: VIP list synchronized with Meta.")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to upload donors: {str(e)}")
-        raise
+    # Chunk the list into batches of batch_size
+    for i in range(0, total_vip_count, batch_size):
+        batch = hashed_emails[i:i + batch_size]
+        logger.info(f"Uploading batch {i//batch_size + 1} ({len(batch)} records)...")
+        
+        payload = {
+            'payload': json.dumps({
+                'schema': ['EMAIL'],
+                'data': batch
+            }),
+            'access_token': MetaConfig.ACCESS_TOKEN
+        }
+        
+        try:
+            response = requests.post(url, data=payload, timeout=30)
+            response.raise_for_status()
+            logger.info(f"SUCCESS: Batch {i//batch_size + 1} synchronized.")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to upload batch {i//batch_size + 1}: {str(e)}")
+            # We raise here to trigger the @retry decorator for this specific batch
+            raise
+
+    logger.info(f"SYNC COMPLETE: Total of {total_vip_count} VIPs pushed to Meta.")
 
 def simulate_lookalike_growth(original_count: int):
     """Logs simulated growth results for local validation."""

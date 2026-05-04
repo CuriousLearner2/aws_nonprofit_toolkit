@@ -1,98 +1,105 @@
 import csv
 import random
 import time
+import os
 from pathlib import Path
-
-# Configuration
-SMALL_USER_COUNT = 200
-LARGE_USER_COUNT = 2000
-MIN_ML_INTERACTIONS = 1000
-
-ITEMS = [
-    'CLEAN_WATER', 'ANIMAL_RESCUE', 'EDUCATION', 
-    'DISASTER_RELIEF', 'ENVIRONMENT', 'COMMUNITY_HEALTH'
-]
-
-EVENT_TYPES = ['VIEW', 'DONATE', 'SIGN_UP']
+from aws_nonprofit_toolkit.config import SimulationConfig
 
 def generate_small_nonprofit(base_path):
-    """Generates a dataset for < 500 users, focused on user attributes/tags."""
+    """Generates a dataset focused on user attributes/tags based on SimulationConfig."""
     users_file = base_path / 'small_nonprofit_users.csv'
     interactions_file = base_path / 'small_nonprofit_interactions.csv'
     
     # Create Users with tags and growth metadata
-    with open(users_file, 'w', newline='') as f:
+    with open(users_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(['USER_ID', 'EMAIL', 'INTEREST_TAG', 'LAST_DONATION_AMOUNT', 'LOYALTY_LEVEL', 'SOURCE', 'CONSENT'])
-        for i in range(SMALL_USER_COUNT):
+        for i in range(SimulationConfig.SMALL_USER_COUNT):
+            loyalty = random.choices(
+                SimulationConfig.get_loyalty_levels(), 
+                weights=SimulationConfig.get_loyalty_weights()
+            )[0]
+            
+            source = random.choices(
+                SimulationConfig.get_sources(),
+                weights=SimulationConfig.get_source_weights()
+            )[0]
+
             writer.writerow([
                 f'user_{i}',
                 f'donor_{i}@example.com',
-                random.choice(ITEMS),
+                random.choice(SimulationConfig.ITEMS),
                 random.randint(0, 500),
-                random.choice(['NEW', 'REGULAR', 'VIP']),
-                random.choice(['ORGANIC', 'WHATSAPP', 'FACEBOOK']),
-                True # Existing donors are opted in
+                loyalty,
+                source,
+                random.random() < SimulationConfig.CONSENT_RATE
             ])
             
     # Create Interactions
-    with open(interactions_file, 'w', newline='') as f:
+    total_interactions = SimulationConfig.SMALL_USER_COUNT * SimulationConfig.INTERACTIONS_PER_USER
+    with open(interactions_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(['USER_ID', 'ITEM_ID', 'TIMESTAMP', 'EVENT_TYPE', 'REFERRED_BY'])
-        for i in range(SMALL_USER_COUNT * 2): # Avg 2 interactions per user
+        for i in range(total_interactions):
             writer.writerow([
-                f'user_{random.randint(0, SMALL_USER_COUNT-1)}',
-                random.choice(ITEMS),
+                f'user_{random.randint(0, SimulationConfig.SMALL_USER_COUNT-1)}',
+                random.choice(SimulationConfig.ITEMS),
                 int(time.time()) - random.randint(0, 10**7),
-                random.choice(EVENT_TYPES),
-                None # No referrals yet
+                random.choice(['VIEW', 'DONATE', 'SIGN_UP']),
+                None
             ])
 
 def generate_large_nonprofit(base_path):
-    """Generates a dataset for > 500 users, optimized for ML (Amazon Personalize)."""
+    """Generates a dataset optimized for ML (Amazon Personalize) with configurable bias."""
     users_file = base_path / 'large_nonprofit_users.csv'
     interactions_file = base_path / 'large_nonprofit_interactions.csv'
     
     # Create Users
-    with open(users_file, 'w', newline='') as f:
+    with open(users_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(['USER_ID', 'EMAIL', 'SOURCE', 'CONSENT'])
-        for i in range(LARGE_USER_COUNT):
+        for i in range(SimulationConfig.LARGE_USER_COUNT):
             writer.writerow([
                 f'user_{i}', 
                 f'donor_{i}@example.com',
                 'ORGANIC',
-                random.random() > 0.2 # 80% consent rate
+                random.random() < SimulationConfig.CONSENT_RATE
             ])
             
-    # Create Interactions (Ensuring > 1000 for Personalize)
-    with open(interactions_file, 'w', newline='') as f:
+    # Create Interactions with Weighted Bias
+    total_interactions = SimulationConfig.LARGE_USER_COUNT * SimulationConfig.INTERACTIONS_PER_USER
+    with open(interactions_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(['USER_ID', 'ITEM_ID', 'TIMESTAMP', 'EVENT_TYPE'])
-        for i in range(MAX_INTERACTIONS := max(LARGE_USER_COUNT * 5, MIN_ML_INTERACTIONS + 100)):
-            # Simulating some bias for ML to pick up
-            user_idx = random.randint(0, LARGE_USER_COUNT-1)
-            # Users 0-500 like Clean Water, others random
+        for i in range(total_interactions):
+            user_idx = random.randint(0, SimulationConfig.LARGE_USER_COUNT-1)
+            
+            # Group A (0-499) gets the cause bias
             if user_idx < 500:
-                item = random.choice(['CLEAN_WATER', 'ENVIRONMENT']) if random.random() > 0.3 else random.choice(ITEMS)
+                if random.random() < SimulationConfig.CAUSE_BIAS_WEIGHT:
+                    item = random.choice(SimulationConfig.BIASED_ITEMS)
+                else:
+                    item = random.choice(SimulationConfig.ITEMS)
             else:
-                item = random.choice(ITEMS)
+                # Group B remains neutral/random
+                item = random.choice(SimulationConfig.ITEMS)
                 
             writer.writerow([
                 f'user_{user_idx}',
                 item,
                 int(time.time()) - random.randint(0, 10**7),
-                random.choice(EVENT_TYPES)
+                random.choice(['VIEW', 'DONATE', 'SIGN_UP'])
             ])
 
 if __name__ == "__main__":
-    output_dir = Path("datasets")
-    output_dir.mkdir(exist_ok=True)
+    output_dir = Path("aws_nonprofit_toolkit/datasets")
+    output_dir.mkdir(exist_ok=True, parents=True)
     
-    print("Generating Small Nonprofit Dataset...")
+    print(f"--- Generating Datasets using SimulationConfig ---")
+    print(f"Target Items: {SimulationConfig.ITEMS}")
+    print(f"Cause Bias: {SimulationConfig.CAUSE_BIAS_WEIGHT * 100}% toward {SimulationConfig.BIASED_ITEMS}")
+    
     generate_small_nonprofit(output_dir)
-    
-    print("Generating Large Nonprofit Dataset...")
     generate_large_nonprofit(output_dir)
     
-    print(f"Datasets generated in {output_dir}/")
+    print(f"SUCCESS: Datasets generated in {output_dir}/")

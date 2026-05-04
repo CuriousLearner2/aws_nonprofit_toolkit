@@ -2,7 +2,7 @@ import pytest
 import responses
 import json
 import os
-from aws_nonprofit_toolkit.meta_growth_engine import hash_data, create_custom_audience, MetaConfig
+from aws_nonprofit_toolkit.meta_growth_engine import hash_data, create_custom_audience, upload_donors_to_audience, MetaConfig
 
 def test_hash_data():
     """Verify that hashing is consistent and lowercase-normalized."""
@@ -39,7 +39,7 @@ def test_create_custom_audience_failure(monkeypatch):
         status=401
     )
     
-    # create_custom_audience has retry logic, so this might take a few seconds
+    # create_custom_audience has retry logic
     with pytest.raises(Exception):
         create_custom_audience("Test Audience")
 
@@ -48,3 +48,38 @@ def test_config_validation_error(monkeypatch):
     monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", None)
     with pytest.raises(ValueError, match="Missing META_ACCESS_TOKEN"):
         create_custom_audience()
+
+@responses.activate
+def test_upload_donors_batching(tmp_path, monkeypatch):
+    """Verify that donors are uploaded in multiple batches if they exceed batch_size."""
+    monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", "fake_token")
+    monkeypatch.setattr(MetaConfig, "API_VERSION", "v21.0")
+    
+    # Create a mock CSV with 5 VIPs
+    csv_file = tmp_path / "test_users.csv"
+    with open(csv_file, "w") as f:
+        f.write("USER_ID,EMAIL,LOYALTY_LEVEL\n")
+        for i in range(5):
+            f.write(f"user_{i},donor_{i}@example.com,VIP\n")
+    
+    # Mock the API to expect 3 batches (batch size of 2: [0,1], [2,3], [4])
+    audience_id = "aud_123"
+    url = f"https://graph.facebook.com/v21.0/{audience_id}/users"
+    
+    responses.add(responses.POST, url, status=200)
+    responses.add(responses.POST, url, status=200)
+    responses.add(responses.POST, url, status=200)
+    
+    # Run with small batch size to trigger multiple calls
+    upload_donors_to_audience(audience_id, str(csv_file), batch_size=2)
+    
+    # Verify 3 calls were made
+    assert len(responses.calls) == 3
+    
+    # Verify the third call only had 1 record
+    from urllib.parse import parse_qs
+    body_str = responses.calls[2].request.body
+    parsed_body = parse_qs(body_str)
+    payload_json = parsed_body['payload'][0]
+    payload_data = json.loads(payload_json)
+    assert len(payload_data['data']) == 1

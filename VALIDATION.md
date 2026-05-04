@@ -7,8 +7,9 @@ This document outlines how Replate validates the realism, integrity, and signal 
 ## 1. Statistical Signal Validation
 **Tool:** `aws_nonprofit_toolkit/uncover_signal_no_pandas.py`
 
-### 1.1 The "Bulge" Test
+### 1.1 The "Bulge" Test (Streaming Mode)
 To ensure that Amazon Personalize can learn user preferences, we verify the "Signal-to-Noise Ratio."
+*   **Scalability**: The validation tool uses **streaming logic** to process millions of interactions without memory degradation.
 *   **Methodology**: We compare a biased segment (Group A) against a neutral baseline (Group B).
 *   **Success Criteria**: The primary interest category in Group A must show a **20% to 45% statistical shift** compared to Group B.
     *   *Too Low (<10%)*: Signal is too weak for ML to detect.
