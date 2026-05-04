@@ -22,6 +22,7 @@ def handler(event, context):
     try:
         # 1. Generate Latest Synthetic Data
         logger.info("Step 1/4: Generating synthetic data...")
+        # Note: Using bias_ratio to control Group A signal density
         generate_large_nonprofit(tmp_dir, count=2000, bias_ratio=0.25)
         
         interactions_path = tmp_dir / "large_nonprofit_interactions.csv"
@@ -29,8 +30,8 @@ def handler(event, context):
         
         # 2. Validate Signal Strength
         logger.info("Step 2/4: Validating ML signal strength...")
-        if not analyze_bias(str(interactions_path)):
-            error_msg = "ML Signal too weak for production sync. Aborting."
+        if not analyze_bias(str(interactions_path), threshold=20.0):
+            error_msg = "Signal too weak (< 20%). Data not ready for Meta sync."
             logger.error(f"FATAL: {error_msg}")
             raise ValueError(error_msg)
         
@@ -41,7 +42,7 @@ def handler(event, context):
         
         # 4. Sync to S3
         logger.info("Step 4/4: Uploading interactions to S3...")
-        bucket = os.getenv("AWS_PERSONALIZ_BUCKET")
+        bucket = os.getenv("AWS_PERSONALIZE_BUCKET")
         upload_to_s3(str(interactions_path), bucket)
         
         return {

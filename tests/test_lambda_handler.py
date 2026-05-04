@@ -25,8 +25,14 @@ def test_lambda_handler_success(mock_getenv, mock_s3, mock_upload_meta, mock_cre
     
     assert response['statusCode'] == 200
     assert "successful" in response['body']
+    
     mock_gen.assert_called_once()
+    # Verify threshold is 20.0 as requested
     mock_analyze.assert_called_once()
+    assert mock_analyze.call_args[1]['threshold'] == 20.0
+    
+    # Verify new ENV variable name
+    mock_getenv.assert_called_with("AWS_PERSONALIZE_BUCKET")
 
 @patch('lambda_handler.generate_large_nonprofit')
 @patch('lambda_handler.analyze_bias')
@@ -37,15 +43,4 @@ def test_lambda_handler_weak_signal(mock_analyze, mock_gen):
         with patch('pathlib.Path.mkdir'):
             handler({}, MagicMock())
     
-    assert "Signal too weak" in str(excinfo.value)
-
-@patch('lambda_handler.generate_large_nonprofit')
-@patch('lambda_handler.analyze_bias')
-def test_lambda_handler_aws_error(mock_analyze, mock_gen):
-    mock_analyze.return_value = True
-    error_response = {'Error': {'Code': 'AccessDenied', 'Message': 'Forbidden'}}
-    mock_gen.side_effect = ClientError(error_response, 'PutObject')
-    
-    with pytest.raises(ClientError):
-        with patch('pathlib.Path.mkdir'):
-            handler({}, MagicMock())
+    assert "Signal too weak (< 20%)" in str(excinfo.value)

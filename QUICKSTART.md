@@ -19,7 +19,8 @@ python3 generate_datasets.py --count 1000 --bias-ratio 0.15
 *Note: --bias-ratio 0.15 means 15% of users receive biased preferences. This is independent of the loyalty tier distribution.*
 
 ### 3. Validate Signal
-Verify that the behavioral bias is strong enough for machine learning.
+Verify that the behavioral bias is strong enough for machine learning. 
+*Note: This manual step allows you to verify data quality locally. The automated Lambda handler performs this same check internally before every synchronization.*
 ```bash
 python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
 ```

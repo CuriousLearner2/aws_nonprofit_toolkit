@@ -4,25 +4,26 @@ This guide will walk you through obtaining the necessary credentials to run the 
 
 ---
 
-## Dependency Matrix
+## Configuration Requirements Matrix
 
-┌───────────────────────┬────────────────────┬─────────────────────────┐
-│       Variable        │     Required?      │        Used For         │
-├───────────────────────┼────────────────────┼─────────────────────────┤
-│ META_ACCESS_TOKEN     │ ✅ Yes             │ Creating Meta Custom    │
-│                       │                    │ Audiences               │
-├───────────────────────┼────────────────────┼─────────────────────────┤
-│ META_AD_ACCOUNT_ID    │ ✅ Yes             │ Meta API authentication │
-├───────────────────────┼────────────────────┼─────────────────────────┤
-│ AWS_ACCESS_KEY_ID     │ ⚠️  If using        │ S3 upload + Personalize │
-│                       │ Personalize        │ import                  │
-├───────────────────────┼────────────────────┼─────────────────────────┤
-│ AWS_PERSONALIZ_BUCKET │ ⚠️  If using        │ Donor interaction data  │
-│                       │ Personalize        │ storage                 │
-├───────────────────────┼────────────────────┼─────────────────────────┤
-│ GEMINI_API_KEY        │ ❌ No              │ Not currently used in   │
-│                       │                    │ toolkit                 │
-└───────────────────────┴────────────────────┴─────────────────────────┘
+Use the table below to identify which environment variables are required based on your specific use case.
+
+┌────────────────────────┬─────────────┬─────────────┬─────────────┐
+│ Variable               │ Data-Gen    │ Meta-Sync   │ Full AWS    │
+│                        │ Only        │ Only        │ Pipeline    │
+├────────────────────────┼─────────────┼─────────────┼─────────────┤
+│ `META_ACCESS_TOKEN`    │ ❌ No        │ ✅ Yes       │ ✅ Yes       │
+├────────────────────────┼─────────────┼─────────────┼─────────────┤
+│ `META_AD_ACCOUNT_ID`   │ ❌ No        │ ✅ Yes       │ ✅ Yes       │
+├────────────────────────┼─────────────┼─────────────┼─────────────┤
+│ `AWS_ACCESS_KEY_ID`    │ ❌ No        │ ❌ No        │ ✅ Yes       │
+├────────────────────────┼─────────────┼─────────────┼─────────────┤
+│ `AWS_SECRET_KEY`       │ ❌ No        │ ❌ No        │ ✅ Yes       │
+├────────────────────────┼─────────────┼─────────────┼─────────────┤
+│ `AWS_PERSONALIZE_BUCKET`│ ❌ No        │ ❌ No        │ ✅ Yes       │
+├────────────────────────┼─────────────┼─────────────┼─────────────┤
+│ `GEMINI_API_KEY`       │ ❌ No        │ ❌ No        │ ⚠️  Optional  │
+└────────────────────────┴─────────────┴─────────────┴─────────────┘
 
 ---
 
@@ -75,7 +76,7 @@ To synchronize donors, you need a **System User** token with specific permission
 }
 ```
 
-### 2.2 AWS_PERSONALIZ_BUCKET
+### 2.2 AWS_PERSONALIZE_BUCKET
 1.  Navigate to **S3** in the AWS Console.
 2.  Click **Create bucket**.
 3.  Give it a unique name (e.g., `my-nonprofit-ml-data`).
@@ -116,7 +117,7 @@ python3 generate_datasets.py --count 500 --bias-ratio 0.10
 ### Step 2: The Signal Check
 We check if the data has a strong enough pattern for an AI to learn.
 ```bash
-python3 uncover_signal_no_pandas.py aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv
+python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
 ```
 *Expected Output*: You should see a "SIGNAL DETECTED" message. This proves that if you train an AI on this data, it will actually be able to make smart recommendations.
 

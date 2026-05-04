@@ -18,7 +18,7 @@ class AWSConfig:
     ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
     SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
     REGION = os.getenv("AWS_REGION", "us-east-1")
-    S3_BUCKET = os.getenv("AWS_PERSONALIZ_BUCKET")
+    S3_BUCKET = os.getenv("AWS_PERSONALIZE_BUCKET")
     
     @classmethod
     def validate(cls, bucket_override=None):
