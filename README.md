@@ -7,6 +7,24 @@ A suite of data simulation and automation tools designed to optimize donor acqui
 
 ---
 
+## 🎯 The Problem: Why Nonprofits Struggle with AI
+Most nonprofits sit on a goldmine of data but face the **"Cold Start Problem"**:
+*   **Data Fragmentation**: Donor interactions are scattered across spreadsheets, CRMs, and email tools.
+*   **Privacy Friction**: Moving PII (Personally Identifiable Information) into AI models is risky and slow.
+*   **Unclear ROI**: It's expensive to build custom machine learning models without knowing if your data actually has a "signal" worth following.
+
+## 💡 The Solution: High-Signal Growth
+This toolkit acts as a **bridge between raw data and marketing ROI**. Instead of guessing which donors to target, it provides:
+1.  **Privacy-First Hashing**: Safely syncs donor lists to Meta for lookalike modeling without exposing raw emails.
+2.  **Signal Validation**: Mathematically proves your data has a predictive pattern *before* you spend a dollar on AWS training costs.
+3.  **End-to-End Automation**: A repeatable pipeline that moves from data simulation to production marketing sync in minutes.
+
+## ⚖️ When to Use This Toolkit
+*   **Use this if**: You want to find "more donors like your best donors" using Meta Ads, or you want to provide personalized cause recommendations on your website via Amazon Personalize.
+*   **Avoid this if**: You have fewer than 500 active donors (AI needs a minimum density to be effective) or if you are looking for a simple "one-off" email blast tool.
+
+---
+
 ## 🏗 System Architecture
 ```mermaid
 graph LR
@@ -45,21 +63,15 @@ cp .env.example .env
 ```
 
 ### 2. Generate Synthetic Donors
-```python
-# Programmatic Example: Generate 50,000 synthetic donors
-from generate_datasets import generate_large_nonprofit
-generate_large_nonprofit("datasets/", count=50000, bias_ratio=0.15)
-```
-Or via CLI:
 ```bash
+# Generate 50,000 synthetic donors with a specific signal bias
 python3 generate_datasets.py --count 50000 --bias-ratio 0.15
 ```
-
 
 ### 3. Validate Signal
 ```bash
 # Verify that machine learning models can "see" the signal
-python3 uncover_signal_no_pandas.py aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv
+python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
 ```
 
 ### 4. Sync to Platforms
@@ -68,7 +80,7 @@ python3 uncover_signal_no_pandas.py aws_nonprofit_toolkit/datasets/large_nonprof
 python3 meta_growth_engine.py --audience-name "nonprofit_vips" --dry-run
 
 # 2. Sync interactions to Amazon S3 for Personalize
-python3 personalize_sync.py --dataset datasets/donors.csv --s3-path data/donors_v1.csv
+python3 personalize_sync.py --dataset datasets/large_nonprofit_interactions.csv
 ```
 
 ---
@@ -88,12 +100,6 @@ Supports **batch processing** (5k records/call) and **dry-run** safety.
 python3 meta_growth_engine.py --audience-name "Fall 2026 VIPs" --batch-size 2500
 ```
 
-### 3. AWS Personalize Sync (`personalize_sync.py`)
-Uploads datasets to S3 to trigger ML training jobs.
-```bash
-python3 personalize_sync.py --bucket my-personalize-bucket --s3-path interactions/may_2026.csv
-```
-
 ---
 
 ## 🛠 Troubleshooting
@@ -102,7 +108,7 @@ python3 personalize_sync.py --bucket my-personalize-bucket --s3-path interaction
 | :--- | :--- | :--- |
 | **`ValueError: Missing META...`** | Credentials not in `.env` | Ensure `.env` is in the root with valid tokens. |
 | **`403 Forbidden` from Meta** | Invalid Token Permissions | Ensure System User has `ads_management` rights. |
-| **`Shift Intensity < 10%`** | Randomness noise | Re-run `generate_datasets.py` with a higher `--vip-ratio`. |
+| **`Shift Intensity < 10%`** | Randomness noise | Re-run `generate_datasets.py` with a higher `--bias-ratio`. |
 | **`Boto3 ClientError`** | AWS IAM issues | Ensure your user has `S3FullAccess`. |
 
 ---
