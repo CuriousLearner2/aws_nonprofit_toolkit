@@ -2,12 +2,13 @@ import csv
 import argparse
 from collections import Counter
 
-def analyze_bias(file_path: str, threshold: float = 20.0):
+def analyze_bias(file_path: str, threshold: float = 20.0) -> bool:
     """
     Analyzes donor interaction bias using a memory-efficient streaming approach.
     Scales to millions of records by avoiding loading the full CSV into RAM.
     
     :param threshold: Minimum % shift required to confirm a 'Strong Signal'
+    :return: True if signal exceeds threshold, False otherwise.
     """
     print(f"--- Analyzing {file_path} (Streaming Mode) ---")
     
@@ -23,7 +24,6 @@ def analyze_bias(file_path: str, threshold: float = 20.0):
                 user_id = row.get('USER_ID', '')
                 item_id = row.get('ITEM_ID', '')
                 
-                # Logic: Users 0-499 are Group A (Biased) by default in our generator
                 try:
                     user_num = int(user_id.replace('user_', ''))
                     if user_num < 500:
@@ -37,7 +37,7 @@ def analyze_bias(file_path: str, threshold: float = 20.0):
 
         if total_a == 0 or total_b == 0:
             print("Error: One or more groups have zero interactions.")
-            return
+            return False
 
         all_items = sorted(list(set(counts_a.keys()) | set(counts_b.keys())))
         
@@ -45,8 +45,6 @@ def analyze_bias(file_path: str, threshold: float = 20.0):
         print(f"Group A (Biased) Count: {total_a}")
         print(f"Group B (Baseline) Count: {total_b}")
         print("-" * 30)
-        print(f"{'Item ID':<20} | {'Group A %':<10} | {'Group B %':<10}")
-        print("-" * 45)
         
         max_diff = 0
         top_diff_item = ""
@@ -60,21 +58,21 @@ def analyze_bias(file_path: str, threshold: float = 20.0):
                 max_diff = abs(diff)
                 top_diff_item = item
                 
-            print(f"{item:<20} | {perc_a:>8.2f}% | {perc_b:>8.2f}%")
-
-        print("-" * 30)
-        
         if max_diff >= threshold:
             print(f"✅ STRONG SIGNAL DETECTED: Group A shows a clear bias toward '{top_diff_item}'.")
+            print(f"Peak Shift Intensity: {max_diff:.2f}% (Threshold: {threshold}%)")
+            return True
         else:
             print(f"❌ WEAK SIGNAL: No cause exceeded the {threshold}% detection threshold.")
-            
-        print(f"Peak Shift Intensity: {max_diff:.2f}% (Threshold: {threshold}%)")
+            print(f"Peak Shift Intensity: {max_diff:.2f}% (Threshold: {threshold}%)")
+            return False
 
     except FileNotFoundError:
         print(f"Error: File {file_path} not found.")
+        return False
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+        return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyze bias signal in interaction datasets.")
