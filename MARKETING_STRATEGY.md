@@ -31,13 +31,16 @@ We verify the "signal" using `aws_nonprofit_toolkit/uncover_signal_no_pandas.py`
 
 ---
 
-## 3. Integration Example: Campaign Archetypes (The "Conversion" Engine)
-*Note: This specific implementation example uses the **Replate** application as a client.*
+## 3. Implementation Example: Content Affinity Tracks
+In a real-world integration, the toolkit's signals are used to drive personalized email and SMS campaigns. By tracking engagement with different content "tracks," we can identify donor archetypes:
 
-### 3.1 Scenario
-In a real-world integration, the toolkit's signals are used to drive personalized campaigns. For example, the **Replate** project uses a campaign simulator to identify donor archetypes:
-*   **Efficiency Track**: Content focused on logistics, scale, and low overhead.
-*   **Human Impact Track**: Content focused on individual stories and emotional resonance.
+### 3.1 Efficiency Track (ROI & Scale)
+*   **Content**: Focuses on logistics, infrastructure, and low overhead.
+*   **Signal**: Clicks here identify donors who value professional validation and corporate-grade reliability.
+
+### 3.2 Human Impact Track (Outcomes & Stories)
+*   **Content**: Focuses on individual stories, community impact, and emotional resonance.
+*   **Signal**: Clicks here identify donors who prioritize the direct human results of their contribution.
 
 ---
 
@@ -59,14 +62,12 @@ Based on industry standards for high-signal lookalike campaigns, we target the f
 | **Nonprofit (Our Target)** | **4x ROI Increase** | **3.2% (Target)** | Donor Acquisition & LTV |
 | **For-Profit (Benchmark)** | 3.0x - 10.0x | 10% - 15% | Direct Sales & ROAS |
 
-*Note: The target conversion rate is based on the 4x improvement (0.8% baseline to 3.2% target) identified in the Food Bank USA case study simulation.*
-
 ---
 
 ## 6. Version 2 Roadmap
-*   **Value-Based Lookalikes (VBL):** Providing Meta with a "Value Column" (Lifetime Value - LTV) to prioritize finding twins of the highest-contributing donors, targeting a 25% reduction in CPA.
-*   **Continuous Feedback Loop**: Integrating real-world donation data from production databases (e.g., Supabase) back into the interaction stream.
-*   **QuickSight Dashboard**: Launching a visual "Donor Growth Command Center" to track ROAS, signal strength, and archetype distribution in real-time.
+*   **Value-Based Lookalikes (VBL):** Providing Meta with a "Value Column" (Lifetime Value - LTV) to prioritize finding twins of the highest-contributing donors.
+*   **Continuous Feedback Loop**: Integrating real-world donation data from production databases back into the interaction stream.
+*   **QuickSight Dashboard**: Launching a visual "Donor Growth Command Center" to track metrics in real-time.
 
 ---
 

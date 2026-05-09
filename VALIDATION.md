@@ -1,6 +1,6 @@
 # Synthetic Data Validation Methodology
 
-This document outlines how Replate validates the realism, integrity, and signal strength of our synthetic datasets before they are used for machine learning or marketing seeding.
+This document outlines how we validate the realism, integrity, and signal strength of our synthetic datasets before they are used for machine learning or marketing seeding.
 
 ---
 

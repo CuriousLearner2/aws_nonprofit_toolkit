@@ -8,7 +8,7 @@
 **Organization**: Food Bank USA (Regional food logistics NPO).
 **Starting State**: 
 *   **Database**: 1,000 historical donors.
-*   **Performance**: 0.8% conversion rate on "Click-to-WhatsApp" ads using broad interest targeting.
+*   **Performance**: 0.8% conversion rate on ads using broad interest targeting.
 
 ---
 

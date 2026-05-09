@@ -118,7 +118,7 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sync donors to Meta Custom Audiences.")
-    parser.add_argument("--audience-name", type=str, default="VIP Donors (Replate)", help="Name of the Meta audience")
+    parser.add_argument("--audience-name", type=str, default="VIP Donors (Toolkit)", help="Name of the Meta audience")
     parser.add_argument("--users-file", type=str, default="aws_nonprofit_toolkit/datasets/small_nonprofit_users.csv", help="Path to users CSV")
     parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for uploads")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without calling Meta API")

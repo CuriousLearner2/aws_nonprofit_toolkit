@@ -34,7 +34,7 @@ class SimulationConfig:
     # 5. SOURCE DISTRIBUTION
     SOURCE_WEIGHTS = {
         'ORGANIC': 0.60,
-        'WHATSAPP': 0.25,
+        'SMS': 0.25,
         'FACEBOOK': 0.15
     }
 

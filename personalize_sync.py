@@ -59,7 +59,8 @@ def trigger_personalize_import(dataset_arn: str, s3_path: str, role_arn: str):
     try:
         logger.info(f"Triggering Personalize Import Job for {s3_path}...")
         response = personalize.create_dataset_import_job(
-            jobName=f"ReplateImport-{os.path.basename(s3_path)}",
+            jobName=f"PersonalizeImport-{os.path.basename(s3_path)}",
+
             datasetArn=dataset_arn,
             dataSource={'dataLocation': f"s3://{AWSConfig.S3_BUCKET}/{s3_path}"},
             roleArn=role_arn
