@@ -62,7 +62,38 @@ Nonprofits can customize the entire simulation to match their specific mission b
 
 ---
 
-## 5. Getting Started
+## 5. Benchmarks & Success Metrics
+Based on industry standards for high-signal lookalike campaigns, we target the following benchmarks:
+
+| Sector | Target ROAS | Conversion Rate | Primary Goal |
+| :--- | :--- | :--- | :--- |
+| **Nonprofit (Our Target)** | **1.5x - 2.0x** | **5% - 8%** | Donor Acquisition & LTV |
+| **For-Profit (Benchmark)** | 3.0x - 10.0x | 10% - 15% | Direct Sales & ROAS |
+
+*Note: For nonprofits, a 1.5x ROAS is considered a win because it covers the acquisition cost on the first gift, with profit realized through recurring donations.*
+
+---
+
+## 6. Version 2 Roadmap: Value-Based Lookalikes (VBL)
+While V1 focuses on "Identity" (who the donors are), V2 will focus on **"Value"** (how much they contribute). 
+
+### 6.1 How VBL Works
+In V1, we upload a flat list of emails. Meta treats the $5 donor and the $500 donor as equals. In V2, we will provide a **Value Column (Lifetime Value - LTV)** alongside the email.
+
+### 6.2 The Algorithmic Shift
+When Meta receives a value-based seed:
+1. **Weighted Signals**: The algorithm prioritizes the social graph and behavioral signals of your highest-spending donors.
+2. **Quality Twin Search**: Instead of finding people who "look like" your average donor, Meta finds people who "look like" your **VIPs**.
+3. **Optimized Reach**: This typically results in a **25% lower Cost Per Acquisition (CPA)** and higher initial gift sizes.
+
+### 6.3 Implementation Plan (V2)
+- **Data Export**: Update `generate_datasets.py` to include a weighted `LTV` field.
+- **API Update**: Modify `meta_growth_engine.py` to use the Meta `customer_value` schema.
+- **Feedback Loop**: Feed real donation values back from Supabase to Meta via the Conversions API.
+
+---
+
+## 7. Getting Started
 ... (rest of the file) ...
 
 ### 5.1 Prerequisites
