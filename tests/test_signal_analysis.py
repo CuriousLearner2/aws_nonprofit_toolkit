@@ -1,20 +1,46 @@
 import pytest
 from aws_nonprofit_toolkit.uncover_signal_no_pandas import analyze_bias
 
+@pytest.mark.parametrize("count,bias_ratio", [
+    (2000, 0.25),  # Default: Group A = 0-499
+    (1000, 0.25),  # Alternative: Group A = 0-249
+    (4000, 0.10),  # Alternative: Group A = 0-399
+    (100, 0.50),   # Edge case: Group A = 0-49
+])
+def test_analyze_bias_dynamic_threshold(count, bias_ratio, tmp_path, capsys):
+    """Verify that bias analysis correctly detects signal with dynamic Group A threshold."""
+    csv_file = tmp_path / "test_interactions.csv"
+    group_a_threshold = int(count * bias_ratio)
+
+    with open(csv_file, "w") as f:
+        f.write("USER_ID,ITEM_ID,TIMESTAMP,EVENT_TYPE\n")
+        # Group A: biased toward CLEAN_WATER
+        for i in range(group_a_threshold):
+            f.write(f"user_{i},CLEAN_WATER,12345,VIEW\n")
+        # Group B: random
+        for i in range(group_a_threshold, count):
+            f.write(f"user_{i},EDUCATION,12345,VIEW\n")
+
+    result = analyze_bias(str(csv_file), threshold=20.0, count=count, bias_ratio=bias_ratio)
+
+    captured = capsys.readouterr()
+    assert "✅ STRONG SIGNAL DETECTED" in captured.out, f"Failed for count={count}, bias_ratio={bias_ratio}"
+    assert result is True
+
 def test_analyze_bias_strong_signal(tmp_path, capsys):
     """Verify that bias analysis correctly detects a strong signal."""
     csv_file = tmp_path / "test_interactions.csv"
     with open(csv_file, "w") as f:
         f.write("USER_ID,ITEM_ID,TIMESTAMP,EVENT_TYPE\n")
-        # Group A (0-499)
+        # Group A (0-499, 25% of 2000)
         f.write("user_0,CLEAN_WATER,12345,VIEW\n")
         f.write("user_1,CLEAN_WATER,12345,VIEW\n")
         # Group B (500+)
         f.write("user_500,EDUCATION,12345,VIEW\n")
         f.write("user_501,EDUCATION,12345,VIEW\n")
 
-    analyze_bias(str(csv_file), threshold=20.0)
-    
+    analyze_bias(str(csv_file), threshold=20.0, count=2000, bias_ratio=0.25)
+
     captured = capsys.readouterr()
     assert "✅ STRONG SIGNAL DETECTED" in captured.out
     assert "Shift Intensity: 100.00%" in captured.out
@@ -34,8 +60,8 @@ def test_analyze_bias_weak_signal(tmp_path, capsys):
     # Group A: 50% Water, 50% Edu
     # Group B: 100% Water, 0% Edu
     # Diff = 50% (should pass 20% but let's test a higher threshold)
-    analyze_bias(str(csv_file), threshold=60.0)
-    
+    analyze_bias(str(csv_file), threshold=60.0, count=2000, bias_ratio=0.25)
+
     captured = capsys.readouterr()
     assert "❌ WEAK SIGNAL" in captured.out
     assert "Threshold: 60.0%" in captured.out

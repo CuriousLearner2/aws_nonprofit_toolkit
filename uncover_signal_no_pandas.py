@@ -2,31 +2,36 @@ import csv
 import argparse
 from collections import Counter
 
-def analyze_bias(file_path: str, threshold: float = 20.0) -> bool:
+def analyze_bias(file_path: str, threshold: float = 20.0, count: int = 2000, bias_ratio: float = 0.25) -> bool:
     """
     Analyzes donor interaction bias using a memory-efficient streaming approach.
     Scales to millions of records by avoiding loading the full CSV into RAM.
-    
+
+    :param file_path: Path to the interactions CSV file
     :param threshold: Minimum % shift required to confirm a 'Strong Signal'
+    :param count: Total number of users (to calculate Group A threshold dynamically)
+    :param bias_ratio: Ratio of users in Group A (to calculate Group A threshold)
     :return: True if signal exceeds threshold, False otherwise.
     """
+    group_a_threshold = int(count * bias_ratio)
     print(f"--- Analyzing {file_path} (Streaming Mode) ---")
-    
+    print(f"Group A Threshold: users 0 to {group_a_threshold - 1}")
+
     counts_a = Counter()
     counts_b = Counter()
     total_a = 0
     total_b = 0
-    
+
     try:
         with open(file_path, mode='r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 user_id = row.get('USER_ID', '')
                 item_id = row.get('ITEM_ID', '')
-                
+
                 try:
                     user_num = int(user_id.replace('user_', ''))
-                    if user_num < 500:
+                    if user_num < group_a_threshold:
                         counts_a[item_id] += 1
                         total_a += 1
                     else:
@@ -78,6 +83,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyze bias signal in interaction datasets.")
     parser.add_argument("file", type=str, help="Path to the interactions CSV file")
     parser.add_argument("--threshold", type=float, default=20.0, help="Minimum % shift for signal detection (default: 20.0)")
-    
+    parser.add_argument("--count", type=int, default=2000, help="Total number of users in the dataset (default: 2000)")
+    parser.add_argument("--bias-ratio", type=float, default=0.25, help="Ratio of users in Group A (default: 0.25)")
+
     args = parser.parse_args()
-    analyze_bias(args.file, threshold=args.threshold)
+    analyze_bias(args.file, threshold=args.threshold, count=args.count, bias_ratio=args.bias_ratio)

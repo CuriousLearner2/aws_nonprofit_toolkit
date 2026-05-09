@@ -36,7 +36,7 @@ def test_e2e_toolkit_flow(mock_boto, mock_post, tmp_path, monkeypatch, capsys):
     users_path = tmp_path / "small_nonprofit_users.csv"
     
     # 2. Validate Signal (capture output to ensure it runs)
-    analyze_bias(str(interactions_path))
+    analyze_bias(str(interactions_path), count=1000, bias_ratio=0.50)
     captured = capsys.readouterr()
     assert "SIGNAL DETECTED" in captured.out
     
