@@ -64,8 +64,8 @@ cp .env.example .env
 
 ### 2. Generate Synthetic Donors
 ```bash
-# Generate 50,000 synthetic donors with a specific signal bias
-python3 generate_datasets.py --count 50000 --bias-ratio 0.15
+# Generate 2,000 synthetic donors with a specific signal bias
+python3 generate_datasets.py --count 2000 --bias-ratio 0.25
 ```
 
 ### 3. Validate Signal

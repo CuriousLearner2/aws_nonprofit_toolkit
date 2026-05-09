@@ -12,11 +12,11 @@ cp .env.example .env
 ```
 
 ### 2. Generate Synthetic Donors
-Generate 1,000 donors with a 15% bias ratio (for Group A signal density).
+Generate 2,000 donors with a 25% bias ratio (for Group A signal density).
 ```bash
-python3 generate_datasets.py --count 1000 --bias-ratio 0.15
+python3 generate_datasets.py --count 2000 --bias-ratio 0.25
 ```
-*Note: --bias-ratio 0.15 means 15% of users receive biased preferences. This is independent of the loyalty tier distribution.*
+*Note: --bias-ratio 0.25 means 25% of users receive biased preferences. This is independent of the loyalty tier distribution.*
 
 ### 3. Validate Signal
 Verify that the behavioral bias is strong enough for machine learning. 
