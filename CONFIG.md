@@ -9,7 +9,7 @@ This document details the configurable parameters in `aws_nonprofit_toolkit/conf
 | Parameter | Default | Reasonable Range | Description |
 | :--- | :--- | :--- | :--- |
 | `SMALL_USER_COUNT` | `200` | 100 - 1,000 | Number of users for Custom Audience seeding. Meta requires ~100 matches minimum. |
-| `LARGE_USER_COUNT` | `2000` | 1,000 - 100K | Number of users for ML training. Personalize performs best with higher user variety. |
+| `LARGE_USER_COUNT` | `2000` | 1,000 - 100K | **Standard Default**. Number of users for ML training. Personalize performs best with higher variety. |
 | `INTERACTIONS_PER_USER`| `5` | 3 - 15 | Average donor interactions. < 3 is too sparse for ML; > 20 is rare for casual donors. |
 
 ---
@@ -30,6 +30,7 @@ These parameters control the statistical "bulge" used to train the machine learn
 | :--- | :--- | :--- | :--- |
 | `CAUSE_BIAS_WEIGHT` | `0.70` | 0.40 - 0.85 | 0.7 is a strong but realistic preference. < 0.4 is too noisy; > 0.9 is "too perfect" (overfit). |
 | `BIASED_ITEMS` | `['CLEAN_WATER', ...]` | N/A | The specific items Group A is biased toward. |
+| `DEFAULT_BIAS_RATIO`| `0.25` | 0.10 - 0.40 | **Standard Default**. 25% of users receive biased preferences. |
 
 ---
 
@@ -68,4 +69,4 @@ class SimulationConfig:
 
 ## 🛠 Strategic Impact
 *   **VIP Signal**: By default, VIPs are generated to show **130x higher** donation values and **2.7x higher** engagement than standard users, providing a high-quality seed for Meta Lookalikes.
-*   **Base Validation**: Standard users (Baseline) default to an average donation of **$2.09**, while VIPs default to **$273.65**.
+*   **Signal Density**: Standardizing on **2,000 users** with a **0.25 bias ratio** ensures that Amazon Personalize has enough interaction density to detect the Group A preference without overfitting.

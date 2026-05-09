@@ -19,13 +19,13 @@ This "cold-start problem" forces nonprofits to waste acquisition budgets on unta
 
 ## The Solution
 
-This toolkit **generates high-fidelity synthetic donor data** that mimics real donor behavior patterns (24.57% preference bias, 130x VIP value differential, Pareto-distributed wealth). This synthetic data:
+This toolkit **generates high-fidelity synthetic donor data** that mimics real donor behavior patterns (25.0% preference bias, 130x VIP value differential, Pareto-distributed wealth). This synthetic data:
 
 1. **Seeds ML models** in Amazon Personalize with statistically valid training data
 2. **Powers lookalike audiences** on Meta that target donors similar to your top supporters
 3. **Accelerates ROI** by replacing guesswork with data-driven audience targeting from day one
 
-**Result**: Nonprofits can achieve 3-4x better conversion rates immediately, without waiting to accumulate historical donor data.
+**Result**: Nonprofits can achieve 4x better conversion rates immediately, without waiting to accumulate historical donor data.
 
 ---
 
@@ -117,6 +117,7 @@ python3 meta_growth_engine.py --audience-name "Fall 2026 VIPs" --batch-size 2500
 ## 📖 Deep Dive Documentation
 *   **[PRD.md](PRD.md)**: 📄 Product requirements and core "Dual-Track" vision.
 *   **[PIPELINE_ARCHITECTURE.md](PIPELINE_ARCHITECTURE.md)**: 🆕 Technical breakdown of the Human-Labeling vs. ML-Inference tracks.
+*   **[MARKETING_STRATEGY.md](MARKETING_STRATEGY.md)**: Theoretical framework for High-Signal Growth and V2 Value-Based Lookalikes.
 *   **[QUICKSTART.md](QUICKSTART.md)**: Copy-paste commands for rapid deployment.
 *   **[SETUP_GUIDE.md](SETUP_GUIDE.md)**: Detailed instructions for obtaining provider credentials.
 *   **[OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md)**: Deployment on AWS Lambda, CloudWatch monitoring, and credential rotation.
@@ -124,4 +125,3 @@ python3 meta_growth_engine.py --audience-name "Fall 2026 VIPs" --batch-size 2500
 *   **[CONFIG.md](CONFIG.md)**: Full parameter list for customizing bias weights and demographics.
 *   **[VALIDATION.md](VALIDATION.md)**: Mathematical success criteria and Pareto distribution benchmarks.
 *   **[COMPLIANCE.md](COMPLIANCE.md)**: PII hashing standards and the production readiness roadmap.
-*   **[MARKETING_STRATEGY.md](MARKETING_STRATEGY.md)**: Theoretical framework for High-Signal Growth.
