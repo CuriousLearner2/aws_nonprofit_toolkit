@@ -19,8 +19,9 @@ We generate synthetic datasets to simulate different scales of nonprofit operati
 
 ### 2.2 Injecting Behavioral Bias
 To simulate real-world donor preferences, we intentionally skewed the data for a subset of the dataset:
-*   **Segmentation**: Users are split into **Group A** (Biased) and **Group B** (Neutral).
-*   **The Bias**: Group A is assigned a higher probability of interacting with specific causes (e.g., `CLEAN_WATER`). Group B remains "neutral."
+*   **Segmentation**: Users are split into **Group A** (Biased) and **Group B** (Neutral). 
+    *   The size of Group A is controlled by the **`--bias-ratio`** flag (e.g., 0.25 = 25% of users).
+*   **The Bias Intensity**: Within Group A, the probability of choosing a specific cause is controlled by **`CAUSE_BIAS_WEIGHT`** (e.g., 0.70 = 70% preference) in `config.py`.
 *   **The Logic**: This simulates a specific donor demographic (e.g., West Coast donors) having a distinct preference compared to the general population.
 
 ### 2.3 Verification of Output
@@ -38,12 +39,6 @@ In a real-world integration, the toolkit's signals are used to drive personalize
 *   **Efficiency Track**: Content focused on logistics, scale, and low overhead.
 *   **Human Impact Track**: Content focused on individual stories and emotional resonance.
 
-### 3.2 Archetype Identification
-Donors are categorized based on their response to these tracks:
-*   **VIP Seed**: Users who clicked **both** tracks OR donated > $100.
-*   **Standard**: Users who donated but didn't meet VIP criteria.
-*   **Potential**: Users who clicked but haven't donated yet.
-
 ---
 
 ## 4. Customization & Domain Adaptability
@@ -51,8 +46,8 @@ Nonprofits can customize the entire simulation to match their specific mission b
 
 ### 4.1 Configurable Parameters
 *   **Scale**: Standardize on **2,000 users** for optimal ML signal detection.
-*   **Cause Categories**: Modify the `ITEMS` list (e.g., change `CLEAN_WATER` to `LITERACY_PROGRAMS`).
-*   **Signal Strength**: Tune `CAUSE_BIAS_WEIGHT` (default 0.70) to test how sensitive your ML model is to varying levels of behavioral bias.
+*   **Pareto Distribution**: The simulation is tuned to ensure **>80% of total donation value** comes from the VIP segment, mimicking real-world wealth distribution.
+*   **Signal Strength**: Tune `CAUSE_BIAS_WEIGHT` (intensity) and `--bias-ratio` (group size) to test how sensitive your ML model is to varying levels of behavioral bias.
 
 ---
 
@@ -70,19 +65,14 @@ Based on industry standards for high-signal lookalike campaigns, we target the f
 
 ## 6. Version 2 Roadmap
 *   **Value-Based Lookalikes (VBL):** Providing Meta with a "Value Column" (Lifetime Value - LTV) to prioritize finding twins of the highest-contributing donors, targeting a 25% reduction in CPA.
-*   **Continuous Feedback Loop:** Integrating real-world donation data from production databases (e.g., Supabase) back into the interaction stream to improve ML accuracy.
-*   **QuickSight Dashboard:** Launching a visual "Donor Growth Command Center" to track ROAS, signal strength, and archetype distribution in real-time.
+*   **Continuous Feedback Loop**: Integrating real-world donation data from production databases (e.g., Supabase) back into the interaction stream.
+*   **QuickSight Dashboard**: Launching a visual "Donor Growth Command Center" to track ROAS, signal strength, and archetype distribution in real-time.
 
 ---
 
 ## 7. Getting Started
 
-### 7.1 Prerequisites
-*   **Python 3.11+**
-*   **Meta Business App**: "System User" token with `ads_management` permissions.
-*   **AWS Account**: Permissions for **Amazon Personalize**.
-
-### 7.2 Installation Steps
+### 7.1 Installation Steps
 1.  Navigate to toolkit: `cd aws_nonprofit_toolkit`
 2.  Install: `pip install -r requirements.txt`
 3.  Generate Data: `python3 generate_datasets.py --count 2000 --bias-ratio 0.25`

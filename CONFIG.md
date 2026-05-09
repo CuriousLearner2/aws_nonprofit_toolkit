@@ -14,59 +14,28 @@ This document details the configurable parameters in `aws_nonprofit_toolkit/conf
 
 ---
 
-## 2. Cause Categories & Item IDs
-
-| Parameter | Default | Example Customization |
-| :--- | :--- | :--- |
-| `ITEMS` | `['CLEAN_WATER', ...]` | `['LITERACY', 'SCHOLARSHIPS', 'SCHOOL_SUPPLIES']` |
-
----
-
-## 3. Behavioral Bias (The "Signal" Math)
+## 2. Behavioral Bias (The "Signal" Math)
 
 These parameters control the statistical "bulge" used to train the machine learning models.
 
 | Parameter | Default | Realistic Range | Description |
 | :--- | :--- | :--- | :--- |
-| `CAUSE_BIAS_WEIGHT` | `0.70` | 0.40 - 0.85 | 0.7 is a strong but realistic preference. < 0.4 is too noisy; > 0.9 is "too perfect" (overfit). |
-| `BIASED_ITEMS` | `['CLEAN_WATER', ...]` | N/A | The specific items Group A is biased toward. |
-| `DEFAULT_BIAS_RATIO`| `0.25` | 0.10 - 0.40 | **Standard Default**. 25% of users receive biased preferences. |
+| `DEFAULT_BIAS_RATIO`| `0.25` | 0.10 - 0.40 | **Group Size**. Percentage of users who will receive biased preferences. |
+| `CAUSE_BIAS_WEIGHT` | `0.70` | 0.40 - 0.85 | **Preference Intensity**. The probability that a biased user will choose the target cause. |
+
+*Note: Combined, these two parameters create a statistical shift of **20% to 45%** in the interaction stream, optimal for ML detection.*
 
 ---
 
-## 4. Demographics & Loyalty Distributions
+## 3. Demographics & Loyalty Distributions
 
 | Parameter | Defaults | Realistic Context | Description |
 | :--- | :--- | :--- | :--- |
 | `LOYALTY_DISTRIBUTION` | `VIP: 0.15` | 5% - 20% | High-value donors (VIPs) typically make up 10-15% of a healthy nonprofit base. |
 | `SOURCE_WEIGHTS` | `FB: 0.15` | 10% - 40% | Social media leads (Meta) usually account for 15-30% of multi-channel traffic. |
-| `CONSENT_RATE` | `0.80` | 0.60 - 0.90 | Industry standard opt-in rates range from 70% to 85% for direct donors. |
 
 ---
 
-## 5. Usage Example
-
-If you wanted to simulate a specialized literacy nonprofit with a highly engaged Facebook audience:
-
-```python
-class SimulationConfig:
-    # 1. Custom Mission
-    ITEMS = ['LITERACY', 'LIBRARIES', 'TEACHER_TRAINING']
-    BIASED_ITEMS = ['LITERACY']
-    
-    # 2. High Engagement Signal
-    CAUSE_BIAS_WEIGHT = 0.90  # 90% bias for Group A
-    
-    # 3. Custom Source Bias
-    SOURCE_WEIGHTS = {
-        'ORGANIC': 0.10,
-        'WHATSAPP': 0.10,
-        'FACEBOOK': 0.80  # Most donors come from FB
-    }
-```
-
----
-
-## 🛠 Strategic Impact
-*   **VIP Signal**: By default, VIPs are generated to show **130x higher** donation values and **2.7x higher** engagement than standard users, providing a high-quality seed for Meta Lookalikes.
-*   **Signal Density**: Standardizing on **2,000 users** with a **0.25 bias ratio** ensures that Amazon Personalize has enough interaction density to detect the Group A preference without overfitting.
+## 4. Strategic Impact
+*   **VIP Pareto Principle**: By default, the simulation ensures that **>80% of total donation value** comes from the VIP segment, reflecting real-world wealth concentration.
+*   **Signal Density**: Standardizing on **2,000 users** with a **0.25 bias ratio** ensures that Amazon Personalize has enough interaction density to detect patterns without overfitting.

@@ -65,6 +65,7 @@ cp .env.example .env
 ### 2. Generate Synthetic Donors
 ```bash
 # Generate 2,000 synthetic donors with a specific signal bias
+# --bias-ratio 0.25 (25% of users will have skewed preferences)
 python3 generate_datasets.py --count 2000 --bias-ratio 0.25
 ```
 
@@ -75,49 +76,24 @@ python3 generate_datasets.py --count 2000 --bias-ratio 0.25
 python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
 ```
 
-### 4. Sync to Platforms
-```bash
-# 1. Sync VIPs to Meta Custom Audiences (Safe Dry Run)
-python3 meta_growth_engine.py --audience-name "nonprofit_vips" --dry-run
-
-# 2. Sync interactions to Amazon S3 for Personalize
-python3 personalize_sync.py --dataset datasets/large_nonprofit_interactions.csv
-```
-
 ---
 
-## 📂 Usage Examples & Sample Output
-
-### 1. Data Generation (`generate_datasets.py`)
-| Argument | Default | Description |
-| :--- | :--- | :--- |
-| `--count` | `2000` | Number of users for the large dataset. |
-| `--bias-ratio` | `0.25` | Percentage of users in the biased Group A (Signal target). |
-| `--output` | `datasets/` | Directory to save generated CSVs. |
-
-### 2. Meta Synchronization (`meta_growth_engine.py`)
-Supports **batch processing** (5k records/call) and **dry-run** safety.
-```bash
-python3 meta_growth_engine.py --audience-name "Fall 2026 VIPs" --batch-size 2500
-```
-
----
-
-## 🛠 Troubleshooting
+## 🛠 Central Troubleshooting Guide
 
 | Symptom | Cause | Resolution |
 | :--- | :--- | :--- |
 | **`ValueError: Missing META...`** | Credentials not in `.env` | Ensure `.env` is in the root with valid tokens. |
 | **`403 Forbidden` from Meta** | Invalid Token Permissions | Ensure System User has `ads_management` rights. |
-| **`Shift Intensity < 20%`** | Randomness noise | Re-run `generate_datasets.py` with a higher `--bias-ratio`. |
-| **`Boto3 ClientError`** | AWS IAM issues | Ensure your user has `S3FullAccess`. |
+| **`400 Bad Request` from Meta** | Account ID Format | Ensure `META_AD_ACCOUNT_ID` does NOT include the `act_` prefix. |
+| **`Shift Intensity < 20%`** | Low signal density | Increase `--bias-ratio` (size of group) or `CAUSE_BIAS_WEIGHT` (intensity) in `config.py`. |
+| **`Boto3 ClientError`** | AWS IAM issues | Ensure your user has `AmazonPersonalizeFullAccess` and `S3FullAccess`. |
+| **`ModuleNotFoundError`** | Missing environment | Run `pip install -r requirements.txt`. |
 
 ---
 
 ## 📖 Deep Dive Documentation
 *   **[PRD.md](PRD.md)**: 📄 Product requirements and core "Dual-Track" vision.
 *   **[PIPELINE_ARCHITECTURE.md](PIPELINE_ARCHITECTURE.md)**: 🆕 Technical breakdown of the Human-Labeling vs. ML-Inference tracks.
-*   **[MARKETING_STRATEGY.md](MARKETING_STRATEGY.md)**: Theoretical framework for High-Signal Growth and V2 Value-Based Lookalikes.
 *   **[QUICKSTART.md](QUICKSTART.md)**: Copy-paste commands for rapid deployment.
 *   **[SETUP_GUIDE.md](SETUP_GUIDE.md)**: Detailed instructions for obtaining provider credentials.
 *   **[OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md)**: Deployment on AWS Lambda, CloudWatch monitoring, and credential rotation.
@@ -125,3 +101,4 @@ python3 meta_growth_engine.py --audience-name "Fall 2026 VIPs" --batch-size 2500
 *   **[CONFIG.md](CONFIG.md)**: Full parameter list for customizing bias weights and demographics.
 *   **[VALIDATION.md](VALIDATION.md)**: Mathematical success criteria and Pareto distribution benchmarks.
 *   **[COMPLIANCE.md](COMPLIANCE.md)**: PII hashing standards and the production readiness roadmap.
+*   **[MARKETING_STRATEGY.md](MARKETING_STRATEGY.md)**: Theoretical framework for High-Signal Growth.
