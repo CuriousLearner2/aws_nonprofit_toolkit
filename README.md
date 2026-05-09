@@ -48,8 +48,8 @@ To ensure the synthetic data is production-ready, it must pass the following ben
 
 ---
 
-## 📈 Real-World Impact (Food Bank USA Case Study)
-A pilot nonprofit used this toolkit to achieve a **400% increase in ROI**. Read the full **[Food Bank USA Case Study](CASE_STUDY.md)** to see how they scaled from 1,000 to 50,000 donors.
+## 📈 Projected Impact (Simulated Case Study)
+Simulation analysis projects that a pilot nonprofit could achieve a **400% increase in ROI** using this toolkit. Read the full **[Food Bank USA Case Study](CASE_STUDY.md)** to see the projected scale from 1,000 to 50,000 donors.
 
 ---
 
