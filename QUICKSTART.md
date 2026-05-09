@@ -1,59 +1,52 @@
 # ⚡ Quick Start Guide
 
-Follow these steps to get the AWS Nonprofit Toolkit running in under 5 minutes.
+Follow these steps to execute the **Dual-Track Pipeline** strategy.
 
 ---
 
-### 1. Set up Credentials
+## 1. Setup
 Create a `.env` file in the toolkit directory:
 ```bash
 cp .env.example .env
-# Open .env and add your META_ACCESS_TOKEN, META_AD_ACCOUNT_ID, and AWS keys.
-```
-
-### 2. Generate Synthetic Donors
-Generate 2,000 donors with a 25% bias ratio (for Group A signal density).
-```bash
-python3 generate_datasets.py --count 2000 --bias-ratio 0.25
-```
-*Note: --bias-ratio 0.25 means 25% of users receive biased preferences. This is independent of the loyalty tier distribution.*
-
-### 3. Validate Signal
-Verify that the behavioral bias is strong enough for machine learning. 
-*Note: This manual step allows you to verify data quality locally. The automated Lambda handler performs this same check internally before every synchronization.*
-```bash
-python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
-```
-
-### 4. Upload to Meta (Dry Run)
-Test the Meta sync logic safely. This validates your `.env` configuration and hashes PII locally without making any external network requests.
-```bash
-python3 meta_growth_engine.py --audience-name "nonprofit_vips_test" --dry-run
-```
-
-### 4a. Production Sync (Live)
-Remove the `--dry-run` flag to create actual Meta Custom Audiences. This will make the audiences visible in your Meta Ad Manager.
-```bash
-python3 meta_growth_engine.py --audience-name "Donor VIPs Fall 2026"
-```
-*Note: This will create an audience object but will not incur any ad spend until you manually create a campaign targeting this audience.*
-
-### 5. Sync to AWS Personalize
-Upload your interactions to S3 and trigger a Personalize Import Job. **(Requires AWS Credentials in .env)**
-```bash
-# Basic upload only
-python3 personalize_sync.py --dataset datasets/large_nonprofit_interactions.csv
-
-# Upload AND trigger import (requires ARNs)
-python3 personalize_sync.py \
-  --dataset datasets/large_nonprofit_interactions.csv \
-  --dataset-arn "arn:aws:personalize:..." \
-  --role-arn "arn:aws:iam:..."
+# Open .env and add your META and AWS credentials.
 ```
 
 ---
 
-### ✅ Success Criteria
-- **Validation**: "SIGNAL DETECTED" message appears with >20% shift intensity.
-- **Meta Sync**: "SUCCESS: Batch 1 synchronized" appears in logs.
-- **S3 Sync**: "SUCCESS: File uploaded to S3" appears in logs.
+## 2. Track 1: The Acquisition Track (Donor Growth)
+**Goal**: Use a small seed of VIP donors to find millions of new potential supporters via Meta.
+
+1.  **Generate Seed**: Create 2,000 synthetic donors.
+    ```bash
+    python3 generate_datasets.py --count 2000 --bias-ratio 0.25
+    ```
+2.  **Sync to Meta (Dry Run)**: Verify your credentials and PII hashing without making a live call.
+    ```bash
+    python3 meta_growth_engine.py --audience-name "VIP_Seed_Test" --dry-run
+    ```
+3.  **Sync to Meta (Live)**: Create the audience in your Meta Ad Manager.
+    ```bash
+    python3 meta_growth_engine.py --audience-name "Donor VIPs Fall 2026"
+    ```
+
+---
+
+## 3. Track 2: The Personalization Track (Donor Retention)
+**Goal**: Use high-volume behavioral data to train machine learning models for personalized engagement.
+
+1.  **Validate Behavioral Signal**: Verify the "statistical bulge" is strong enough for ML detection.
+    ```bash
+    python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
+    ```
+2.  **Sync to AWS Personalize**: Upload the interaction stream to S3 to begin model training.
+    ```bash
+    python3 personalize_sync.py --dataset datasets/large_nonprofit_interactions.csv
+    ```
+
+---
+
+## 4. Summary of Architecture
+*   **Track 1 (Meta)**: Uses **Human-Labeling** (VIP tags) to drive acquisition.
+*   **Track 2 (AWS)**: Uses **ML-Inference** (Behavioral patterns) to drive personalization.
+
+For a deep dive into the technology, see **[PIPELINE_ARCHITECTURE.md](PIPELINE_ARCHITECTURE.md)**.
