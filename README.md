@@ -30,16 +30,12 @@ This toolkit **generates high-fidelity synthetic donor data** that mimics real d
 ---
 
 ## 🏗 System Architecture
-```mermaid
-graph LR
-    Config[config.py] -->|1. Configure| Gen(generate_datasets.py)
-    Gen -->|2. Generate| Data[Synthetic Data]
-    Data -->|3. Analyze| Signal{uncover_signal.py}
-    Signal -->|4. Sync| Meta(Meta Graph API)
-    Signal -->|5. Sync| AP(Amazon Personalize)
-    Meta -->|6. Insights| Reports[Reports/ROI]
-    AP -->|6. Insights| Reports
-```
+The toolkit operates as a **Dual-Track Pipeline** that bridges human intuition with machine learning scale.
+
+1.  **The Acquisition Track (Small Dataset):** Uses **Human-Driven Labeling** to seed Meta Lookalike Audiences for rapid donor growth.
+2.  **The Personalization Track (Large Dataset):** Uses **ML-Driven Inference (Amazon Personalize)** to automate donor retention and LTV optimization.
+
+See the **[Pipeline Architecture Guide](PIPELINE_ARCHITECTURE.md)** for a detailed technical breakdown.
 
 ---
 
@@ -119,6 +115,8 @@ python3 meta_growth_engine.py --audience-name "Fall 2026 VIPs" --batch-size 2500
 ---
 
 ## 📖 Deep Dive Documentation
+*   **[PRD.md](PRD.md)**: 📄 Product requirements and core "Dual-Track" vision.
+*   **[PIPELINE_ARCHITECTURE.md](PIPELINE_ARCHITECTURE.md)**: 🆕 Technical breakdown of the Human-Labeling vs. ML-Inference tracks.
 *   **[QUICKSTART.md](QUICKSTART.md)**: Copy-paste commands for rapid deployment.
 *   **[SETUP_GUIDE.md](SETUP_GUIDE.md)**: Detailed instructions for obtaining provider credentials.
 *   **[OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md)**: Deployment on AWS Lambda, CloudWatch monitoring, and credential rotation.
