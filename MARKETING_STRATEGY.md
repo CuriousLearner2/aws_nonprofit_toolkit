@@ -68,11 +68,10 @@ Based on industry standards for high-signal lookalike campaigns, we target the f
 
 ---
 
-## 6. Version 2 Roadmap: Value-Based Lookalikes (VBL)
-While V1 focuses on "Identity" (who the donors are), V2 will focus on **"Value"** (how much they contribute). 
-
-### 6.1 How VBL Works
-In V2, we will provide a **Value Column (Lifetime Value - LTV)** alongside the email. Meta’s algorithm will prioritize finding people similar to your **highest-spending** donors, typically resulting in a **25% lower Cost Per Acquisition (CPA)**.
+## 6. Version 2 Roadmap
+*   **Value-Based Lookalikes (VBL):** Providing Meta with a "Value Column" (Lifetime Value - LTV) to prioritize finding twins of the highest-contributing donors, targeting a 25% reduction in CPA.
+*   **Continuous Feedback Loop:** Integrating real-world donation data from production databases (e.g., Supabase) back into the interaction stream to improve ML accuracy.
+*   **QuickSight Dashboard:** Launching a visual "Donor Growth Command Center" to track ROAS, signal strength, and archetype distribution in real-time.
 
 ---
 

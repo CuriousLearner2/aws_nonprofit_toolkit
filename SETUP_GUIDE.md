@@ -21,8 +21,6 @@ Use the table below to identify which environment variables are required based o
 │ `AWS_SECRET_KEY`       │ ❌ No        │ ❌ No        │ ✅ Yes       │
 ├────────────────────────┼─────────────┼─────────────┼─────────────┤
 │ `AWS_PERSONALIZE_BUCKET`│ ❌ No        │ ❌ No        │ ✅ Yes       │
-├────────────────────────┼─────────────┼─────────────┼─────────────┤
-│ `GEMINI_API_KEY`       │ ❌ No        │ ❌ No        │ ⚠️  Optional  │
 └────────────────────────┴─────────────┴─────────────┴─────────────┘
 
 ---
@@ -60,16 +58,7 @@ To synchronize donors, you need a **System User** token with specific permission
 
 ---
 
-## 3. Gemini AI Extraction
-
-### 3.1 GEMINI_API_KEY
-1.  Visit the [Google AI Studio](https://aistudio.google.com/app/apikey).
-2.  Click **Create API Key**.
-3.  This key is used to personalize donor engagement communications based on inferred interests.
-
----
-
-## 4. Step-by-Step Walkthrough for First-Time Users
+## 3. Step-by-Step Walkthrough for First-Time Users
 
 ### Step 1: The Virtual Sandbox
 Before spending any money, we create "Fake" data that looks like your real donors.

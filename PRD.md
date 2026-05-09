@@ -38,7 +38,7 @@ Nonprofits face a "Cold Start" problem in donor acquisition: they lack the histo
 *   **Compliance:** Zero unhashed PII records in the cloud.
 *   **Marketing Impact:** Targeted **4x improvement** in initial conversion rates (e.g., 0.8% to 3.2%) and a **400% increase in ROAS** through high-signal targeting.
 
-## 5. Roadmap (V2)
-*   **Value-Based Lookalikes:** Uploading weighted Lifetime Value (LTV) to Meta.
-*   **Continuous Feedback Loop:** Feeding real donation data from Supabase back into the ML interaction stream.
-*   **QuickSight Dashboard:** Visual "Donor Growth Command Center."
+## 5. Roadmap (Version 2)
+*   **Value-Based Lookalikes (VBL):** Providing Meta with a "Value Column" (Lifetime Value - LTV) to prioritize finding twins of the highest-contributing donors, targeting a 25% reduction in CPA.
+*   **Continuous Feedback Loop:** Integrating real-world donation data from production databases (e.g., Supabase) back into the interaction stream to improve ML accuracy.
+*   **QuickSight Dashboard:** Launching a visual "Donor Growth Command Center" to track ROAS, signal strength, and archetype distribution in real-time.
