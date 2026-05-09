@@ -26,7 +26,7 @@ To simulate real-world donor preferences, we intentionally skewed the data for a
 ### 2.3 Verification of Output
 We verify the "signal" using `aws_nonprofit_toolkit/uncover_signal_no_pandas.py`:
 *   **Method**: The script calculates the percentage of total interactions per item for both groups.
-*   **Standard Target**: A successful simulation shows a **~25% statistical "bulge"** in Group A compared to Group B.
+*   **Standard Target**: A successful simulation shows a **20% to 45% statistical shift** in Group A compared to Group B.
 
 ---
 
