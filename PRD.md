@@ -36,7 +36,7 @@ Nonprofits face a "Cold Start" problem in donor acquisition: they lack the histo
 ## 4. Success Metrics
 *   **Signal Strength:** >20% delta in Group A vs Group B preference.
 *   **Compliance:** Zero unhashed PII records in the cloud.
-*   **Marketing Impact:** Targeted 1.5x - 2.0x ROAS on initial donor acquisition.
+*   **Marketing Impact:** Targeted **4x improvement** in initial conversion rates (e.g., 0.8% to 3.2%) and a **400% increase in ROAS** through high-signal targeting.
 
 ## 5. Roadmap (V2)
 *   **Value-Based Lookalikes:** Uploading weighted Lifetime Value (LTV) to Meta.

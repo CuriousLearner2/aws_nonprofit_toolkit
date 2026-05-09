@@ -65,12 +65,12 @@ Nonprofits can customize the entire simulation to match their specific mission b
 ## 5. Benchmarks & Success Metrics
 Based on industry standards for high-signal lookalike campaigns, we target the following benchmarks:
 
-| Sector | Target ROAS | Conversion Rate | Primary Goal |
+| Sector | Projected Lift | Conversion Rate | Primary Goal |
 | :--- | :--- | :--- | :--- |
-| **Nonprofit (Our Target)** | **1.5x - 2.0x** | **5% - 8%** | Donor Acquisition & LTV |
+| **Nonprofit (Our Target)** | **4x ROI Increase** | **3.2% (Target)** | Donor Acquisition & LTV |
 | **For-Profit (Benchmark)** | 3.0x - 10.0x | 10% - 15% | Direct Sales & ROAS |
 
-*Note: For nonprofits, a 1.5x ROAS is considered a win because it covers the acquisition cost on the first gift, with profit realized through recurring donations.*
+*Note: The target conversion rate is based on the 4x improvement (0.8% baseline to 3.2% target) identified in the Food Bank USA case study simulation.*
 
 ---
 
