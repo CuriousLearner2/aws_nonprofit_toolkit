@@ -50,7 +50,7 @@ The power of the toolkit is that the **Small Dataset grows into the Large Datase
 2.  **SCALE (Meta):** Meta uses that seed to bring in **2,000 new donors** via ads.
 3.  **STREAM (Activity):** Those 2,000 new donors start clicking and interacting with your content.
 4.  **REVEAL (Large):** Their activity creates the **Large Dataset**.
-5.  **PERSONALIZE (ML):** Amazon Personalize reads that dataset and ensures those 2,000 donors stay engaged for years, turning them into your next generation of VIPs.
+5.  **PERSONALIZE (ML):** Amazon Personalize reads that dataset and ensures those 2,000 donors stay engaged for years.
 
 ---
 

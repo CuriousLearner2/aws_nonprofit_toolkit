@@ -14,7 +14,7 @@
 
 ## 2. The Intervention (The Toolkit Lifecycle)
 Food Bank USA used the toolkit to bootstrap their ML-driven growth:
-1.  **Generate**: Created **50,000 synthetic donor profiles** mirroring their top 15% VIPs.
+1.  **Generate**: Created **2,000 synthetic donor profiles** mirroring their top 15% VIPs.
 2.  **Validate**: Confirmed a **24% signal bulge** for childhood hunger causes using `uncover_signal_no_pandas.py`.
 3.  **Sync**: Seeded a Meta Lookalike Audience with the high-signal synthetic VIP list.
 
@@ -25,7 +25,7 @@ The following metrics are **ASSUMED SUCCESS CRITERIA** for a successful toolkit 
 
 | Metric | Projection | Type | Rationale |
 | :--- | :--- | :--- | :--- |
-| **Reach Expansion** | **500%** | PROJECTED | Seeding Meta with 50k high-signal users allows for a 1% Lookalike (approx. 2M people) vs. niche interest targeting. |
+| **Reach Expansion** | **500%** | PROJECTED | Seeding Meta with 2,000 high-signal users allows for a 1% Lookalike (approx. 2M people) vs. niche interest targeting. |
 | **Conversion Lift** | **0.8% → 3.2%** | ASSUMED | Reflects a 4x increase in ROI typically seen when moving from broad interests to high-value Lookalike seeds. |
 | **Cost Efficiency** | **45% CPL Reduction** | PROJECTED | Assumes higher relevance scores on Meta leading to lower auction costs. |
 
@@ -54,7 +54,7 @@ To verify these results in your own organization, we recommend the following con
 
 | Stage | Milestone | Baseline | Target | Actual |
 | :--- | :--- | :--- | :--- | :--- |
-| **Bootstrapping** | Synthetic Seed Count | 1,000 | 50,000 | |
+| **Bootstrapping** | Synthetic Seed Count | 200 | 2,000 | |
 | **Validation**| Signal Intensity Bulge | N/A | >20% | |
 | **Sync** | Meta Match Rate | N/A | >60% | |
 | **Execution** | Conversion Rate % | 0.8% | 2.5% | |
