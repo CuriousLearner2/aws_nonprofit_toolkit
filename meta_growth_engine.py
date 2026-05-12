@@ -29,12 +29,16 @@ class MetaConfig:
     """Centralized configuration management for Meta API."""
     ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
     AD_ACCOUNT_ID = os.getenv("META_AD_ACCOUNT_ID")
+    SANDBOX_AD_ACCOUNT_ID = os.getenv("META_SANDBOX_AD_ACCOUNT_ID")
     API_VERSION = "v21.0"
     
     @classmethod
-    def validate(cls):
-        if not cls.ACCESS_TOKEN or not cls.AD_ACCOUNT_ID:
-            raise ValueError("Missing META_ACCESS_TOKEN or META_AD_ACCOUNT_ID in environment.")
+    def validate(cls, use_sandbox: bool = False):
+        account_id = cls.SANDBOX_AD_ACCOUNT_ID if use_sandbox else cls.AD_ACCOUNT_ID
+        if not cls.ACCESS_TOKEN or not account_id:
+            mode = "SANDBOX" if use_sandbox else "LIVE"
+            raise ValueError(f"Missing META_ACCESS_TOKEN or META_{mode}_AD_ACCOUNT_ID in environment.")
+        return account_id
 
 def hash_data(data: str) -> str:
     """Meta requires data to be SHA256 hashed before upload."""
@@ -46,15 +50,14 @@ def hash_data(data: str) -> str:
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
-def create_custom_audience(name: str, dry_run: bool = False) -> Optional[str]:
+def create_custom_audience(name: str, ad_account_id: str, dry_run: bool = False) -> Optional[str]:
     """Creates a Custom Audience on Meta."""
     if dry_run:
-        logger.info(f"[DRY-RUN] Would create audience: {name}")
+        logger.info(f"[DRY-RUN] Would create audience '{name}' in account {ad_account_id}")
         return "dry_run_audience_id"
 
-    MetaConfig.validate()
-    logger.info(f"Creating Custom Audience '{name}' on Meta...")
-    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{MetaConfig.AD_ACCOUNT_ID}/customaudiences"
+    logger.info(f"Creating Custom Audience '{name}' on Meta (Account: act_{ad_account_id})...")
+    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
     
     payload = {
         'name': name,
@@ -87,14 +90,17 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
 
     logger.info(f"Extracting VIPs from {users_file}...")
     
-    hashed_emails = []
+    upload_data = []
     with open(users_file, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row.get('LOYALTY_LEVEL') == 'VIP' and row.get('EMAIL'):
-                hashed_emails.append([hash_data(row['EMAIL'])])
+                email_hash = hash_data(row['EMAIL'])
+                # We include the LTV (Value) to enable Value-Based Lookalikes
+                ltv = row.get('LTV', '0')
+                upload_data.append([email_hash, ltv])
 
-    total_count = len(hashed_emails)
+    total_count = len(upload_data)
     if not total_count:
         logger.warning("No VIP donors found.")
         return
@@ -103,13 +109,13 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
         logger.info(f"[DRY-RUN] Would upload {total_count} records to {audience_id}")
         return
 
-    logger.info(f"Syncing {total_count} VIPs in batches of {batch_size}...")
+    logger.info(f"Syncing {total_count} VIPs in batches of {batch_size} (Value-Based)...")
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}/users"
     
     for i in range(0, total_count, batch_size):
-        batch = hashed_emails[i:i + batch_size]
+        batch = upload_data[i:i + batch_size]
         payload = {
-            'payload': json.dumps({'schema': ['EMAIL'], 'data': batch}),
+            'payload': json.dumps({'schema': ['EMAIL', 'LOOKALIKES_VALUE'], 'data': batch}),
             'access_token': MetaConfig.ACCESS_TOKEN
         }
         response = requests.post(url, data=payload, timeout=30)
@@ -122,11 +128,17 @@ if __name__ == "__main__":
     parser.add_argument("--users-file", type=str, default="aws_nonprofit_toolkit/datasets/small_nonprofit_users.csv", help="Path to users CSV")
     parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for uploads")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without calling Meta API")
+    parser.add_argument("--sandbox", action="store_true", help="Use the Sandbox Ad Account")
     
     args = parser.parse_args()
     
     try:
-        aud_id = create_custom_audience(args.audience_name, dry_run=args.dry_run)
+        # Validate and get the correct account ID
+        target_account_id = MetaConfig.validate(use_sandbox=args.sandbox)
+        mode_str = "SANDBOX" if args.sandbox else "LIVE"
+        logger.info(f"Starting sync in {mode_str} mode (Account: {target_account_id})")
+
+        aud_id = create_custom_audience(args.audience_name, target_account_id, dry_run=args.dry_run)
         if aud_id:
             upload_donors_to_audience(aud_id, args.users_file, batch_size=args.batch_size, dry_run=args.dry_run)
             logger.info("Sync process completed.")

@@ -12,18 +12,26 @@ def generate_small_nonprofit(base_path, count):
     
     with open(users_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(['USER_ID', 'EMAIL', 'INTEREST_TAG', 'LAST_DONATION_AMOUNT', 'LOYALTY_LEVEL', 'SOURCE', 'CONSENT'])
+        writer.writerow(['USER_ID', 'EMAIL', 'INTEREST_TAG', 'LTV', 'LOYALTY_LEVEL', 'SOURCE', 'CONSENT'])
         for i in range(count):
             loyalty = random.choices(
                 SimulationConfig.get_loyalty_levels(), 
                 weights=SimulationConfig.get_loyalty_weights()
             )[0]
             
+            # Weighted LTV: VIPs get much higher values (Major Donors)
+            if loyalty == 'VIP':
+                ltv = random.randint(500, 5000)
+            elif loyalty == 'REGULAR':
+                ltv = random.randint(50, 499)
+            else:
+                ltv = random.randint(0, 49)
+
             writer.writerow([
                 f'user_{i}',
                 f'donor_{i}@example.com',
                 random.choice(SimulationConfig.ITEMS),
-                random.randint(0, 500),
+                ltv,
                 loyalty,
                 random.choice(SimulationConfig.get_sources()),
                 random.random() < SimulationConfig.CONSENT_RATE
