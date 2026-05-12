@@ -89,7 +89,7 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
         return
 
     logger.info(f"Extracting VIPs from {users_file}...")
-    
+
     upload_data = []
     with open(users_file, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
@@ -98,6 +98,18 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
                 email_hash = hash_data(row['EMAIL'])
                 # We include the LTV (Value) to enable Value-Based Lookalikes
                 ltv = row.get('LTV', '0')
+
+                # Validate LTV is numeric and warn if missing for VIP
+                if not ltv or ltv.strip() == '':
+                    logger.warning(f"VIP donor {row.get('EMAIL')} missing LTV, using 0")
+                    ltv = '0'
+                else:
+                    try:
+                        float(ltv)  # Validate numeric
+                    except ValueError:
+                        logger.warning(f"Invalid LTV '{ltv}' for {row.get('EMAIL')}, using 0")
+                        ltv = '0'
+
                 upload_data.append([email_hash, ltv])
 
     total_count = len(upload_data)
