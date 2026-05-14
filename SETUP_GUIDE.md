@@ -43,7 +43,19 @@ To synchronize donors, you need a **System User** token with specific permission
 
 ---
 
-## 2. AWS Configuration
+## 2. Sandbox Configuration
+
+### 2.1 Verified Sandbox Account
+The project is configured for testing using the verified Sandbox Ad Account.
+
+| Variable | Value | Status |
+| :--- | :--- | :--- |
+| `META_SANDBOX_AD_ACCOUNT_ID` | `986710934051280` | ✅ Verified Active |
+
+*   **Note**: This account has been successfully tested with the Marketing API using the `is_adset_budget_sharing_enabled=false` parameter.
+
+---
+
 
 ### 2.1 AWS_ACCESS_KEY_ID & SECRET_ACCESS_KEY
 1.  Log in to the [AWS Console](https://console.aws.amazon.com/).
