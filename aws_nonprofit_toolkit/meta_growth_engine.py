@@ -50,16 +50,20 @@ def hash_data(data: str) -> str:
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
-def create_custom_audience(name: str, ad_account_id: str, dry_run: bool = False) -> Optional[str]:
+def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_run: bool = False) -> Optional[str]:
     """Creates a Custom Audience on Meta."""
     MetaConfig.validate()
+
+    if ad_account_id is None:
+        ad_account_id = MetaConfig.AD_ACCOUNT_ID
+
     if dry_run:
         logger.info(f"[DRY-RUN] Would create audience '{name}' in account {ad_account_id}")
         return "dry_run_audience_id"
 
     logger.info(f"Creating Custom Audience '{name}' on Meta (Account: act_{ad_account_id})...")
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
-    
+
     payload = {
         'name': name,
         'subtype': 'CUSTOM',
@@ -67,7 +71,7 @@ def create_custom_audience(name: str, ad_account_id: str, dry_run: bool = False)
         'customer_file_source': 'USER_PROVIDED_ONLY',
         'access_token': MetaConfig.ACCESS_TOKEN
     }
-    
+
     try:
         response = requests.post(url, data=payload, timeout=10)
         response.raise_for_status()
