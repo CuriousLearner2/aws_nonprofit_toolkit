@@ -66,11 +66,12 @@ def handler(event, context):
         sandbox_id = os.getenv("META_SANDBOX_AD_ACCOUNT_ID")
         if sandbox_id:
             logger.info("  - Sandbox detected. Triggering automated 1% Lookalike...")
-            create_lookalike_audience(
-                aud_id, 
-                sandbox_id, 
+            lookalike_id = create_lookalike_audience(
+                aud_id,
+                sandbox_id,
                 "Daily VIP Lookalike (1%)"
             )
+            logger.info(f"  - Created lookalike audience (ID: {lookalike_id})")
         else:
             logger.info("  - Skipping automated Lookalike (Production safety enabled).")
 

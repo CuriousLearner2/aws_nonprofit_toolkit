@@ -119,10 +119,17 @@ def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_r
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    reraise=True
+)
 def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: str, dry_run: bool = False) -> Optional[str]:
     """
     Creates a 1% Lookalike Audience from a seed audience.
     NOTE: Only triggered in Sandbox/Development for this phase.
+    Includes retry logic with exponential backoff for network resilience.
     """
     MetaConfig.validate()
     if dry_run:
