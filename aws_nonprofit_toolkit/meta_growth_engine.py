@@ -52,6 +52,7 @@ def hash_data(data: str) -> str:
 )
 def create_custom_audience(name: str, ad_account_id: str, dry_run: bool = False) -> Optional[str]:
     """Creates a Custom Audience on Meta."""
+    MetaConfig.validate()
     if dry_run:
         logger.info(f"[DRY-RUN] Would create audience '{name}' in account {ad_account_id}")
         return "dry_run_audience_id"
@@ -82,8 +83,56 @@ def create_custom_audience(name: str, ad_account_id: str, dry_run: bool = False)
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
+def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: str, dry_run: bool = False) -> Optional[str]:
+    """
+    Creates a 1% Lookalike Audience from a seed audience.
+    NOTE: Only triggered in Sandbox/Development for this phase.
+    """
+    MetaConfig.validate()
+    if dry_run:
+        logger.info(f"[DRY-RUN] Would create 1% Lookalike for seed {seed_audience_id} in US")
+        return "dry_run_lookalike_id"
+
+    logger.info(f"Creating 1% Lookalike Audience from seed {seed_audience_id}...")
+    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
+    
+    # 1% similarity in the US
+    lookalike_spec = {
+        'type': 'similarity',
+        'ratio': 0.01,
+        'location_spec': {
+            'geo_locations': {
+                'countries': ['US'],
+            },
+        },
+    }
+
+    payload = {
+        'name': name,
+        'subtype': 'LOOKALIKES',
+        'origin_audience_id': seed_audience_id,
+        'lookalike_spec': json.dumps(lookalike_spec),
+        'access_token': MetaConfig.ACCESS_TOKEN
+    }
+    
+    try:
+        response = requests.post(url, data=payload, timeout=15)
+        response.raise_for_status()
+        result = response.json()
+        return result.get('id')
+    except Exception as e:
+        logger.error(f"Failed to create lookalike: {str(e)}")
+        raise
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    reraise=True
+)
 def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int = 5000, dry_run: bool = False):
     """Uploads hashed emails to a specific Meta audience."""
+    MetaConfig.validate()
     if not os.path.exists(users_file):
         logger.error(f"File not found: {users_file}")
         return
@@ -141,6 +190,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for uploads")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without calling Meta API")
     parser.add_argument("--sandbox", action="store_true", help="Use the Sandbox Ad Account")
+    parser.add_argument("--create-lookalike", action="store_true", help="Automatically trigger a 1%% lookalike (Sandbox only)")
     
     args = parser.parse_args()
     
@@ -153,6 +203,15 @@ if __name__ == "__main__":
         aud_id = create_custom_audience(args.audience_name, target_account_id, dry_run=args.dry_run)
         if aud_id:
             upload_donors_to_audience(aud_id, args.users_file, batch_size=args.batch_size, dry_run=args.dry_run)
+            
+            # Automated Lookalike (Safety Check: Only in Sandbox for now)
+            if args.create_lookalike:
+                if args.sandbox or args.dry_run:
+                    lla_name = f"Lookalike (1%%) - {args.audience_name}"
+                    create_lookalike_audience(aud_id, target_account_id, lla_name, dry_run=args.dry_run)
+                else:
+                    logger.warning("Automated Lookalike creation is restricted to SANDBOX mode to prevent unintended production spend.")
+
             logger.info("Sync process completed.")
     except Exception as e:
         logger.critical(f"Toolkit process failed: {str(e)}")

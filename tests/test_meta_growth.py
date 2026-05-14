@@ -2,7 +2,13 @@ import pytest
 import responses
 import json
 import os
-from aws_nonprofit_toolkit.meta_growth_engine import hash_data, create_custom_audience, upload_donors_to_audience, MetaConfig
+from aws_nonprofit_toolkit.meta_growth_engine import (
+    hash_data, 
+    create_custom_audience, 
+    upload_donors_to_audience, 
+    create_lookalike_audience,
+    MetaConfig
+)
 
 def test_hash_data():
     """Verify that hashing is consistent and lowercase-normalized."""
@@ -23,7 +29,7 @@ def test_create_custom_audience_success(monkeypatch):
         status=200
     )
     
-    aud_id = create_custom_audience("Test Audience")
+    aud_id = create_custom_audience("Test Audience", "12345")
     assert aud_id == "audience_99"
 
 @responses.activate
@@ -41,13 +47,13 @@ def test_create_custom_audience_failure(monkeypatch):
     
     # create_custom_audience has retry logic
     with pytest.raises(Exception):
-        create_custom_audience("Test Audience")
+        create_custom_audience("Test Audience", "12345")
 
 def test_config_validation_error(monkeypatch):
     """Verify that missing config raises ValueError."""
     monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", None)
     with pytest.raises(ValueError, match="Missing META_ACCESS_TOKEN"):
-        create_custom_audience("Test Audience")
+        create_custom_audience("Test Audience", "12345")
 
 @responses.activate
 def test_upload_donors_batching(tmp_path, monkeypatch):
@@ -83,3 +89,30 @@ def test_upload_donors_batching(tmp_path, monkeypatch):
     payload_json = parsed_body['payload'][0]
     payload_data = json.loads(payload_json)
     assert len(payload_data['data']) == 1
+
+@responses.activate
+def test_create_lookalike_audience_success(monkeypatch):
+    """Verify successful 1% lookalike audience creation."""
+    monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", "fake_token")
+    monkeypatch.setattr(MetaConfig, "AD_ACCOUNT_ID", "12345")
+    
+    seed_id = "aud_seed_123"
+    responses.add(
+        responses.POST,
+        "https://graph.facebook.com/v21.0/act_12345/customaudiences",
+        json={"id": "lookalike_456"},
+        status=200
+    )
+    
+    # Ad account ID is act_12345 in URL but 12345 in param
+    lla_id = create_lookalike_audience(seed_id, "12345", "Test LLA")
+    assert lla_id == "lookalike_456"
+    
+    # Verify lookalike_spec was passed correctly
+    body = responses.calls[0].request.body
+    if isinstance(body, bytes):
+        body = body.decode()
+    assert "LOOKALIKES" in body
+    assert "lookalike_spec" in body
+    assert "similarity" in body
+    assert "0.01" in body

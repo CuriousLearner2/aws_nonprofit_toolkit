@@ -8,12 +8,13 @@ from aws_nonprofit_toolkit.lambda_handler import handler
 
 @patch('aws_nonprofit_toolkit.lambda_handler.generate_small_nonprofit')
 @patch('aws_nonprofit_toolkit.lambda_handler.generate_large_nonprofit')
+@patch('aws_nonprofit_toolkit.lambda_handler.run_audit')
 @patch('aws_nonprofit_toolkit.lambda_handler.analyze_bias')
 @patch('aws_nonprofit_toolkit.lambda_handler.create_custom_audience')
 @patch('aws_nonprofit_toolkit.lambda_handler.upload_donors_to_audience')
 @patch('aws_nonprofit_toolkit.lambda_handler.upload_to_s3')
 @patch('os.getenv')
-def test_lambda_handler_success(mock_getenv, mock_s3, mock_upload_meta, mock_create_meta, mock_analyze, mock_gen_large, mock_gen_small, tmp_path):
+def test_lambda_handler_success(mock_getenv, mock_s3, mock_upload_meta, mock_create_meta, mock_analyze, mock_audit, mock_gen_large, mock_gen_small, tmp_path):
     def getenv_side_effect(key, default=None):
         if key == "DONOR_COUNT":
             return "2000"
@@ -25,6 +26,7 @@ def test_lambda_handler_success(mock_getenv, mock_s3, mock_upload_meta, mock_cre
 
     mock_getenv.side_effect = getenv_side_effect
     mock_create_meta.return_value = "aud_123"
+    mock_audit.return_value = True
     mock_analyze.return_value = True
 
     event = {}
@@ -39,18 +41,37 @@ def test_lambda_handler_success(mock_getenv, mock_s3, mock_upload_meta, mock_cre
     # Verify both datasets generated (Dual-Track)
     mock_gen_small.assert_called_once()
     mock_gen_large.assert_called_once()
-    # Verify threshold is 20.0 as requested
+    
+    # Verify both validation tracks ran
+    mock_audit.assert_called_once()
+    assert mock_audit.call_args[1]['concentration_threshold'] == 0.60
+    
     mock_analyze.assert_called_once()
     assert mock_analyze.call_args[1]['threshold'] == 20.0
 
 @patch('aws_nonprofit_toolkit.lambda_handler.generate_small_nonprofit')
 @patch('aws_nonprofit_toolkit.lambda_handler.generate_large_nonprofit')
+@patch('aws_nonprofit_toolkit.lambda_handler.run_audit')
 @patch('aws_nonprofit_toolkit.lambda_handler.analyze_bias')
-def test_lambda_handler_weak_signal(mock_analyze, mock_gen_large, mock_gen_small):
+def test_lambda_handler_weak_seed_signal(mock_analyze, mock_audit, mock_gen_large, mock_gen_small):
+    mock_audit.return_value = False
+    
+    with pytest.raises(ValueError) as excinfo:
+        with patch('pathlib.Path.mkdir'):
+            handler({}, MagicMock())
+    
+    assert "Meta seed concentration too weak" in str(excinfo.value)
+
+@patch('aws_nonprofit_toolkit.lambda_handler.generate_small_nonprofit')
+@patch('aws_nonprofit_toolkit.lambda_handler.generate_large_nonprofit')
+@patch('aws_nonprofit_toolkit.lambda_handler.run_audit')
+@patch('aws_nonprofit_toolkit.lambda_handler.analyze_bias')
+def test_lambda_handler_weak_ml_signal(mock_analyze, mock_audit, mock_gen_large, mock_gen_small):
+    mock_audit.return_value = True
     mock_analyze.return_value = False
     
     with pytest.raises(ValueError) as excinfo:
         with patch('pathlib.Path.mkdir'):
             handler({}, MagicMock())
     
-    assert "Signal too weak (< 20%)" in str(excinfo.value)
+    assert "ML interaction signal too weak" in str(excinfo.value)
