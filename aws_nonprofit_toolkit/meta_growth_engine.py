@@ -50,12 +50,44 @@ def hash_data(data: str) -> str:
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
+def get_custom_audience_by_name(name: str, ad_account_id: str) -> Optional[str]:
+    """Checks if a Custom Audience with the given name already exists."""
+    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
+    params = {
+        'fields': 'name,id',
+        'access_token': MetaConfig.ACCESS_TOKEN
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        audiences = response.json().get('data', [])
+        for aud in audiences:
+            if aud.get('name') == name:
+                logger.info(f"Found existing audience '{name}' (ID: {aud.get('id')})")
+                return aud.get('id')
+        return None
+    except Exception as e:
+        logger.error(f"Failed to fetch audiences: {str(e)}")
+        raise
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    reraise=True
+)
 def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_run: bool = False) -> Optional[str]:
-    """Creates a Custom Audience on Meta."""
+    """Creates a Custom Audience on Meta, or returns existing if name matches."""
     MetaConfig.validate()
 
     if ad_account_id is None:
         ad_account_id = MetaConfig.AD_ACCOUNT_ID
+
+    if not dry_run:
+        existing_id = get_custom_audience_by_name(name, ad_account_id)
+        if existing_id:
+            return existing_id
 
     if dry_run:
         logger.info(f"[DRY-RUN] Would create audience '{name}' in account {ad_account_id}")

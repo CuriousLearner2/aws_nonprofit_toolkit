@@ -15,8 +15,9 @@
 ## 2. The Intervention (The Toolkit Lifecycle)
 Food Bank USA used the toolkit to bootstrap their ML-driven growth:
 1.  **Generate**: Created **2,000 synthetic donor profiles** mirroring their top 15% VIPs.
-2.  **Validate**: Confirmed a **24% signal bulge** for childhood hunger causes using `uncover_signal_no_pandas.py`.
-3.  **Sync**: Seeded a Meta Lookalike Audience with the high-signal synthetic VIP list.
+2.  **Validate (Pareto Audit)**: Confirmed a **63% wealth concentration** in the top 10% of donors, providing Meta with a clean "Value-Based" signal.
+3.  **Validate (ML Signal)**: Confirmed a **24% interaction bulge** for childhood hunger causes using `uncover_signal_no_pandas.py`.
+4.  **Sync**: Automatically seeded a Meta Lookalike Audience and triggered a **1% Lookalike (Sandbox)**.
 
 ---
 
@@ -34,7 +35,8 @@ The following metrics are **ASSUMED SUCCESS CRITERIA** for a successful toolkit 
 ## 4. Mathematical Methodology & Assumptions
 These projections rely on the following technical assumptions:
 1.  **High-Signal Accuracy**: We assume the synthetic data generates a signal bulge of **>20%**, allowing ML models to accurately classify donor archetypes.
-2.  **Meta Match Rate**: We assume a **>60% match rate** when hashing and uploading the synthetic seed to Meta.
+2.  **Pareto Integrity**: We assume the **Seed Quality Audit** maintains a >60% concentration, ensuring Meta optimizations target givers over casual users.
+3.  **Meta Match Rate**: We assume a **>60% match rate** when hashing and uploading the synthetic seed to Meta.
 3.  **Lookalike Correlation**: We assume that Meta's "People similar to your VIPs" algorithm correctly identifies high-intent donors from the synthetic seed.
 
 ---

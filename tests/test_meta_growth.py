@@ -22,9 +22,19 @@ def test_create_custom_audience_success(monkeypatch):
     monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", "fake_token")
     monkeypatch.setattr(MetaConfig, "AD_ACCOUNT_ID", "12345")
     
+    # Mock GET (lookup) - return empty list
+    url = "https://graph.facebook.com/v21.0/act_12345/customaudiences"
+    responses.add(
+        responses.GET,
+        url,
+        json={"data": []},
+        status=200
+    )
+    
+    # Mock POST (creation)
     responses.add(
         responses.POST,
-        "https://graph.facebook.com/v21.0/act_12345/customaudiences",
+        url,
         json={"id": "audience_99"},
         status=200
     )
@@ -97,10 +107,19 @@ def test_create_lookalike_audience_success(monkeypatch):
     monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", "fake_token")
     monkeypatch.setattr(MetaConfig, "AD_ACCOUNT_ID", "12345")
     
+    # Mock GET (lookup) - return empty list
+    url = "https://graph.facebook.com/v21.0/act_12345/customaudiences"
+    responses.add(
+        responses.GET,
+        url,
+        json={"data": []},
+        status=200
+    )
+
     seed_id = "aud_seed_123"
     responses.add(
         responses.POST,
-        "https://graph.facebook.com/v21.0/act_12345/customaudiences",
+        url,
         json={"id": "lookalike_456"},
         status=200
     )
@@ -117,3 +136,27 @@ def test_create_lookalike_audience_success(monkeypatch):
     assert "lookalike_spec" in body
     assert "similarity" in body
     assert "0.01" in body
+
+@responses.activate
+def test_audience_rotation(monkeypatch):
+    """Verify that we return an existing audience ID if name matches (Rotation)."""
+    monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", "fake_token")
+    monkeypatch.setattr(MetaConfig, "AD_ACCOUNT_ID", "12345")
+    
+    # Mock GET (lookup) - return an existing audience
+    url = "https://graph.facebook.com/v21.0/act_12345/customaudiences"
+    responses.add(
+        responses.GET,
+        url,
+        json={"data": [{"name": "Existing Audience", "id": "aud_existing_777"}]},
+        status=200
+    )
+    
+    # We do NOT mock POST, because it should NOT be called
+    
+    aud_id = create_custom_audience("Existing Audience", "12345")
+    
+    assert aud_id == "aud_existing_777"
+    # Verify only 1 call (the GET) was made
+    assert len(responses.calls) == 1
+    assert responses.calls[0].request.method == "GET"

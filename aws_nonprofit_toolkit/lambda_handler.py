@@ -8,7 +8,7 @@ from aws_nonprofit_toolkit.generate_datasets import generate_small_nonprofit, ge
 from aws_nonprofit_toolkit.config import SimulationConfig
 from aws_nonprofit_toolkit.uncover_signal_no_pandas import analyze_bias
 from aws_nonprofit_toolkit.audit_seed_quality import run_audit
-from aws_nonprofit_toolkit.meta_growth_engine import create_custom_audience, upload_donors_to_audience
+from aws_nonprofit_toolkit.meta_growth_engine import create_custom_audience, upload_donors_to_audience, create_lookalike_audience
 from aws_nonprofit_toolkit.personalize_sync import upload_to_s3
 
 logger = logging.getLogger()
@@ -61,6 +61,18 @@ def handler(event, context):
         logger.info("Step 3/5: Syncing Track 1 (small dataset VIPs to Meta)...")
         aud_id = create_custom_audience("Daily VIP Sync")
         upload_donors_to_audience(aud_id, str(small_users_path))
+        
+        # Automated Lookalike (Safety Check: Sandbox/Dry-Run only in this phase)
+        sandbox_id = os.getenv("META_SANDBOX_AD_ACCOUNT_ID")
+        if sandbox_id:
+            logger.info("  - Sandbox detected. Triggering automated 1% Lookalike...")
+            create_lookalike_audience(
+                aud_id, 
+                sandbox_id, 
+                "Daily VIP Lookalike (1%)"
+            )
+        else:
+            logger.info("  - Skipping automated Lookalike (Production safety enabled).")
 
         # 4. Sync Track 2: S3/Personalize (Personalization)
         logger.info("Step 4/5: Syncing Track 2 (large dataset to S3 for ML)...")
