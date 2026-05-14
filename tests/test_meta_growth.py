@@ -59,6 +59,7 @@ def test_config_validation_error(monkeypatch):
 def test_upload_donors_batching(tmp_path, monkeypatch):
     """Verify that donors are uploaded in multiple batches if they exceed batch_size."""
     monkeypatch.setattr(MetaConfig, "ACCESS_TOKEN", "fake_token")
+    monkeypatch.setattr(MetaConfig, "AD_ACCOUNT_ID", "12345")
     monkeypatch.setattr(MetaConfig, "API_VERSION", "v21.0")
     
     # Create a mock CSV with 5 VIPs
