@@ -7,6 +7,7 @@ from botocore.exceptions import ClientError
 from aws_nonprofit_toolkit.generate_datasets import generate_small_nonprofit, generate_large_nonprofit
 from aws_nonprofit_toolkit.config import SimulationConfig
 from aws_nonprofit_toolkit.uncover_signal_no_pandas import analyze_bias
+from aws_nonprofit_toolkit.audit_seed_quality import run_audit
 from aws_nonprofit_toolkit.meta_growth_engine import create_custom_audience, upload_donors_to_audience
 from aws_nonprofit_toolkit.personalize_sync import upload_to_s3
 
@@ -41,10 +42,18 @@ def handler(event, context):
         small_users_path = tmp_dir / "small_nonprofit_users.csv"
         interactions_path = tmp_dir / "large_nonprofit_interactions.csv"
         
-        # 2. Validate Signal Strength (for ML training data)
-        logger.info("Step 2/5: Validating ML signal strength...")
+        # 2. Validate Signal Strength (Dual-Track Validation)
+        logger.info("Step 2/5: Validating signal strength (Dual-Track)...")
+        
+        # Track 1 Validation (Meta Seed)
+        if not run_audit(str(small_users_path), concentration_threshold=0.60):
+            error_msg = "Meta seed concentration too weak (< 60%). Sync aborted."
+            logger.error(f"FATAL: {error_msg}")
+            raise ValueError(error_msg)
+
+        # Track 2 Validation (ML training data)
         if not analyze_bias(str(interactions_path), threshold=20.0, count=donor_count, bias_ratio=bias_ratio):
-            error_msg = "Signal too weak (< 20%). Data not ready for Meta sync."
+            error_msg = "ML interaction signal too weak (< 20%). Sync aborted."
             logger.error(f"FATAL: {error_msg}")
             raise ValueError(error_msg)
 

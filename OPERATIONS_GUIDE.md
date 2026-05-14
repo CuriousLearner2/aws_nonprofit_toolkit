@@ -23,7 +23,22 @@ When deployed via `sam deploy`, the template creates:
 
 ---
 
-## 2. Monitoring & Observability
+## 2. Validation & Signal Audit
+The toolkit performs automated quality checks before every data synchronization. If a signal is too weak, the sync will abort to prevent training models on poor data.
+
+### 2.1 Track 1: Meta Seed Audit (Pareto Principle)
+*   **Check**: Does the top 10% of donors represent >60% of total value?
+*   **Why**: Meta's Value-Based Lookalikes require a clear wealth concentration to find high-value "twins."
+*   **Resolution**: If the sync fails with `WEAK SEED SIGNAL`, increase the `SMALL_USER_COUNT` in `config.py` or adjust the `LOYALTY_DISTRIBUTION` weights.
+
+### 2.2 Track 2: ML Interaction Bias
+*   **Check**: Is the interaction bias between Group A and Group B >20%?
+*   **Why**: Amazon Personalize requires a detectable statistical "bulge" to learn donor preferences.
+*   **Resolution**: If the sync fails with `WEAK ML SIGNAL`, increase the `CAUSE_BIAS_WEIGHT` in `config.py`.
+
+---
+
+## 3. Monitoring & Observability
 Once deployed, use **Amazon CloudWatch** to track the health of your automated synchronization.
 
 ### 2.1 Alarms and Notifications

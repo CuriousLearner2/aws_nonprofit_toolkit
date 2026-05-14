@@ -22,6 +22,11 @@ This dataset contains high-level information about your donors (Email, City, Int
 *   Meta’s AI analyzes their millions of social signals to find new people who share the same characteristics.
 *   **Result:** A massive audience of potential new donors who "look like" your best existing ones.
 
+### D. The Quality Guardrail: Pareto Principle Audit
+*   **The Process:** Automated audit (`audit_seed_quality.py`) before every sync.
+*   **The Signal:** Verifies that the top 10% of donors represent >60% of total organizational value.
+*   **Why?** Meta's Value-Based Lookalike AI requires a clear "value slope" to work. If donor value is too flat/random, the AI cannot distinguish between a casual donor and a major giver.
+
 ---
 
 ## 2. The Personalization Pipeline (Large Dataset)
@@ -59,6 +64,7 @@ The power of the toolkit is that the **Small Dataset grows into the Large Datase
 | Feature | Acquisition Track (Meta) | Personalization Track (AWS) |
 | :--- | :--- | :--- |
 | **Dataset** | `small_nonprofit_users.csv` | `large_nonprofit_interactions.csv` |
+| **Validation** | **Pareto Concentration Audit** | **Bias Signal Detection** |
 | **Labeling Method** | **Human/Manual** (CRM Rules) | **Machine Learning** (Inferred) |
 | **AWS Orchestrator** | **AWS Lambda** (Syncing to Meta) | **Amazon Athena** (Analyzing Stream) |
 | **AI "Brain"** | Meta Lookalike AI | Amazon Personalize |

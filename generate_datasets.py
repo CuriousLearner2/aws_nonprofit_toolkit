@@ -3,7 +3,7 @@ import random
 import time
 import argparse
 from pathlib import Path
-from aws_nonprofit_toolkit.config import SimulationConfig
+from config import SimulationConfig
 
 def generate_small_nonprofit(base_path, count):
     """Generates a dataset focused on user attributes/tags."""
