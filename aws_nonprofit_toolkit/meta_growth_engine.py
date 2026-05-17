@@ -233,7 +233,7 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
                 email_hash = hash_data(row['EMAIL'])
                 ltv = row.get('LTV', '0')
                 upload_data.append([email_hash, ltv])
-    
+
     total_count = len(upload_data)
     if total_count == 0: return 0
     if dry_run: return total_count
@@ -245,10 +245,11 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
             'payload': json.dumps({'schema': ['EMAIL', 'LOOKALIKES_VALUE'], 'data': batch}),
             'access_token': token
         }
-        
+
         requests.post(url, data=payload, timeout=30).raise_for_status()
         logger.info(f"Batch {i//batch_size + 1} synced.")
     return total_count
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
