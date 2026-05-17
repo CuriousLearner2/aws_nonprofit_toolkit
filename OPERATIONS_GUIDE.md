@@ -28,13 +28,14 @@ The toolkit performs automated quality checks before every data synchronization.
 
 ### 2.1 Track 1: Meta Seed Audit (Pareto Principle)
 *   **Check**: Does the top 10% of donors represent >60% of total value?
+*   **Seed Size Requirement**: Meta recommends 100+ VIP donors for optimal Lookalike stability. The toolkit will warn if fewer are found.
 *   **Why**: Meta's Value-Based Lookalikes require a clear wealth concentration to find high-value "twins."
 *   **Resolution**: If the sync fails with `WEAK SEED SIGNAL`, increase the `SMALL_USER_COUNT` in `config.py` or adjust the `LOYALTY_DISTRIBUTION` weights.
 
-### 2.2 Track 2: ML Interaction Bias
-*   **Check**: Is the interaction bias between Group A and Group B >20%?
-*   **Why**: Amazon Personalize requires a detectable statistical "bulge" to learn donor preferences.
-*   **Resolution**: If the sync fails with `WEAK ML SIGNAL`, increase the `CAUSE_BIAS_WEIGHT` in `config.py`.
+### 2.2 Audience Synchronization (Polling & Match Rate)
+*   **Process**: After uploading donors, the toolkit polls the audience status every 10 minutes for up to one hour.
+*   **Verification**: The sync waits for a `Ready` status and verifies that the `match_rate` (approximate_count / uploaded_count) is > 40%.
+*   **Failure**: If the match rate is < 40%, lookalike creation is aborted as the list is considered too stale or corrupted.
 
 ---
 

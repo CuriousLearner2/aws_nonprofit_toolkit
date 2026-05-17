@@ -27,15 +27,19 @@ load_dotenv()
 
 class MetaConfig:
     """Centralized configuration management for Meta API."""
-    ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
-    AD_ACCOUNT_ID = os.getenv("META_AD_ACCOUNT_ID")
-    SANDBOX_AD_ACCOUNT_ID = os.getenv("META_SANDBOX_AD_ACCOUNT_ID")
     API_VERSION = "v21.0"
     
     @classmethod
+    def get_credentials(cls, use_sandbox: bool = False):
+        """Fetch latest credentials from environment."""
+        token = os.getenv("META_ACCESS_TOKEN")
+        account_id = os.getenv("META_SANDBOX_AD_ACCOUNT_ID") if use_sandbox else os.getenv("META_AD_ACCOUNT_ID")
+        return token, account_id
+
+    @classmethod
     def validate(cls, use_sandbox: bool = False):
-        account_id = cls.SANDBOX_AD_ACCOUNT_ID if use_sandbox else cls.AD_ACCOUNT_ID
-        if not cls.ACCESS_TOKEN or not account_id:
+        token, account_id = cls.get_credentials(use_sandbox)
+        if not token or not account_id:
             mode = "SANDBOX" if use_sandbox else "LIVE"
             raise ValueError(f"Missing META_ACCESS_TOKEN or META_{mode}_AD_ACCOUNT_ID in environment.")
         return account_id
@@ -52,10 +56,11 @@ def hash_data(data: str) -> str:
 )
 def get_custom_audience_by_name(name: str, ad_account_id: str) -> Optional[str]:
     """Checks if a Custom Audience with the given name already exists."""
+    token, _ = MetaConfig.get_credentials() # Assume default account if not specified
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
     params = {
         'fields': 'name,id',
-        'access_token': MetaConfig.ACCESS_TOKEN
+        'access_token': token
     }
     
     try:
@@ -79,10 +84,11 @@ def get_custom_audience_by_name(name: str, ad_account_id: str) -> Optional[str]:
 )
 def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_run: bool = False) -> Optional[str]:
     """Creates a Custom Audience on Meta, or returns existing if name matches."""
-    MetaConfig.validate()
-
-    if ad_account_id is None:
-        ad_account_id = MetaConfig.AD_ACCOUNT_ID
+    token, env_account_id = MetaConfig.get_credentials(use_sandbox=(ad_account_id is not None))
+    ad_account_id = ad_account_id or env_account_id
+    
+    if not token or not ad_account_id:
+        raise ValueError("Missing Meta credentials.")
 
     if not dry_run:
         existing_id = get_custom_audience_by_name(name, ad_account_id)
@@ -101,11 +107,13 @@ def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_r
         'subtype': 'CUSTOM',
         'description': 'High-value donors for lookalike seed',
         'customer_file_source': 'USER_PROVIDED_ONLY',
-        'access_token': MetaConfig.ACCESS_TOKEN
+        'access_token': token
     }
 
     try:
-        response = requests.post(url, data=payload, timeout=10)
+        response = requests.post(url, data=payload, timeout=15)
+        if response.status_code != 200:
+            logger.error(f"Meta API Error Body: {response.text}")
         response.raise_for_status()
         result = response.json()
         return result.get('id')
@@ -125,13 +133,48 @@ def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_r
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
-def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: str, dry_run: bool = False) -> Optional[str]:
+def wait_for_audience_ready(audience_id: str, expected_count: int, max_attempts: int = 6) -> bool:
+    """Polls audience status every 10 minutes (up to 1 hour) to ensure it is ready for Lookalike creation."""
+    token, _ = MetaConfig.get_credentials()
+    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}"
+    params = {'fields': 'delivery_status,approximate_count', 'access_token': token}
+
+    for attempt in range(1, max_attempts + 1):
+        logger.info(f"Polling audience {audience_id} status (Attempt {attempt}/{max_attempts})...")
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        status = data.get('delivery_status', {}).get('code', 'UNKNOWN')
+        count = data.get('approximate_count', 0)
+        
+        # 'Ready' status code for custom audiences is typically 200
+        if status == 200:
+            match_rate = (count / expected_count) if expected_count > 0 else 0
+            logger.info(f"Audience is Ready. Count: {count}, Match Rate: {match_rate:.1%}")
+            
+            if match_rate >= 0.40:
+                logger.info("Match rate > 40%. Ready for Lookalike.")
+                return True
+            else:
+                logger.error(f"Match rate {match_rate:.1%} too low (< 40%).")
+                return False
+        
+        logger.info(f"Audience status: {status}, Count: {count}. Waiting 10 minutes...")
+        if attempt < max_attempts:
+            time.sleep(600) # 10 minutes
+            
+    logger.error("Audience failed to reach Ready status in time.")
+    return False
+
+# Ensure time is imported
+import time
     """
     Creates a 1% Lookalike Audience from a seed audience.
     NOTE: Only triggered in Sandbox/Development for this phase.
     Includes retry logic with exponential backoff for network resilience.
     """
-    MetaConfig.validate()
+    token, _ = MetaConfig.get_credentials(use_sandbox=True)
     if dry_run:
         logger.info(f"[DRY-RUN] Would create 1% Lookalike for seed {seed_audience_id} in US")
         return "dry_run_lookalike_id"
@@ -155,7 +198,7 @@ def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: s
         'subtype': 'LOOKALIKES',
         'origin_audience_id': seed_audience_id,
         'lookalike_spec': json.dumps(lookalike_spec),
-        'access_token': MetaConfig.ACCESS_TOKEN
+        'access_token': token
     }
     
     try:
@@ -175,7 +218,7 @@ def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: s
 )
 def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int = 5000, dry_run: bool = False):
     """Uploads hashed emails to a specific Meta audience."""
-    MetaConfig.validate()
+    token, _ = MetaConfig.get_credentials()
     if not os.path.exists(users_file):
         logger.error(f"File not found: {users_file}")
         return
@@ -220,7 +263,7 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
         batch = upload_data[i:i + batch_size]
         payload = {
             'payload': json.dumps({'schema': ['EMAIL', 'LOOKALIKES_VALUE'], 'data': batch}),
-            'access_token': MetaConfig.ACCESS_TOKEN
+            'access_token': token
         }
         response = requests.post(url, data=payload, timeout=30)
         response.raise_for_status()
