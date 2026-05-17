@@ -1,0 +1,6 @@
+EMAIL,LOYALTY_LEVEL,LTV
+test_donor1@example.com,VIP,1000.00
+test_donor2@example.com,VIP,800.00
+test_donor3@example.com,REGULAR,100.00
+test_donor4@example.com,VIP,1200.00
+test_donor5@example.com,VIP,900.00

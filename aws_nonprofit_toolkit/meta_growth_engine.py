@@ -133,8 +133,28 @@ def get_audience_details(audience_id: str, use_sandbox: bool = False) -> Optiona
         logger.error(f"Failed to fetch audience {audience_id}: {str(e)}")
         return None
 
+def wait_for_audience_uploadable(audience_id: str, use_sandbox: bool = False, max_wait_seconds: int = 360, poll_interval: int = 120) -> bool:
+    """Poll audience until status is 'READY' for data upload (Max 6 mins, 2 min interval)."""
+    start_time = time.time()
+    while time.time() - start_time < max_wait_seconds:
+        details = get_audience_details(audience_id, use_sandbox=use_sandbox)
+        if not details: return False
+        
+        # Audience status can be 'READY', 'BUILDING', etc.
+        status = details.get('status')
+        logger.info(f"Audience {audience_id}: status={status}")
+        
+        # We look for a state that permits upload (often 'READY')
+        if status in ['READY', 'ACTIVE']:
+            logger.info("Audience is ready for upload.")
+            return True
+        
+        time.sleep(poll_interval)
+    logger.error("Audience failed to reach uploadable status in time.")
+    return False
+
 def wait_for_audience_ready(audience_id: str, expected_count: int, use_sandbox: bool = False, max_wait_seconds: int = 3600, poll_interval: int = 600) -> bool:
-    """Poll audience until status is 'READY' or timeout."""
+    """Poll audience until status is 'READY' for lookalike creation."""
     start_time = time.time()
     while time.time() - start_time < max_wait_seconds:
         details = get_audience_details(audience_id, use_sandbox=use_sandbox)
@@ -155,13 +175,17 @@ def wait_for_audience_ready(audience_id: str, expected_count: int, use_sandbox: 
         time.sleep(poll_interval)
     return False
 
-def verify_lookalike_created(audience_id: str, use_sandbox: bool, expected_name: str) -> bool:
-    """Verify that a lookalike audience was actually created."""
-    details = get_audience_details(audience_id, use_sandbox=use_sandbox)
-    if not details: return False
-    is_lookalike = details.get('subtype') == 'LOOKALIKES'
-    logger.info(f"Verified Lookalike: {details.get('name')} (is_lookalike={is_lookalike})")
-    return is_lookalike
+def delete_custom_audience(audience_id: str, ad_account_id: str):
+    """Deletes a Custom Audience."""
+    token, _ = MetaConfig.get_credentials()
+    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}"
+    params = {'access_token': token}
+    try:
+        requests.delete(url, params=params, timeout=10).raise_for_status()
+        logger.info(f"Successfully deleted audience {audience_id}")
+    except Exception as e:
+        logger.error(f"Failed to delete audience {audience_id}: {str(e)}")
+        raise
 
 @retry(
     stop=stop_after_attempt(3),
@@ -236,7 +260,7 @@ if __name__ == "__main__":
     try:
         target_account_id = MetaConfig.validate(use_sandbox=args.sandbox)
         aud_id = create_custom_audience(args.audience_name, target_account_id)
-        if aud_id:
+        if aud_id and wait_for_audience_uploadable(aud_id, use_sandbox=args.sandbox):
             vip_count = upload_donors_to_audience(aud_id, args.users_file)
             logger.info(f"Uploaded {vip_count} VIP donors.")
             
@@ -244,6 +268,6 @@ if __name__ == "__main__":
                  if args.create_lookalike:
                      lla_id = create_lookalike_audience(aud_id, target_account_id, "Lookalike (1%)")
                      if lla_id:
-                         verify_lookalike_created(lla_id, args.sandbox, "Lookalike (1%)")
+                         logger.info(f"Lookalike created: {lla_id}")
     except Exception as e:
         logger.critical(f"Toolkit process failed: {str(e)}")
