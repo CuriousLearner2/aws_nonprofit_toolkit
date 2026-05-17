@@ -28,11 +28,12 @@ load_dotenv()
 class MetaConfig:
     """Centralized configuration management for Meta API."""
     API_VERSION = "v21.0"
+    ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
     
     @classmethod
     def get_credentials(cls, use_sandbox: bool = False):
         """Fetch latest credentials from environment."""
-        token = os.getenv("META_ACCESS_TOKEN")
+        token = cls.ACCESS_TOKEN
         account_id = os.getenv("META_SANDBOX_AD_ACCOUNT_ID") if use_sandbox else os.getenv("META_AD_ACCOUNT_ID")
         return token, account_id
 
@@ -56,7 +57,7 @@ def hash_data(data: str) -> str:
 )
 def get_custom_audience_by_name(name: str, ad_account_id: str) -> Optional[str]:
     """Checks if a Custom Audience with the given name already exists."""
-    token, _ = MetaConfig.get_credentials() # Assume default account if not specified
+    token, _ = MetaConfig.get_credentials()
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
     params = {
         'fields': 'name,id',
@@ -121,78 +122,56 @@ def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_r
         logger.error(f"Failed to create audience: {str(e)}")
         raise
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_exception_type(requests.exceptions.RequestException),
-    reraise=True
-)
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_exception_type(requests.exceptions.RequestException),
-    reraise=True
-)
-def wait_for_audience_ready(audience_id: str, expected_count: int, max_attempts: int = 6) -> bool:
-    """Polls audience status every 10 minutes (up to 1 hour) to ensure it is ready for Lookalike creation."""
-    token, _ = MetaConfig.get_credentials()
+def get_audience_details(audience_id: str, ad_account_id: str) -> Optional[dict]:
+    """Fetch audience metadata to verify it exists and check its properties."""
+    MetaConfig.validate()
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}"
-    params = {'fields': 'delivery_status,approximate_count', 'access_token': token}
-
-    for attempt in range(1, max_attempts + 1):
-        logger.info(f"Polling audience {audience_id} status (Attempt {attempt}/{max_attempts})...")
+    params = {
+        'fields': 'id,name,subtype,approximate_count,data_source,status',
+        'access_token': MetaConfig.ACCESS_TOKEN
+    }
+    try:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
-        data = response.json()
-        
-        status = data.get('delivery_status', {}).get('code', 'UNKNOWN')
-        count = data.get('approximate_count', 0)
-        
-        # 'Ready' status code for custom audiences is typically 200
-        if status == 200:
-            match_rate = (count / expected_count) if expected_count > 0 else 0
-            logger.info(f"Audience is Ready. Count: {count}, Match Rate: {match_rate:.1%}")
-            
+        return response.json()
+    except Exception as e:
+        logger.error(f"Failed to fetch audience {audience_id}: {str(e)}")
+        return None
+
+def wait_for_audience_ready(audience_id: str, ad_account_id: str, expected_count: int, max_wait_seconds: int = 3600, poll_interval: int = 600) -> bool:
+    """Poll audience until status is 'READY' or timeout (Max 1 hour)."""
+    start_time = time.time()
+    while time.time() - start_time < max_wait_seconds:
+        details = get_audience_details(audience_id, ad_account_id)
+        if not details: return False
+        status = details.get('status')
+        approximate_count = details.get('approximate_count', 0)
+        logger.info(f"Audience status={status}, size={approximate_count}")
+        if status == 'READY':
+            match_rate = (approximate_count / expected_count) if expected_count > 0 else 0
             if match_rate >= 0.40:
-                logger.info("Match rate > 40%. Ready for Lookalike.")
+                logger.info(f"Audience ready. Match rate: {match_rate:.1%}")
                 return True
             else:
-                logger.error(f"Match rate {match_rate:.1%} too low (< 40%).")
+                logger.error(f"Match rate {match_rate:.1%} < 40%. Sync aborted.")
                 return False
-        
-        logger.info(f"Audience status: {status}, Count: {count}. Waiting 10 minutes...")
-        if attempt < max_attempts:
-            time.sleep(600) # 10 minutes
-            
-    logger.error("Audience failed to reach Ready status in time.")
+        time.sleep(poll_interval)
     return False
 
-# Ensure time is imported
-import time
-    """
-    Creates a 1% Lookalike Audience from a seed audience.
-    NOTE: Only triggered in Sandbox/Development for this phase.
-    Includes retry logic with exponential backoff for network resilience.
-    """
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    reraise=True
+)
+def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: str, dry_run: bool = False) -> Optional[str]:
+    """Creates a 1% Lookalike Audience from a seed audience."""
     token, _ = MetaConfig.get_credentials(use_sandbox=True)
     if dry_run:
-        logger.info(f"[DRY-RUN] Would create 1% Lookalike for seed {seed_audience_id} in US")
+        logger.info(f"[DRY-RUN] Would create 1% Lookalike for seed {seed_audience_id}")
         return "dry_run_lookalike_id"
-
-    logger.info(f"Creating 1% Lookalike Audience from seed {seed_audience_id}...")
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
-    
-    # 1% similarity in the US
-    lookalike_spec = {
-        'type': 'similarity',
-        'ratio': 0.01,
-        'location_spec': {
-            'geo_locations': {
-                'countries': ['US'],
-            },
-        },
-    }
-
+    lookalike_spec = {'type': 'similarity', 'ratio': 0.01, 'location_spec': {'geo_locations': {'countries': ['US']}}}
     payload = {
         'name': name,
         'subtype': 'LOOKALIKES',
@@ -200,15 +179,9 @@ import time
         'lookalike_spec': json.dumps(lookalike_spec),
         'access_token': token
     }
-    
-    try:
-        response = requests.post(url, data=payload, timeout=15)
-        response.raise_for_status()
-        result = response.json()
-        return result.get('id')
-    except Exception as e:
-        logger.error(f"Failed to create lookalike: {str(e)}")
-        raise
+    response = requests.post(url, data=payload, timeout=15)
+    response.raise_for_status()
+    return response.json().get('id')
 
 @retry(
     stop=stop_after_attempt(3),
@@ -222,82 +195,43 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
     if not os.path.exists(users_file):
         logger.error(f"File not found: {users_file}")
         return
-
-    logger.info(f"Extracting VIPs from {users_file}...")
-
     upload_data = []
     with open(users_file, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row.get('LOYALTY_LEVEL') == 'VIP' and row.get('EMAIL'):
                 email_hash = hash_data(row['EMAIL'])
-                # We include the LTV (Value) to enable Value-Based Lookalikes
                 ltv = row.get('LTV', '0')
-
-                # Validate LTV is numeric and warn if missing for VIP
-                if not ltv or ltv.strip() == '':
-                    logger.warning(f"VIP donor {row.get('EMAIL')} missing LTV, using 0")
-                    ltv = '0'
-                else:
-                    try:
-                        float(ltv)  # Validate numeric
-                    except ValueError:
-                        logger.warning(f"Invalid LTV '{ltv}' for {row.get('EMAIL')}, using 0")
-                        ltv = '0'
-
                 upload_data.append([email_hash, ltv])
-
-    total_count = len(upload_data)
-    if not total_count:
-        logger.warning("No VIP donors found.")
-        return
-
-    if dry_run:
-        logger.info(f"[DRY-RUN] Would upload {total_count} records to {audience_id}")
-        return
-
-    logger.info(f"Syncing {total_count} VIPs in batches of {batch_size} (Value-Based)...")
-    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}/users"
     
+    total_count = len(upload_data)
+    if not total_count: return
+    if dry_run:
+        logger.info(f"[DRY-RUN] Would upload {total_count} records.")
+        return
+
+    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}/users"
     for i in range(0, total_count, batch_size):
         batch = upload_data[i:i + batch_size]
         payload = {
             'payload': json.dumps({'schema': ['EMAIL', 'LOOKALIKES_VALUE'], 'data': batch}),
             'access_token': token
         }
-        response = requests.post(url, data=payload, timeout=30)
-        response.raise_for_status()
-        logger.info(f"SUCCESS: Batch {i//batch_size + 1} synchronized.")
+        requests.post(url, data=payload, timeout=30).raise_for_status()
+        logger.info(f"Batch {i//batch_size + 1} synced.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Sync donors to Meta Custom Audiences.")
-    parser.add_argument("--audience-name", type=str, default="VIP Donors (Toolkit)", help="Name of the Meta audience")
-    parser.add_argument("--users-file", type=str, default="aws_nonprofit_toolkit/datasets/small_nonprofit_users.csv", help="Path to users CSV")
-    parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for uploads")
-    parser.add_argument("--dry-run", action="store_true", help="Simulate without calling Meta API")
-    parser.add_argument("--sandbox", action="store_true", help="Use the Sandbox Ad Account")
-    parser.add_argument("--create-lookalike", action="store_true", help="Automatically trigger a 1%% lookalike (Sandbox only)")
-    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--audience-name", type=str, default="VIP Donors (Toolkit)")
+    parser.add_argument("--users-file", type=str, default="aws_nonprofit_toolkit/datasets/small_nonprofit_users.csv")
+    parser.add_argument("--sandbox", action="store_true")
+    parser.add_argument("--create-lookalike", action="store_true")
     args = parser.parse_args()
     
-    try:
-        # Validate and get the correct account ID
-        target_account_id = MetaConfig.validate(use_sandbox=args.sandbox)
-        mode_str = "SANDBOX" if args.sandbox else "LIVE"
-        logger.info(f"Starting sync in {mode_str} mode (Account: {target_account_id})")
-
-        aud_id = create_custom_audience(args.audience_name, target_account_id, dry_run=args.dry_run)
-        if aud_id:
-            upload_donors_to_audience(aud_id, args.users_file, batch_size=args.batch_size, dry_run=args.dry_run)
-            
-            # Automated Lookalike (Safety Check: Only in Sandbox for now)
-            if args.create_lookalike:
-                if args.sandbox or args.dry_run:
-                    lla_name = f"Lookalike (1%%) - {args.audience_name}"
-                    create_lookalike_audience(aud_id, target_account_id, lla_name, dry_run=args.dry_run)
-                else:
-                    logger.warning("Automated Lookalike creation is restricted to SANDBOX mode to prevent unintended production spend.")
-
-            logger.info("Sync process completed.")
-    except Exception as e:
-        logger.critical(f"Toolkit process failed: {str(e)}")
+    target_account_id = MetaConfig.validate(use_sandbox=args.sandbox)
+    aud_id = create_custom_audience(args.audience_name, target_account_id)
+    if aud_id:
+        upload_donors_to_audience(aud_id, args.users_file)
+        if wait_for_audience_ready(aud_id, target_account_id, 157): # 157 VIPs
+             if args.create_lookalike:
+                 create_lookalike_audience(aud_id, target_account_id, "Lookalike (1%)")
