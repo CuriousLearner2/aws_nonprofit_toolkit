@@ -8,7 +8,7 @@ from aws_nonprofit_toolkit.generate_datasets import generate_small_nonprofit, ge
 from aws_nonprofit_toolkit.config import SimulationConfig
 from aws_nonprofit_toolkit.uncover_signal_no_pandas import analyze_bias
 from aws_nonprofit_toolkit.audit_seed_quality import run_audit
-from aws_nonprofit_toolkit.meta_growth_engine import create_custom_audience, upload_donors_to_audience, create_lookalike_audience
+from aws_nonprofit_toolkit.meta_growth_engine import create_custom_audience, upload_donors_to_audience, create_lookalike_audience, verify_lookalike_created
 from aws_nonprofit_toolkit.personalize_sync import upload_to_s3
 
 logger = logging.getLogger()
@@ -72,6 +72,14 @@ def handler(event, context):
                 "Daily VIP Lookalike (1%)"
             )
             logger.info(f"  - Created lookalike audience (ID: {lookalike_id})")
+
+            # Verify lookalike was actually created
+            if lookalike_id:
+                is_valid = verify_lookalike_created(lookalike_id, sandbox_id, "Daily VIP Lookalike")
+                if is_valid:
+                    logger.info(f"  ✓ Verified: Lookalike audience is valid and ready")
+                else:
+                    logger.error(f"  ✗ Verification failed: Lookalike may not have been created properly")
         else:
             logger.info("  - Skipping automated Lookalike (Production safety enabled).")
 

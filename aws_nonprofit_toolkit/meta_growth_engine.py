@@ -125,6 +125,66 @@ def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_r
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
+def get_audience_details(audience_id: str, ad_account_id: str) -> Optional[dict]:
+    """Fetch audience metadata to verify it exists and check its properties."""
+    MetaConfig.validate()
+
+    url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}"
+    params = {
+        'fields': 'id,name,subtype,approximate_count,data_source,status',
+        'access_token': MetaConfig.ACCESS_TOKEN
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Failed to fetch audience {audience_id}: {str(e)}")
+        return None
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    reraise=True
+)
+def verify_lookalike_created(audience_id: str, ad_account_id: str, expected_name: str) -> bool:
+    """Verify that a lookalike audience was actually created."""
+    details = get_audience_details(audience_id, ad_account_id)
+
+    if not details:
+        logger.error(f"Could not fetch audience {audience_id}")
+        return False
+
+    # Check it exists and is a lookalike
+    is_lookalike = details.get('subtype') == 'LOOKALIKES'
+    has_name = expected_name in details.get('name', '')
+    has_size = details.get('approximate_count', 0) > 0
+
+    logger.info(f"Audience {audience_id} verification:")
+    logger.info(f"  - Name: {details.get('name')} (expected to contain '{expected_name}')")
+    logger.info(f"  - Type: {details.get('subtype')} (is lookalike: {is_lookalike})")
+    logger.info(f"  - Status: {details.get('status')}")
+    logger.info(f"  - Approximate size: {details.get('approximate_count')}")
+
+    if not is_lookalike:
+        logger.error(f"Audience {audience_id} is not a lookalike (subtype={details.get('subtype')})")
+        return False
+
+    if not has_name:
+        logger.warning(f"Audience name doesn't match. Got '{details.get('name')}', expected to contain '{expected_name}'")
+
+    return True
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    reraise=True
+)
 def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: str, dry_run: bool = False) -> Optional[str]:
     """
     Creates a 1% Lookalike Audience from a seed audience.
