@@ -6,7 +6,7 @@ import time
 import os
 import logging
 import argparse
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from dotenv import load_dotenv
 from tenacity import (
     retry,
@@ -28,12 +28,11 @@ load_dotenv()
 class MetaConfig:
     """Centralized configuration management for Meta API."""
     API_VERSION = "v21.0"
-    ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
     
     @classmethod
     def get_credentials(cls, use_sandbox: bool = False):
         """Fetch latest credentials from environment."""
-        token = cls.ACCESS_TOKEN
+        token = os.getenv("META_ACCESS_TOKEN")
         account_id = os.getenv("META_SANDBOX_AD_ACCOUNT_ID") if use_sandbox else os.getenv("META_AD_ACCOUNT_ID")
         return token, account_id
 
@@ -57,12 +56,9 @@ def hash_data(data: str) -> str:
 )
 def get_custom_audience_by_name(name: str, ad_account_id: str) -> Optional[str]:
     """Checks if a Custom Audience with the given name already exists."""
-    token, _ = MetaConfig.get_credentials()
+    token, _ = MetaConfig.get_credentials() 
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
-    params = {
-        'fields': 'name,id',
-        'access_token': token
-    }
+    params = {'fields': 'name,id', 'access_token': token}
     
     try:
         response = requests.get(url, params=params, timeout=10)
@@ -102,7 +98,6 @@ def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_r
 
     logger.info(f"Creating Custom Audience '{name}' on Meta (Account: act_{ad_account_id})...")
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/act_{ad_account_id}/customaudiences"
-
     payload = {
         'name': name,
         'subtype': 'CUSTOM',
@@ -113,23 +108,23 @@ def create_custom_audience(name: str, ad_account_id: Optional[str] = None, dry_r
 
     try:
         response = requests.post(url, data=payload, timeout=15)
-        if response.status_code != 200:
-            logger.error(f"Meta API Error Body: {response.text}")
         response.raise_for_status()
-        result = response.json()
-        return result.get('id')
+        return response.json().get('id')
     except Exception as e:
         logger.error(f"Failed to create audience: {str(e)}")
         raise
 
-def get_audience_details(audience_id: str, ad_account_id: str) -> Optional[dict]:
-    """Fetch audience metadata to verify it exists and check its properties."""
-    MetaConfig.validate()
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    reraise=True
+)
+def get_audience_details(audience_id: str, use_sandbox: bool = False) -> Optional[dict]:
+    """Fetch audience metadata with correct credential toggle."""
+    token, _ = MetaConfig.get_credentials(use_sandbox=use_sandbox)
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}"
-    params = {
-        'fields': 'id,name,subtype,approximate_count,data_source,status',
-        'access_token': MetaConfig.ACCESS_TOKEN
-    }
+    params = {'fields': 'id,name,subtype,approximate_count,status', 'access_token': token}
     try:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
@@ -138,15 +133,17 @@ def get_audience_details(audience_id: str, ad_account_id: str) -> Optional[dict]
         logger.error(f"Failed to fetch audience {audience_id}: {str(e)}")
         return None
 
-def wait_for_audience_ready(audience_id: str, ad_account_id: str, expected_count: int, max_wait_seconds: int = 3600, poll_interval: int = 600) -> bool:
-    """Poll audience until status is 'READY' or timeout (Max 1 hour)."""
+def wait_for_audience_ready(audience_id: str, expected_count: int, use_sandbox: bool = False, max_wait_seconds: int = 3600, poll_interval: int = 600) -> bool:
+    """Poll audience until status is 'READY' or timeout."""
     start_time = time.time()
     while time.time() - start_time < max_wait_seconds:
-        details = get_audience_details(audience_id, ad_account_id)
+        details = get_audience_details(audience_id, use_sandbox=use_sandbox)
         if not details: return False
+        
         status = details.get('status')
         approximate_count = details.get('approximate_count', 0)
-        logger.info(f"Audience status={status}, size={approximate_count}")
+        logger.info(f"Audience {audience_id}: status={status}, size={approximate_count}")
+        
         if status == 'READY':
             match_rate = (approximate_count / expected_count) if expected_count > 0 else 0
             if match_rate >= 0.40:
@@ -157,6 +154,14 @@ def wait_for_audience_ready(audience_id: str, ad_account_id: str, expected_count
                 return False
         time.sleep(poll_interval)
     return False
+
+def verify_lookalike_created(audience_id: str, use_sandbox: bool, expected_name: str) -> bool:
+    """Verify that a lookalike audience was actually created."""
+    details = get_audience_details(audience_id, use_sandbox=use_sandbox)
+    if not details: return False
+    is_lookalike = details.get('subtype') == 'LOOKALIKES'
+    logger.info(f"Verified Lookalike: {details.get('name')} (is_lookalike={is_lookalike})")
+    return is_lookalike
 
 @retry(
     stop=stop_after_attempt(3),
@@ -189,12 +194,13 @@ def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: s
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
-def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int = 5000, dry_run: bool = False):
-    """Uploads hashed emails to a specific Meta audience."""
+def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int = 5000, dry_run: bool = False) -> int:
+    """Uploads hashed emails to a specific Meta audience and returns VIP count."""
     token, _ = MetaConfig.get_credentials()
     if not os.path.exists(users_file):
         logger.error(f"File not found: {users_file}")
-        return
+        return 0
+    
     upload_data = []
     with open(users_file, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
@@ -205,10 +211,8 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
                 upload_data.append([email_hash, ltv])
     
     total_count = len(upload_data)
-    if not total_count: return
-    if dry_run:
-        logger.info(f"[DRY-RUN] Would upload {total_count} records.")
-        return
+    if total_count == 0: return 0
+    if dry_run: return total_count
 
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}/users"
     for i in range(0, total_count, batch_size):
@@ -219,6 +223,7 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
         }
         requests.post(url, data=payload, timeout=30).raise_for_status()
         logger.info(f"Batch {i//batch_size + 1} synced.")
+    return total_count
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -228,10 +233,17 @@ if __name__ == "__main__":
     parser.add_argument("--create-lookalike", action="store_true")
     args = parser.parse_args()
     
-    target_account_id = MetaConfig.validate(use_sandbox=args.sandbox)
-    aud_id = create_custom_audience(args.audience_name, target_account_id)
-    if aud_id:
-        upload_donors_to_audience(aud_id, args.users_file)
-        if wait_for_audience_ready(aud_id, target_account_id, 157): # 157 VIPs
-             if args.create_lookalike:
-                 create_lookalike_audience(aud_id, target_account_id, "Lookalike (1%)")
+    try:
+        target_account_id = MetaConfig.validate(use_sandbox=args.sandbox)
+        aud_id = create_custom_audience(args.audience_name, target_account_id)
+        if aud_id:
+            vip_count = upload_donors_to_audience(aud_id, args.users_file)
+            logger.info(f"Uploaded {vip_count} VIP donors.")
+            
+            if wait_for_audience_ready(aud_id, vip_count, use_sandbox=args.sandbox):
+                 if args.create_lookalike:
+                     lla_id = create_lookalike_audience(aud_id, target_account_id, "Lookalike (1%)")
+                     if lla_id:
+                         verify_lookalike_created(lla_id, args.sandbox, "Lookalike (1%)")
+    except Exception as e:
+        logger.critical(f"Toolkit process failed: {str(e)}")
