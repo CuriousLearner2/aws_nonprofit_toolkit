@@ -150,6 +150,55 @@ def get_audience_details(audience_id: str, ad_account_id: str) -> Optional[dict]
     retry=retry_if_exception_type(requests.exceptions.RequestException),
     reraise=True
 )
+def wait_for_audience_ready(audience_id: str, ad_account_id: str, max_wait_seconds: int = 600, poll_interval: int = 30) -> bool:
+    """Poll audience until status is 'READY' or timeout.
+
+    Args:
+        audience_id: The audience ID to monitor
+        ad_account_id: The ad account ID
+        max_wait_seconds: Maximum seconds to wait (default: 10 minutes)
+        poll_interval: Seconds between polls (default: 30)
+
+    Returns:
+        True if audience becomes READY, False if timeout or error
+
+    Status progression:
+        BUILDING → READY (usually 5-30 minutes in sandbox)
+    """
+    import time
+
+    start_time = time.time()
+    poll_count = 0
+
+    while time.time() - start_time < max_wait_seconds:
+        details = get_audience_details(audience_id, ad_account_id)
+
+        if not details:
+            logger.error(f"Failed to fetch audience {audience_id}")
+            return False
+
+        status = details.get('status')
+        approximate_count = details.get('approximate_count', 0)
+        elapsed = int(time.time() - start_time)
+
+        logger.info(f"Poll #{poll_count + 1} (elapsed {elapsed}s): status={status}, size={approximate_count}")
+
+        if status == 'READY':
+            logger.info(f"✓ Audience {audience_id} is READY after {elapsed} seconds")
+            return True
+
+        if status == 'PAUSED' or status == 'DELETED':
+            logger.error(f"Audience {audience_id} has unexpected status: {status}")
+            return False
+
+        # Status is BUILDING, wait and poll again
+        time.sleep(poll_interval)
+        poll_count += 1
+
+    logger.error(f"Audience {audience_id} did not reach READY status within {max_wait_seconds} seconds")
+    return False
+
+
 def verify_lookalike_created(audience_id: str, ad_account_id: str, expected_name: str) -> bool:
     """Verify that a lookalike audience was actually created."""
     details = get_audience_details(audience_id, ad_account_id)
