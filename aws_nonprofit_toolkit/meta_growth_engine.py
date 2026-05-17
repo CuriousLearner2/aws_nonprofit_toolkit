@@ -242,10 +242,11 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
     for i in range(0, total_count, batch_size):
         batch = upload_data[i:i + batch_size]
         payload = {
-            'payload': json.dumps({'schema': ['EMAIL', 'LOOKALIKES_VALUE'], 'data': batch}),
-            'access_token': token
+            'payload': json.dumps({'schema': ['EMAIL'], 'data': batch})
         }
-        requests.post(url, data=payload, timeout=30).raise_for_status()
+        headers = {'Authorization': f'Bearer {token}'}
+        
+        requests.post(url, data=payload, headers=headers, timeout=30).raise_for_status()
         logger.info(f"Batch {i//batch_size + 1} synced.")
     return total_count
 
