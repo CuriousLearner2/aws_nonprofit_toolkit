@@ -3,44 +3,26 @@ import os
 import logging
 import argparse
 from typing import Optional
-from dotenv import load_dotenv
 from botocore.exceptions import ClientError
 from tenacity import retry, stop_after_attempt, wait_exponential
+from aws_nonprofit_toolkit.your_config import AWSConfig
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("personalize_sync")
 
-# Load configuration
-load_dotenv()
-
-class AWSConfig:
-    ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
-    SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-    REGION = os.getenv("AWS_REGION", "us-east-1")
-    S3_BUCKET = os.getenv("AWS_PERSONALIZE_BUCKET")
-    
-    @classmethod
-    def validate(cls, bucket_override=None):
-        bucket = bucket_override or cls.S3_BUCKET
-        if not all([cls.ACCESS_KEY, cls.SECRET_KEY, bucket]):
-            raise ValueError("Missing AWS credentials or S3 bucket configuration.")
-
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10), reraise=True)
 def upload_to_s3(file_path: str, bucket: str, object_name: Optional[str] = None):
-    """Uploads a synthetic dataset to S3 for Amazon Personalize import."""
+    """Uploads a synthetic dataset to S3 for Amazon Personalize import using the personalize-sandbox profile."""
     if object_name is None:
         object_name = os.path.basename(file_path)
 
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=AWSConfig.ACCESS_KEY,
-        aws_secret_access_key=AWSConfig.SECRET_KEY,
-        region_name=AWSConfig.REGION
-    )
+    # Use the profile configured via `aws configure --profile personalize-sandbox`
+    session = boto3.Session(profile_name='personalize-sandbox')
+    s3_client = session.client('s3', region_name=AWSConfig.REGION)
 
     try:
-        logger.info(f"Uploading {file_path} to s3://{bucket}/{object_name}...")
+        logger.info(f"Uploading {file_path} to s3://{bucket}/{object_name} using personalize-sandbox profile...")
         s3_client.upload_file(file_path, bucket, object_name)
         logger.info("SUCCESS: File uploaded to S3.")
     except ClientError as e:
@@ -81,24 +63,22 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    target_bucket = args.bucket or AWSConfig.S3_BUCKET
+    # ... (args parsing setup) ...
+    
+    target_bucket = args.bucket or AWSConfig.BUCKET
     s3_path = args.s3_path or os.path.basename(args.dataset)
     
     try:
-        AWSConfig.validate(bucket_override=target_bucket)
-        if os.path.exists(args.dataset):
-            # Step 1: Upload to S3
-            upload_to_s3(args.dataset, target_bucket, object_name=s3_path)
-            
-            # Step 2: Trigger Personalize Import (Optional based on ARNs)
-            if args.dataset_arn and args.role_arn:
-                trigger_personalize_import(args.dataset_arn, s3_path, args.role_arn)
-            else:
-                logger.info("SKIP: Personalize import not triggered (Missing --dataset-arn or --role-arn).")
-                logger.info("Data is ready in S3. Use the AWS Console to finish synchronization.")
-
-            logger.info("Sync process completed.")
+        # Step 1: Upload to S3
+        upload_to_s3(args.dataset, target_bucket, object_name=s3_path)
+        
+        # Step 2: Trigger Personalize Import (Optional based on ARNs)
+        if args.dataset_arn and args.role_arn:
+            trigger_personalize_import(args.dataset_arn, s3_path, args.role_arn)
         else:
-            logger.error(f"Dataset not found at {args.dataset}")
+            logger.info("SKIP: Personalize import not triggered (Missing --dataset-arn or --role-arn).")
+            logger.info("Data is ready in S3. Use the AWS Console to finish synchronization.")
+
+        logger.info("Sync process completed.")
     except Exception as e:
         logger.error(f"Personalize sync failed: {e}")
