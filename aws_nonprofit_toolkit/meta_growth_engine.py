@@ -231,15 +231,14 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
     if not os.path.exists(users_file):
         logger.error(f"File not found: {users_file}")
         return 0
-    
+
     upload_data = []
     with open(users_file, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row.get('LOYALTY_LEVEL') == 'VIP' and row.get('EMAIL'):
                 email_hash = hash_data(row['EMAIL'])
-                ltv = row.get('LTV', '0')
-                upload_data.append([email_hash, ltv])
+                upload_data.append([email_hash])
 
     total_count = len(upload_data)
     if total_count == 0: return 0
@@ -249,12 +248,12 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
     for i in range(0, total_count, batch_size):
         batch = upload_data[i:i + batch_size]
         payload = {
-            'payload': json.dumps({'schema': ['EMAIL_SHA256', 'LOOKALIKES_VALUE'], 'data': batch}),
+            'payload': json.dumps({'schema': ['EMAIL'], 'data': batch}),
             'access_token': token
         }
-        
+
         requests.post(url, data=payload, timeout=30).raise_for_status()
-        logger.info(f"Batch {i//batch_size + 1} synced.")
+        logger.info(f"Batch {i//batch_size + 1} synced ({len(batch)} emails).")
     return total_count
 
 
