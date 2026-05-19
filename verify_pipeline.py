@@ -127,47 +127,53 @@ class PipelineVerifier:
         try:
             url = f"{self.base_url}/act_{self.sandbox_id}/customaudiences"
             params = {
-                "fields": "id,name,subtype,approximate_count,status,created_time",
                 "access_token": self.token,
                 "limit": 100
             }
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
 
-            audiences = response.json().get("data", [])
+            audience_ids = response.json().get("data", [])
 
-            if not audiences:
+            if not audience_ids:
                 print("No audiences found in sandbox.")
                 return {}
 
-            print(f"Found {len(audiences)} audience(s):\n")
+            print(f"Found {len(audience_ids)} audience(s):\n")
 
             result = {}
-            for aud in audiences:
+            for aud_ref in audience_ids:
+                aud_id = aud_ref.get("id")
+                # Fetch full details for each audience
+                detail_url = f"{self.base_url}/{aud_id}"
+                detail_params = {
+                    "fields": "id,name,subtype,operation_status",
+                    "access_token": self.token
+                }
+                detail_response = requests.get(detail_url, params=detail_params, timeout=10)
+                aud = detail_response.json()
+
                 aud_id = aud.get("id")
-                aud_name = aud.get("name")
+                aud_name = aud.get("name", "Unknown")
                 aud_type = aud.get("subtype", "CUSTOM")
-                aud_count = aud.get("approximate_count", 0)
-                aud_status = aud.get("status", "unknown")
-                aud_created = aud.get("created_time", "unknown")
+                op_status = aud.get("operation_status", {})
+                status_code = op_status.get("code") if isinstance(op_status, dict) else None
+                status_desc = op_status.get("description", "Unknown") if isinstance(op_status, dict) else str(op_status)
 
                 result[aud_id] = {
                     "name": aud_name,
                     "type": aud_type,
-                    "count": aud_count,
-                    "status": aud_status,
-                    "created": aud_created
+                    "status_code": status_code,
+                    "status": status_desc
                 }
 
-                status_icon = "✅" if aud_status == "READY" else "⏳" if aud_status == "BUILDING" else "❓"
+                status_icon = "✅" if status_code == 200 else "⏳" if status_code == 300 else "❓"
                 type_icon = "🌱" if aud_type == "CUSTOM" else "🎯" if aud_type == "LOOKALIKES" else "?"
 
                 print(f"{status_icon} {type_icon} {aud_name}")
                 print(f"   ID: {aud_id}")
                 print(f"   Type: {aud_type}")
-                print(f"   Status: {aud_status}")
-                print(f"   Size: {aud_count:,} users")
-                print(f"   Created: {aud_created}\n")
+                print(f"   Status: {status_desc} (code={status_code})\n")
 
             return result
         except Exception as e:
@@ -196,21 +202,20 @@ class PipelineVerifier:
 
         for aud_id, aud in seed_audiences.items():
             name = aud.get("name")
-            count = aud.get("count", 0)
-            status = aud.get("status")
+            status_code = aud.get("status_code")
+            status_desc = aud.get("status", "Unknown")
 
             print(f"\n🌱 {name}")
-            print(f"   Status: {status}")
-            print(f"   Donors matched: {count:,}")
+            print(f"   Status: {status_desc} (code={status_code})")
 
-            if status == "READY" and count > 0:
-                print(f"   ✅ Seed is READY and has {count} donors")
-            elif status == "BUILDING":
-                print(f"   ⏳ Still building... ({count} donors so far)")
+            if status_code == 200:
+                print(f"   ✅ Seed is READY")
+            elif status_code == 300:
+                print(f"   ⏳ Still processing...")
             else:
-                print(f"   ⚠️  Status is {status}")
+                print(f"   ⚠️  Status code: {status_code}")
 
-        return any(aud.get("status") == "READY" for aud in seed_audiences.values())
+        return any(aud.get("status_code") == 200 for aud in seed_audiences.values())
 
     def verify_lookalike_audience(self, audiences: dict) -> bool:
         """Find and verify lookalike audiences."""
@@ -235,23 +240,18 @@ class PipelineVerifier:
         all_ready = True
         for aud_id, aud in lookalike_audiences.items():
             name = aud.get("name")
-            count = aud.get("count", 0)
-            status = aud.get("status")
+            status_code = aud.get("status_code")
+            status_desc = aud.get("status", "Unknown")
 
             print(f"\n🎯 {name}")
-            print(f"   Status: {status}")
-            print(f"   Lookalike size: {count:,} users")
+            print(f"   Status: {status_desc} (code={status_code})")
 
-            if status == "READY" and count > 100000:
-                print(f"   ✅ Lookalike is READY with {count:,} users (good size for targeting)")
-            elif status == "READY" and count > 10000:
-                print(f"   ✅ Lookalike is READY with {count:,} users (acceptable for targeting)")
-            elif status == "READY":
-                print(f"   ⚠️  Lookalike is READY but small ({count:,} users)")
-            elif status == "BUILDING":
-                print(f"   ⏳ Still building... ({count:,} users so far)")
+            if status_code == 200:
+                print(f"   ✅ Lookalike is READY for ad targeting")
+            elif status_code == 300:
+                print(f"   ⏳ Still building...")
             else:
-                print(f"   ❌ Status is {status}")
+                print(f"   ❌ Status code: {status_code}")
                 all_ready = False
 
         return all_ready

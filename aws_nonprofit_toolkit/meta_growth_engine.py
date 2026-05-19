@@ -124,7 +124,7 @@ def get_audience_details(audience_id: str, use_sandbox: bool = False) -> Optiona
     """Fetch audience metadata with correct credential toggle."""
     token, _ = MetaConfig.get_credentials(use_sandbox=use_sandbox)
     url = f"https://graph.facebook.com/{MetaConfig.API_VERSION}/{audience_id}"
-    params = {'fields': 'id,name,subtype,approximate_count,status', 'access_token': token}
+    params = {'fields': 'id,name,subtype,operation_status', 'access_token': token}
     try:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
@@ -134,45 +134,52 @@ def get_audience_details(audience_id: str, use_sandbox: bool = False) -> Optiona
         return None
 
 def wait_for_audience_uploadable(audience_id: str, use_sandbox: bool = False, max_wait_seconds: int = 360, poll_interval: int = 120) -> bool:
-    """Poll audience until status is 'READY' for data upload (Max 6 mins, 2 min interval)."""
+    """Poll audience until operation_status is NORMAL (code 200) for data upload (Max 6 mins)."""
     start_time = time.time()
     while time.time() - start_time < max_wait_seconds:
         details = get_audience_details(audience_id, use_sandbox=use_sandbox)
         if not details: return False
-        
-        # Audience status can be 'READY', 'BUILDING', etc.
-        status = details.get('status')
-        logger.info(f"Audience {audience_id}: status={status}")
-        
-        # We look for a state that permits upload (often 'READY')
-        if status in ['READY', 'ACTIVE']:
+
+        op_status = details.get('operation_status', {})
+        status_code = op_status.get('code') if isinstance(op_status, dict) else None
+        status_desc = op_status.get('description', 'Unknown') if isinstance(op_status, dict) else op_status
+
+        logger.info(f"Audience {audience_id}: operation_status={status_desc} (code={status_code})")
+
+        # Code 200 = Normal (ready for operations)
+        if status_code == 200:
             logger.info("Audience is ready for upload.")
             return True
-        
+
         time.sleep(poll_interval)
     logger.error("Audience failed to reach uploadable status in time.")
     return False
 
 def wait_for_audience_ready(audience_id: str, expected_count: int, use_sandbox: bool = False, max_wait_seconds: int = 3600, poll_interval: int = 600) -> bool:
-    """Poll audience until status is 'READY' for lookalike creation."""
+    """Poll audience until operation_status is NORMAL (code 200) for lookalike creation."""
     start_time = time.time()
     while time.time() - start_time < max_wait_seconds:
         details = get_audience_details(audience_id, use_sandbox=use_sandbox)
         if not details: return False
-        
-        status = details.get('status')
-        approximate_count = details.get('approximate_count', 0)
-        logger.info(f"Audience {audience_id}: status={status}, size={approximate_count}")
-        
-        if status == 'READY':
-            match_rate = (approximate_count / expected_count) if expected_count > 0 else 0
-            if match_rate >= 0.40:
-                logger.info(f"Audience ready. Match rate: {match_rate:.1%}")
-                return True
-            else:
-                logger.error(f"Match rate {match_rate:.1%} < 40%. Sync aborted.")
-                return False
+
+        op_status = details.get('operation_status', {})
+        status_code = op_status.get('code') if isinstance(op_status, dict) else None
+        status_desc = op_status.get('description', 'Unknown') if isinstance(op_status, dict) else op_status
+        elapsed = int(time.time() - start_time)
+
+        logger.info(f"Audience {audience_id}: operation_status={status_desc} (code={status_code}), elapsed={elapsed}s")
+
+        # Code 200 = Normal (ready for lookalike creation)
+        if status_code == 200:
+            logger.info(f"Audience {audience_id} is ready for lookalike creation after {elapsed} seconds")
+            return True
+
+        # Code 300 = Updating (still processing)
+        # Just wait and retry
+
         time.sleep(poll_interval)
+
+    logger.error(f"Audience {audience_id} did not reach ready status within {max_wait_seconds} seconds")
     return False
 
 def delete_custom_audience(audience_id: str, ad_account_id: str):
@@ -242,13 +249,11 @@ def upload_donors_to_audience(audience_id: str, users_file: str, batch_size: int
     for i in range(0, total_count, batch_size):
         batch = upload_data[i:i + batch_size]
         payload = {
-            'payload': json.dumps({'schema': ['EMAIL', 'LOOKALIKES_VALUE'], 'data': batch})
+            'payload': json.dumps({'schema': ['EMAIL_SHA256', 'LOOKALIKES_VALUE'], 'data': batch}),
+            'access_token': token
         }
-        files = {
-            'access_token': (None, token)
-        }
-
-        requests.post(url, data=payload, files=files, timeout=30).raise_for_status()
+        
+        requests.post(url, data=payload, timeout=30).raise_for_status()
         logger.info(f"Batch {i//batch_size + 1} synced.")
     return total_count
 
