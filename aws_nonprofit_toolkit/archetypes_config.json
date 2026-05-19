@@ -1,0 +1,11 @@
+{
+  "_comment": "Customize these mappings for your nonprofit. Keys = ITEM_ID from Personalize, Values = Donor Archetype",
+  "ENVIRONMENT": "Eco-Conscious",
+  "CLEAN_WATER": "Health Advocate",
+  "DISASTER_RELIEF": "Emergency Responder",
+  "EDUCATION": "Knowledge Seeker",
+  "COMMUNITY_HEALTH": "Health Advocate",
+  "ARTS_CULTURE": "Culture Enthusiast",
+  "ANIMAL_WELFARE": "Animal Lover",
+  "POVERTY_ALLEVIATION": "Social Justice Champion"
+}
