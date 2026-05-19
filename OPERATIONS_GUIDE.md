@@ -261,30 +261,97 @@ Once you see both audiences in Meta Ads Manager:
 ## 4. Track 2: Personalization (Retention)
 Now that we've found new donors, this track uses machine learning to keep them engaged for the long term.
 
-1.  **Prepare Your Data**: Ensure your donor interaction file (clicks, opens, donations) is saved as `aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv`.
-2.  **Send to AWS**: Run the tool to upload this file to your secure AWS folder (the "bucket"):
+### 4.1 Upload Interaction Data
+
+1.  **Prepare Your Data**: Your interaction file (user_id, item_id, timestamp, event_type) should be in CSV format at `aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv`.
+
+2.  **Upload to AWS S3**:
     ```bash
-    python3 personalize_sync.py --dataset aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv
+    python3 aws_nonprofit_toolkit/personalize_sync.py \
+      --dataset aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv \
+      --bucket YOUR_S3_BUCKET \
+      --dataset-arn YOUR_DATASET_ARN \
+      --role-arn YOUR_IAM_ROLE_ARN
     ```
-4. **Start Training**: Once uploaded, log into the [AWS Personalize Console](https://console.aws.amazon.com/personalize/). Select your "Solution" and click **Train**.
-    *   **Cost Saving Strategy**: Train the model but **DO NOT** create a Campaign. Campaigns incur hourly costs. Instead, use **Batch Inference Jobs** once the model is trained to generate segments on-demand, and delete the Solution Version afterwards.
-5. **Identify Archetypes**: Once training is complete and your batch job generates recommendations, run the segmentation tool to get your donor segments:
+    
+    **Parameters:**
+    - `--dataset`: Path to your interaction CSV file (required)
+    - `--bucket`: S3 bucket name (required)
+    - `--s3-path`: Where to store the file in S3 (optional, defaults to filename)
+    - `--dataset-arn`: Personalize Dataset ARN (optional—only if triggering import immediately)
+    - `--role-arn`: IAM Role ARN with Personalize permissions (optional—only if triggering import)
+
+    **Note:** If you omit the ARN arguments, the data is uploaded to S3 and you can import it manually via the AWS Console.
+
+### 4.2 Train Your Model
+
+3.  **Start Training**: Log into the [AWS Personalize Console](https://console.aws.amazon.com/personalize/). Select your "Solution" and click **Train**.
+    
+    **Cost Optimization:** Train the model but **DO NOT** create a Campaign (hourly costs). Instead, use Batch Inference Jobs (pay per job) to generate segments on-demand.
+
+### 4.3 Run Batch Inference (Cost-Effective)
+
+4.  **Generate Donor Segments via Batch Job**:
     ```bash
-    python3 aws_nonprofit_toolkit/personalize_segmentation.py --user-id USER_ID --campaign-arn YOUR_CAMPAIGN_ARN
+    python3 aws_nonprofit_toolkit/personalize_batch_inference.py \
+      --solution-version-arn YOUR_SOLUTION_VERSION_ARN \
+      --input-data s3://YOUR_BUCKET/donor_ids.json \
+      --output-s3 s3://YOUR_BUCKET/results/ \
+      --role-arn YOUR_IAM_ROLE_ARN
+    ```
+    
+    **Parameters:**
+    - `--solution-version-arn`: ARN of your trained solution (required)
+    - `--input-data`: S3 path to donor ID file (required, format: `s3://bucket/path`)
+    - `--output-s3`: S3 path for results (required, format: `s3://bucket/path/`)
+    - `--role-arn`: IAM role with Personalize permissions (required)
+    
+    **Input File Format** (`donor_ids.json`):
+    ```json
+    {"userId": "donor_123"}
+    {"userId": "donor_456"}
     ```
 
-    *   **USER_ID**: The ID of the donor you want to segment.
-    *   **CAMPAIGN_ARN**: The Amazon Resource Name (ARN) of your trained Personalize Campaign.
+### 4.4 Identify Donor Archetypes
 
-6. **Customize Archetypes**: You can change how donors are categorized by editing the `aws_nonprofit_toolkit/archetypes_config.json` file.
-    *   **How**: Change the text on the right side of the colon to whatever label fits your organization (e.g., change "Eco-Conscious" to "Environmental Supporter").
-    *   **Keep**: The keys on the left (e.g., "ENVIRONMENT") must match the item categories in your interaction data.
+5.  **Segment Donors by Archetype**: Once the batch job completes, run the segmentation tool:
+    ```bash
+    python3 aws_nonprofit_toolkit/personalize_segmentation.py \
+      --user-id donor_123 \
+      --json
+    ```
+    
+    **Parameters:**
+    - `--user-id`: Donor ID to segment (required)
+    - `--campaign-arn`: Personalize Campaign ARN (optional, uses env var if not provided)
+    - `--archetypes-config`: Custom archetypes JSON file (optional)
+    - `--json`: Output as JSON instead of human-readable format (optional)
+
+### 4.5 Customize Donor Archetypes
+
+6. **Customize Archetypes**: Edit `aws_nonprofit_toolkit/archetypes_config.json` to define your donor segments.
+    
+    Example:
+    ```json
+    {
+      "ENVIRONMENT": "Eco-Conscious",
+      "DISASTER_RELIEF": "Emergency Responder",
+      "EDUCATION": "Knowledge Seeker"
+    }
+    ```
+    
+    **How to customize:**
+    - Keys (left side) must match your interaction data categories
+    - Values (right side) are the donor archetype labels you define
+    - Example: Change "Eco-Conscious" to "Environmental Supporter"
 
 
-### 4.1 Alarms and Notifications
+### 4.6 Monitoring & Alarms
+
 The system is pre-configured with two critical alarms:
 1.  **LambdaErrorAlarm**: Triggers if the sync fails.
 2.  **DLQDepthAlarm**: Triggers if a failure is persistent and requires manual intervention.
+
 *Note: You must manually subscribe your email to an SNS Topic to receive these alerts.*
 
 ---
