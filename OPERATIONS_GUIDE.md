@@ -118,10 +118,26 @@ This section walks you through running the donor sync pipeline from start to fin
 ### Prerequisites
 
 Before starting, make sure you have:
-- ✅ `.env` file with your Meta credentials set up (in the `aws_nonprofit_toolkit` directory)
-- ✅ A CSV file with your donor data (or use the test file: `tests/fixtures/test_donors.csv`)
-- ✅ Terminal/Command Prompt access to your computer
-- ✅ Your sandbox account ID (you got this from Meta Business Suite)
+
+**1. `.env` file with your Meta credentials**
+   - **Location:** Inside the `aws_nonprofit_toolkit` folder (the main toolkit directory)
+   - **File name:** `.env` (starts with a dot)
+   - **Contents:** Should have `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`, `META_SANDBOX_AD_ACCOUNT_ID`
+   - **How to create:** Run `cp .env.example .env` in the toolkit directory and edit it with your credentials
+   - **Important:** This file is private - never upload it to GitHub or share it
+
+**2. A CSV file with your donor data**
+   - For testing: Use `tests/fixtures/test_donors.csv` (already included)
+   - For real data: Upload your donor CSV file to the toolkit folder
+   - **Required columns:** EMAIL, LOYALTY_LEVEL, LTV
+
+**3. Terminal/Command Prompt**
+   - Mac: Use "Terminal" app
+   - Windows: Use "Command Prompt" or "PowerShell"
+
+**4. Your sandbox account ID**
+   - This is the number you set in the `.env` file as `META_SANDBOX_AD_ACCOUNT_ID`
+   - You got this from Meta Business Suite (Settings → Ad Accounts)
 
 ### Step 1: Open Your Terminal
 

@@ -5,11 +5,30 @@ Follow these steps to execute the **Dual-Track Pipeline** strategy.
 ---
 
 ## 1. Setup
-Create a `.env` file in the toolkit directory:
-```bash
-cp .env.example .env
-# Open .env and add your META and AWS credentials.
-```
+
+### Create `.env` File
+
+The `.env` file stores your credentials. It must be placed in the `aws_nonprofit_toolkit` directory (the main toolkit folder).
+
+1. **Navigate to the toolkit directory:**
+   ```bash
+   cd aws_nonprofit_toolkit
+   ```
+
+2. **Create `.env` from the example:**
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Edit the `.env` file** and add your Meta and AWS credentials:
+   - `META_ACCESS_TOKEN` - Your Meta System User token
+   - `META_AD_ACCOUNT_ID` - Your production ad account ID  
+   - `META_SANDBOX_AD_ACCOUNT_ID` - Your sandbox ad account ID
+   - AWS credentials (if using Personalize track)
+
+**File location:** `/path/to/aws_nonprofit_toolkit/.env`
+
+**Important:** Never commit this file to git (it's in `.gitignore`). Keep your credentials private.
 
 ---
 
