@@ -39,10 +39,82 @@ The toolkit performs automated quality checks before every data synchronization.
 
 ---
 
-## 3. Monitoring & Observability
+## 3. Pipeline Verification & Troubleshooting
+
+Use the `verify_pipeline.py` script to check sandbox status and verify your pipeline is ready for ad targeting.
+
+### 3.1 Quick Verification
+
+```bash
+cd aws_nonprofit_toolkit
+python3 verify_pipeline.py
+```
+
+### 3.2 What the Verification Script Checks
+
+The script performs **6 verification steps**:
+
+1. **Credentials** - Validates that `META_ACCESS_TOKEN`, `META_SANDBOX_AD_ACCOUNT_ID`, and `META_AD_ACCOUNT_ID` are set in `.env`
+2. **Token Validity** - Tests the access token against Meta's Debug API
+3. **Sandbox Account** - Confirms the sandbox account is ACTIVE
+4. **List Audiences** - Shows all audiences in your sandbox with:
+   - Status (READY, BUILDING, PAUSED)
+   - Type (CUSTOM seed vs LOOKALIKES)
+   - Approximate user count
+   - Creation timestamp
+5. **Seed Audience Verification** - Checks if your seed audience:
+   - Has status = READY
+   - Has matched donors > 0
+   - Shows match rate percentage
+6. **Lookalike Verification** - Checks if your lookalike:
+   - Has status = READY
+   - Has sufficient size for ad targeting (100k+ users recommended)
+   - Is ready for campaigns
+
+### 3.3 Verification Workflow
+
+**Before running the pipeline:**
+```bash
+python3 verify_pipeline.py
+```
+Ensures credentials are valid and sandbox account is accessible.
+
+**After running the pipeline:**
+```bash
+python3 verify_pipeline.py
+```
+Confirms audiences were created and have reached READY status with acceptable match rates.
+
+**Before launching ads:**
+```bash
+python3 verify_pipeline.py
+```
+Final check that lookalike audience is READY and has sufficient size for ad targeting.
+
+### 3.4 Understanding the Output
+
+**Success Indicators:**
+- ✅ All credential checks pass
+- ✅ Token is valid
+- ✅ Sandbox account is ACTIVE
+- ✅ Seed audience: Status = READY, Size > 0, Match rate >= 40%
+- ✅ Lookalike audience: Status = READY, Size > 100,000 users
+
+**When you see:** `Pipeline Status: READY FOR AD TARGETING` → You can launch campaigns
+
+**Common Issues:**
+- ❌ Token validation fails → Generate new System User token in Meta Events Manager
+- ❌ Account not ACTIVE → Check your sandbox account ID and permissions
+- ❌ No audiences found → Run the pipeline with `--create-lookalike` flag
+- ❌ Match rate < 40% → Email list may be stale; re-upload with fresh data
+- ❌ Lookalike size too small → Seed audience too small; increase VIP donor count
+
+---
+
+## 4. Monitoring & Observability
 Once deployed, use **Amazon CloudWatch** to track the health of your automated synchronization.
 
-### 2.1 Alarms and Notifications
+### 4.1 Alarms and Notifications
 The system is pre-configured with two critical alarms:
 1.  **LambdaErrorAlarm**: Triggers if the sync fails.
 2.  **DLQDepthAlarm**: Triggers if a failure is persistent and requires manual intervention.
@@ -50,10 +122,10 @@ The system is pre-configured with two critical alarms:
 
 ---
 
-## 3. Credential Management Protocol
+## 5. Credential Management Protocol
 To maintain security, organizations should follow this manual rotation protocol every 90 days.
 
-### 3.1 Manual Rotation Protocol (User-Executed)
+### 5.1 Manual Rotation Protocol (User-Executed)
 1.  **Generate New Key**: Create a new token in Meta Events Manager or AWS IAM.
 2.  **Update Config**: Update the environment variables in the Lambda configuration or AWS Secrets Manager.
 3.  **Verify**: Run a `meta_growth_engine.py --dry-run` locally to ensure the new key is valid.
@@ -61,7 +133,7 @@ To maintain security, organizations should follow this manual rotation protocol 
 
 ---
 
-## 4. Troubleshooting Meta API Errors
+## 6. Troubleshooting Meta API Errors
 
 | Error Code | Description | Resolution |
 | :--- | :--- | :--- |

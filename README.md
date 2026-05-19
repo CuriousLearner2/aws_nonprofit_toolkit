@@ -91,12 +91,22 @@ python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
 
 ---
 
+## 🔄 Workflows & Monitoring
+
+**For operational workflows, verification procedures, and troubleshooting, see the [OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md)**, which covers:
+- Pipeline verification and sandbox status reporting
+- Deployment to AWS Lambda with automated scheduling
+- Monitoring CloudWatch alarms and logs
+- Troubleshooting common errors
+
+---
+
 ## 📖 Deep Dive Documentation
 *   **[PRD.md](PRD.md)**: 📄 Product requirements and core "Dual-Track" vision.
 *   **[PIPELINE_ARCHITECTURE.md](PIPELINE_ARCHITECTURE.md)**: 🆕 Technical breakdown of the Human-Labeling vs. ML-Inference tracks.
 *   **[QUICKSTART.md](QUICKSTART.md)**: Copy-paste commands for rapid deployment.
 *   **[SETUP_GUIDE.md](SETUP_GUIDE.md)**: Detailed instructions for obtaining provider credentials.
-*   **[OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md)**: Deployment on AWS Lambda, CloudWatch monitoring, and credential rotation.
+*   **[OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md)**: Deployment on AWS Lambda, CloudWatch monitoring, credential rotation, and pipeline verification.
 *   **[CASE_STUDY.md](CASE_STUDY.md)**: Deep dive into the Food Bank USA 4x ROI results.
 *   **[CONFIG.md](CONFIG.md)**: Full parameter list for customizing bias weights and demographics.
 *   **[VALIDATION.md](VALIDATION.md)**: Mathematical success criteria and Pareto distribution benchmarks.
