@@ -274,7 +274,10 @@ Now that we've found new donors, this track uses machine learning to keep them e
     *   **USER_ID**: The ID of the donor you want to segment.
     *   **CAMPAIGN_ARN**: The Amazon Resource Name (ARN) of your trained Personalize Campaign.
 
-5.  **Targeted Engagement**: Use these segments to send personalized emails or newsletters based on what each donor likes (e.g., "Eco-Conscious" vs. "Emergency Relief").
+6. **Customize Archetypes**: You can change how donors are categorized by editing the `aws_nonprofit_toolkit/archetypes_config.json` file.
+    *   **How**: Change the text on the right side of the colon to whatever label fits your organization (e.g., change "Eco-Conscious" to "Environmental Supporter").
+    *   **Keep**: The keys on the left (e.g., "ENVIRONMENT") must match the item categories in your interaction data.
+
 
 ### 4.1 Alarms and Notifications
 The system is pre-configured with two critical alarms:
