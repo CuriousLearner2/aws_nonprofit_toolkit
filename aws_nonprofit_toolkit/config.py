@@ -7,7 +7,7 @@ class SimulationConfig:
     """
     
     # 1. SCALE & TARGETS
-    SMALL_USER_COUNT = 1000
+    SMALL_USER_COUNT = 2000
     LARGE_USER_COUNT = 2000
     INTERACTIONS_PER_USER = 5  # Average interactions per user
     
