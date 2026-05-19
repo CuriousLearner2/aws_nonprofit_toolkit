@@ -28,9 +28,9 @@ The toolkit performs automated quality checks before every data synchronization.
 
 ### 2.1 Track 1: Meta Seed Audit (Pareto Principle)
 *   **Check**: Does the top 10% of donors represent >60% of total value?
-*   **Seed Size Requirement**: Meta recommends 100+ VIP donors for optimal Lookalike stability. The toolkit will warn if fewer are found.
-*   **Why**: Meta's Value-Based Lookalikes require a clear wealth concentration to find high-value "twins."
-*   **Resolution**: If the sync fails with `WEAK SEED SIGNAL`, increase the `SMALL_USER_COUNT` in `config.py` or adjust the `LOYALTY_DISTRIBUTION` weights.
+*   **Seed Size Requirement**: **Mandatory:** You must provide at least **100 VIP donors**. The toolkit will abort the synchronization if fewer than 100 VIPs are detected, as Meta cannot generate stable Lookalike audiences with smaller seeds.
+*   **Why**: Meta's Value-Based Lookalikes require a statistically significant number of high-value "twins" to match characteristics.
+*   **Resolution**: If the sync fails with `WEAK SEED SIGNAL`, increase your donor list size or adjust the `LOYALTY_LEVEL` labels in your CSV.
 
 ### 2.2 Audience Synchronization (Polling & Match Rate)
 *   **Process**: After uploading donors, the toolkit polls the audience status every 10 minutes for up to one hour.
