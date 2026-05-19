@@ -1,5 +1,7 @@
 import boto3
 import os
+import sys
+import time
 import logging
 import argparse
 from typing import Optional
@@ -42,7 +44,7 @@ class PersonalizeSync:
         try:
             logger.info(f"Triggering Personalize Import Job for {s3_path}...")
             response = self.personalize.create_dataset_import_job(
-                jobName=f"PersonalizeImport-{int(os.path.basename(s3_path).split('.')[0])}",
+                jobName=f"PersonalizeImport-{int(time.time())}",
                 datasetArn=dataset_arn,
                 dataSource={'dataLocation': f"s3://{bucket}/{s3_path}"},
                 roleArn=role_arn
