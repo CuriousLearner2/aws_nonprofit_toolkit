@@ -258,13 +258,19 @@ Once you see both audiences in Meta Ads Manager:
 ---
 
 ## 4. Track 2: Personalization (Retention)
-Once Track 1 is operational, utilize Amazon Personalize to manage long-term donor retention:
+Now that we've found new donors, this track uses machine learning to keep them engaged for the long term.
 
-1.  **Data Transformation**: Prepare your interaction CSVs to match the Amazon Personalize interaction schema (`USER_ID`, `ITEM_ID`, `EVENT_TYPE`, `TIMESTAMP`).
-2.  **S3 Synchronization**: Use `personalize_sync.py` to automate the upload of your interaction logs to the designated S3 bucket.
-3.  **Model Training**: Initiate a Personalize `TrainingJob` using the `User-Personalization` recipe via AWS console.
-4.  **Inference & Archetype Assignment**: Use `personalize_segmentation.py` to retrieve donor recommendations and assign archetypes.
-5.  **Lifecycle Integration**: Feed segment archetypes back into your email marketing platform to trigger personalized nurture paths.
+1.  **Prepare Your Data**: Ensure your donor interaction file (clicks, opens, donations) is saved as `aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv`.
+2.  **Send to AWS**: Run the tool to upload this file to your secure AWS folder (the "bucket"):
+    ```bash
+    python3 personalize_sync.py --dataset aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv
+    ```
+3.  **Start Training**: Once uploaded, log into the [AWS Personalize Console](https://console.aws.amazon.com/personalize/). Select your "Solution" and click **Train**. This tells the AI to learn the unique donor patterns for your organization.
+4.  **Identify Archetypes**: Once training is complete, the AI can categorize donors. Run the segmentation tool to get your donor segments:
+    ```bash
+    python3 personalize_segmentation.py
+    ```
+5.  **Targeted Engagement**: Use these segments to send personalized emails or newsletters based on what each donor likes (e.g., "Eco-Conscious" vs. "Emergency Relief").
 
 ### 4.1 Alarms and Notifications
 The system is pre-configured with two critical alarms:
