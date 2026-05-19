@@ -257,8 +257,14 @@ Once you see both audiences in Meta Ads Manager:
 
 ---
 
-## 4. Monitoring & Observability
-Once deployed, use **Amazon CloudWatch** to track the health of your automated synchronization.
+## 4. Track 2: Personalization (Retention)
+Once Track 1 is operational, utilize Amazon Personalize to manage long-term donor retention:
+
+1.  **Data Transformation**: Prepare your interaction CSVs to match the Amazon Personalize interaction schema (`USER_ID`, `ITEM_ID`, `EVENT_TYPE`, `TIMESTAMP`).
+2.  **S3 Synchronization**: Use `personalize_sync.py` to automate the upload of your interaction logs to the designated S3 bucket.
+3.  **Model Training**: Initiate a Personalize `TrainingJob` using the `User-Personalization` recipe via AWS console.
+4.  **Inference & Archetype Assignment**: Use `personalize_segmentation.py` to retrieve donor recommendations and assign archetypes.
+5.  **Lifecycle Integration**: Feed segment archetypes back into your email marketing platform to trigger personalized nurture paths.
 
 ### 4.1 Alarms and Notifications
 The system is pre-configured with two critical alarms:
