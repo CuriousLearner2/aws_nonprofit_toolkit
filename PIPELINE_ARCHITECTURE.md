@@ -71,4 +71,11 @@ The power of the toolkit is that the **Small Dataset grows into the Large Datase
 | **Output** | New Cold Leads (Meta Ads) | Personalized Nurture (Email) |
 
 ---
-**Summary:** The Acquisition pipeline brings them in the door using your **intuition**; the Personalization pipeline keeps them there using **machine learning**.
+---
+## 5. Track 2 Implementation Roadmap
+1.  **Schema Definition**: Utilize the `personalize_schema.json` to map interactions.
+2.  **Data Transformation**: Prepare interaction logs for the Personalize interaction schema.
+3.  **Inference Logic**: Implement `personalize_segmentation.py` to query the trained model using `boto3`.
+4.  **Archetype Mapping**: Map recommendations to donor archetypes (e.g., "Eco-Conscious").
+5.  **Orchestration**: Automate segmentation as part of the daily sync process.
+

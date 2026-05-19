@@ -266,10 +266,13 @@ Now that we've found new donors, this track uses machine learning to keep them e
     python3 personalize_sync.py --dataset aws_nonprofit_toolkit/datasets/large_nonprofit_interactions.csv
     ```
 3.  **Start Training**: Once uploaded, log into the [AWS Personalize Console](https://console.aws.amazon.com/personalize/). Select your "Solution" and click **Train**. This tells the AI to learn the unique donor patterns for your organization.
-4.  **Identify Archetypes**: Once training is complete, the AI can categorize donors. Run the segmentation tool to get your donor segments:
+4. **Identify Archetypes**: Once training is complete, the AI can categorize donors. Run the segmentation tool to get your donor segments:
     ```bash
-    python3 personalize_segmentation.py
+    python3 aws_nonprofit_toolkit/personalize_segmentation.py --user-id USER_ID --campaign-arn YOUR_CAMPAIGN_ARN
     ```
+    *   **USER_ID**: The ID of the donor you want to segment.
+    *   **CAMPAIGN_ARN**: The Amazon Resource Name (ARN) of your trained Personalize Campaign.
+
 5.  **Targeted Engagement**: Use these segments to send personalized emails or newsletters based on what each donor likes (e.g., "Eco-Conscious" vs. "Emergency Relief").
 
 ### 4.1 Alarms and Notifications
