@@ -111,6 +111,136 @@ Final check that lookalike audience is READY and has sufficient size for ad targ
 
 ---
 
+## 3.5 Running the Full Pipeline (Step-by-Step for Beginners)
+
+This section walks you through running the donor sync pipeline from start to finish.
+
+### Prerequisites
+
+Before starting, make sure you have:
+- ✅ `.env` file with your Meta credentials set up (in the `aws_nonprofit_toolkit` directory)
+- ✅ A CSV file with your donor data (or use the test file: `tests/fixtures/test_donors.csv`)
+- ✅ Terminal/Command Prompt access to your computer
+- ✅ Your sandbox account ID (you got this from Meta Business Suite)
+
+### Step 1: Open Your Terminal
+
+1. Open Terminal (Mac) or Command Prompt (Windows)
+2. Navigate to the toolkit folder:
+   ```bash
+   cd aws_nonprofit_toolkit
+   ```
+
+### Step 2: Verify Everything is Ready
+
+Before running the full pipeline, check that your credentials are set up correctly:
+```bash
+python3 verify_pipeline.py
+```
+
+You should see:
+- ✅ `META_ACCESS_TOKEN: EAAc...` (masked token)
+- ✅ `META_SANDBOX_AD_ACCOUNT_ID: 1665...` (your sandbox ID)
+- ✅ `Token is valid`
+
+**If you see errors:** Check that your `.env` file is in the `aws_nonprofit_toolkit` folder and has the correct values.
+
+### Step 3: Run the Pipeline
+
+Run this command (all on one line):
+```bash
+python3 -m aws_nonprofit_toolkit.meta_growth_engine \
+  --sandbox \
+  --audience-name "My_Donor_Audience" \
+  --users-file tests/fixtures/test_donors.csv \
+  --create-lookalike
+```
+
+**What each part means:**
+- `--sandbox` = Use your sandbox account (safe for testing)
+- `--audience-name` = Name for your donor audience (you can change "My_Donor_Audience")
+- `--users-file` = Path to your CSV file with donors
+- `--create-lookalike` = Automatically create a lookalike audience
+
+### Step 4: Watch for Success Messages
+
+As the pipeline runs, you'll see messages like:
+```
+✅ Creating Custom Audience 'My_Donor_Audience'...
+✅ Audience is ready for upload.
+✅ Batch 1 synced (4 emails).
+✅ Uploaded 4 VIP donors.
+✅ Audience is ready for lookalike creation after 0 seconds
+```
+
+**If you see errors**, check the "Troubleshooting" section below.
+
+### Step 5: Wait for Meta to Process
+
+After upload, the pipeline polls Meta every 10 minutes to check if your audience is ready for lookalike creation. **This is normal.** Meta takes 5-30 minutes to process in the sandbox.
+
+The pipeline will:
+1. Upload your donors (takes a few seconds)
+2. Check audience status (every 10 minutes)
+3. Create a lookalike when ready (automatically)
+
+**You can monitor progress two ways:**
+
+**Option A - Let it run:**
+Just leave the terminal open. The pipeline will complete automatically and show a success message.
+
+**Option B - Check status manually:**
+Open a new terminal and run:
+```bash
+python3 verify_pipeline.py
+```
+Look for your audience name. You'll see:
+- ⏳ Status: "Updating" = Still processing
+- ✅ Status: "Normal" = Ready (lookalike will be created next)
+
+### Step 6: Verify in Meta Ads Manager
+
+Once the pipeline completes, check [Meta Ads Manager](https://adsmanager.facebook.com):
+
+1. Click **Audiences** (left sidebar)
+2. Look for two audiences:
+   - 🌱 `My_Donor_Audience` (your seed audience with your donors)
+   - 🎯 Lookalike version (automatically created, ~150k prospects)
+
+**Both should show status: Ready**
+
+### Step 7: Launch Your First Campaign
+
+Once you see both audiences in Meta Ads Manager:
+
+1. Create a new campaign in Meta Ads Manager
+2. Go to **Audience** section
+3. Select your lookalike audience (the one with 🎯 icon)
+4. Set your budget and launch!
+
+### Troubleshooting
+
+**"Failed to fetch audiences"**
+- **Problem:** Token doesn't have permission
+- **Fix:** Check that your System User is added to the sandbox account with Admin role
+
+**"Invalid hash"**
+- **Problem:** Email format is wrong in your CSV
+- **Fix:** Make sure your CSV has columns: EMAIL, LOYALTY_LEVEL, LTV
+- **Fix:** Emails should be lowercase (the code does this automatically)
+
+**"Audience failed to reach uploadable status"**
+- **Problem:** Meta sandbox is taking longer than usual
+- **Fix:** Wait and run verification script again
+- **Fix:** Try again in 15 minutes
+
+**"No audiences found"**
+- **Problem:** Pipeline hasn't run yet or failed silently
+- **Fix:** Check error messages in the terminal output
+- **Fix:** Run with smaller test file first
+
+---
+
 ## 4. Monitoring & Observability
 Once deployed, use **Amazon CloudWatch** to track the health of your automated synchronization.
 
