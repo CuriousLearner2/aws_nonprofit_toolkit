@@ -120,16 +120,17 @@ This section walks you through running the donor sync pipeline from start to fin
 Before starting, make sure you have:
 
 **1. `.env` file with your Meta credentials**
-   - **Location:** Inside the `aws_nonprofit_toolkit` folder (the main toolkit directory)
-   - **File name:** `.env` (starts with a dot)
-   - **Contents:** Should have `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`, `META_SANDBOX_AD_ACCOUNT_ID`
-   - **How to create:** Run `cp .env.example .env` in the toolkit directory and edit it with your credentials
-   - **Important:** This file is private - never upload it to GitHub or share it
+   - **Location:** Inside the `aws_nonprofit_toolkit` folder
+   - **File name:** `.env`
+   - **How to create:** Run `cp .env.example .env` in the toolkit directory and edit it
+   - **Important:** This file is private - never upload it to GitHub
 
-**2. A CSV file with your donor data**
-   - For testing: Use `tests/fixtures/test_donors.csv` (already included)
-   - For real data: Upload your donor CSV file to the toolkit folder
-   - **Required columns:** EMAIL, LOYALTY_LEVEL, LTV
+**2. Donor Data**
+   - **Location:** `aws_nonprofit_toolkit/datasets/small_nonprofit_users.csv`
+   - **Note:** This directory is ignored by Git to keep your data secure. If the file is missing, you can regenerate it anytime by running:
+     ```bash
+     python3 -m aws_nonprofit_toolkit.generate_datasets
+     ```
 
 **3. Terminal/Command Prompt**
    - Mac: Use "Terminal" app
