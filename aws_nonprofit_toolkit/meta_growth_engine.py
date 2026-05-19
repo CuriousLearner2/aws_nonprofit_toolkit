@@ -210,7 +210,7 @@ def create_lookalike_audience(seed_audience_id: str, ad_account_id: str, name: s
     lookalike_spec = {'type': 'similarity', 'ratio': 0.01, 'location_spec': {'geo_locations': {'countries': ['US']}}}
     payload = {
         'name': name,
-        'subtype': 'LOOKALIKES',
+        'subtype': 'LOOKALIKE',
         'origin_audience_id': seed_audience_id,
         'lookalike_spec': json.dumps(lookalike_spec),
         'access_token': token

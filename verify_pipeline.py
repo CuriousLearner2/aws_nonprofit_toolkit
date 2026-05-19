@@ -168,7 +168,7 @@ class PipelineVerifier:
                 }
 
                 status_icon = "✅" if status_code == 200 else "⏳" if status_code == 300 else "❓"
-                type_icon = "🌱" if aud_type == "CUSTOM" else "🎯" if aud_type == "LOOKALIKES" else "?"
+                type_icon = "🌱" if aud_type == "CUSTOM" else "🎯" if aud_type == "LOOKALIKE" else "?"
 
                 print(f"{status_icon} {type_icon} {aud_name}")
                 print(f"   ID: {aud_id}")
@@ -226,11 +226,11 @@ class PipelineVerifier:
         # Look for lookalike audiences
         lookalike_audiences = {
             aud_id: aud for aud_id, aud in audiences.items()
-            if aud.get("type") == "LOOKALIKES"
+            if aud.get("type") == "LOOKALIKE"
         }
 
         if not lookalike_audiences:
-            print("⚠️  No LOOKALIKES audiences found.")
+            print("⚠️  No LOOKALIKE audiences found.")
             print("   (Run the pipeline with --create-lookalike to generate one)")
             self.warnings.append("No lookalike audiences created yet")
             return False
