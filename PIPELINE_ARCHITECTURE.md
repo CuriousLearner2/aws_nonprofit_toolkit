@@ -63,19 +63,64 @@ The power of the toolkit is that the **Small Dataset grows into the Large Datase
 
 | Feature | Acquisition Track (Meta) | Personalization Track (AWS) |
 | :--- | :--- | :--- |
-| **Dataset** | `small_nonprofit_users.csv` | `large_nonprofit_interactions.csv` |
-| **Validation** | **Pareto Concentration Audit** | **Bias Signal Detection** |
+| **Dataset** | `small_nonprofit_users.csv` | `small_nonprofit_interactions.csv` or `large_nonprofit_interactions.csv` |
+| **Validation** | **Pareto Concentration Audit** | **Signal Validation** (coverage > 0 after training) |
 | **Labeling Method** | **Human/Manual** (CRM Rules) | **Machine Learning** (Inferred) |
-| **AWS Orchestrator** | **AWS Lambda** (Syncing to Meta) | **Amazon Athena** (Analyzing Stream) |
-| **AI "Brain"** | Meta Lookalike AI | Amazon Personalize |
-| **Output** | New Cold Leads (Meta Ads) | Personalized Nurture (Email) |
+| **Setup** | Meta Marketing API | AWS Personalize (boto3) + IAM Role + S3 |
+| **AI "Brain"** | Meta Lookalike AI | Amazon Personalize Recommender |
+| **Output** | Lookalike Audiences (100k+) | Donor Rankings + Segments |
 
 ---
----
-## 5. Track 2 Implementation Roadmap
-1.  **Schema Definition**: Utilize the `personalize_schema.json` to map interactions.
-2.  **Data Transformation**: Prepare interaction logs for the Personalize interaction schema.
-3.  **Inference Logic**: Implement `personalize_segmentation.py` to query the trained model using `boto3`.
-4.  **Archetype Mapping**: Map recommendations to donor archetypes (e.g., "Eco-Conscious").
-5.  **Orchestration**: Automate segmentation as part of the daily sync process.
+
+## 5. Track 2 Implementation Status (as of 2026-05-21)
+
+### ✅ Completed
+1. **Schema Definition**: `personalize_schema.json` created and applied
+   - Fields: USER_ID, ITEM_ID, TIMESTAMP, EVENT_TYPE
+   - Status: Active in dataset group
+
+2. **Data Infrastructure**: Dataset group and interactions dataset created
+   - Dataset Group ARN: `arn:aws:personalize:us-east-1:684039303576:dataset-group/nonprofit-donors-1779321550`
+   - Dataset ARN: `arn:aws:personalize:us-east-1:684039303576:dataset/nonprofit-donors-1779321550/INTERACTIONS`
+   - Status: ACTIVE
+
+3. **Data Upload & Import**: Successfully imported ~500 donor interactions
+   - Source: `datasets/small_nonprofit_interactions.csv`
+   - S3 Location: `s3://personalize-sandbox-{account}/nonprofit/interactions/small_interactions.csv`
+   - Import Job Status: ACTIVE (complete)
+
+4. **AWS Setup**: IAM role and bucket policy configured
+   - Role: `AmazonPersonalizeRole` (created via AWS Console)
+   - Permissions: S3FullAccess + Personalize service trust
+   - Bucket Policy: Allows Personalize service read access
+   - Status: Verified working
+
+### ⏳ Pending (Next Steps)
+1. **Model Training**: Create solution and train recommender model
+   - Input: Imported interaction dataset
+   - Output: Trained model ARN
+   - Time: ~10-15 minutes
+
+2. **Batch Inference**: Generate predictions for all donors
+   - Script: `personalize_batch_inference.py`
+   - Output: JSON rankings (donor ID + engagement score)
+   - Write to: S3 batch_output/ path
+   - Time: ~5-10 minutes
+
+3. **Segmentation & Archetype Mapping**: Extract donor segments
+   - Script: `personalize_segmentation.py`
+   - Config: `aws_nonprofit_toolkit/archetypes_config.json`
+   - Output: Donor segments (High/Medium/Low engagement)
+   - Time: ~5 minutes
+
+4. **Campaign Integration**: Use segments for personalized outreach
+   - High engagement: Email campaigns
+   - Medium: Nurture sequences
+   - Low: Re-engagement focus
+
+### Current Roadmap
+- **Phase 1 (Setup)**: ✅ Complete - schema, dataset, import all ACTIVE
+- **Phase 2 (Training)**: ⏳ Next - train recommender model
+- **Phase 3 (Inference)**: ⏳ Then - generate predictions
+- **Phase 4 (Segmentation)**: ⏳ Finally - extract donor archetypes
 

@@ -96,18 +96,94 @@ The `.env` file stores your credentials. It must be placed in the `aws_nonprofit
 - Instead of sending the same email to everyone, you personalize outreach
 - Result: 25% higher engagement, 15% more donations
 
-**How to Run Track 2**:
+**How to Run Track 2** (4 Phases):
 
-1.  **Validate Behavioral Signal**: Verify the data is strong enough for ML.
-    ```bash
-    python3 uncover_signal_no_pandas.py datasets/large_nonprofit_interactions.csv
-    ```
-2.  **Sync to AWS Personalize**: Upload the data to train the model.
-    ```bash
-    python3 personalize_sync.py --dataset datasets/large_nonprofit_interactions.csv
-    ```
+### Phase 1: AWS Setup (One-Time)
 
-**When to use**: When you want to improve engagement and retention. Run this quarterly as you collect more donor data.
+1. **Create IAM Role** (AWS Console)
+   - Go to IAM → Roles → Create Role
+   - Trust Entity: Personalize service
+   - Attach Policy: `AmazonS3FullAccess`
+   - Name: `AmazonPersonalizeRole`
+
+2. **Add Bucket Policy** (AWS Console)
+   - Go to S3 → Your bucket → Permissions → Bucket Policy
+   - Allow `personalize.amazonaws.com` service read/list access
+
+3. **Verify Setup**
+   ```bash
+   python3 verify_pipeline.py
+   ```
+
+### Phase 2: Upload Data (5 minutes)
+
+1. **Prepare your donor interaction data**
+   - File format: CSV with columns: `USER_ID`, `ITEM_ID`, `TIMESTAMP`, `EVENT_TYPE`
+   - Example: `datasets/small_nonprofit_interactions.csv`
+
+2. **Upload to Personalize**
+   ```bash
+   python3 personalize_sync.py \
+     --dataset datasets/small_nonprofit_interactions.csv \
+     --bucket personalize-sandbox-684039303576-684039303576-us-east-1-an \
+     --dataset-arn arn:aws:personalize:us-east-1:684039303576:dataset/nonprofit-donors-1779321550/INTERACTIONS \
+     --role-arn arn:aws:iam::684039303576:role/AmazonPersonalizeRole
+   ```
+
+3. **Wait for import to complete**
+   - Check status: AWS Console → Personalize → Datasets
+   - Status should change from "PENDING" to "ACTIVE" (~5-15 minutes)
+
+### Phase 3: Train Model (15 minutes)
+
+1. **Create and train a recommender model**
+   ```bash
+   python3 -c "
+   import boto3
+   personalize = boto3.client('personalize', region_name='us-east-1')
+   
+   # Create solution
+   solution = personalize.create_solution(
+     name='donor-engagement-model',
+     datasetGroupArn='arn:aws:personalize:us-east-1:684039303576:dataset-group/nonprofit-donors-1779321550',
+     recipeArn='arn:aws:personalize:us-east-1:personalize::recipe/aws-user-personalization'
+   )
+   solution_arn = solution['solutionArn']
+   
+   # Train solution version
+   version = personalize.create_solution_version(solutionArn=solution_arn)
+   print(f'Training model: {version['solutionVersionArn']}')
+   print('Check status in 10-15 minutes')
+   "
+   ```
+
+2. **Monitor training**
+   - AWS Console → Personalize → Solutions
+   - Wait for version status to change to "ACTIVE"
+
+### Phase 4: Generate Predictions & Segments (10 minutes)
+
+1. **Generate batch inference** (once model training completes)
+   ```bash
+   python3 personalize_batch_inference.py \
+     --solution-version-arn {trained_model_arn} \
+     --input-path datasets/small_nonprofit_users.csv \
+     --output-path s3://your-bucket/personalize/batch_output/
+   ```
+
+2. **Extract donor engagement segments**
+   ```bash
+   python3 personalize_segmentation.py \
+     --batch-output-path s3://your-bucket/personalize/batch_output/ \
+     --segment-config aws_nonprofit_toolkit/archetypes_config.json
+   ```
+
+3. **Use insights for campaigns**
+   - High engagement donors: Email campaigns
+   - Medium engagement: Nurture sequences
+   - Low engagement: Re-engagement outreach
+
+**When to use**: When you want to improve engagement and retention. Run Track 2 quarterly as you collect more donor data. Each run takes ~45 minutes total (most is waiting for model training).
 
 ---
 
