@@ -620,6 +620,97 @@ Train model
 
 ---
 
+### **What About Using Meta's Platform Suite (Facebook, Instagram, Messenger, WhatsApp)?**
+
+**Question**: Can I just run my nonprofit on Facebook Pages + Instagram + Messenger + WhatsApp, and use that as my unified data platform?
+
+**Short answer**: No. Meta's suite is excellent for **outreach** but doesn't work for **data enrichment**.
+
+#### **Why Meta doesn't work for Track 2 data enrichment**:
+
+**Instagram and Facebook Pages are social platforms, not websites**:
+- They're places to post content and build community, not host your actual website
+- You still need a separate website (Shopify, WordPress, Wix) for donations and donor info
+- Instagram does NOT have "web pages" (it's social-only)
+
+**Meta locks data in; you can't export engagement details**:
+
+| What you want | What Meta gives | Problem |
+|---|---|---|
+| "John engaged with 5 ENVIRONMENT posts, 2 EDUCATION posts" | "John likes 47 posts, follows you, clicked 3 ads" | Detailed cause preference data stays in Meta |
+| Donor interactions across channels | Only conversion events (donation = $X) | Can't see what caused interest |
+| Engagement patterns for Personalize training | Facebook Insights dashboard (can't export) | Locked in Meta's system |
+
+**Meta Pixel only tracks conversions, not engagement**:
+```
+Meta Pixel tells you:
+  ✓ Person visited your website
+  ✓ Person donated $50
+  ✗ Person was interested in ENVIRONMENT
+  ✗ Person clicked EDUCATION links
+```
+
+**The data flow is one-way TO Meta, not back to you**:
+```
+Your actions → Meta tracks → Meta builds lookalike audiences
+             ↓
+          (data stays here)
+             ↓
+         You get: "I matched your audience to X Facebook users"
+         You DON'T get: "Here's engagement data for Personalize"
+```
+
+#### **What Meta IS great for** ✓
+
+**Track 1 (Acquisition)**:
+```
+✓ Run Facebook/Instagram ads to your lookalike audiences
+✓ Meta's algorithm optimizes who to show ads to
+✓ You get donors, but not their preference data
+✓ Perfect for: "Find more people like our existing donors"
+```
+
+**Messaging (one-way communication)**:
+```
+✓ Messenger for donor support 1:1 chats
+✓ WhatsApp Business for SMS-like notifications
+✓ Good for: "Reach supporters where they are"
+✗ But: Doesn't feed into Personalize (it's just messaging)
+```
+
+#### **If you use Meta, you STILL need**:
+
+```
+1. Separate website (Shopify, WordPress, Wix)
+   ├── Install Meta Pixel (for conversion tracking)
+   └── Still need Google Analytics for visitor behavior
+
+2. Email (Mailchimp or similar)
+   └── Email opens/clicks won't sync from Meta
+
+3. Your database (CRM)
+   └── Donation history stays in your system
+
+4. Manual data combination
+   └── Just like Option C hybrid—combine all sources yourself
+   └── Meta Pixel events feed in, but don't replace email/web/SMS tracking
+
+Result: You've added Meta channel, but still doing manual data integration
+```
+
+#### **Bottom line**:
+
+| Use Case | Meta | Other tools |
+|----------|------|------------|
+| **Track 1: Acquire new donors** | ✓✓✓ (lookalikes) | LinkedIn, Google ads |
+| **Track 2: Enrich data for Personalize** | ✗ (data locked in) | RudderStack, email, analytics |
+| **Stay in contact** | ✓ (Messenger/WhatsApp) | Email, SMS |
+| **See what works** | ✗ (limited insights) | Google Analytics |
+
+**Recommendation**: Use Meta for Track 1 (acquisition), but for Track 2 (data enrichment for Personalize), stick with Option C (hybrid) or RudderStack. Meta's engagement data isn't accessible for your own analysis.
+
+---
+
 ### **Decision Framework: Which Should You Use?**
 
 **Use CDP if**:
