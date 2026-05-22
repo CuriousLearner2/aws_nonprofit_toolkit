@@ -293,6 +293,214 @@ Lift: +60% improvement
 
 ---
 
+## Enriching Your Data Across Platforms
+
+**Question**: Can I combine donor data from multiple sources (Gmail, website, SMS, Meta) to create richer profiles?
+
+**Short answer**: Partially. Here's what you can and cannot do.
+
+### **What You CAN'T Do** ❌
+
+**Can't enrich Meta's data WITH your data**
+- You cannot upload Gmail, website, SMS data INTO Meta's platform
+- Meta doesn't accept third-party enrichment
+- Their algorithm is proprietary; they don't want your data mixed in
+
+**Can't access Meta user data to enrich**
+- You can't download Meta user profiles
+- You can't combine Meta data with your other sources
+- Privacy regulations (GDPR, CCPA) prevent this
+- It violates Meta's Terms of Service
+
+### **What You CAN Do** ✓
+
+#### **Option 1: Custom Audience Upload to Meta** (Limited)
+
+```
+Your Data:
+  ├── Email list of donors
+  ├── Phone numbers
+  └── Customer IDs
+
+Upload to Meta:
+  └── Create "Custom Audience"
+  
+Meta matches:
+  └── "These emails match 40% of our users"
+  
+Result:
+  └── Can target them on Facebook ads
+  └── But matched data doesn't flow back to you
+```
+
+**How it works**:
+1. You upload your donor list (email, phone, hashed IDs)
+2. Meta matches them to user accounts
+3. You can target "your customers on Facebook"
+4. Meta keeps the matching internal (one-way only)
+
+**Limitation**: Data flows TO Meta for targeting, not back to you for enrichment.
+
+#### **Option 2: Combine Data for YOUR OWN Analysis** ✓ (Recommended)
+
+This is what you SHOULD do for Phase 2.
+
+**Data sources you own**:
+```
+Your Data Sources:
+  ├── Website visits (Google Analytics)
+  ├── Email opens (Gmail API, Mailchimp, SendGrid)
+  ├── SMS responses (Twilio, Postmark, carrier APIs)
+  ├── Meta pixel data (ad clicks, conversions)
+  ├── Donation records (your CRM/database)
+  └── Phone calls (if tracked)
+
+Combine into:
+  └── Unified enriched donor profile
+  
+Use for:
+  ├── AWS Personalize training ✓
+  ├── Email personalization
+  ├── SMS personalization
+  └── Your own analytics
+```
+
+### **How to Practically Enrich Data** ✓
+
+#### **Step 1: Identify Your Donor Across Platforms**
+
+Use a common identifier (email, phone, or donor ID) to link data:
+
+```
+Donor: john@example.com
+
+Google Analytics:
+  └── Visited website 5 times, viewed ENVIRONMENT cause pages
+
+Gmail/Email Platform:
+  └── Opened 8 emails, clicked 3 links about EDUCATION
+
+SMS (if opted-in):
+  └── Opened 10 SMS, responded to 2 about DISASTER_RELIEF
+
+Meta Pixel:
+  └── Clicked ad twice (sourced from FACEBOOK)
+
+CRM/Database:
+  └── Donated $100, LTV = $250, Loyalty = REGULAR
+```
+
+#### **Step 2: Combine into Single Record**
+
+Create a unified user profile:
+
+```csv
+USER_ID,EMAIL,WEBSITE_VISITS,EMAIL_OPENS,SMS_OPENS,META_CLICKS,DONATIONS,LTV,SOURCE
+john_001,john@example.com,5,8,10,2,2,250,FACEBOOK
+```
+
+#### **Step 3: Create Enriched Interactions**
+
+Instead of just one interaction type, track the platform:
+
+```csv
+USER_ID,ITEM_ID,TIMESTAMP,EVENT_TYPE,PLATFORM,WEIGHT
+john_001,ENVIRONMENT,2026-05-20T10:00:00,EMAIL_OPEN,GMAIL,2.0
+john_001,ENVIRONMENT,2026-05-19T14:30:00,WEBSITE_VIEW,WEBSITE,1.0
+john_001,EDUCATION,2026-05-18T09:00:00,SMS_OPEN,SMS,2.0
+john_001,DISASTER_RELIEF,2026-05-17T15:00:00,META_CLICK,META,1.5
+john_001,ENVIRONMENT,2026-05-16T11:00:00,DONATE,DATABASE,5.0
+```
+
+#### **Step 4: Train AWS Personalize on Enriched Data**
+
+```
+Input: Interactions from 5 sources (Gmail + Website + SMS + Meta + DB)
+Model learns: "John engages across channels. Prefers ENVIRONMENT. 
+              Responds to EMAIL most, SMS second, web third."
+Output: Personalized ranking + insight (which channel works best)
+```
+
+**Result**: Better model because it has MORE SIGNALS about each donor.
+
+### **Why This Matters for Phase 2**
+
+**Phase 1 had sparse data**: 500 interactions / 200 donors = 2.5 per donor ❌
+
+**Phase 2 can be enriched**:
+- Same 200 donors, but 5,000 interactions
+- FROM MULTIPLE SOURCES
+- Model learns: "This donor prefers ENVIRONMENT via EMAIL, EDUCATION via SMS"
+- Much richer personalization
+
+### **Legal & Privacy Considerations** ⚠️
+
+Before enriching data, verify:
+
+```
+✓ GDPR Compliance (Europe):
+  - Do you have legal basis to combine data?
+  - Users gave informed consent for cross-platform tracking?
+
+✓ CCPA Compliance (California):
+  - Users have right to know what data you have
+  - Must honor data deletion requests
+  - Must clearly disclose data sharing
+
+✓ Your Own Data:
+  - Data you collect from your own platforms = yours
+  - Website analytics, email opens, SMS = your data
+  - Use freely for your own analysis
+
+⚠️ Third-Party Data:
+  - Buying/licensing data from other sources has restrictions
+  - Verify licensing agreements allow your use case
+  - May need additional consent
+
+✓ Email Privacy Act (US):
+  - Can track email opens if you sent the email
+  - Can't access other people's email accounts
+
+✓ SMS/RCS:
+  - Requires explicit opt-in from users
+  - Can only track responses they send to you
+```
+
+### **Summary: Meta vs AWS for Data Enrichment**
+
+| Capability | Meta | AWS Personalize |
+|-----------|------|-----------------|
+| Share your data WITH Meta | ✓ Limited (Custom Audiences) | N/A |
+| Get Meta data back | ✗ | N/A |
+| Combine YOUR data sources | ✗ | ✓ YES |
+| Train custom model on combined data | ✗ | ✓ YES |
+| Use for personalization | ✗ | ✓ YES |
+
+### **For Your Nonprofit: The Recommended Approach**
+
+**Track 1 (Meta Acquisition)**:
+```
+Use Meta Lookalikes
+  └── Meta handles audience discovery
+```
+
+**Track 2 (AWS Retention)**:
+```
+Combine ALL your data:
+  ├── Website visits
+  ├── Email opens
+  ├── SMS responses
+  ├── Meta click data
+  └── Donation history
+
+Train AWS Personalize:
+  └── Get rankings + insights
+```
+
+**Result**: Better personalization because the model sees the full picture of each donor.
+
+---
+
 ## What Makes a High-Quality Dataset?
 
 ### **1. Sufficient Volume**
