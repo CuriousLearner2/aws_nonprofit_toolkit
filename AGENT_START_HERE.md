@@ -95,6 +95,7 @@ NonprofitOrchestrator (Central Agent)
 2. **How to run it?** → `QUICKSTART.md`
 3. **Operations/deployment?** → `OPERATIONS_GUIDE.md`
 4. **Agent design?** → Memory file: `agent_architecture_refactor.md`
+5. **What's the plan?** → `ROADMAP.md` (phases, timeline, strategy)
 
 ### For Track 1 (Acquisition/Meta)
 - **Next step:** Check Meta Ads Manager for lookalike status
