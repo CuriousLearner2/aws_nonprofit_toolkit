@@ -115,8 +115,8 @@ def create_batch_inference_job(solution_version_arn: str, input_s3: str) -> str:
     response = personalize.create_batch_inference_job(
         jobName=job_name,
         solutionVersionArn=solution_version_arn,
-        inputConfig={"s3DataSource": {"path": input_s3}},
-        outputConfig={"s3DataDestination": output_s3},
+        jobInput={"s3DataSource": {"path": input_s3}},
+        jobOutput={"s3DataDestination": {"path": output_s3}},
         roleArn=get_iam_role_arn()
     )
 
