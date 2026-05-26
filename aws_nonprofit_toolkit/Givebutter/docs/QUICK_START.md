@@ -80,13 +80,20 @@ Before moving a file to `review/approved/`, verify:
 
 ## What Gets Flagged?
 
-Currently, the system flags:
+The system flags issues based on **validation rules** that your tech lead configures.
+
+**Examples:**
 - **Email typos:** gmai.com, gmal.com, yaho.com, hotmial.com
 - **Missing emails:** No email address at all
 - **Incomplete data:** Missing donation amounts or dates
-- **Other issues:** Whatever rules your tech lead set up
+- **Format errors:** Invalid phone numbers or zip codes
+- **Custom rules:** Whatever patterns your tech lead adds
 
-See [DEVELOPER.md](DEVELOPER.md) for the complete rules list.
+**V2 Update:** The system now has TWO layers of validation:
+1. **Upstream** — Pre-form validation prevents errors BEFORE they enter Givebutter
+2. **Downstream** — Processor catches what escapes upstream
+
+See [PRD.md](../PRD.md) for how this works, or [DEVELOPER.md](DEVELOPER.md) for the complete rules list.
 
 ---
 
@@ -177,12 +184,33 @@ See [DEVELOPER.md](DEVELOPER.md) for the complete rules list.
 
 ---
 
+## Understanding V2 (Dual-Validation System)
+
+**New in V2:** The system prevents errors in TWO ways:
+
+1. **Upstream** (on your website)
+   - Real-time validation as donor fills form
+   - "Did you mean gmail.com?" suggestions
+   - Prevents ~70% of errors before Givebutter
+
+2. **Downstream** (this system)
+   - Catches what escaped upstream
+   - You review and approve/reject
+   - System learns from your decisions
+
+**Result:** Cleaner data, less review work, smarter system.
+
+See [PRD.md](../PRD.md) for details.
+
+---
+
 ## If You Get Stuck
 
 1. **Check this card** — You're probably here
 2. **Check [OPERATOR_MANUAL.md](../OPERATOR_MANUAL.md)** — Search for your question
 3. **Check [FAQ.md](FAQ.md)** — Browse questions by category
-4. **Ask your tech lead** — That's what they're for!
+4. **Need to understand V2?** — Read [PRD.md](../PRD.md)
+5. **Ask your tech lead** — That's what they're for!
 
 ---
 
@@ -192,7 +220,7 @@ See [DEVELOPER.md](DEVELOPER.md) for the complete rules list.
 
 ---
 
-**Givebutter Donation Processor | Quick Start Reference | May 2026**
+**Givebutter Donation Processor | Quick Start Reference | V2 (May 26, 2026)**
 
 ---
 

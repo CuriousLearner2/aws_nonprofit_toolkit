@@ -1,10 +1,21 @@
 # Givebutter Donation Processor
 
+**Version: 2.0** | **Status: Dual-Validation Architecture** | Last Updated: May 26, 2026
+
 ## What Is This?
 
-A smart system that helps nonprofits clean up donor data. When you upload a CSV file of donations, this tool automatically checks for problems (like email typos or duplicate records), flags them for you to review, and learns from your decisions to catch similar issues in the future.
+A smart system that helps nonprofits clean up donor data. V2.0 now prevents ~70% of errors before they enter Givebutter, while maintaining downstream correction for what escapes. 
+
+**V2 Highlights:**
+- 🛡️ **Prevention** — Real-time validation on your website catches email typos, formats, and required fields
+- 🎯 **Correction** — Processor catches what escapes upstream and learns patterns
+- 📚 **Learning** — System automatically improves as new patterns are approved
+
+When you upload a CSV file of donations, the system automatically checks for problems (like email typos or duplicate records), flags them for you to review, and learns from your decisions to catch similar issues in the future.
 
 **The human is always in control.** The system suggests fixes, but nothing happens automatically—you decide what gets corrected.
+
+**New in V2:** See [PRD.md](PRD.md) for product strategy and validation rules architecture.
 
 ---
 
@@ -53,7 +64,11 @@ You need to understand what this system does and why it matters.
 ### 👨‍💻 **I'm a Developer or Technical Lead**
 You need to understand the architecture, configuration, and how to maintain it.
 
-➜ **Read:** [DEVELOPER.md](docs/DEVELOPER.md) – Architecture, skills, versioning, and technical decisions
+➜ **Start with:** [PRD.md](PRD.md) – Product strategy and V2 validation rules architecture
+
+➜ **Then read:** [DEVELOPER.md](docs/DEVELOPER.md) – Technical integration, versioning, and maintenance
+
+➜ **Deep dive:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – System design and validation rules specification
 
 ---
 

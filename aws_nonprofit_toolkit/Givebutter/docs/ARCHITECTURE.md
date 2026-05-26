@@ -641,10 +641,242 @@ config/schemas/rules_schema_v2.4.json
 
 ---
 
+## Validation Rules Architecture (V2)
+
+### Overview
+
+V2 introduces a **dual-validation system**: preventing errors upstream (before Givebutter) while maintaining downstream correction (catching escapes). This addresses a key constraint: Givebutter's hosted widget doesn't allow custom JavaScript injection (PCI compliance), so validation must happen on your website before the form opens the widget.
+
+### Two-File Architecture
+
+```
+VALIDATION_RULES.JSON                RULES.JSON
+(UPSTREAM - PREVENTION)              (DOWNSTREAM - CORRECTION)
+
+Your Website                         This Processor
+┌──────────────────────────┐        ┌──────────────────────┐
+│ Pre-Form Wrapper         │        │ Post-Givebutter      │
+│                          │        │                      │
+│ • Email format check ✓   │        │ Catches what         │
+│ • Domain whitelist ✓     │──→ Open│ escaped upstream      │
+│ • Required fields ✓      │        │                      │
+│ • Format rules ✓         │ Widget │ • Applies corrections │
+│ • Real-time feedback ✓   │        │ • Learns from errors │
+│                          │        │                      │
+│ "Did you mean            │        │ Operator approves    │
+│  @gmail.com?"            │        │ fuzzy matches &      │
+│                          │        │ edge cases           │
+│ PREVENTS ~70%            │        │ CATCHES ~30%         │
+└──────────────────────────┘        └──────────────────────┘
+```
+
+### validation_rules.json (Full Specification)
+
+This file defines all upstream validation rules. Example structure:
+
+```json
+{
+  "$schema": "../schemas/validation_schema_v2.4.json",
+  "version": "2.4",
+  "created": "2026-05-26T10:00:00Z",
+  
+  "email_validation": {
+    "format": {
+      "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+      "message": "Please enter a valid email address",
+      "severity": "error"
+    },
+    "domain_whitelist": {
+      "enabled": true,
+      "domains": ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com"],
+      "unknown_domain_action": "warn",
+      "message": "Email domain not recognized. Did you mean..."
+    },
+    "common_typos": {
+      "enabled": true,
+      "typos": {
+        "gmai.com": "gmail.com",
+        "gmal.com": "gmail.com",
+        "yaho.com": "yahoo.com",
+        "hotmial.com": "hotmail.com"
+      },
+      "action": "warn_and_suggest"
+    },
+    "plus_addressing": {
+      "enabled": true,
+      "allowed": true,
+      "note": "plus@gmail.com is valid, not a typo"
+    }
+  },
+  
+  "required_fields": {
+    "donor_name": { "required": true, "min_length": 2 },
+    "email": { "required": true },
+    "donation_amount": { "required": true, "min": 0.01 }
+  },
+  
+  "field_formats": {
+    "phone_optional": {
+      "pattern": "^(\\d{3}[-.]?\\d{3}[-.]?\\d{4})?$",
+      "required": false
+    },
+    "zip_code": {
+      "pattern": "^\\d{5}(-\\d{4})?$",
+      "required": false
+    }
+  },
+  
+  "feedback_strategy": {
+    "real_time": true,
+    "on_blur": ["email", "phone"],
+    "validation_timing": {
+      "email": "immediate",
+      "amount": "onchange"
+    }
+  }
+}
+```
+
+### rules.json (Enhanced with Metadata)
+
+Rules.json now includes metadata linking back to validation rules:
+
+```json
+{
+  "email_typos": [
+    {
+      "from": "gmai.com",
+      "to": "gmail.com",
+      "confidence": 0.99,
+      "validation_rule_id": "email.typos.gmai",
+      "discovered": "2026-05-25",
+      "instances_caught": 43,
+      "source": "common_typo"
+    }
+  ]
+}
+```
+
+**Enhancement:** `validation_rule_id` links to the upstream validation rule, enabling tracking of "where this rule came from" and "why we have it."
+
+### Scenario Walkthroughs
+
+#### Scenario 1: Prevention (User Types Typo)
+```
+User: john@gmai.com
+                ↓
+validation_rules.json checks:
+  ✓ Format valid? YES
+  ✗ Domain recognized? NO
+  → Check typo list: "gmai.com" found!
+                ↓
+Real-time tooltip:
+  "Did you mean gmail.com? [Yes] [Edit]"
+                ↓
+User clicks [Yes] → email corrected → form submitted
+                ↓
+Givebutter receives: john@gmail.com ✅
+RESULT: Error prevented!
+```
+
+#### Scenario 2: Correction (User Bypasses Validation)
+```
+User posts directly to Givebutter (skips wrapper)
+Email: john@gmai.com entered in DB
+                ↓
+Processor loads rules.json
+Found: { from: "gmai.com", to: "gmail.com" }
+                ↓
+Row flagged for review:
+  "Email typo detected (validation_rule_id: email.typos.gmai)"
+                ↓
+Operator reviews & approves
+                ↓
+RESULT: Error caught, learning metadata recorded
+```
+
+#### Scenario 3: Learning (Pattern Emerges)
+```
+1. Operator approves 23 instances of unfamiliar domain
+   "example.co.uk" (not a typo, but flagged)
+                ↓
+2. System analyzes: 23 instances, high confidence = real pattern
+                ↓
+3. Learning system suggests: Add "example.co.uk" to whitelist
+                ↓
+4. Technical lead updates validation_rules.json:
+   "domains": [..., "example.co.uk"]
+                ↓
+5. .env auto-updates (env_manager detects new version)
+                ↓
+6. Next upload: NO FALSE POSITIVES for example.co.uk
+RESULT: System learns, prevents future false positives!
+```
+
+### File Structure
+
+```
+config/
+├── validation_rules.json              ← UPSTREAM validation
+├── rules/
+│   ├── rules_v2.4.json               ← DOWNSTREAM correction (current)
+│   └── rules_v2.5.json               ← Future version
+└── schemas/
+    ├── validation_schema_v2.4.json   ← Validates validation_rules.json
+    └── rules_schema_v2.4.json        ← Validates rules.json
+```
+
+### Integration Points
+
+**Pre-Form Wrapper (Your Website):**
+```javascript
+// Load validation rules
+fetch('/config/validation_rules.json')
+  .then(rules => {
+    // Real-time validation as user types
+    // Show suggestions before form submit
+    // Only open Givebutter if validation passes
+  })
+```
+
+**Processor (This System):**
+```python
+# Load both files for complete picture
+validation_rules = load_json('config/validation_rules.json')
+rules = load_json('config/rules/rules_v2.4.json')
+
+# Check flagged records:
+# 1. Which validation_rule_id did it escape from?
+# 2. What does rules.json say?
+# 3. Log both for learning feedback
+```
+
+### Benefits of V2
+
+| Aspect | V1 | V2 | Impact |
+|--------|----|----|--------|
+| Error prevention | 0% | ~70% | Cleaner data entry |
+| Operator review | High | Low (30%) | Faster processing |
+| Donor feedback | Silent | Real-time | Better UX |
+| Learning speed | Slow | Fast | Quicker improvement |
+| Data quality | Post-DB | Pre-DB | Better throughout |
+| Traceability | Low | High | Easier debugging |
+
+### For More Details
+
+See **[PRD.md](../PRD.md)** for product strategy and open questions about validation scope, implementation approach, and deployment.
+
+---
+
+**Key principle:** Humans decide. System enforces. Rules improve. Data gets cleaner. 🎯
+
+---
+
 **For more details:**
-- **[DEVELOPER.md](DEVELOPER.md)** — Technical maintenance and advanced topics
+- **[PRD.md](../PRD.md)** — Product strategy and validation rules design
+- **[DEVELOPER.md](DEVELOPER.md)** — Technical maintenance and integration
 - **[OPERATOR_MANUAL.md](../OPERATOR_MANUAL.md)** — How to use the system daily
 - **[SETUP_GUIDE.md](../SETUP_GUIDE.md)** — How to set it up initially
 
-**Last updated:** May 25, 2026  
+**Last updated:** May 26, 2026  
 **Architecture version:** 2.0

@@ -633,14 +633,202 @@ def upload():
 
 ---
 
+## Validation Rules Integration (V2)
+
+See **[PRD.md](../PRD.md)** for high-level product strategy.
+
+### Loading validation_rules.json in Processor
+
+The processor can now load and leverage validation rules for better error tracking:
+
+```python
+import json
+from pathlib import Path
+
+# Load validation rules (for tracking/analysis)
+validation_rules = json.load(open('config/validation_rules.json'))
+rules = json.load(open('config/rules/rules_v2.4.json'))
+
+# Track which upstream rule this escape came from
+for flagged_record in flagged_records:
+    email = flagged_record['email']
+    
+    # Check if this matches a validation rule
+    for typo in validation_rules['email_validation']['common_typos']:
+        if email.endswith('@' + typo):
+            # Email escaped upstream validation
+            # Log for learning analysis
+            flagged_record['escaped_from_validation_rule_id'] = 'email.typos.' + typo
+            flagged_record['validation_bypass_reason'] = 'User bypassed form'
+```
+
+### Tracking Rule Sources
+
+Rules now include metadata linking to their validation origin:
+
+```python
+# When loading rules
+for typo_rule in rules['email_typos']:
+    if 'validation_rule_id' in typo_rule:
+        # This rule came from upstream validation
+        # Track it for learning feedback
+        log(f"Rule {typo_rule['validation_rule_id']} "
+            f"caught {typo_rule['instances_caught']} instances")
+```
+
+### Logging Bypass Events
+
+When validation rules are bypassed (user submitted bad data that should have been caught upstream):
+
+```python
+def log_bypass_event(record, validation_rule_id):
+    """
+    Log when validation rules were bypassed.
+    Helps identify if upstream wrapper is working correctly.
+    """
+    bypass_event = {
+        'timestamp': datetime.now().isoformat(),
+        'validation_rule_id': validation_rule_id,
+        'record': record,
+        'bypass_reason': 'Unknown (direct submission, API, etc)',
+        'severity': 'investigate'
+    }
+    
+    # Log to monitoring system
+    # Could trigger alerts if bypass rate exceeds threshold
+    bypass_log.append(bypass_event)
+```
+
+### Updating Rules When Patterns Emerge
+
+When new patterns are detected and rules need updating:
+
+```python
+def propose_new_rule(pattern_data):
+    """
+    When operator approves a pattern, prepare rule update.
+    Both validation_rules.json and rules.json may need updates.
+    """
+    
+    # Analyze pattern
+    confidence = pattern_data['confidence']
+    occurrences = pattern_data['occurrences']
+    
+    # Prepare proposal for Claude
+    proposal = {
+        'pattern': pattern_data['pattern'],
+        'confidence': confidence,
+        'occurrences': occurrences,
+        'recommendation': 'Add to validation_rules if confidence > 90%'
+    }
+    
+    # Technical lead reviews and updates:
+    # 1. validation_rules.json (upstream prevention)
+    # 2. rules.json (downstream correction)
+    # 3. Both files versioned together
+    # 4. env_manager auto-discovers new version
+```
+
+### API Examples for Pre-Form Wrapper
+
+If building a pre-form wrapper on your website, it would integrate like this:
+
+```javascript
+// Load validation rules from server
+async function initializeValidation() {
+  const validationRules = await fetch('/config/validation_rules.json')
+    .then(r => r.json());
+  
+  // Setup real-time email validation
+  document.getElementById('email').addEventListener('blur', (e) => {
+    validateEmail(e.target.value, validationRules);
+  });
+  
+  // Setup form submission
+  document.getElementById('form').addEventListener('submit', (e) => {
+    if (!validateForm(e.target, validationRules)) {
+      e.preventDefault();
+      showErrors(validationErrors);
+    } else {
+      // Validation passed - open Givebutter widget
+      openGivebutterWidget();
+    }
+  });
+}
+
+function validateEmail(email, rules) {
+  // Check format
+  if (!rules.email_validation.format.pattern.test(email)) {
+    return false;
+  }
+  
+  // Check domain
+  const domain = email.split('@')[1];
+  if (!rules.email_validation.domain_whitelist.domains.includes(domain)) {
+    // Check common typos
+    if (domain in rules.email_validation.common_typos) {
+      const suggestion = rules.email_validation.common_typos[domain];
+      showSuggestion(`Did you mean @${suggestion}?`);
+    }
+  }
+  
+  return true;
+}
+```
+
+### Best Practices for Rule Management
+
+1. **Keep validation_rules.json and rules.json in sync**
+   - Same patterns in both files
+   - Version numbers should match (or at least be documented)
+   - Metadata links help track relationships
+
+2. **Monitor bypass events**
+   - Track how many records escape upstream validation
+   - High bypass rate = upstream wrapper may be failing
+   - Use as metric to improve wrapper
+
+3. **Iterate based on patterns**
+   - New patterns → propose rule → approve → update both files
+   - Document why each rule exists (source, confidence, date added)
+   - Retire old rules that no longer catch issues
+
+4. **Test validation rules**
+   - Unit tests for each rule in validation_rules.json
+   - Integration tests with actual form submission
+   - A/B test new rules (test group vs control)
+
+### Testing Validation Rules
+
+```python
+# Unit test for email typo detection
+def test_email_typo_detection():
+    rules = load_validation_rules()
+    
+    test_cases = [
+        ('john@gmai.com', False),      # typo
+        ('john@gmail.com', True),      # correct
+        ('john@example.co.uk', True),  # domain in whitelist
+        ('invalid.email', False),      # format invalid
+    ]
+    
+    for email, should_pass in test_cases:
+        result = validate_email(email, rules)
+        assert result == should_pass
+```
+
+---
+
 ## References
 
-- **Claude Skill v2.6:** `skills/claude_skill_v2.6_cost_optimized.md`
+- **Product Strategy:** `../PRD.md`
+- **System Architecture:** `ARCHITECTURE.md`
+- **Claude Skill v2.6:** `../skills/claude_skill_v2.6_cost_optimized.md`
 - **Version History:** `CHANGELOG.md`
-- **User Guide:** `OPERATOR_MANUAL.md`
+- **User Guide:** `../OPERATOR_MANUAL.md`
 - **Configuration:** `.env` (auto-managed by `env_manager.py`)
 
 ---
 
-**Last updated:** May 25, 2026
-**Document version:** 1.0
+**Last updated:** May 26, 2026
+**Document version:** 2.0
