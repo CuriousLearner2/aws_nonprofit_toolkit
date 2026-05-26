@@ -1,0 +1,41 @@
+{
+  "$schema": "../schemas/rules_schema_v2.4.json",
+  "version": "2.4",
+  "email_typos": [
+    {
+      "from": "gmai.com",
+      "to": "gmail.com",
+      "confidence": 0.99
+    },
+    {
+      "from": "gamil.com",
+      "to": "gmail.com",
+      "confidence": 0.99
+    },
+    {
+      "from": "gmal.com",
+      "to": "gmail.com",
+      "confidence": 0.98
+    },
+    {
+      "from": "yaho.com",
+      "to": "yahoo.com",
+      "confidence": 0.98
+    },
+    {
+      "from": "yahooo.com",
+      "to": "yahoo.com",
+      "confidence": 0.98
+    },
+    {
+      "from": "hotmial.com",
+      "to": "hotmail.com",
+      "confidence": 0.99
+    }
+  ],
+  "name_case": [],
+  "campaign_aliases": [],
+  "pull_frequency": {
+    "givebutter_hours": 24
+  }
+}

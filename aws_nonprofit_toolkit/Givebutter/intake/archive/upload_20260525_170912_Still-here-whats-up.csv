@@ -1,0 +1,4 @@
+amount,email,name
+1500,test@example.com,High Roller
+200,,Missing Email
+50,ok@example.com,Normal
