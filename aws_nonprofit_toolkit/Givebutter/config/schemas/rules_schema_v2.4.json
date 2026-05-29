@@ -83,6 +83,12 @@
           "minimum": 1
         }
       }
+    },
+    "high_dollar_threshold": {
+      "type": "number",
+      "description": "Donations at or above this amount (in dollars) are flagged for review",
+      "minimum": 0,
+      "default": 1000
     }
   },
   "additionalProperties": false

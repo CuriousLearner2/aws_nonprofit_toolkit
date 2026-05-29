@@ -1,0 +1,8 @@
+name,email,email_corrected,amount,donation_date,flag_reason
+"Smith, John",john.smith@@gmail.com,,$300.00,2026-05-11,invalid-email
+Anna Müller,anna.mueller,,"$2,000.00",2026-05-11,high-dollar
+"O'Connor, Sean",sean.o'connor@yaho.com,,"$1,100.00",2026-05-12,high-dollar|invalid-email
+,,,,2026-05-12,missing-email
+Big Donor,big@donor.com,,"$1,000,000.00",2026-05-13,high-dollar
+Sci Note,sci@gmail.com,,"$1,000.00",2026-05-14,high-dollar
+Trailing Dot,trail@gmail.com.,,"$2,500.00",2026-05-14,high-dollar|invalid-email

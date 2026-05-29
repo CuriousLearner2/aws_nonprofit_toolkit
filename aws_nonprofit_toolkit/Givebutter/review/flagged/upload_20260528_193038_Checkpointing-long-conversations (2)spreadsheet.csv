@@ -1,0 +1,25 @@
+name,email,email_corrected,amount,donation_date,flag_reason
+Taylor 2,taylor2@gmai.com,taylor2@gmail.com,$500.00,2026-05-20,email-typo
+Riley 4,riley4@gmail.com,,"$2,000.00",2026-05-20,high-dollar
+Sam 5,sam5@gmail.com,,"$1,001.00",2026-05-20,high-dollar
+Taylor 6,taylor6@gmai.com,taylor6@gmail.com,$50.00,2026-05-20,email-typo
+Sam 7,sam7@yaho.com,,"$2,000.00",2026-05-20,high-dollar
+Morgan 8,morgan8@gmai.com,morgan8@gmail.com,"$2,000.00",2026-05-20,high-dollar|email-typo
+Taylor 9,taylor9@yahoo.com,,"$2,000.00",2026-05-20,high-dollar
+Jordan 10,jordan10@yaho.com,,"$1,500.00",2026-05-20,high-dollar
+Avery 11,,,$25.00,2026-05-20,missing-email
+Taylor 13,taylor13@gmal.com,taylor13@gmail.com,"$1,000.00",2026-05-20,high-dollar|email-typo
+Casey 15,duplicate@gmai.com,duplicate@gmail.com,"$1,200.00",2026-05-20,high-dollar|email-typo
+Avery 16,avery16@gmal.com,avery16@gmail.com,$50.00,2026-05-20,email-typo
+Jordan 17,jordan17@yaho.com,,"$1,000.00",2026-05-20,high-dollar
+Casey 19,casey19@gmail.com,,"$2,000.00",2026-05-20,high-dollar
+Taylor 21,taylor21@yaho.com,,"$1,000.00",2026-05-20,high-dollar
+Morgan 22,,,$50.00,2026-05-20,missing-email
+Avery 26,avery26@hotmail.com,,"$1,500.00",2026-05-20,high-dollar
+Jordan 27,jordan27@gmai.com,jordan27@gmail.com,"$1,000.00",2026-05-20,high-dollar|email-typo
+Morgan 28,morgan28@gmai.com,morgan28@gmail.com,"$1,000.00",2026-05-20,high-dollar|email-typo
+Morgan 30,duplicate@gmai.com,duplicate@gmail.com,"$1,200.00",2026-05-20,high-dollar|email-typo
+Casey 32,casey32@gmai.com,casey32@gmail.com,$99.00,2026-05-20,email-typo
+Morgan 33,,,"$1,001.00",2026-05-20,high-dollar|missing-email
+Morgan 34,morgan34@gmai.com,morgan34@gmail.com,"$2,000.00",2026-05-20,high-dollar|email-typo
+Avery 35,avery35@hotmial.com,,"$1,000.00",2026-05-20,high-dollar

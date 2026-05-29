@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 from functools import wraps
 import os
 import re
+import json
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
@@ -18,13 +19,29 @@ INTAKE_DIR = BASE_DIR / "intake" / "new"
 ARCHIVE_DIR = BASE_DIR / "archive"
 REVIEW_DIR = BASE_DIR / "review"
 FLAGGED_DIR = REVIEW_DIR / "flagged"
+RULES_FILE = BASE_DIR / "config" / "rules" / "rules_v2.4.json"
 
 # Create dirs if missing
 for d in [INTAKE_DIR, ARCHIVE_DIR, FLAGGED_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # --- Config ---
-HIGH_DOLLAR_THRESHOLD = float(os.getenv('HIGH_DOLLAR_THRESHOLD', '1000.0'))
+def load_rules():
+    """Load rules from config file, with env var overrides."""
+    try:
+        with open(RULES_FILE) as f:
+            rules = json.load(f)
+            logger.info(f"Loaded rules from {RULES_FILE}")
+    except FileNotFoundError:
+        logger.warning(f"Rules file not found at {RULES_FILE}, using defaults")
+        rules = {"high_dollar_threshold": 1000.0}
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse rules file: {e}")
+        rules = {"high_dollar_threshold": 1000.0}
+    return rules
+
+rules = load_rules()
+HIGH_DOLLAR_THRESHOLD = float(os.getenv('HIGH_DOLLAR_THRESHOLD', rules.get('high_dollar_threshold', 1000.0)))
 ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', '')  # Set for authentication
 EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 EMAIL_TYPOS = {

@@ -37,5 +37,6 @@
   "campaign_aliases": [],
   "pull_frequency": {
     "givebutter_hours": 24
-  }
+  },
+  "high_dollar_threshold": 1000
 }

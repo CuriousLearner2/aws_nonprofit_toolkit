@@ -1,0 +1,9 @@
+name,email,email_corrected,amount,donation_date,flag_reason
+Alice Smith,alice@gmail.com,,"$1,000.00",2026-05-01,high-dollar
+Bob Jones,bob@gmail.com,,"$1,000.01",2026-05-01,high-dollar
+Dave Kim,dave@GMAI.COM,dave@gmail.com,$250.00,2026-05-02,email-typo
+Eve Park,eve@gmai.com,eve@gmail.com,$75.00,2026-05-03,email-typo
+Frank Wu,,,$50.00,2026-05-03,missing-email
+Grace Liu,grace@gmal.com,grace@gmail.com,"$1,200.00",2026-05-04,high-dollar|email-typo
+Ivy Patel,ivy@hotmial.com,,"$1,500.00",2026-05-05,high-dollar
+Kara Ng,kara@gmail.com,,"$1,500.00",2026-05-06,high-dollar
