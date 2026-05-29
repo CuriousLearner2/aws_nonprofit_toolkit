@@ -8,9 +8,14 @@
       "confidence": 0.99
     },
     {
-      "from": "gamil.com",
+      "from": "gmial.com",
       "to": "gmail.com",
       "confidence": 0.99
+    },
+    {
+      "from": "gnail.com",
+      "to": "gmail.com",
+      "confidence": 0.98
     },
     {
       "from": "gmal.com",
@@ -30,6 +35,16 @@
     {
       "from": "hotmial.com",
       "to": "hotmail.com",
+      "confidence": 0.99
+    },
+    {
+      "from": "hotmal.com",
+      "to": "hotmail.com",
+      "confidence": 0.98
+    },
+    {
+      "from": "outlok.com",
+      "to": "outlook.com",
       "confidence": 0.99
     }
   ],

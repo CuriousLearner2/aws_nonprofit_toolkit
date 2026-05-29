@@ -34,25 +34,26 @@ def load_rules():
             logger.info(f"Loaded rules from {RULES_FILE}")
     except FileNotFoundError:
         logger.warning(f"Rules file not found at {RULES_FILE}, using defaults")
-        rules = {"high_dollar_threshold": 1000.0}
+        rules = {"high_dollar_threshold": 1000.0, "email_typos": []}
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse rules file: {e}")
-        rules = {"high_dollar_threshold": 1000.0}
+        rules = {"high_dollar_threshold": 1000.0, "email_typos": []}
     return rules
 
 rules = load_rules()
 HIGH_DOLLAR_THRESHOLD = float(os.getenv('HIGH_DOLLAR_THRESHOLD', rules.get('high_dollar_threshold', 1000.0)))
 ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', '')  # Set for authentication
 EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
-EMAIL_TYPOS = {
-    'gmai.com': 'gmail.com',
-    'gmial.com': 'gmail.com',
-    'gnail.com': 'gmail.com',
-    'gmal.com': 'gmail.com',
-    'yahooo.com': 'yahoo.com',
-    'hotmal.com': 'hotmail.com',
-    'outlok.com': 'outlook.com',
-}
+
+# Build EMAIL_TYPOS dict from rules file
+EMAIL_TYPOS = {}
+if isinstance(rules.get('email_typos'), list):
+    for typo_rule in rules.get('email_typos', []):
+        EMAIL_TYPOS[typo_rule['from']] = typo_rule['to']
+    logger.info(f"Loaded {len(EMAIL_TYPOS)} email typo rules from config")
+else:
+    logger.warning("No email_typos found in rules file, using empty dict")
+    EMAIL_TYPOS = {}
 
 # --- Middleware ---
 def require_auth(f):
