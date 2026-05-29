@@ -57,7 +57,7 @@ Everything else is built in. If you can use email, you can use this.
 
 ### Q: Where do I upload my CSV file?
 
-**A:** Go to `http://localhost:5000` in your web browser. You should see a simple form that says "Upload Givebutter Donation CSV".
+**A:** Go to `http://localhost:8000` in your web browser. You should see a simple form that says "Upload Givebutter Donation CSV".
 
 **Tip:** Ask your tech lead to confirm the uploader is running before you try to upload.
 

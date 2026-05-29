@@ -198,7 +198,7 @@ After stakeholder approval of the 4 critical questions:
 **Status:** Stable | **Type:** Feature Release
 
 ### Added
-- Flask web uploader (localhost:5000)
+- Flask web uploader (localhost:8000)
 - CSV donation file processing
 - Email validation and typo detection
 - Flagging system for problematic records

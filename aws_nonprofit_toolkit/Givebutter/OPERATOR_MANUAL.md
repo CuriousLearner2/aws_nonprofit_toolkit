@@ -52,15 +52,21 @@ You're not responsible for fixing the data yourself (the system does that), but 
 
 ## Quick Start: First Time Setup
 
-**Step 0: Get access**
-Ask your technical lead to:
-- Ensure the uploader is running on your computer
-- Give you the uploader URL (usually `http://localhost:5000`)
-- Show you where the `review/flagged/` folder is on your computer
+**Step 0: Start the uploader** (Technical setup)
+
+If you're a technical operator, start the uploader like this:
+
+```bash
+cd /Users/gautambiswas/Claude\ Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+source .venv/bin/activate
+python3 scripts/uploader/app.py
+```
+
+You should see: `Running on http://127.0.0.1:8000`
 
 **Step 1: Open the uploader**
-- Go to `http://localhost:5000` in your web browser
-- You should see a simple form: "Upload Givebutter Donation CSV"
+- Go to `http://localhost:8000` in your web browser
+- You should see a form labeled "Givebutter Processor - Upload & Review"
 
 **Step 2: Export from Givebutter**
 - Log into Givebutter
@@ -91,7 +97,7 @@ STEP 1: UPLOAD                 STEP 2: AUTO-PROCESS         STEP 3: REVIEW
    │  CSV file │─────────────▶│ row against rules   │────▶│ Look at each record │
    │ (go to    │              │ and flags problems  │     │ Ask: "Is this      │
    │ localhost │              │                     │     │  really a problem?" │
-   │  :5000)   │              └──────────┬──────────┘     │                     │
+   │  :8000)   │              └──────────┬──────────┘     │                     │
    └──────────┘               │          │ (if no issues) │ Answer: YES or NO   │
                               │          │                └──────────┬──────────┘
                               │    ┌─────▼──────┐                    │
@@ -127,7 +133,7 @@ STEP 1: UPLOAD                 STEP 2: AUTO-PROCESS         STEP 3: REVIEW
 
 ### Step 1️⃣: Upload a CSV File
 
-**Where:** The web uploader (`http://localhost:5000`)
+**Where:** The web uploader (`http://localhost:8000`)
 
 **What to upload:**
 - Givebutter donation exports (CSV format)

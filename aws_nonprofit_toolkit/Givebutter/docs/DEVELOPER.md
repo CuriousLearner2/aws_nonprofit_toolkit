@@ -19,7 +19,7 @@ This document covers the technical architecture, rule systems, Claude AI integra
 ┌─────────────────────────────────────────────────────────────┐
 │                        Flask Uploader                        │
 │                  (scripts/uploader/app.py)                   │
-│              Simple web form on :5000/upload                 │
+│              Simple web form on :8000/upload                 │
 └──────────────────────────────┬──────────────────────────────┘
                                │ (CSV files)
                                ↓

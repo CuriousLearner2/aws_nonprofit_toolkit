@@ -13,7 +13,7 @@
     week/month)        (5-30 seconds)         rejected)
    
    Go to:              System does:           You do:
-   localhost:5000      Checks all rows       Look at flagged
+   localhost:8000      Checks all rows       Look at flagged
                        Flags problems        Say yes/no
 ```
 
@@ -100,7 +100,7 @@ See [PRD.md](../PRD.md) for how this works, or [DEVELOPER.md](DEVELOPER.md) for 
 ## Common Tasks (Quick How-To)
 
 ### "How do I upload a file?"
-1. Go to `http://localhost:5000` in your web browser
+1. Go to `http://localhost:8000` in your web browser
 2. Click "Choose File"
 3. Select your Givebutter CSV
 4. Click "Upload"
@@ -233,7 +233,7 @@ See [PRD.md](../PRD.md) for details.
 │ YOUR JOB: Upload → Review Flagged → Approve/Reject     │
 │                                                         │
 │ UPLOAD:              REVIEW:           MOVE:            │
-│ localhost:5000      review/flagged/    Cmd/Ctrl + X    │
+│ localhost:8000      review/flagged/    Cmd/Ctrl + X    │
 │ Click upload        Open CSV file      Paste to:        │
 │ Choose file         Read each row      approved/        │
 │ Wait 5-30 sec       Ask: Problem?      or rejected/    │

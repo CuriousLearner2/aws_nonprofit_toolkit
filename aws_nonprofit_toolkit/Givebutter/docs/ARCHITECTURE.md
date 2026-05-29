@@ -18,7 +18,7 @@ This document explains how the system works internally. If you're an operator, s
 │           │ (upload CSV)                                           │
 │           ↓                                                        │
 │  ┌─────────────────────────────────────────────────────────┐     │
-│  │        FLASK UPLOADER (http://localhost:5000)          │     │
+│  │        FLASK UPLOADER (http://localhost:8000)          │     │
 │  │     (scripts/uploader/app.py)                          │     │
 │  │  Simple web form for CSV uploads                       │     │
 │  └──────────────────────┬────────────────────────────────┘     │
@@ -92,7 +92,7 @@ This document explains how the system works internally. If you're an operator, s
   │  Computer   │
   └──────┬──────┘
          │
-         ↓ (upload via localhost:5000)
+         ↓ (upload via localhost:8000)
   ┌──────────────────────────────────┐
   │ UPLOAD HANDLER                   │
   │ • Receive file                   │
@@ -231,7 +231,7 @@ Givebutter/  (root directory)
 ```
 ┌─────────────────────────────────────────┐
 │   FLASK UPLOADER                        │
-│   (http://localhost:5000)               │
+│   (http://localhost:8000)               │
 ├─────────────────────────────────────────┤
 │                                         │
 │  Display HTML form:                     │
@@ -619,7 +619,7 @@ config/schemas/rules_schema_v2.4.json
 
 ## Summary: How It All Works Together
 
-1. **Operator uploads CSV** via uploader (localhost:5000)
+1. **Operator uploads CSV** via uploader (localhost:8000)
 2. **Uploader saves file** to intake/new/ with timestamp
 3. **Processor continuously watches** intake/new/
 4. **Processor loads latest rules** from config/rules/ (auto-discovered by env_manager)

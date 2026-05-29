@@ -83,7 +83,7 @@ python3 -m scripts.uploader.app
 
 **2. Open the upload form:**
 ```
-http://localhost:5000
+http://localhost:8000
 ```
 
 **3. Upload a CSV file:**

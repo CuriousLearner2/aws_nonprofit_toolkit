@@ -151,15 +151,15 @@ python -m scripts.uploader.app
 
 **You should see:**
 ```
- * Running on http://127.0.0.1:5000
+ * Running on http://127.0.0.1:8000
  * Restarting with reloader
  * Debugger is active!
 ```
 
 **If you see** `Address already in use`:
-- Another program is using port 5000
+- Another program is using port 8000
 - Change the port in `scripts/uploader/app.py` (advanced)
-- Or stop whatever's using port 5000
+- Or stop whatever's using port 8000
 
 **The uploader is now running.** Leave this terminal window open.
 
@@ -171,7 +171,7 @@ Open a NEW terminal window (don't close the one running the uploader).
 
 Go to:
 ```
-http://localhost:5000
+http://localhost:8000
 ```
 
 **You should see a simple form:**
@@ -185,7 +185,7 @@ Upload Givebutter Donation CSV
 **If you see nothing:**
 - Wait 3 seconds (sometimes takes a moment to start)
 - Refresh your browser (F5 or Cmd+R)
-- Try `http://127.0.0.1:5000` instead
+- Try `http://127.0.0.1:8000` instead
 
 **If the page still won't load:**
 - Check the uploader terminal—are there errors?
@@ -228,7 +228,7 @@ Alice Brown,alice@yaho.com,200,2026-05-25
 
 ## Step 5: Upload Your Test File
 
-1. Go back to http://localhost:5000
+1. Go back to http://localhost:8000
 2. Click **"Choose File"**
 3. Select your CSV file (test_donations.csv or your real export)
 4. Click **"Upload"**
@@ -307,7 +307,7 @@ They would then propose rules to catch these automatically next time.
 
 If you see all of these, **the system is working!** ✅
 
-- [ ] Uploader runs without errors on http://localhost:5000
+- [ ] Uploader runs without errors on http://localhost:8000
 - [ ] You can upload a CSV file
 - [ ] Uploader says "File received"
 - [ ] A file appears in `review/flagged/` within 10 seconds
@@ -323,7 +323,7 @@ Now that the system is working:
 
 1. **Print [QUICK_START.md](docs/QUICK_START.md)** — Give a copy to each operator
 2. **Share [OPERATOR_MANUAL.md](OPERATOR_MANUAL.md)** — They'll need to read this
-3. **Give them the uploader URL** — `http://localhost:5000` or your server address
+3. **Give them the uploader URL** — `http://localhost:8000` or your server address
 4. **Do a practice upload together** — Let them walk through it once
 
 ---
@@ -407,13 +407,13 @@ For now, just keep the terminal window open when you need to process files.
 
 ### Problem: Uploader says "Address already in use"
 
-**You see:** `Address already in use, port 5000`
+**You see:** `Address already in use, port 8000`
 
 **Solutions:**
-1. Another program is using port 5000
+1. Another program is using port 8000
 2. Close that program or kill the process:
-   - **Mac/Linux:** `lsof -i :5000` then `kill [PID]`
-   - **Windows:** `netstat -ano | findstr :5000`
+   - **Mac/Linux:** `lsof -i :8000` then `kill [PID]`
+   - **Windows:** `netstat -ano | findstr :8000`
 
 ---
 
@@ -427,7 +427,7 @@ For now, just keep the terminal window open when you need to process files.
 
 ---
 
-### Problem: Browser can't reach http://localhost:5000
+### Problem: Browser can't reach http://localhost:8000
 
 **You see:** "This site can't be reached" or connection error
 
@@ -435,8 +435,8 @@ For now, just keep the terminal window open when you need to process files.
 1. Make sure the uploader terminal is still running (didn't close it?)
 2. Make sure you see the "Running on" message in the terminal
 3. Try refreshing the page (F5)
-4. Try http://127.0.0.1:5000 instead
-5. Check if port 5000 is in use (see "Address already in use" above)
+4. Try http://127.0.0.1:8000 instead
+5. Check if port 8000 is in use (see "Address already in use" above)
 
 ---
 
@@ -482,7 +482,7 @@ python -m scripts.uploader.app
 
 **Open the uploader:**
 ```
-http://localhost:5000
+http://localhost:8000
 ```
 
 **Check for flagged files:**
