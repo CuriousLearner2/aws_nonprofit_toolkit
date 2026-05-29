@@ -83,6 +83,44 @@ You should see: `Running on http://127.0.0.1:8000`
 
 ---
 
+## Folder Structure Reference
+
+This shows where everything lives on your computer. All paths are relative to the Givebutter directory:
+
+```
+/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/
+
+INPUT (Where files come FROM):
+├── config/
+│   ├── rules/
+│   │   └── rules_v2.4.json           ← Rules for flagging issues (email typos, etc.)
+│   ├── validation_rules.json          ← Rules for preventing errors upstream
+│   └── schemas/                       ← Validation schemas for rule files
+
+PROCESSING:
+├── scripts/uploader/
+│   ├── app.py                         ← The uploader application (run this)
+│   └── templates/review.html          ← Web UI for upload & review
+├── intake/new/                        ← Temporary: uploaded CSVs land here
+└── .venv/                             ← Python virtual environment
+
+OUTPUT (Where files GO):
+├── review/
+│   ├── flagged/                       ← Files with problems (you review these)
+│   ├── approved/                      ← Files you approved
+│   └── rejected/                      ← Files you rejected
+├── archive/                           ← Clean & processed files (done)
+└── datasets/                          ← Test CSV files for practice/testing
+```
+
+**Key Takeaway:**
+- **Start here:** `cd` to the Givebutter folder, run `scripts/uploader/app.py`
+- **Upload via web:** Go to `http://localhost:8000` in your browser
+- **Review via web:** Flagged files appear in the web UI automatically (no folder access needed)
+- **Files move automatically:** Approved → archive, Rejected → deleted
+
+---
+
 ## The 5-Step Workflow
 
 ### Complete Workflow Diagram
