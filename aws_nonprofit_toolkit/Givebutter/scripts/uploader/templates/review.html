@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Givebutter Processor - Upload & Review</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+        .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        h1 { margin: 0 0 8px 0; font-size: 24px; }
+        .subtitle { color: #666; margin-bottom: 24px; }
+        .drop-zone { border: 2px dashed #ccc; border-radius: 8px; padding: 48px; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .drop-zone:hover, .drop-zone.dragover { border-color: #0066cc; background: #f0f7ff; }
+        .drop-zone input { display: none; }
+        .btn { background: #0066cc; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #0052a3; }
+        .btn-secondary { background: #6c757d; }
+        .btn-success { background: #28a745; }
+        .btn-danger { background: #dc3545; }
+        .file-list { margin-top: 16px; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
+        .file-item:hover { background: #f9f9f9; }
+        .status { padding: 12px; border-radius: 6px; margin-top: 16px; display: none; }
+        .status.success { background: #d4edda; color: #155724; display: block; }
+        .status.error { background: #f8d7da; color: #721c24; display: block; }
+        .status.info { background: #d1ecf1; color: #0c5460; display: block; }
+        .flagged-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        .flagged-table th { background: #f8f9fa; padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6; font-weight: 600; }
+        .flagged-table td { padding: 12px; border-bottom: 1px solid #e9ecef; }
+        .pill { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; margin-right: 4px; }
+        .pill-high { background: #ffebee; color: #c62828; }
+        .pill-typo { background: #e3f2fd; color: #1565c0; }
+        .pill-missing { background: #fff3e0; color: #e65100; }
+        .actions { display: flex; gap: 8px; margin-top: 16px; }
+        .hidden { display: none; }
+        .empty-state { text-align: center; padding: 48px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Givebutter Processor</h1>
+        <div class="subtitle">Upload a CSV to process, or review flagged files below</div>
+
+        <div class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput" accept=".csv">
+            <div>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" style="margin-bottom: 12px;">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 5 17 10"></polyline>
+                    <line x1="12" y1="5" x2="12" y2="15"></line>
+                </svg>
+                <div style="font-size: 16px; margin-bottom: 4px;">Drop CSV here or click to browse</div>
+                <div style="font-size: 13px; color: #999;">Givebutter export files only</div>
+            </div>
+        </div>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h2 style="margin: 0; font-size: 18px;">Review Queue</h2>
+            <button class="btn btn-secondary" onclick="loadFlagged()">Refresh</button>
+        </div>
+
+        <div id="fileList" class="file-list"></div>
+        <div id="emptyState" class="empty-state hidden">No flagged files to review</div>
+
+        <div id="reviewPanel" class="hidden">
+            <h3 id="reviewFilename" style="margin: 24px 0 16px 0;"></h3>
+            <table class="flagged-table" id="reviewContent"></table>
+            <div class="actions">
+                <button class="btn btn-success" onclick="approveSelected()">✓ Approve Selected</button>
+                <button class="btn btn-secondary" onclick="selectAllRows(true)">Select All</button>
+                <button class="btn btn-secondary" onclick="selectAllRows(false)">Deselect All</button>
+                <button class="btn btn-danger" onclick="rejectFile()">✗ Delete File</button>
+                <button class="btn btn-secondary" onclick="closeReview()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+let currentFile = null;
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const status = document.getElementById('status');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+async function handleFiles(files) {
+    if (!files.length) return;
+    const file = files[0];
+    if (!file.name.endsWith('.csv')) { showStatus('Please upload a CSV file', 'error'); return; }
+
+    showStatus(`Processing ${file.name}...`, 'info');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const resp = await fetch('/upload', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+            showStatus(`Error: ${data.error || 'Unknown error'}`, 'error');
+            return;
+        }
+
+        if (data.flagged_count > 0) {
+            showStatus(`✓ Found ${data.flagged_count} flagged rows — added to queue below`, 'success');
+            setTimeout(loadFlagged, 500);
+        } else {
+            showStatus(`✓ No issues found — file archived`, 'success');
+        }
+    } catch (err) {
+        showStatus(`Error: ${err.message}`, 'error');
+    }
+    fileInput.value = '';
+}
+
+function showStatus(msg, type) {
+    status.textContent = msg;
+    status.className = `status ${type}`;
+    setTimeout(() => { status.className = 'status'; }, 5000);
+}
+
+async function loadFlagged() {
+    try {
+        const resp = await fetch('/api/flagged');
+        const files = await resp.json();
+        const list = document.getElementById('fileList');
+        const empty = document.getElementById('emptyState');
+
+        list.innerHTML = '';
+        if (files.length === 0) {
+            empty.classList.remove('hidden');
+            document.getElementById('reviewPanel').classList.add('hidden');
+            return;
+        }
+        empty.classList.add('hidden');
+
+        files.forEach(f => {
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.innerHTML = `
+                <div>
+                    <div style="font-weight: 500;">${f.filename}</div>
+                    <div style="font-size: 12px; color: #666;">${f.rows} rows</div>
+                </div>
+                <button class="btn" onclick="reviewFile('${f.filename}')">Review</button>
+            `;
+            list.appendChild(div);
+        });
+    } catch (err) {
+        showStatus(`Error loading files: ${err.message}`, 'error');
+    }
+}
+
+async function reviewFile(filename) {
+    try {
+        const resp = await fetch(`/api/flagged/${encodeURIComponent(filename)}`);
+        if (!resp.ok) {
+            showStatus('File not found', 'error');
+            return;
+        }
+        const data = await resp.json();
+        currentFile = filename;
+        window.currentRows = data.rows; // Store rows for approval
+
+        document.getElementById('reviewFilename').textContent = `Reviewing: ${filename} (${data.rows.length} record${data.rows.length === 1 ? '' : 's'})`;
+        const table = document.getElementById('reviewContent');
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th style="width: 30px;"><input type="checkbox" id="selectAllCheckbox" onchange="toggleAllCheckboxes()"></th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Corrected Email</th>
+                    <th>Amount</th>
+                    <th>Date</th>
+                    <th>Issues</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${data.rows.map((row, idx) => {
+                    const flags = row.flag_reason.split('|');
+                    const pillHtml = flags.map(f => {
+                        const pillClass = f === 'high-dollar' ? 'pill-high' : f === 'email-typo' ? 'pill-typo' : 'pill-missing';
+                        return `<span class="pill ${pillClass}">${f}</span>`;
+                    }).join('');
+                    return `
+                        <tr>
+                            <td><input type="checkbox" class="row-checkbox" data-index="${idx}" checked></td>
+                            <td>${row.name}</td>
+                            <td>${row.email}</td>
+                            <td>${row.email_corrected || '—'}</td>
+                            <td>${row.amount || '—'}</td>
+                            <td>${row.donation_date || '—'}</td>
+                            <td>${pillHtml}</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        `;
+        document.getElementById('reviewPanel').classList.remove('hidden');
+    } catch (err) {
+        showStatus(`Error loading file: ${err.message}`, 'error');
+    }
+}
+
+function toggleAllCheckboxes() {
+    const checked = document.getElementById('selectAllCheckbox').checked;
+    document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = checked);
+}
+
+function selectAllRows(select) {
+    document.getElementById('selectAllCheckbox').checked = select;
+    document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = select);
+}
+
+async function approveSelected() {
+    if (!currentFile) return;
+
+    const checked = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => parseInt(cb.dataset.index));
+    if (checked.length === 0) {
+        showStatus('Please select at least one record to approve', 'error');
+        return;
+    }
+
+    try {
+        const totalBefore = window.currentRows.length;
+        const resp = await fetch(`/api/approve-partial/${encodeURIComponent(currentFile)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approved_indices: checked })
+        });
+        if (!resp.ok) throw new Error('Approval failed');
+
+        const result = await resp.json();
+        showStatus(`✓ ${checked.length} record(s) approved`, 'success');
+
+        // If all records were approved, close review and refresh list
+        if (result.remaining === 0) {
+            closeReview();
+            loadFlagged();
+        } else {
+            // Otherwise, reload the file and show remaining records
+            await reviewFile(currentFile);
+            showStatus(`${result.approved} approved. ${result.remaining} record(s) remaining.`, 'info');
+        }
+    } catch (err) {
+        showStatus(`Error: ${err.message}`, 'error');
+    }
+}
+
+async function approveFile() {
+    if (!currentFile) return;
+    try {
+        const resp = await fetch(`/api/approve/${encodeURIComponent(currentFile)}`, { method: 'POST' });
+        if (!resp.ok) throw new Error('Approval failed');
+        showStatus(`✓ ${currentFile} approved and archived`, 'success');
+        closeReview();
+        loadFlagged();
+    } catch (err) {
+        showStatus(`Error: ${err.message}`, 'error');
+    }
+}
+
+async function rejectFile() {
+    if (!currentFile) return;
+    if (!confirm(`Delete ${currentFile}?`)) return;
+    try {
+        const resp = await fetch(`/api/reject/${encodeURIComponent(currentFile)}`, { method: 'POST' });
+        if (!resp.ok) throw new Error('Rejection failed');
+        showStatus(`✓ ${currentFile} deleted`, 'success');
+        closeReview();
+        loadFlagged();
+    } catch (err) {
+        showStatus(`Error: ${err.message}`, 'error');
+    }
+}
+
+function closeReview() {
+    currentFile = null;
+    document.getElementById('reviewPanel').classList.add('hidden');
+}
+
+// Load flagged files on page load
+loadFlagged();
+</script>
+</body>
+</html>
