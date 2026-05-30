@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "description": "Reference list built from operator-approved donation records. Used to validate incoming donations.",
+  "generated_at": "2026-05-29T00:00:00Z",
+  "record_count": 0,
+  "email_domains": [],
+  "email_tlds": [
+    "com",
+    "org",
+    "net",
+    "edu",
+    "gov",
+    "co.uk",
+    "ca",
+    "de",
+    "fr",
+    "au",
+    "ch",
+    "ie"
+  ],
+  "amount_statistics": {
+    "min": null,
+    "max": null,
+    "mean": null,
+    "median": null,
+    "p25": null,
+    "p75": null,
+    "p90": null,
+    "valid_range": [
+      1,
+      100000
+    ]
+  },
+  "name_patterns": {
+    "min_length": 2,
+    "max_length": 100,
+    "must_have_words": 1,
+    "allowed_characters": "a-zA-Z0-9 .-'"
+  },
+  "notes": "When reference_list is empty (no approved records yet), validation uses default patterns above. As operators approve records, this list learns real donation patterns."
+}
