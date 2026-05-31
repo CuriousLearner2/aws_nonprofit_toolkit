@@ -329,6 +329,8 @@ def process_csv(input_file: str, output_file: str) -> None:
         df = df.dropna(how='all')
         # Remove rows where all data columns are empty (keep header checking)
         df = df.dropna(thresh=3)
+        # Reset index to match enumerate indices
+        df = df.reset_index(drop=True)
     except Exception as e:
         print(f"❌ Error reading file: {e}")
         return

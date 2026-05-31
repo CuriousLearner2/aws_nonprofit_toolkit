@@ -338,7 +338,7 @@ async function reviewFile(filename) {
                     <td class="suggestions">${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
                     <td>
                         <select class="decision-select" data-idx="${idx}">
-                            <option value="">— No decision —</option>
+                            <option value="">Please Select</option>
                             <option value="approved">Approved</option>
                             <option value="followup">Follow-up</option>
                             <option value="rejected">Rejected</option>
