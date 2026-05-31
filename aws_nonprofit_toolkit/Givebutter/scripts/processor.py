@@ -18,30 +18,61 @@ BASE_DIR = Path(__file__).resolve().parents[1]  # Givebutter/
 RULES_FILE = BASE_DIR / "config" / "rules" / "rules_v2.4.json"
 REFERENCE_FILE = BASE_DIR / "config" / "reference_list.json"
 
-# Core Givebutter headers (strict matches)
+# Static Platform Headers (never change, case-sensitive)
+# These are the exact column names that Givebutter always generates
 CORE_HEADERS = {
+    # Transaction metadata
+    'transaction_id': 'Transaction ID',
+    'payout_id': 'Payout ID',
+    'status': 'Status',
+    'date': 'Date',
+
+    # Donor identity
     'name': 'Name',
     'email': 'Email',
     'phone': 'Phone',
+
+    # Address
     'address_1': 'Address 1',
     'address_2': 'Address 2',
     'city': 'City',
     'state': 'State',
     'zip': 'Zip',
     'country': 'Country',
+
+    # Financial
     'amount': 'Amount',
-    'transaction_id': 'Transaction ID',
-    'status': 'Status',
-    'date': 'Date',
+    'processing_fee': 'Processing Fee',
+    'givebutter_fee': 'Givebutter Fee',
+    'fees_covered': 'Fees Covered',
+    'payment_method': 'Payment Method',
+
+    # Campaign
     'campaign': 'Campaign Title',
+
+    # Tracking
+    'utm_source': 'utm_source',
+    'utm_medium': 'utm_medium',
+
+    # Custom form fields (will be in FUZZY_HEADERS as fallbacks)
+    'in_honor_of': 'In Honor Of',
+    'dedication_message': 'Dedication Message',
+    'ticket_title': 'Ticket Title',
+    'ticket_quantity': 'Ticket Quantity',
+    'item_quantity': 'Item Quantity',
 }
 
-# Fuzzy match fallbacks for slight variations
+# Fuzzy Match Fallbacks (catches variations in custom/alternate field names)
+# Use these for slight variations in column naming that might occur
 FUZZY_HEADERS = {
-    'name': ['Full Name', 'Donor Name', 'Donor'],
-    'email': ['Email Address', 'Primary Email', 'Contact Email'],
-    'phone': ['Phone Number', 'Contact Phone'],
-    'zip': ['Zipcode', 'Postal Code', 'ZIP Code'],
+    'name': ['Full Name', 'Donor Name', 'Donor', 'First and Last Name'],
+    'email': ['Email Address', 'Primary Email', 'Contact Email', 'Email (Primary)'],
+    'phone': ['Phone Number', 'Contact Phone', 'Phone (Primary)', 'Mobile Phone'],
+    'zip': ['Zipcode', 'Postal Code', 'ZIP Code', 'Postal'],
+    'address_1': ['Street Address', 'Address Line 1', 'Street'],
+    'address_2': ['Address Line 2', 'Apt/Suite'],
+    'campaign': ['Fund', 'Campaign', 'Gift Fund', 'Donation Fund'],
+    'payment_method': ['Payment Type', 'Method'],
 }
 
 
@@ -69,8 +100,11 @@ def build_header_mapping(df_columns) -> Dict[str, str]:
     """
     Build mapping of logical header names to actual CSV column names.
 
-    Strips whitespace from all columns and uses strict matching first,
-    falling back to fuzzy matching for variations.
+    Implements two-tier matching strategy:
+    1. STRICT matching against exact case-sensitive static platform headers
+    2. FUZZY fallback matching for custom/alternate field names
+
+    All unmapped columns pass through untouched (custom fields, tracking data).
 
     Args:
         df_columns: DataFrame column names
