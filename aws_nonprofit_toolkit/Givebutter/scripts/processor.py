@@ -325,6 +325,10 @@ def process_csv(input_file: str, output_file: str) -> None:
     # Read input
     try:
         df = pd.read_csv(input_file, dtype=str)
+        # Remove completely empty rows
+        df = df.dropna(how='all')
+        # Remove rows where all data columns are empty (keep header checking)
+        df = df.dropna(thresh=3)
     except Exception as e:
         print(f"❌ Error reading file: {e}")
         return
