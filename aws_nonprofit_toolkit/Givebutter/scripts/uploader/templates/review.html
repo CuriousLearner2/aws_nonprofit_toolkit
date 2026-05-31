@@ -282,6 +282,7 @@ async function loadProcessing() {
 }
 
 async function reviewFile(filename) {
+    showStatus(`Loading ${filename}...`, 'info', 'uploadStatus');
     try {
         const resp = await fetch(`/api/processing/${encodeURIComponent(filename)}`);
         if (!resp.ok) {
@@ -294,6 +295,7 @@ async function reviewFile(filename) {
 
         // Update title
         document.getElementById('reviewTitle').textContent = `Reviewing: ${filename} (${data.records.length} record${data.records.length === 1 ? '' : 's'})`;
+        showStatus(`✓ Loaded ${filename}`, 'success', 'uploadStatus');
 
         // Update summary
         const tierCounts = { PASS: 0, WARNING: 0, FAIL: 0 };
