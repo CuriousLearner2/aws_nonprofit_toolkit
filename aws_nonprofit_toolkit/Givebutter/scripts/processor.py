@@ -594,9 +594,9 @@ def process_csv(input_file: str, output_file: str) -> None:
         status = "✓" if tier == 'PASS' else "⚠" if tier == 'WARNING' else "✗"
         print(f"  {status} [{idx+1}/{len(records)}] {record.get('Name', 'Unknown')} - {tier}")
 
-    # Reorder columns: put validation results first, keep original data after
+    # Reorder columns: original Givebutter data first, validation results last
     orig_cols = [c for c in df.columns if c not in ['Validation_Tier', 'Issues', 'Suggested_Modifications']]
-    new_order = ['Validation_Tier', 'Issues', 'Suggested_Modifications'] + orig_cols
+    new_order = orig_cols + ['Validation_Tier', 'Issues', 'Suggested_Modifications']
     df = df[new_order]
 
     # Write output
