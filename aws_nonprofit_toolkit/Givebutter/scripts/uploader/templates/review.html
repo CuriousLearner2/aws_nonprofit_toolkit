@@ -6,41 +6,128 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
         .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         h1 { margin: 0 0 8px 0; font-size: 24px; }
+        h2 { margin: 0 0 16px 0; font-size: 18px; }
+        h3 { margin: 24px 0 16px 0; font-size: 16px; }
         .subtitle { color: #666; margin-bottom: 24px; }
+
         .drop-zone { border: 2px dashed #ccc; border-radius: 8px; padding: 48px; text-align: center; cursor: pointer; transition: all 0.2s; }
         .drop-zone:hover, .drop-zone.dragover { border-color: #0066cc; background: #f0f7ff; }
         .drop-zone input { display: none; }
-        .btn { background: #0066cc; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+
+        .btn { background: #0066cc; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
         .btn:hover { background: #0052a3; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
         .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #5a6268; }
         .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
         .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+
+        .status { padding: 12px 16px; border-radius: 6px; margin-top: 16px; display: none; font-size: 14px; }
+        .status.success { background: #d4edda; color: #155724; display: block; border-left: 4px solid #28a745; }
+        .status.error { background: #f8d7da; color: #721c24; display: block; border-left: 4px solid #dc3545; }
+        .status.info { background: #d1ecf1; color: #0c5460; display: block; border-left: 4px solid #17a2b8; }
+
         .file-list { margin-top: 16px; }
-        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 16px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
         .file-item:hover { background: #f9f9f9; }
-        .status { padding: 12px; border-radius: 6px; margin-top: 16px; display: none; }
-        .status.success { background: #d4edda; color: #155724; display: block; }
-        .status.error { background: #f8d7da; color: #721c24; display: block; }
-        .status.info { background: #d1ecf1; color: #0c5460; display: block; }
-        .flagged-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        .flagged-table th { background: #f8f9fa; padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6; font-weight: 600; }
-        .flagged-table td { padding: 12px; border-bottom: 1px solid #e9ecef; }
-        .pill { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; margin-right: 4px; }
-        .pill-high { background: #ffebee; color: #c62828; }
-        .pill-typo { background: #e3f2fd; color: #1565c0; }
-        .pill-missing { background: #fff3e0; color: #e65100; }
-        .actions { display: flex; gap: 8px; margin-top: 16px; }
+
+        .review-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+        .review-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            border-bottom: 2px solid #dee2e6;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        .review-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: top;
+        }
+        .review-table tr:hover { background: #f9f9f9; }
+
+        .tier-pass { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
+        .tier-warning { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
+        .tier-fail { background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
+
+        .issues { font-size: 12px; color: #666; line-height: 1.4; }
+        .suggestions { font-size: 12px; color: #0066cc; line-height: 1.4; }
+
+        select, textarea {
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+        textarea {
+            width: 100%;
+            min-height: 50px;
+            resize: vertical;
+        }
+
+        .decision-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 24px;
+            flex-wrap: wrap;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .summary-item {
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #0066cc;
+        }
+        .summary-label { font-size: 12px; color: #666; text-transform: uppercase; font-weight: 600; }
+        .summary-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+
         .hidden { display: none; }
         .empty-state { text-align: center; padding: 48px; color: #999; }
+
+        .review-container {
+            max-height: 70vh;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
     </style>
 </head>
 <body>
+    <!-- Upload Section -->
     <div class="card">
         <h1>Givebutter Processor</h1>
-        <div class="subtitle">Upload a CSV to process, or review flagged files below</div>
+        <div class="subtitle">Upload a CSV to process, then review and approve records</div>
 
         <div class="drop-zone" id="dropZone">
             <input type="file" id="fileInput" accept=".csv">
@@ -55,36 +142,68 @@
             </div>
         </div>
 
-        <div id="status" class="status"></div>
+        <div id="uploadStatus" class="status"></div>
     </div>
 
+    <!-- Review Queue Section -->
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="margin: 0; font-size: 18px;">Review Queue</h2>
-            <button class="btn btn-secondary" onclick="loadFlagged()">Refresh</button>
+            <h2>Review Queue</h2>
+            <button class="btn btn-secondary" onclick="loadProcessing()">Refresh</button>
         </div>
 
         <div id="fileList" class="file-list"></div>
-        <div id="emptyState" class="empty-state hidden">No flagged files to review</div>
+        <div id="emptyState" class="empty-state hidden">No files being reviewed</div>
+    </div>
 
-        <div id="reviewPanel" class="hidden">
-            <h3 id="reviewFilename" style="margin: 24px 0 16px 0;"></h3>
-            <table class="flagged-table" id="reviewContent"></table>
+    <!-- Review Panel Section -->
+    <div id="reviewPanel" class="hidden">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 id="reviewTitle"></h2>
+                <div>
+                    <button class="btn btn-secondary" onclick="closeReview()" style="margin-left: 8px;">Cancel Review</button>
+                </div>
+            </div>
+
+            <div id="reviewSummary" class="summary"></div>
+
+            <div class="review-container">
+                <table class="review-table" id="reviewTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">Name</th>
+                            <th style="width: 150px;">Email</th>
+                            <th style="width: 100px;">Phone</th>
+                            <th style="width: 100px;">Amount</th>
+                            <th style="width: 130px;">Campaign</th>
+                            <th style="width: 70px;">Tier</th>
+                            <th style="width: 200px;">Issues</th>
+                            <th style="width: 200px;">Suggested Fixes</th>
+                            <th style="width: 150px;">Decision</th>
+                            <th style="width: 150px;">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reviewBody"></tbody>
+                </table>
+            </div>
+
             <div class="actions">
-                <button class="btn btn-success" onclick="approveSelected()">✓ Approve Selected</button>
-                <button class="btn btn-secondary" onclick="selectAllRows(true)">Select All</button>
-                <button class="btn btn-secondary" onclick="selectAllRows(false)">Deselect All</button>
-                <button class="btn btn-danger" onclick="rejectFile()">✗ Delete File</button>
-                <button class="btn btn-secondary" onclick="closeReview()">Cancel</button>
+                <button class="btn btn-success" onclick="submitDecisions()" id="submitBtn">✓ Save Decisions</button>
+                <button class="btn btn-secondary" onclick="setAllDecision('approved')">All: Approved</button>
+                <button class="btn btn-secondary" onclick="setAllDecision('followup')">All: Follow-up</button>
+                <button class="btn btn-secondary" onclick="setAllDecision('rejected')">All: Rejected</button>
+                <button class="btn btn-danger" onclick="cancelReview()">Cancel Review</button>
             </div>
         </div>
     </div>
 
 <script>
 let currentFile = null;
+let currentRecords = null;
+
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
-const status = document.getElementById('status');
 
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -95,9 +214,12 @@ fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 async function handleFiles(files) {
     if (!files.length) return;
     const file = files[0];
-    if (!file.name.endsWith('.csv')) { showStatus('Please upload a CSV file', 'error'); return; }
+    if (!file.name.endsWith('.csv')) {
+        showStatus('Please upload a CSV file', 'error', 'uploadStatus');
+        return;
+    }
 
-    showStatus(`Processing ${file.name}...`, 'info');
+    showStatus(`Processing ${file.name}...`, 'info', 'uploadStatus');
     const formData = new FormData();
     formData.append('file', file);
 
@@ -106,31 +228,30 @@ async function handleFiles(files) {
         const data = await resp.json();
 
         if (!resp.ok) {
-            showStatus(`Error: ${data.error || 'Unknown error'}`, 'error');
+            showStatus(`Error: ${data.error || 'Unknown error'}`, 'error', 'uploadStatus');
             return;
         }
 
-        if (data.flagged_count > 0) {
-            showStatus(`✓ Found ${data.flagged_count} flagged rows — added to queue below`, 'success');
-            setTimeout(loadFlagged, 500);
-        } else {
-            showStatus(`✓ No issues found — file archived`, 'success');
-        }
+        const summary = `✓ Processed ${data.record_count} records (${data.warning_count} warnings, ${data.fail_count} failures)`;
+        showStatus(summary, 'success', 'uploadStatus');
+
+        setTimeout(loadProcessing, 500);
     } catch (err) {
-        showStatus(`Error: ${err.message}`, 'error');
+        showStatus(`Error: ${err.message}`, 'error', 'uploadStatus');
     }
     fileInput.value = '';
 }
 
-function showStatus(msg, type) {
-    status.textContent = msg;
-    status.className = `status ${type}`;
-    setTimeout(() => { status.className = 'status'; }, 5000);
+function showStatus(msg, type, elementId = 'uploadStatus') {
+    const el = document.getElementById(elementId);
+    el.textContent = msg;
+    el.className = `status ${type}`;
+    setTimeout(() => { el.className = 'status'; }, 6000);
 }
 
-async function loadFlagged() {
+async function loadProcessing() {
     try {
-        const resp = await fetch('/api/flagged');
+        const resp = await fetch('/api/processing');
         const files = await resp.json();
         const list = document.getElementById('fileList');
         const empty = document.getElementById('emptyState');
@@ -149,148 +270,176 @@ async function loadFlagged() {
             div.innerHTML = `
                 <div>
                     <div style="font-weight: 500;">${f.filename}</div>
-                    <div style="font-size: 12px; color: #666;">${f.rows} rows</div>
+                    <div style="font-size: 12px; color: #666;">${f.rows} records</div>
                 </div>
                 <button class="btn" onclick="reviewFile('${f.filename}')">Review</button>
             `;
             list.appendChild(div);
         });
     } catch (err) {
-        showStatus(`Error loading files: ${err.message}`, 'error');
+        showStatus(`Error loading files: ${err.message}`, 'error', 'uploadStatus');
     }
 }
 
 async function reviewFile(filename) {
     try {
-        const resp = await fetch(`/api/flagged/${encodeURIComponent(filename)}`);
+        const resp = await fetch(`/api/processing/${encodeURIComponent(filename)}`);
         if (!resp.ok) {
-            showStatus('File not found', 'error');
+            showStatus('File not found', 'error', 'uploadStatus');
             return;
         }
         const data = await resp.json();
         currentFile = filename;
-        window.currentRows = data.rows; // Store rows for approval
+        currentRecords = data.records;
 
-        document.getElementById('reviewFilename').textContent = `Reviewing: ${filename} (${data.rows.length} record${data.rows.length === 1 ? '' : 's'})`;
-        const table = document.getElementById('reviewContent');
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <th style="width: 30px;"><input type="checkbox" id="selectAllCheckbox" onchange="toggleAllCheckboxes()"></th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Corrected Email</th>
-                    <th>Amount</th>
-                    <th>Date</th>
-                    <th>Issues</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${data.rows.map((row, idx) => {
-                    const flags = row.flag_reason.split('|');
-                    const pillHtml = flags.map(f => {
-                        const pillClass = f === 'high-dollar' ? 'pill-high' : f === 'email-typo' ? 'pill-typo' : 'pill-missing';
-                        return `<span class="pill ${pillClass}">${f}</span>`;
-                    }).join('');
-                    return `
-                        <tr>
-                            <td><input type="checkbox" class="row-checkbox" data-index="${idx}" checked></td>
-                            <td>${row.name}</td>
-                            <td>${row.email}</td>
-                            <td>${row.email_corrected || '—'}</td>
-                            <td>${row.amount || '—'}</td>
-                            <td>${row.donation_date || '—'}</td>
-                            <td>${pillHtml}</td>
-                        </tr>
-                    `;
-                }).join('')}
-            </tbody>
+        // Update title
+        document.getElementById('reviewTitle').textContent = `Reviewing: ${filename} (${data.records.length} record${data.records.length === 1 ? '' : 's'})`;
+
+        // Update summary
+        const tierCounts = { PASS: 0, WARNING: 0, FAIL: 0 };
+        data.records.forEach(r => tierCounts[r['Validation_Tier']] = (tierCounts[r['Validation_Tier']] || 0) + 1);
+
+        document.getElementById('reviewSummary').innerHTML = `
+            <div class="summary-item">
+                <div class="summary-label">Total</div>
+                <div class="summary-value">${data.records.length}</div>
+            </div>
+            <div class="summary-item" style="border-left-color: #28a745;">
+                <div class="summary-label">Pass</div>
+                <div class="summary-value">${tierCounts.PASS}</div>
+            </div>
+            <div class="summary-item" style="border-left-color: #ffc107;">
+                <div class="summary-label">Warning</div>
+                <div class="summary-value">${tierCounts.WARNING}</div>
+            </div>
+            <div class="summary-item" style="border-left-color: #dc3545;">
+                <div class="summary-label">Fail</div>
+                <div class="summary-value">${tierCounts.FAIL}</div>
+            </div>
         `;
+
+        // Render records table
+        const tbody = document.getElementById('reviewBody');
+        tbody.innerHTML = data.records.map((row, idx) => {
+            const tierClass = `tier-${row['Validation_Tier'].toLowerCase()}`;
+            const tierText = row['Validation_Tier'];
+
+            return `
+                <tr>
+                    <td><strong>${escapeHtml(row['Name'] || '—')}</strong></td>
+                    <td><code>${escapeHtml(row['Email'] || '—')}</code></td>
+                    <td>${escapeHtml(row['Phone'] || '—')}</td>
+                    <td>${escapeHtml(row['Amount'] || '—')}</td>
+                    <td><small>${escapeHtml(row['Campaign Title'] || '—')}</small></td>
+                    <td><span class="${tierClass}">${tierText}</span></td>
+                    <td class="issues">${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
+                    <td class="suggestions">${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
+                    <td>
+                        <select class="decision-select" data-idx="${idx}">
+                            <option value="">— No decision —</option>
+                            <option value="approved">Approved</option>
+                            <option value="followup">Follow-up</option>
+                            <option value="rejected">Rejected</option>
+                        </select>
+                    </td>
+                    <td>
+                        <textarea class="notes-field" data-idx="${idx}" placeholder="Notes..."></textarea>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
         document.getElementById('reviewPanel').classList.remove('hidden');
     } catch (err) {
-        showStatus(`Error loading file: ${err.message}`, 'error');
+        showStatus(`Error loading file: ${err.message}`, 'error', 'uploadStatus');
     }
 }
 
-function toggleAllCheckboxes() {
-    const checked = document.getElementById('selectAllCheckbox').checked;
-    document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = checked);
+function setAllDecision(decision) {
+    document.querySelectorAll('.decision-select').forEach(sel => {
+        sel.value = decision;
+    });
 }
 
-function selectAllRows(select) {
-    document.getElementById('selectAllCheckbox').checked = select;
-    document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = select);
-}
-
-async function approveSelected() {
+async function submitDecisions() {
     if (!currentFile) return;
 
-    const checked = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => parseInt(cb.dataset.index));
-    if (checked.length === 0) {
-        showStatus('Please select at least one record to approve', 'error');
+    const decisions = [];
+    document.querySelectorAll('.decision-select').forEach(sel => {
+        const idx = parseInt(sel.dataset.idx);
+        const decision = sel.value;
+        const notes = document.querySelector(`.notes-field[data-idx="${idx}"]`).value;
+
+        if (decision) {  // Only include records with a decision
+            decisions.push({ idx, decision, notes });
+        }
+    });
+
+    if (decisions.length === 0) {
+        showStatus('Please make a decision for at least one record', 'error', 'uploadStatus');
         return;
     }
 
+    document.getElementById('submitBtn').disabled = true;
+    showStatus('Saving decisions...', 'info', 'uploadStatus');
+
     try {
-        const totalBefore = window.currentRows.length;
-        const resp = await fetch(`/api/approve-partial/${encodeURIComponent(currentFile)}`, {
+        const resp = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/submit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ approved_indices: checked })
+            body: JSON.stringify({ decisions })
         });
-        if (!resp.ok) throw new Error('Approval failed');
+
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.error || 'Save failed');
+        }
 
         const result = await resp.json();
-        showStatus(`✓ ${checked.length} record(s) approved`, 'success');
+        showStatus(`✓ Saved: ${result.approved} approved, ${result.followup} follow-up, ${result.rejected} rejected`, 'success', 'uploadStatus');
 
-        // If all records were approved, close review and refresh list
-        if (result.remaining === 0) {
-            closeReview();
-            loadFlagged();
-        } else {
-            // Otherwise, reload the file and show remaining records
-            await reviewFile(currentFile);
-            showStatus(`${result.approved} approved. ${result.remaining} record(s) remaining.`, 'info');
-        }
+        closeReview();
+        loadProcessing();
     } catch (err) {
-        showStatus(`Error: ${err.message}`, 'error');
+        showStatus(`Error: ${err.message}`, 'error', 'uploadStatus');
+    } finally {
+        document.getElementById('submitBtn').disabled = false;
     }
 }
 
-async function approveFile() {
+async function cancelReview() {
     if (!currentFile) return;
-    try {
-        const resp = await fetch(`/api/approve/${encodeURIComponent(currentFile)}`, { method: 'POST' });
-        if (!resp.ok) throw new Error('Approval failed');
-        showStatus(`✓ ${currentFile} approved and archived`, 'success');
-        closeReview();
-        loadFlagged();
-    } catch (err) {
-        showStatus(`Error: ${err.message}`, 'error');
-    }
-}
+    if (!confirm(`Cancel review for ${currentFile}? It will return to the upload queue.`)) return;
 
-async function rejectFile() {
-    if (!currentFile) return;
-    if (!confirm(`Delete ${currentFile}?`)) return;
     try {
-        const resp = await fetch(`/api/reject/${encodeURIComponent(currentFile)}`, { method: 'POST' });
-        if (!resp.ok) throw new Error('Rejection failed');
-        showStatus(`✓ ${currentFile} deleted`, 'success');
+        const resp = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/cancel`, {
+            method: 'POST'
+        });
+
+        if (!resp.ok) throw new Error('Cancel failed');
+
+        showStatus(`✓ Review cancelled`, 'success', 'uploadStatus');
         closeReview();
-        loadFlagged();
+        loadProcessing();
     } catch (err) {
-        showStatus(`Error: ${err.message}`, 'error');
+        showStatus(`Error: ${err.message}`, 'error', 'uploadStatus');
     }
 }
 
 function closeReview() {
     currentFile = null;
+    currentRecords = null;
     document.getElementById('reviewPanel').classList.add('hidden');
 }
 
-// Load flagged files on page load
-loadFlagged();
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Load files on page load
+loadProcessing();
 </script>
 </body>
 </html>
