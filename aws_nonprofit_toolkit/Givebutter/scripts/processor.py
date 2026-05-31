@@ -453,7 +453,25 @@ def process_csv(input_file: str, output_file: str) -> None:
 
     # Read input
     try:
-        df = pd.read_csv(input_file, dtype=str)
+        import csv
+        # Use csv.reader for accurate column-to-value mapping (handles misaligned CSVs)
+        with open(input_file, 'r') as f:
+            reader = csv.reader(f)
+            headers = next(reader)
+            rows = list(reader)
+
+        # Normalize row lengths to match header count (handles trailing empty columns)
+        normalized_rows = []
+        for row in rows:
+            if len(row) > len(headers):
+                row = row[:len(headers)]  # Trim extra columns
+            elif len(row) < len(headers):
+                row = row + [''] * (len(headers) - len(row))  # Pad missing columns
+            normalized_rows.append(row)
+
+        # Construct dataframe from csv.reader results
+        df = pd.DataFrame(normalized_rows, columns=headers, dtype=str)
+
         # Strip whitespace from all column headers
         df.columns = df.columns.str.strip()
         # Remove completely empty rows
