@@ -18,6 +18,32 @@ BASE_DIR = Path(__file__).resolve().parents[1]  # Givebutter/
 RULES_FILE = BASE_DIR / "config" / "rules" / "rules_v2.4.json"
 REFERENCE_FILE = BASE_DIR / "config" / "reference_list.json"
 
+# Core Givebutter headers (strict matches)
+CORE_HEADERS = {
+    'name': 'Name',
+    'email': 'Email',
+    'phone': 'Phone',
+    'address_1': 'Address 1',
+    'address_2': 'Address 2',
+    'city': 'City',
+    'state': 'State',
+    'zip': 'Zip',
+    'country': 'Country',
+    'amount': 'Amount',
+    'transaction_id': 'Transaction ID',
+    'status': 'Status',
+    'date': 'Date',
+    'campaign': 'Campaign Title',
+}
+
+# Fuzzy match fallbacks for slight variations
+FUZZY_HEADERS = {
+    'name': ['Full Name', 'Donor Name', 'Donor'],
+    'email': ['Email Address', 'Primary Email', 'Contact Email'],
+    'phone': ['Phone Number', 'Contact Phone'],
+    'zip': ['Zipcode', 'Postal Code', 'ZIP Code'],
+}
+
 
 def load_rules() -> Dict:
     """Load validation rules from config."""
@@ -39,6 +65,39 @@ def load_reference_list() -> Dict:
         return {}
 
 
+def build_header_mapping(df_columns) -> Dict[str, str]:
+    """
+    Build mapping of logical header names to actual CSV column names.
+
+    Strips whitespace from all columns and uses strict matching first,
+    falling back to fuzzy matching for variations.
+
+    Args:
+        df_columns: DataFrame column names
+
+    Returns:
+        Dict mapping logical keys (name, email, phone, etc.) to actual column names
+    """
+    # Strip whitespace from all column names
+    clean_columns = {col.strip(): col for col in df_columns}
+
+    mapping = {}
+
+    # Try strict matches first
+    for key, strict_name in CORE_HEADERS.items():
+        if strict_name in clean_columns:
+            mapping[key] = clean_columns[strict_name]
+        else:
+            # Try fuzzy matches
+            fuzzy_options = FUZZY_HEADERS.get(key, [])
+            for fuzzy_name in fuzzy_options:
+                if fuzzy_name in clean_columns:
+                    mapping[key] = clean_columns[fuzzy_name]
+                    break
+
+    return mapping
+
+
 def extract_digits(phone: str) -> str:
     """Extract only digits from phone string."""
     if pd.isna(phone) or str(phone).strip() == '':
@@ -46,15 +105,25 @@ def extract_digits(phone: str) -> str:
     return re.sub(r'\D', '', str(phone))
 
 
-def validate_phone(phone: str, rules: Dict) -> Tuple[str, Optional[str], Optional[str]]:
+def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Optional[str], Optional[str]]:
     """
     Validate phone number against USA standards and rules.
+
+    Args:
+        record: Full record dict
+        header_map: Mapping of logical field names to actual column names
+        rules: Validation rules
 
     Returns: (tier, reason, suggestion)
       - tier: 'PASS', 'FAIL', or 'WARNING'
       - reason: explanation if FAIL
       - suggestion: modification if WARNING
     """
+    phone_col = header_map.get('phone')
+    if not phone_col:
+        return ('PASS', None, None)
+
+    phone = record.get(phone_col)
     if pd.isna(phone) or str(phone).strip() == '':
         return ('PASS', None, None)  # Frontend validates required; absence is OK here
 
@@ -108,12 +177,23 @@ def validate_phone(phone: str, rules: Dict) -> Tuple[str, Optional[str], Optiona
     return ('PASS', None, None)
 
 
-def validate_email(email: str, rules: Dict, reference: Dict) -> Tuple[str, Optional[str], Optional[str]]:
+def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict) -> Tuple[str, Optional[str], Optional[str]]:
     """
     Validate email against typo rules and reference patterns.
 
+    Args:
+        record: Full record dict
+        header_map: Mapping of logical field names to actual column names
+        rules: Validation rules
+        reference: Reference list patterns
+
     Returns: (tier, reason, suggestion)
     """
+    email_col = header_map.get('email')
+    if not email_col:
+        return ('PASS', None, None)
+
+    email = record.get(email_col)
     if pd.isna(email) or str(email).strip() == '':
         return ('PASS', None, None)  # Frontend validates required
 
@@ -146,12 +226,22 @@ def validate_email(email: str, rules: Dict, reference: Dict) -> Tuple[str, Optio
     return ('FAIL', "Invalid email format (missing @)", None)
 
 
-def validate_amount(amount: str, reference: Dict) -> Tuple[str, Optional[str], Optional[str]]:
+def validate_amount(record: Dict, header_map: Dict, reference: Dict) -> Tuple[str, Optional[str], Optional[str]]:
     """
     Validate amount against reference ranges and thresholds.
 
+    Args:
+        record: Full record dict
+        header_map: Mapping of logical field names to actual column names
+        reference: Reference list patterns
+
     Returns: (tier, reason, suggestion)
     """
+    amount_col = header_map.get('amount')
+    if not amount_col:
+        return ('PASS', None, None)
+
+    amount = record.get(amount_col)
     if pd.isna(amount) or str(amount).strip() == '':
         return ('FAIL', "Missing amount", None)
 
@@ -181,15 +271,27 @@ def validate_amount(amount: str, reference: Dict) -> Tuple[str, Optional[str], O
     return ('PASS', None, None)
 
 
-def validate_address(address: Dict) -> Tuple[str, Optional[str]]:
+def validate_address(record: Dict, header_map: Dict) -> Tuple[str, Optional[str]]:
     """
     Validate address fields.
 
+    Args:
+        record: Full record dict
+        header_map: Mapping of logical field names to actual column names
+
     Returns: (tier, reason)
     """
-    addr1 = str(address.get('Address 1', '')).strip()
-    city = str(address.get('City', '')).strip()
-    state = str(address.get('State', '')).strip()
+    addr1_col = header_map.get('address_1')
+    city_col = header_map.get('city')
+    state_col = header_map.get('state')
+
+    # If any required address column is missing, skip validation
+    if not (addr1_col and city_col and state_col):
+        return ('PASS', None)
+
+    addr1 = str(record.get(addr1_col, '')).strip()
+    city = str(record.get(city_col, '')).strip()
+    state = str(record.get(state_col, '')).strip()
 
     # Frontend validates these, but check completeness
     if not addr1 or not city or not state:
@@ -198,12 +300,22 @@ def validate_address(address: Dict) -> Tuple[str, Optional[str]]:
     return ('PASS', None)
 
 
-def validate_name(name: str, reference: Dict) -> Tuple[str, Optional[str]]:
+def validate_name(record: Dict, header_map: Dict, reference: Dict) -> Tuple[str, Optional[str]]:
     """
     Validate name against reference patterns.
 
+    Args:
+        record: Full record dict
+        header_map: Mapping of logical field names to actual column names
+        reference: Reference list patterns
+
     Returns: (tier, reason)
     """
+    name_col = header_map.get('name')
+    if not name_col:
+        return ('FAIL', "Missing name field")
+
+    name = record.get(name_col)
     if pd.isna(name) or str(name).strip() == '':
         return ('FAIL', "Missing name")
 
@@ -241,49 +353,66 @@ def fuzzy_match(str1: str, str2: str, threshold: float = 0.70) -> bool:
     return ratio >= threshold
 
 
-def check_duplicates(record: Dict, all_records: List[Dict], rules: Dict) -> Tuple[bool, Optional[str]]:
+def check_duplicates(record: Dict, all_records: List[Dict], header_map: Dict, rules: Dict) -> Tuple[bool, Optional[str]]:
     """
     Check for duplicate/household records based on email, phone, address, or fuzzy name.
+
+    Args:
+        record: Current record
+        all_records: All records to check against
+        header_map: Mapping of logical field names to actual column names
+        rules: Validation rules
 
     Returns: (is_duplicate, duplicate_info)
     """
     threshold = rules.get('fuzzy_match_threshold', 0.70)
 
-    current_email = normalize_for_comparison(record.get('Email', ''))
-    current_phone = extract_digits(str(record.get('Phone', '')))
-    current_name = record.get('Name', '')
-    current_addr1 = normalize_for_comparison(record.get('Address 1', ''))
-    current_city = normalize_for_comparison(record.get('City', ''))
-    current_state = normalize_for_comparison(record.get('State', ''))
+    email_col = header_map.get('email')
+    phone_col = header_map.get('phone')
+    name_col = header_map.get('name')
+    addr1_col = header_map.get('address_1')
+    city_col = header_map.get('city')
+    state_col = header_map.get('state')
+    txn_col = header_map.get('transaction_id')
+
+    current_email = normalize_for_comparison(record.get(email_col, '')) if email_col else ''
+    current_phone = extract_digits(str(record.get(phone_col, ''))) if phone_col else ''
+    current_name = record.get(name_col, '') if name_col else ''
+    current_addr1 = normalize_for_comparison(record.get(addr1_col, '')) if addr1_col else ''
+    current_city = normalize_for_comparison(record.get(city_col, '')) if city_col else ''
+    current_state = normalize_for_comparison(record.get(state_col, '')) if state_col else ''
 
     matches = []
 
     for other in all_records:
-        if other.get('Transaction ID') == record.get('Transaction ID'):
+        other_txn = other.get(txn_col) if txn_col else None
+        current_txn = record.get(txn_col) if txn_col else None
+        if other_txn and current_txn and other_txn == current_txn:
             continue  # Skip self
 
         # Email exact match
-        other_email = normalize_for_comparison(other.get('Email', ''))
+        other_email = normalize_for_comparison(other.get(email_col, '')) if email_col else ''
         if current_email and current_email == other_email:
-            matches.append(f"Email match: {other.get('Transaction ID')}")
+            matches.append(f"Email match: {other_txn or 'unknown'}")
 
         # Phone exact match
-        other_phone = extract_digits(str(other.get('Phone', '')))
+        other_phone = extract_digits(str(other.get(phone_col, ''))) if phone_col else ''
         if current_phone and current_phone == other_phone:
-            matches.append(f"Phone match: {other.get('Transaction ID')}")
+            matches.append(f"Phone match: {other_txn or 'unknown'}")
 
         # Address exact match
-        other_addr1 = normalize_for_comparison(other.get('Address 1', ''))
-        other_city = normalize_for_comparison(other.get('City', ''))
-        other_state = normalize_for_comparison(other.get('State', ''))
+        other_addr1 = normalize_for_comparison(other.get(addr1_col, '')) if addr1_col else ''
+        other_city = normalize_for_comparison(other.get(city_col, '')) if city_col else ''
+        other_state = normalize_for_comparison(other.get(state_col, '')) if state_col else ''
 
         if current_addr1 and current_addr1 == other_addr1 and \
            current_city == other_city and current_state == other_state:
-            matches.append(f"Address match: {other.get('Transaction ID')}")
+            matches.append(f"Address match: {other_txn or 'unknown'}")
 
         # Fuzzy name match
-        if fuzzy_match(current_name, other.get('Name', ''), threshold):
-            matches.append(f"Name match ({threshold*100:.0f}%): {other.get('Transaction ID')}")
+        other_name = other.get(name_col, '') if name_col else ''
+        if fuzzy_match(current_name, other_name, threshold):
+            matches.append(f"Name match ({threshold*100:.0f}%): {other_txn or 'unknown'}")
 
     if matches:
         return (True, "; ".join(matches))
@@ -325,6 +454,8 @@ def process_csv(input_file: str, output_file: str) -> None:
     # Read input
     try:
         df = pd.read_csv(input_file, dtype=str)
+        # Strip whitespace from all column headers
+        df.columns = df.columns.str.strip()
         # Remove completely empty rows
         df = df.dropna(how='all')
         # Remove rows where all data columns are empty (keep header checking)
@@ -333,6 +464,12 @@ def process_csv(input_file: str, output_file: str) -> None:
         df = df.reset_index(drop=True)
     except Exception as e:
         print(f"❌ Error reading file: {e}")
+        return
+
+    # Build header mapping for robust column access
+    header_map = build_header_mapping(df.columns)
+    if not header_map:
+        print("❌ Error: Could not locate required Givebutter columns")
         return
 
     print(f"Found {len(df)} records")
@@ -352,7 +489,7 @@ def process_csv(input_file: str, output_file: str) -> None:
         issues = []
 
         # Validate email
-        tier, reason, suggestion = validate_email(record.get('Email', ''), rules, reference)
+        tier, reason, suggestion = validate_email(record, header_map, rules, reference)
         validation_results['email'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Email: {reason}")
@@ -360,7 +497,7 @@ def process_csv(input_file: str, output_file: str) -> None:
             suggestions.append(suggestion)
 
         # Validate phone
-        tier, reason, suggestion = validate_phone(record.get('Phone', ''), rules)
+        tier, reason, suggestion = validate_phone(record, header_map, rules)
         validation_results['phone'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Phone: {reason}")
@@ -368,7 +505,7 @@ def process_csv(input_file: str, output_file: str) -> None:
             suggestions.append(suggestion)
 
         # Validate amount
-        tier, reason, suggestion = validate_amount(record.get('Amount', ''), reference)
+        tier, reason, suggestion = validate_amount(record, header_map, reference)
         validation_results['amount'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Amount: {reason}")
@@ -376,19 +513,19 @@ def process_csv(input_file: str, output_file: str) -> None:
             suggestions.append(suggestion)
 
         # Validate address
-        tier, reason = validate_address(record)
+        tier, reason = validate_address(record, header_map)
         validation_results['address'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Address: {reason}")
 
         # Validate name
-        tier, reason = validate_name(record.get('Name', ''), reference)
+        tier, reason = validate_name(record, header_map, reference)
         validation_results['name'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Name: {reason}")
 
         # Check for duplicates
-        is_dup, dup_info = check_duplicates(record, records, rules)
+        is_dup, dup_info = check_duplicates(record, records, header_map, rules)
         if is_dup:
             issues.append(f"Duplicate: {dup_info}")
             validation_results['duplicate'] = {'tier': 'WARNING', 'reason': dup_info}
