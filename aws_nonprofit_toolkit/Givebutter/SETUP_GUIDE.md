@@ -1,9 +1,9 @@
 # Setup Guide
-## How to Get the Givebutter Donation Processor Running (First Time)
+## How to Get the Givebutter Donation Processor v3.0 Running
 
 **This guide is for the technical person setting up the system.** If you're an operator, skip this and go to [OPERATOR_MANUAL.md](OPERATOR_MANUAL.md).
 
-**Estimated time:** 30 minutes for first-time setup, 5 minutes for testing.
+**Estimated time:** 20 minutes for first-time setup, 5 minutes for testing.
 
 ---
 
@@ -141,19 +141,18 @@ pip install --user -r requirements.txt
 
 ---
 
-## Step 2: Start the Uploader
+## Step 2: Start the Application
 
 Still in the virtual environment, run:
 
 ```bash
-python -m scripts.uploader.app
+python3 scripts/uploader/app.py
 ```
 
 **You should see:**
 ```
  * Running on http://127.0.0.1:8000
- * Restarting with reloader
- * Debugger is active!
+ * Press CTRL+C to quit
 ```
 
 **If you see** `Address already in use`:
@@ -161,7 +160,7 @@ python -m scripts.uploader.app
 - Change the port in `scripts/uploader/app.py` (advanced)
 - Or stop whatever's using port 8000
 
-**The uploader is now running.** Leave this terminal window open.
+**The application is now running.** Leave this terminal window open.
 
 ---
 
@@ -229,77 +228,84 @@ Alice Brown,alice@yaho.com,200,2026-05-25
 ## Step 5: Upload Your Test File
 
 1. Go back to http://localhost:8000
-2. Click **"Choose File"**
+2. **Drag and drop** your CSV file onto the drop zone, or click to browse
 3. Select your CSV file (test_donations.csv or your real export)
-4. Click **"Upload"**
+4. System validates automatically
 
 **You should see:**
 ```
-File received
+✓ Processed X records (Y warnings, Z failures)
 ```
 
-**The file is now being processed. Wait 5-10 seconds.**
+**Processing takes 1-5 seconds.**
 
 ---
 
-## Step 6: Check for Flagged Records
+## Step 6: Review Records in the Web UI
 
-Open your file explorer and navigate to the Givebutter folder.
+Same page shows a table with all records:
 
-Look for a new folder called **`review/flagged/`**
+1. **Validation Tier** (green/yellow/red)
+2. **Issues** (what's wrong)
+3. **Suggestions** (how to fix)
+4. **Decision dropdown** (you choose: Approved/Followup/Rejected)
+5. **Notes field** (optional)
 
-Inside, you should see a file like:
-```
-flagged_20260525_143045_upload_20260525_143022_test_donations.csv
-```
-
-**Open that file in Excel, Google Sheets, or a text editor.**
-
-**You should see:**
-```
-donor_name,email,donation_amount,donation_date
-Jane Doe,jane@gmai.com,50,2026-05-25
-Alice Brown,alice@yaho.com,200,2026-05-25
-```
-
-**These are the records with email typos that the system flagged.**
+**Example:**
+- Jane Doe: `jane@gmai.com` → ⚠ WARNING → Suggestion: "jane@gmail.com"
+- Alice Brown: `alice@yaho.com` → ⚠ WARNING → Suggestion: "alice@yahoo.com"
 
 ---
 
 ## Step 7: Test the Full Workflow
 
-Now test the complete 5-step workflow:
+Now test the complete decision workflow:
 
-### 7.1 Review Flagged Records
+### 7.1 Make Decisions
 
-You're already looking at them (the CSV file from Step 6).
+For each record, choose:
 
-Ask yourself: "Are these actually typos?"
-- jane@gmai.com → Yes, should be gmail.com
-- alice@yaho.com → Yes, should be yahoo.com
+- **Approved** - Record is good (system suggestion is correct)
+- **Followup** - Add a note for manual review
+- **Rejected** - Don't import this record
 
-### 7.2 Approve the Records
+**Example decisions:**
+- Jane Doe → Approved (typo correction looks right)
+- Alice Brown → Approved (typo correction looks right)
+- John Smith → Approved (no issues)
+- Bob Wilson → Approved (no issues)
 
-Move the flagged file to the approved folder:
+### 7.2 Save Decisions
 
-1. In file explorer, find the flagged file
-2. Right-click it
-3. Select **"Cut"** (or press Cmd+X on Mac, Ctrl+X on Windows)
-4. Navigate to **`review/approved/`** folder
-5. Right-click empty space
-6. Select **"Paste"** (or press Cmd+V on Mac, Ctrl+V on Windows)
+Click **"Save Decisions"** button
 
-**The file should now be in `review/approved/`**
+System generates three files:
+- `*_APPROVED.csv` - Ready to import
+- `*_FOLLOWUP.csv` - Needs attention
+- `*_REJECTED.csv` - Excluded
 
-### 7.3 Report a Pattern (Optional - Advanced)
+**Check in file explorer:**
 
-If you approved that file, you'd now tell your tech lead:
+Navigate to the Givebutter folder → `review/` folder
 
-> "I found 2 email typos in the test batch:
-> - gmai.com (should be gmail.com)  
-> - yaho.com (should be yahoo.com)"
+You should see:
+```
+approved/
+  └── upload_20260525_143045_test_donations_APPROVED.csv (4 records)
+followup/
+  └── (empty—nothing marked for followup)
+rejected/
+  └── (empty—nothing rejected)
+```
 
-They would then propose rules to catch these automatically next time.
+### 7.3 Inspect Output Files
+
+Open `*_APPROVED.csv` in Excel or text editor.
+
+You should see all 4 records with:
+- Original data (donor_name, email, donation_amount, donation_date)
+- Validation results (Validation_Tier, Issues, Suggested_Modifications)
+- Email addresses corrected (gmai.com → gmail.com, yaho.com → yahoo.com)
 
 ---
 
@@ -307,13 +313,14 @@ They would then propose rules to catch these automatically next time.
 
 If you see all of these, **the system is working!** ✅
 
-- [ ] Uploader runs without errors on http://localhost:8000
-- [ ] You can upload a CSV file
-- [ ] Uploader says "File received"
-- [ ] A file appears in `review/flagged/` within 10 seconds
-- [ ] The flagged file contains the problematic records
-- [ ] You can move the file to `review/approved/`
-- [ ] No error messages in the uploader terminal
+- [ ] Application runs without errors on http://127.0.0.1:8000
+- [ ] You can upload a CSV file via drag-and-drop
+- [ ] Validation summary shows record counts
+- [ ] Records appear in the review table with validation results
+- [ ] You can make decisions (Approved/Followup/Rejected)
+- [ ] "Save Decisions" button generates output files
+- [ ] Three files appear in `review/approved/`, `review/followup/`, `review/rejected/`
+- [ ] No error messages in the application terminal
 
 ---
 
@@ -473,21 +480,23 @@ For now, just keep the terminal window open when you need to process files.
 
 ## Quick Command Reference
 
-**Start the uploader:**
+**Start the application:**
 ```bash
 cd /Users/gautambiswas/Claude\ Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
-source .venv/bin/activate
-python -m scripts.uploader.app
+source venv/bin/activate
+python3 scripts/uploader/app.py
 ```
 
-**Open the uploader:**
+**Open the application:**
 ```
-http://localhost:8000
+http://127.0.0.1:8000
 ```
 
-**Check for flagged files:**
+**Check for output files:**
 ```bash
-ls review/flagged/
+ls review/approved/
+ls review/followup/
+ls review/rejected/
 ```
 
 **Deactivate virtual environment (when done):**
@@ -561,5 +570,5 @@ Welcome to the Givebutter Donation Processor. Your data is about to get much cle
 
 ---
 
-**Last updated:** May 25, 2026  
-**Setup version:** 1.0
+**Last updated:** May 30, 2026  
+**Setup version:** 3.0
