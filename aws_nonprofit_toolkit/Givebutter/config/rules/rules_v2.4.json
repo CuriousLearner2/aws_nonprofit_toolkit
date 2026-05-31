@@ -53,5 +53,24 @@
   "pull_frequency": {
     "givebutter_hours": 24
   },
-  "high_dollar_threshold": 1000
+  "high_dollar_threshold": 1000,
+  "invalid_phone_patterns": [
+    {
+      "pattern": "^(.)\\1{9}$",
+      "reason": "All digits are identical"
+    },
+    {
+      "pattern": "^1234567890$",
+      "reason": "Sequential test number"
+    },
+    {
+      "pattern": "^9876543210$",
+      "reason": "Reverse sequential test number"
+    },
+    {
+      "pattern": "^5550[0-9]{3}$",
+      "reason": "555-0XXX reserved for fictional use"
+    }
+  ],
+  "fuzzy_match_threshold": 0.70
 }

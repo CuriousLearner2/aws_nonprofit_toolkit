@@ -1,0 +1,4 @@
+name,email,email_corrected,amount,donation_date,flag_reason
+Taylor Kim,taylor@gmail.co,,"$2,501.00",2026-06-07,high-dollar
+Casey Wu,casey@gmail.com.,,,2026-06-09,invalid-email
+Nora White,nora@ gmail.com,,$300.00,2026-06-12,invalid-email

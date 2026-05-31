@@ -1,0 +1,11 @@
+Transaction ID,Payout ID,Status,Date,Name,Email,Phone,Address 1,Address 2,City,State,Zip,Country,Amount,Processing Fee,Givebutter Fee,Fees Covered,Campaign Title,Payment Method,utm_source,utm_medium
+tr_7b82f19a0c,po_91a283f,Settled,2026-05-02 14:22:11,Morgan Davis,morgan.davis42@gmail.com,555-019-2834,123 Main St,,San Jose,CA,95112,US,50.00,1.75,0.00,Yes,General Operating Fund,Card,facebook,cpc
+tr_1a93c8d2ef,po_91a283f,Settled,2026-05-04 09:15:34,taylor smith,taylor.smith11@gmai.com,(555) 014-9281,456 Oak Avenue,,san jose,ca,95125,US,500.00,14.80,5.00,No,Spring Gala 2026,Card,newsletter,email
+tr_4e82b7194a,po_91a283f,Settled,2026-05-05 18:44:02,Sam Jones,sam.jones88@hotmail.com,5550174829,789 pine rd,,San Jose,CA,95110-1234,US,75.00,2.48,0.00,Yes,Community Outreach,Check,,
+tr_9c18d2ef3b,po_92b118c,Settled,2026-05-05 21:01:59,Riley Wilson,riley.wilson23@gmail.com,,12 Valley Way,,Berkeley,CA,94704,US,2000.00,0.00,0.00,Yes,Major Gifts Campaign,ACH,linkedin,organic
+tr_3f82a10c9d,po_92b118c,Settled,2026-05-06 11:12:40,SAM BROWN,sam.brown91@gmail.com,555.015.2931,888 Broad St,Apt 4B,Oakland,CA,94612,US,1001.00,29.33,10.01,No,General Operating Fund,Card,google,cpc
+tr_8b291c3d4e,po_92b118c,Settled,2026-05-06 15:30:12,Taylor Clark,taylor.clark14@gmai.com,555-019-2834,101 Conifer Ln,,CA,,94706,US,50.00,1.75,0.00,Yes,Spring Gala 2026,Cash,,
+tr_2d93e8f10a,po_93c442e,Pending,2026-05-07 08:02:45,sam充分,sam.miller55@yaho.com,,222 Maple Dr,,Albany,ca,94706,US,2000.00,0.00,0.00,No,Major Gifts Campaign,Check,twitter,organic
+tr_6e18b72c3d,po_93c442e,Pending,2026-05-08 13:19:22,Morgan Taylor,morgan.taylor77@gmai.com,15550123948,743 El Camino,,Santa Clara,CA,95050,US,2000.00,58.30,0.00,Yes,Major Gifts Campaign,Card,,
+tr_1b92c8d3ef,po_93c442e,Pending,2026-05-09 17:55:01,Taylor Thomas,taylor.thomas33@yahoo.com,555-011-9238,901 Piedmont Ave,,Berkeley,CA,94705,US,2000.00,0.00,0.00,Yes,Major Gifts Campaign,ACH,instagram,story
+tr_5c18d2f4ab,po_94d881a,Failed,2026-05-10 10:41:14,Jordan Moore,jordan.moore12@yaho.com,(555) 013-4920,55 S 11th St,,San Jose,CA,95112,US,1500.00,43.80,15.00,No,Spring Gala 2026,Card,google,organic

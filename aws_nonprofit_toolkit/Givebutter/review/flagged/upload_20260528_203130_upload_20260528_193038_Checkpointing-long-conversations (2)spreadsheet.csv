@@ -1,0 +1,4 @@
+name,email,email_corrected,amount,donation_date,flag_reason
+Avery 11,,,$25.00,2026-05-20,missing-email
+Morgan 22,,,$50.00,2026-05-20,missing-email
+Morgan 33,,,"$1,001.00",2026-05-20,high-dollar|missing-email
