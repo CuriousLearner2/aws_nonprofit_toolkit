@@ -267,10 +267,11 @@ async function loadProcessing() {
         files.forEach(f => {
             const div = document.createElement('div');
             div.className = 'file-item';
+            const breakdown = `${f.pass_count} ✓, ${f.warning_count} ⚠, ${f.fail_count} ✗`;
             div.innerHTML = `
                 <div>
                     <div style="font-weight: 500;">${f.filename}</div>
-                    <div style="font-size: 12px; color: #666;">${f.rows} records</div>
+                    <div style="font-size: 12px; color: #666;">${f.rows} records (${breakdown})</div>
                 </div>
                 <button class="btn" onclick="reviewFile('${f.filename}')">Review</button>
             `;

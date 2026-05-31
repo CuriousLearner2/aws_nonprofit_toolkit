@@ -109,9 +109,17 @@ def list_processing():
         for f in sorted(PROCESSING_DIR.glob('*.csv'), key=lambda x: x.stat().st_mtime, reverse=True):
             try:
                 df = pd.read_csv(f, dtype=str)
+                record_count = len(df)
+                pass_count = len(df[df['Validation_Tier'] == 'PASS'])
+                warning_count = len(df[df['Validation_Tier'] == 'WARNING'])
+                fail_count = len(df[df['Validation_Tier'] == 'FAIL'])
+
                 files.append({
                     'filename': f.name,
-                    'rows': len(df),
+                    'rows': record_count,
+                    'pass_count': pass_count,
+                    'warning_count': warning_count,
+                    'fail_count': fail_count,
                     'mtime': f.stat().st_mtime
                 })
             except pd.errors.ParserError as e:
