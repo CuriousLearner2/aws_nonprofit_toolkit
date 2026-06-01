@@ -284,6 +284,7 @@ async function loadProcessing() {
 }
 
 async function reviewFile(filename) {
+    alert(`reviewFile called with ${filename}`);  // Debug
     showStatus(`Loading ${filename}...`, 'info', 'uploadStatus');
     try {
         const resp = await fetch(`/api/processing/${encodeURIComponent(filename)}`);
@@ -385,6 +386,7 @@ async function reviewFile(filename) {
         document.getElementById('reviewPanel').classList.remove('hidden');
         window.scrollTo(0, 0);  // Scroll to top
     } catch (err) {
+        alert(`Error in reviewFile: ${err.message}`);  // Debug
         showStatus(`Error loading file: ${err.message}`, 'error', 'uploadStatus');
     }
 }
