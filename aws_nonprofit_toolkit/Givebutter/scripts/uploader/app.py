@@ -140,14 +140,19 @@ def get_processing(filename):
     path = PROCESSING_DIR / filename
     try:
         df = pd.read_csv(path, dtype=str).fillna('')
+        logger.info(f"Columns in {filename}: {list(df.columns)}")
 
         # Convert to records with index for decision tracking
         records = []
         for idx, row in df.iterrows():
-            records.append({
+            record_dict = {
                 'idx': int(idx),
                 **row.to_dict()
-            })
+            }
+            if idx == 0:  # Log first record for debugging
+                logger.info(f"First record Issues: '{record_dict.get('Issues', 'MISSING')}'")
+                logger.info(f"First record Suggested_Modifications: '{record_dict.get('Suggested_Modifications', 'MISSING')}'")
+            records.append(record_dict)
 
         return jsonify({'records': records, 'filename': filename})
     except Exception as e:

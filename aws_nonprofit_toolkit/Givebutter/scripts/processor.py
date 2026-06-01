@@ -156,11 +156,11 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
     """
     phone_col = header_map.get('phone')
     if not phone_col:
-        return ('WARNING', "Phone column not found in input", None)
+        return ('WARNING', "Phone number not found", "Add phone numbers to your donations export")
 
     phone = record.get(phone_col)
     if pd.isna(phone) or str(phone).strip() == '':
-        return ('WARNING', "Phone field is empty", None)  # Frontend validates required; absence is notable
+        return ('WARNING', "Phone number is empty", None)  # Frontend validates required; absence is notable
 
     phone_str = str(phone).strip()
     digits = extract_digits(phone_str)
