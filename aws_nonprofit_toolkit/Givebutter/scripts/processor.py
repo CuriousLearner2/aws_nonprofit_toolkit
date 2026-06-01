@@ -181,12 +181,12 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
         # Valid US 10-digit number
         area_code = digits[:3]
         if area_code.startswith('0') or area_code.startswith('1'):
-            return ('WARNING', None, "Area code should not start with 0 or 1")
+            return ('WARNING', "Area code should not start with 0 or 1", None)
 
         # If unusual format, suggest standard
         if has_unusual_format:
-            suggestion = f"Unusual format. Consider: ({digits[:3]}) {digits[3:6]}-{digits[6:]}"
-            return ('WARNING', None, suggestion)
+            suggestion = f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+            return ('WARNING', "Unusual phone format", f"Consider: {suggestion}")
 
         return ('PASS', None, None)
 
@@ -195,12 +195,13 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
         normalized = digits[1:]
         area_code = normalized[:3]
         if area_code.startswith('0') or area_code.startswith('1'):
-            return ('WARNING', None, f"Area code should not start with 0 or 1. Normalized: ({normalized[:3]}) {normalized[3:6]}-{normalized[6:]}")
+            suggestion = f"({normalized[:3]}) {normalized[3:6]}-{normalized[6:]}"
+            return ('WARNING', "Area code should not start with 0 or 1", f"Try: {suggestion}")
 
         # If format is unusual (e.g., 15550123948), suggest standard format
         if has_unusual_format or phone_str != f"+1 {normalized[:3]}-{normalized[3:6]}-{normalized[6:]}":
-            suggestion = f"Format: ({normalized[:3]}) {normalized[3:6]}-{normalized[6:]}"
-            return ('WARNING', None, suggestion)
+            suggestion = f"({normalized[:3]}) {normalized[3:6]}-{normalized[6:]}"
+            return ('WARNING', "Non-standard phone format", f"Consider: {suggestion}")
         return ('PASS', None, None)
 
     elif len(digits) < 10:
@@ -244,7 +245,7 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
         if domain in email_typos:
             correct_domain = email_typos[domain]
             suggestion = f"{user_part}@{correct_domain}"
-            return ('WARNING', None, f"Email typo detected. Consider: {suggestion}")
+            return ('WARNING', "Email typo detected", f"Consider: {suggestion}")
 
         # Check domain against reference list
         valid_domains = reference.get('email_domains', [])
@@ -293,15 +294,15 @@ def validate_amount(record: Dict, header_map: Dict, reference: Dict) -> Tuple[st
     valid_range = stats.get('valid_range', [1, 100000])
 
     if amount_val < valid_range[0]:
-        return ('WARNING', None, f"Amount below typical range (${valid_range[0]})")
+        return ('WARNING', f"Amount below typical range (${valid_range[0]})", None)
 
     if amount_val > valid_range[1]:
-        return ('WARNING', None, f"Amount above typical range (${valid_range[1]})")
+        return ('WARNING', f"Amount above typical range (${valid_range[1]})", None)
 
     # Check high-dollar threshold (this will eventually be a separate flag)
     high_dollar = reference.get('high_dollar_threshold') or 1000
     if amount_val >= high_dollar:
-        return ('WARNING', None, f"High-dollar donation (>= ${high_dollar})")
+        return ('WARNING', f"High-dollar donation (>= ${high_dollar})", None)
 
     return ('PASS', None, None)
 
