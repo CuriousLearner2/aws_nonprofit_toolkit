@@ -336,6 +336,10 @@ async function reviewFile(filename) {
             const amount = row['Amount'] || '—';
             const campaign = row['Campaign Title'] || row['Campaign'] || row['Fund'] || '—';
 
+            // Get saved decision and notes
+            const savedDecision = row['Operator_Decision'] || '';
+            const savedNotes = row['Operator_Notes'] || '';
+
             return `
                 <tr>
                     <td><code>${escapeHtml(txnId)}</code></td>
@@ -350,35 +354,17 @@ async function reviewFile(filename) {
                     <td>
                         <select class="decision-select" data-idx="${idx}">
                             <option value="">Please Select</option>
-                            <option value="approved">Approved</option>
-                            <option value="followup">Follow-up</option>
-                            <option value="rejected">Rejected</option>
+                            <option value="approved" ${savedDecision === 'approved' ? 'selected' : ''}>Approved</option>
+                            <option value="followup" ${savedDecision === 'followup' ? 'selected' : ''}>Follow-up</option>
+                            <option value="rejected" ${savedDecision === 'rejected' ? 'selected' : ''}>Rejected</option>
                         </select>
                     </td>
                     <td>
-                        <textarea class="notes-field" data-idx="${idx}" placeholder="Notes..."></textarea>
+                        <textarea class="notes-field" data-idx="${idx}" placeholder="Notes...">${escapeHtml(savedNotes)}</textarea>
                     </td>
                 </tr>
             `;
         }).join('');
-
-        // Restore previously saved decisions after a brief delay to ensure DOM is ready
-        setTimeout(() => {
-            data.records.forEach((row, idx) => {
-                if (row['Operator_Decision']) {
-                    const select = document.querySelector(`.decision-select[data-idx="${idx}"]`);
-                    if (select) {
-                        select.value = row['Operator_Decision'];
-                    }
-                }
-                if (row['Operator_Notes']) {
-                    const textarea = document.querySelector(`.notes-field[data-idx="${idx}"]`);
-                    if (textarea) {
-                        textarea.value = row['Operator_Notes'];
-                    }
-                }
-            });
-        }, 100);
 
         document.getElementById('reviewPanel').classList.remove('hidden');
         window.scrollTo(0, 0);  // Scroll to top
