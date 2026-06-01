@@ -152,6 +152,8 @@ def get_processing(filename):
             if idx == 0:  # Log first record for debugging
                 logger.info(f"First record Issues: '{record_dict.get('Issues', 'MISSING')}'")
                 logger.info(f"First record Suggested_Modifications: '{record_dict.get('Suggested_Modifications', 'MISSING')}'")
+                logger.info(f"First record Operator_Decision: '{record_dict.get('Operator_Decision', 'MISSING')}'")
+                logger.info(f"First record Operator_Notes: '{record_dict.get('Operator_Notes', 'MISSING')}'")
             records.append(record_dict)
 
         return jsonify({'records': records, 'filename': filename})
