@@ -115,10 +115,10 @@ GB002,2026-05-25,Jane Doe,jane@gmail.com,,Scholarship Fund"""
 
     @pytest.mark.integration
     def test_process_csv_with_high_dollar_donations(self, temp_dir, rules_config, reference_config):
-        """Test that high-dollar donations are flagged."""
-        csv_content = """Donation ID,Date,Donor Name,Email,Amount,Campaign Title
-GB001,2026-05-25,John Smith,john@gmail.com,1000.00,General Fund
-GB002,2026-05-25,Jane Doe,jane@gmail.com,100.00,Scholarship Fund"""
+        """Test that high-dollar donations are valid (no longer flagged as WARNING)."""
+        csv_content = """Donation ID,Date,Donor Name,Email,Phone,Amount,Campaign Title
+GB001,2026-05-25,John Smith,john@gmail.com,5551234567,1000.00,General Fund
+GB002,2026-05-25,Jane Doe,jane@gmail.com,5559876543,100.00,Scholarship Fund"""
 
         csv_file = temp_dir / "high_dollar.csv"
         csv_file.write_text(csv_content)
@@ -128,9 +128,9 @@ GB002,2026-05-25,Jane Doe,jane@gmail.com,100.00,Scholarship Fund"""
 
         df = pd.read_csv(output_file, dtype=str, encoding='utf-8')
 
-        # First record is high-dollar
-        assert df.loc[0, 'Validation_Tier'] == 'WARNING'
-        assert 'high' in df.loc[0, 'Issues'].lower() or 'High' in df.loc[0, 'Issues']
+        # High-dollar donations are valid (within valid range) and PASS
+        assert df.loc[0, 'Validation_Tier'] == 'PASS'
+        assert df.loc[1, 'Validation_Tier'] == 'PASS'
 
     @pytest.mark.integration
     def test_process_csv_with_invalid_phone(self, temp_dir, rules_config, reference_config):

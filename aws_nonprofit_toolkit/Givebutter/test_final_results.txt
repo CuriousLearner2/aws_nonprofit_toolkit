@@ -1,0 +1,11 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0 -- /Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+configfile: pytest.ini
+plugins: asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 181 items
+
+tests/e2e/test_e2e_decision_workflow.py::test_view_records_for_review FAILED [  0%]
+tests/e2e/test_e2e_decision_workflow.py::test_select_decision_for_record 
