@@ -328,14 +328,22 @@ async function reviewFile(filename) {
             const tierClass = `tier-${row['Validation_Tier'].toLowerCase()}`;
             const tierText = row['Validation_Tier'];
 
+            // Fallback column name resolution
+            const txnId = row['Transaction ID'] || row['Donation ID'] || '—';
+            const name = row['Name'] || row['Donor Name'] || row['Full Name'] || '—';
+            const email = row['Email'] || row['Email Address'] || row['Primary Email'] || '—';
+            const phone = row['Phone'] || row['Phone Number'] || row['Contact Phone'] || '—';
+            const amount = row['Amount'] || '—';
+            const campaign = row['Campaign Title'] || row['Campaign'] || row['Fund'] || '—';
+
             return `
                 <tr>
-                    <td><code>${escapeHtml(row['Transaction ID'] || row['Donation ID'] || '—')}</code></td>
-                    <td><strong>${escapeHtml(row['Name'] || '—')}</strong></td>
-                    <td><code>${escapeHtml(row['Email'] || '—')}</code></td>
-                    <td>${escapeHtml(row['Phone'] || '—')}</td>
-                    <td>${escapeHtml(row['Amount'] || '—')}</td>
-                    <td><small>${escapeHtml(row['Campaign Title'] || '—')}</small></td>
+                    <td><code>${escapeHtml(txnId)}</code></td>
+                    <td><strong>${escapeHtml(name)}</strong></td>
+                    <td><code>${escapeHtml(email)}</code></td>
+                    <td>${escapeHtml(phone)}</td>
+                    <td>${escapeHtml(amount)}</td>
+                    <td><small>${escapeHtml(campaign)}</small></td>
                     <td><span class="${tierClass}">${tierText}</span></td>
                     <td class="issues">${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
                     <td class="suggestions">${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>

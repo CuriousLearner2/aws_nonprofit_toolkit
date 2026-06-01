@@ -156,11 +156,11 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
     """
     phone_col = header_map.get('phone')
     if not phone_col:
-        return ('PASS', None, None)
+        return ('WARNING', "Phone column not found in input", None)
 
     phone = record.get(phone_col)
     if pd.isna(phone) or str(phone).strip() == '':
-        return ('PASS', None, None)  # Frontend validates required; absence is OK here
+        return ('WARNING', "Phone field is empty", None)  # Frontend validates required; absence is notable
 
     phone_str = str(phone).strip()
     digits = extract_digits(phone_str)
@@ -348,11 +348,11 @@ def validate_name(record: Dict, header_map: Dict, reference: Dict) -> Tuple[str,
     """
     name_col = header_map.get('name')
     if not name_col:
-        return ('FAIL', "Missing name field")
+        return ('FAIL', "Name column not found in input")
 
     name = record.get(name_col)
     if pd.isna(name) or str(name).strip() == '':
-        return ('FAIL', "Missing name")
+        return ('FAIL', "Name field is empty")
 
     name_str = str(name).strip()
     patterns = reference.get('name_patterns', {})
@@ -593,7 +593,9 @@ def process_csv(input_file: str, output_file: str) -> None:
 
         # Print progress
         status = "✓" if tier == 'PASS' else "⚠" if tier == 'WARNING' else "✗"
-        print(f"  {status} [{idx+1}/{len(records)}] {record.get('Name', 'Unknown')} - {tier}")
+        name_col = header_map.get('name')
+        display_name = record.get(name_col, 'Unknown') if name_col else 'Unknown'
+        print(f"  {status} [{idx+1}/{len(records)}] {display_name} - {tier}")
 
     # Reorder columns: original Givebutter data first, validation results last
     orig_cols = [c for c in df.columns if c not in ['Validation_Tier', 'Issues', 'Suggested_Modifications']]
