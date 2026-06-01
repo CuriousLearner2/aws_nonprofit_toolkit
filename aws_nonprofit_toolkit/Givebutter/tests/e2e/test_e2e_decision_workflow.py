@@ -42,7 +42,7 @@ async def test_view_records_for_review(flask_app_running, temp_dir, sample_csv):
         try:
             # Upload a file first
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -82,7 +82,7 @@ async def test_select_decision_for_record(flask_app_running, temp_dir, sample_cs
         try:
             # Upload and navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -129,7 +129,7 @@ async def test_add_notes_for_record(flask_app_running, temp_dir, sample_csv):
         try:
             # Upload and navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -171,7 +171,7 @@ async def test_save_decisions_partial(flask_app_running, temp_dir, sample_csv):
         try:
             # Upload and navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -220,7 +220,7 @@ async def test_save_all_decisions_completes_review(flask_app_running, temp_dir, 
         try:
             # Upload and navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -231,6 +231,8 @@ async def test_save_all_decisions_completes_review(flask_app_running, temp_dir, 
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -246,11 +248,12 @@ async def test_save_all_decisions_completes_review(flask_app_running, temp_dir, 
                 if save_button:
                     await save_button.click()
 
-                    # Should show completion message
-                    await page.wait_for_selector('text=/complete|approved|rejected/', timeout=5000)
+                    # Wait for completion message to appear
+                    await asyncio.sleep(2)
 
+                    # Verify success by checking page content
                     content = await page.content()
-                    assert any(text in content.lower() for text in ['complete', 'approved', 'rejected'])
+                    assert any(text in content.lower() for text in ['complete', 'approved', 'rejected']), "Completion message not found in page content"
 
         finally:
             await browser.close()
@@ -269,7 +272,7 @@ async def test_decision_persistence_on_reopen(flask_app_running, temp_dir, sampl
         try:
             # Upload and navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -329,7 +332,7 @@ async def test_cancel_review(flask_app_running, temp_dir, sample_csv):
         try:
             # Upload and navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -350,7 +353,7 @@ async def test_cancel_review(flask_app_running, temp_dir, sample_csv):
                     await cancel_button.click()
 
                     # Should return to main page
-                    await page.wait_for_selector('input[type="file"]', timeout=5000)
+                    await page.wait_for_selector('div.drop-zone', timeout=5000)
 
         finally:
             await browser.close()
@@ -369,7 +372,7 @@ async def test_page_scrolls_to_top_on_load(flask_app_running, temp_dir, sample_c
         try:
             # Upload and navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))

@@ -86,7 +86,7 @@ GB003,2026-05-25,Bob Wilson,invalid-email,75.00,Education Fund"""
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(test_csv))
@@ -122,7 +122,7 @@ async def test_upload_invalid_file_type(start_flask_app, temp_dir):
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(invalid_file))
@@ -152,7 +152,7 @@ async def test_processing_queue_displays_file(start_flask_app, temp_dir, sample_
         try:
             # Upload file first
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -197,7 +197,7 @@ async def test_page_loads_successfully(start_flask_app):
             assert response.status == 200
 
             # Check for key UI elements
-            await page.wait_for_selector('input[type="file"]', timeout=5000)
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             # Verify page title or heading exists
             content = await page.content()
@@ -226,7 +226,7 @@ GB002,2026-05-25,李明,li@gmail.com,50.00,Scholarship Fund"""
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(test_csv))
@@ -268,7 +268,7 @@ async def test_upload_large_csv(start_flask_app, temp_dir):
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(test_csv))

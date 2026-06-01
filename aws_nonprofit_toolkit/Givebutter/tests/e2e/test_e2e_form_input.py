@@ -72,7 +72,7 @@ async def test_file_input_shows_feedback(flask_app_for_forms, temp_dir, sample_c
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -105,7 +105,7 @@ async def test_upload_button_disabled_without_file(flask_app_for_forms):
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             # Check submit button state (may be disabled or check file input)
             submit_buttons = await page.query_selector_all('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
@@ -132,7 +132,7 @@ async def test_upload_shows_loading_state(flask_app_for_forms, temp_dir, sample_
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -167,7 +167,7 @@ async def test_decision_dropdown_has_all_options(flask_app_for_forms, temp_dir, 
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -218,7 +218,7 @@ async def test_decision_selection_changes_visual_state(flask_app_for_forms, temp
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -259,7 +259,7 @@ async def test_dropdown_keyboard_navigation(flask_app_for_forms, temp_dir, sampl
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -306,7 +306,7 @@ async def test_notes_textarea_accepts_input(flask_app_for_forms, temp_dir, sampl
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -346,7 +346,7 @@ async def test_notes_textarea_unicode_input(flask_app_for_forms, temp_dir, sampl
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -387,7 +387,7 @@ async def test_notes_textarea_placeholder_text(flask_app_for_forms, temp_dir, sa
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -427,7 +427,7 @@ async def test_textarea_keyboard_navigation(flask_app_for_forms, temp_dir, sampl
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -471,7 +471,7 @@ async def test_validation_summary_clear(flask_app_for_forms, temp_dir, sample_cs
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -503,7 +503,7 @@ async def test_validation_tier_color_coded(flask_app_for_forms, temp_dir, sample
 
         try:
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -543,7 +543,7 @@ async def test_save_button_clear_label(flask_app_for_forms, temp_dir, sample_csv
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -581,7 +581,7 @@ async def test_save_success_message(flask_app_for_forms, temp_dir, sample_csv):
         try:
             # Navigate to review and make decisions
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -629,7 +629,7 @@ async def test_cancel_button_confirmation(flask_app_for_forms, temp_dir, sample_
         try:
             # Navigate to review
             await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('input[type="file"]')
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
