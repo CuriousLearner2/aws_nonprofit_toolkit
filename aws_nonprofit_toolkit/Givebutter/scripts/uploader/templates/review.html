@@ -284,7 +284,6 @@ async function loadProcessing() {
 }
 
 async function reviewFile(filename) {
-    alert(`reviewFile called with ${filename}`);  // Debug
     showStatus(`Loading ${filename}...`, 'info', 'uploadStatus');
     try {
         const resp = await fetch(`/api/processing/${encodeURIComponent(filename)}`);
@@ -363,30 +362,27 @@ async function reviewFile(filename) {
             `;
         }).join('');
 
-        // Restore previously saved decisions
-        alert(`Restoring decisions. First record Operator_Decision: "${data.records[0]['Operator_Decision']}"`);  // Debug
-        data.records.forEach((row, idx) => {
-            const select = document.querySelector(`.decision-select[data-idx="${idx}"]`);
-            const textarea = document.querySelector(`.notes-field[data-idx="${idx}"]`);
-
-            if (row['Operator_Decision']) {
-                alert(`Record ${idx}: Setting decision to "${row['Operator_Decision']}", select found: ${!!select}`);
-                if (select) {
-                    select.value = row['Operator_Decision'];
-                    alert(`Record ${idx}: Set to ${select.value}`);
+        // Restore previously saved decisions after a brief delay to ensure DOM is ready
+        setTimeout(() => {
+            data.records.forEach((row, idx) => {
+                if (row['Operator_Decision']) {
+                    const select = document.querySelector(`.decision-select[data-idx="${idx}"]`);
+                    if (select) {
+                        select.value = row['Operator_Decision'];
+                    }
                 }
-            }
-            if (row['Operator_Notes']) {
-                if (textarea) {
-                    textarea.value = row['Operator_Notes'];
+                if (row['Operator_Notes']) {
+                    const textarea = document.querySelector(`.notes-field[data-idx="${idx}"]`);
+                    if (textarea) {
+                        textarea.value = row['Operator_Notes'];
+                    }
                 }
-            }
-        });
+            });
+        }, 100);
 
         document.getElementById('reviewPanel').classList.remove('hidden');
         window.scrollTo(0, 0);  // Scroll to top
     } catch (err) {
-        alert(`Error in reviewFile: ${err.message}`);  // Debug
         showStatus(`Error loading file: ${err.message}`, 'error', 'uploadStatus');
     }
 }
