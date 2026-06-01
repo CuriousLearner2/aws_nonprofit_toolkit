@@ -172,6 +172,7 @@
                 <table class="review-table" id="reviewTable">
                     <thead>
                         <tr>
+                            <th style="width: 120px;">Transaction ID</th>
                             <th style="width: 100px;">Name</th>
                             <th style="width: 150px;">Email</th>
                             <th style="width: 100px;">Phone</th>
@@ -329,6 +330,7 @@ async function reviewFile(filename) {
 
             return `
                 <tr>
+                    <td><code>${escapeHtml(row['Transaction ID'] || '—')}</code></td>
                     <td><strong>${escapeHtml(row['Name'] || '—')}</strong></td>
                     <td><code>${escapeHtml(row['Email'] || '—')}</code></td>
                     <td>${escapeHtml(row['Phone'] || '—')}</td>
