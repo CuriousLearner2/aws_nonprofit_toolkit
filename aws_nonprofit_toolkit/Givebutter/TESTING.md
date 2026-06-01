@@ -88,11 +88,20 @@ pytest -m integration -v
 # Only E2E tests
 pytest -m e2e -v
 
+# Only visual regression tests
+pytest -m visual -v
+
+# Only form/input tests
+pytest -m form -v
+
 # Skip slow tests
 pytest -m "not slow" -v
 
 # Only slow tests
 pytest -m slow -v
+
+# Visual and form tests combined
+pytest -m "visual or form" -v
 ```
 
 ### Run Specific Test File
@@ -262,6 +271,89 @@ Requires:
 - Decision persistence on reopen
 - Cancel review workflow
 - Page scrolls to top on load
+
+Requires:
+- Flask app running at `http://127.0.0.1:8000`
+- Playwright with Chromium browser
+
+### test_e2e_visual_regression.py
+Visual regression testing with Playwright screenshots:
+- Page screenshots at different viewport sizes
+- Mobile (375px), tablet (768px), desktop (1280px, 1920px)
+- Upload page appearance
+- Processing queue display
+- Review table layout
+- Decision dropdown rendering
+- Notes textarea display
+- Error message appearance
+- Success message display
+- Screenshot baseline comparison
+- Automatic diff image generation
+
+Features:
+- Captures full-page screenshots
+- Responsive design testing
+- Layout stability detection
+- Visual regression detection via PIL image comparison
+- Configurable comparison threshold (default 1% difference allowed)
+
+Usage:
+```bash
+# Capture screenshots (saves as baseline on first run)
+pytest tests/e2e/test_e2e_visual_regression.py -v
+
+# Compare against baseline
+pytest tests/e2e/test_e2e_visual_regression.py::test_screenshot_regression_upload_page -v
+
+# Generate diff images on failure
+# Diff images saved to screenshots/diff/
+```
+
+Requires:
+- Playwright with Chromium
+- Optional: Pillow (PIL) for screenshot comparison
+
+### test_e2e_form_input.py
+Form and input interaction testing:
+
+**File Upload Tests**:
+- File input accepts CSV
+- File selection feedback
+- Upload button state
+- Loading feedback
+
+**Decision Dropdown Tests**:
+- All options present (approved, followup, rejected)
+- Visual state on selection
+- Keyboard navigation (arrow keys)
+- Value preservation
+
+**Notes Textarea Tests**:
+- Text input acceptance
+- Unicode/special character support
+- Placeholder text hints
+- Keyboard navigation (Tab)
+
+**Validation Feedback Tests**:
+- Validation summary clarity
+- Tier color coding
+
+**Save/Submission Tests**:
+- Clear button labels
+- Success message feedback
+- Cancel confirmation
+- Form state management
+
+Usage:
+```bash
+# Run all form tests
+pytest tests/e2e/test_e2e_form_input.py -v
+
+# Run specific category
+pytest tests/e2e/test_e2e_form_input.py -k "dropdown" -v
+pytest tests/e2e/test_e2e_form_input.py -k "textarea" -v
+pytest tests/e2e/test_e2e_form_input.py -k "save" -v
+```
 
 Requires:
 - Flask app running at `http://127.0.0.1:8000`

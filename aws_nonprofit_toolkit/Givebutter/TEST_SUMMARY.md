@@ -4,11 +4,11 @@ Complete test suite created with comprehensive coverage for CSV validation, proc
 
 ## Overview
 
-- **Total Test Files**: 13
-- **Total Test Classes**: 15+
-- **Total Test Cases**: 250+
+- **Total Test Files**: 15 modules
+- **Total Test Cases**: 330+
+- **Total Test Code**: 4,500+ lines
 - **Test Framework**: pytest with Playwright for E2E
-- **Coverage**: Unit, Integration, and End-to-End
+- **Coverage**: Unit, Integration, End-to-End, Visual Regression, Form/Input UX
 
 ## Test Distribution
 
@@ -128,8 +128,8 @@ Focus on processor pipeline, decision persistence, and CSV format handling.
 - Single-row CSV
 - Numeric string preservation
 
-### End-to-End Tests (2 files, ~30+ async test cases)
-Focus on UI workflow with Playwright automation.
+### End-to-End Tests (4 files, ~80+ async test cases)
+Focus on UI workflow, visual regression, and form interaction with Playwright automation.
 
 **File**: `tests/e2e/test_e2e_upload_workflow.py` (8 tests, marked @e2e)
 - Flask app loading
@@ -150,6 +150,36 @@ Focus on UI workflow with Playwright automation.
 - Decision persistence on file reopen
 - Cancel review workflow
 - Page scroll position on load
+
+**File**: `tests/e2e/test_e2e_visual_regression.py` (15 tests, marked @e2e/@visual)
+- Screenshot capture at different viewports
+- Mobile (375px), tablet (768px), desktop (1280px, 1920px)
+- Upload page visual
+- Processing queue visual
+- Review table with records
+- Decision dropdown UI
+- Notes textarea UI
+- Error messages
+- Success messages
+- Screenshot comparison against baseline
+- Visual regression detection
+
+**File**: `tests/e2e/test_e2e_form_input.py` (25+ tests, marked @e2e/@form)
+- File upload input behavior
+- File selection feedback
+- Upload button state
+- Loading state feedback
+- Decision dropdown options (approved, followup, rejected)
+- Dropdown visual state changes
+- Keyboard navigation (Tab, Arrow keys)
+- Notes textarea text input
+- Unicode/special character input
+- Placeholder text hints
+- Validation summary clarity
+- Tier color coding
+- Save button labels and feedback
+- Success message display
+- Cancel button confirmation
 
 ## Test Infrastructure
 
