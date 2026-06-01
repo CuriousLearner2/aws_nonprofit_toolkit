@@ -198,7 +198,7 @@ def submit_decisions(filename):
 
         # Update decisions and notes
         for idx, row in df.iterrows():
-            decision_data = decisions.get(idx, {})
+            decision_data = decisions.get(int(idx), {})
             if decision_data.get('decision'):
                 df.at[idx, 'Operator_Decision'] = decision_data['decision']
                 if decision_data.get('notes'):
@@ -211,6 +211,7 @@ def submit_decisions(filename):
         # Save progress back to processing file
         df.to_csv(processing_path, index=False, encoding='utf-8')
         logger.info(f"Saved {decided_count}/{len(df)} decisions for {filename}")
+        logger.info(f"Sample: Record 0 decision = '{df.at[0, 'Operator_Decision']}'")  # Debug
 
         # If all records have decisions, split and archive
         if undecided_count == 0:

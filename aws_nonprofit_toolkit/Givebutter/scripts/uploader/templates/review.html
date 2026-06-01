@@ -367,6 +367,7 @@ async function reviewFile(filename) {
         }).join('');
 
         document.getElementById('reviewPanel').classList.remove('hidden');
+        window.scrollTo(0, 0);  // Scroll to top
     } catch (err) {
         showStatus(`Error loading file: ${err.message}`, 'error', 'uploadStatus');
     }
