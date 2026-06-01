@@ -324,7 +324,6 @@ async function reviewFile(filename) {
 
         // Render records table
         const tbody = document.getElementById('reviewBody');
-        console.log('First record data:', data.records[0]);  // Debug
         tbody.innerHTML = data.records.map((row, idx) => {
             const tierClass = `tier-${row['Validation_Tier'].toLowerCase()}`;
             const tierText = row['Validation_Tier'];
@@ -336,11 +335,6 @@ async function reviewFile(filename) {
             const phone = row['Phone'] || row['Phone Number'] || row['Contact Phone'] || '—';
             const amount = row['Amount'] || '—';
             const campaign = row['Campaign Title'] || row['Campaign'] || row['Fund'] || '—';
-
-            // Load previously saved decision if available
-            const savedDecision = row['Operator_Decision'] || '';
-            const savedNotes = row['Operator_Notes'] || '';
-            if (idx === 0) console.log(`Record 0 - savedDecision='${savedDecision}', savedNotes='${savedNotes}'`);  // Debug
 
             return `
                 <tr>
@@ -354,19 +348,32 @@ async function reviewFile(filename) {
                     <td class="issues">${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
                     <td class="suggestions">${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
                     <td>
-                        <select class="decision-select" data-idx="${idx}" value="${escapeHtml(savedDecision)}">
+                        <select class="decision-select" data-idx="${idx}">
                             <option value="">Please Select</option>
-                            <option value="approved" ${savedDecision === 'approved' ? 'selected' : ''}>Approved</option>
-                            <option value="followup" ${savedDecision === 'followup' ? 'selected' : ''}>Follow-up</option>
-                            <option value="rejected" ${savedDecision === 'rejected' ? 'selected' : ''}>Rejected</option>
+                            <option value="approved">Approved</option>
+                            <option value="followup">Follow-up</option>
+                            <option value="rejected">Rejected</option>
                         </select>
                     </td>
                     <td>
-                        <textarea class="notes-field" data-idx="${idx}" placeholder="Notes...">${escapeHtml(savedNotes)}</textarea>
+                        <textarea class="notes-field" data-idx="${idx}" placeholder="Notes..."></textarea>
                     </td>
                 </tr>
             `;
         }).join('');
+
+        // Restore previously saved decisions
+        data.records.forEach((row, idx) => {
+            const select = document.querySelector(`.decision-select[data-idx="${idx}"]`);
+            const textarea = document.querySelector(`.notes-field[data-idx="${idx}"]`);
+
+            if (select && row['Operator_Decision']) {
+                select.value = row['Operator_Decision'];
+            }
+            if (textarea && row['Operator_Notes']) {
+                textarea.value = row['Operator_Notes'];
+            }
+        });
 
         document.getElementById('reviewPanel').classList.remove('hidden');
         window.scrollTo(0, 0);  // Scroll to top
