@@ -324,6 +324,7 @@ async function reviewFile(filename) {
 
         // Render records table
         const tbody = document.getElementById('reviewBody');
+        console.log('First record data:', data.records[0]);  // Debug
         tbody.innerHTML = data.records.map((row, idx) => {
             const tierClass = `tier-${row['Validation_Tier'].toLowerCase()}`;
             const tierText = row['Validation_Tier'];
@@ -339,6 +340,7 @@ async function reviewFile(filename) {
             // Load previously saved decision if available
             const savedDecision = row['Operator_Decision'] || '';
             const savedNotes = row['Operator_Notes'] || '';
+            if (idx === 0) console.log(`Record 0 - savedDecision='${savedDecision}', savedNotes='${savedNotes}'`);  // Debug
 
             return `
                 <tr>
