@@ -491,7 +491,8 @@ def process_csv(input_file: str, output_file: str) -> None:
     try:
         import csv
         # Use csv.reader for accurate column-to-value mapping (handles misaligned CSVs)
-        with open(input_file, 'r') as f:
+        # Explicitly use UTF-8 encoding to handle international characters
+        with open(input_file, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
             headers = next(reader)
             rows = list(reader)
@@ -603,8 +604,8 @@ def process_csv(input_file: str, output_file: str) -> None:
     new_order = orig_cols + ['Validation_Tier', 'Issues', 'Suggested_Modifications']
     df = df[new_order]
 
-    # Write output
-    df.to_csv(output_file, index=False)
+    # Write output with UTF-8 encoding to preserve international characters
+    df.to_csv(output_file, index=False, encoding='utf-8')
     print(f"\n✅ Output written to: {output_file}")
 
     # Summary stats

@@ -108,7 +108,7 @@ def list_processing():
     try:
         for f in sorted(PROCESSING_DIR.glob('*.csv'), key=lambda x: x.stat().st_mtime, reverse=True):
             try:
-                df = pd.read_csv(f, dtype=str)
+                df = pd.read_csv(f, dtype=str, encoding='utf-8')
                 record_count = len(df)
                 pass_count = len(df[df['Validation_Tier'] == 'PASS'])
                 warning_count = len(df[df['Validation_Tier'] == 'WARNING'])
@@ -139,7 +139,7 @@ def get_processing(filename):
 
     path = PROCESSING_DIR / filename
     try:
-        df = pd.read_csv(path, dtype=str).fillna('')
+        df = pd.read_csv(path, dtype=str, encoding='utf-8').fillna('')
         logger.info(f"Columns in {filename}: {list(df.columns)}")
 
         # Convert to records with index for decision tracking
@@ -185,7 +185,7 @@ def submit_decisions(filename):
             return jsonify({'error': 'No decisions provided'}), 400
 
         processing_path = PROCESSING_DIR / filename
-        df = pd.read_csv(processing_path, dtype=str).fillna('')
+        df = pd.read_csv(processing_path, dtype=str, encoding='utf-8').fillna('')
 
         if len(df) == 0:
             return jsonify({'error': 'File is empty'}), 400
