@@ -1,9 +1,35 @@
 # Product Requirements Document (PRD)
-## Givebutter Donation Processor v2.0
+## Givebutter Donation Processor v2.0 (Planned Future Release)
 
 **Version:** 2.0  
 **Date:** May 26, 2026  
-**Status:** Design Review (Open Questions Phase)
+**Status:** Planned (Future Release)  
+**Current Implementation:** v3.0 (Web-Based Operator Review System)
+
+---
+
+## ⚠️ Important Note
+
+**This document describes v2.0 planned features that are NOT YET IMPLEMENTED.**
+
+The current released version is **v3.0** (June 1, 2026), which focuses on the **downstream correction system** (web-based operator review workflow) without upstream prevention.
+
+**What's in v3.0 (Current)**:
+- ✅ Web-based operator review UI
+- ✅ Per-record decision workflow (approved/followup/rejected)
+- ✅ 7 validation types (email, phone, amount, name, address, headers, tier)
+- ✅ 330+ comprehensive tests
+- ✅ Decision persistence and multi-session support
+
+**What's in v2.0 (Planned Future)**:
+- ⏳ Upstream pre-form validation wrapper (this PRD)
+- ⏳ Auto-watching of donation entry
+- ⏳ Real-time donor feedback
+- ⏳ Integrated learning loop
+
+See [CHANGELOG.md](docs/CHANGELOG.md) and [README.md](README.md) for current v3.0 details. This document remains valuable for future upstream prevention implementation.
+
+---
 
 ---
 

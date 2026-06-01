@@ -41,7 +41,7 @@ class TestAmountValidation:
         header_map = {'amount': 'Amount'}
         reference = {
             'amount_statistics': {'valid_range': [1, 100000]},
-            'high_dollar_threshold': 1000
+            'high_dollar_threshold': 2000
         }
 
         tier, reason, suggestion = validate_amount(record, header_map, reference)
@@ -146,7 +146,7 @@ class TestAmountValidation:
 
     @pytest.mark.unit
     def test_high_dollar_donation(self):
-        """Test high-dollar donation threshold."""
+        """Test high-dollar donation is still valid (threshold is informational)."""
         record = {'Amount': '1000.00'}
         header_map = {'amount': 'Amount'}
         reference = {
@@ -155,9 +155,8 @@ class TestAmountValidation:
         }
 
         tier, reason, suggestion = validate_amount(record, header_map, reference)
-        assert tier == 'WARNING'
-        assert 'high-dollar' in reason.lower()
-        assert '1000' in reason
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
     def test_high_dollar_donation_custom_threshold(self):
@@ -200,7 +199,7 @@ class TestAmountValidation:
 
     @pytest.mark.unit
     def test_very_large_donation(self):
-        """Test very large donation amount."""
+        """Test very large donation amount (within valid range)."""
         record = {'Amount': '50000.00'}
         header_map = {'amount': 'Amount'}
         reference = {
@@ -209,8 +208,8 @@ class TestAmountValidation:
         }
 
         tier, reason, suggestion = validate_amount(record, header_map, reference)
-        assert tier == 'WARNING'
-        assert 'high-dollar' in reason.lower()
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
     def test_small_valid_donation(self):

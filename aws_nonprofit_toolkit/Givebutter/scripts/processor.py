@@ -191,17 +191,18 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
         return ('PASS', None, None)
 
     elif len(digits) == 11 and digits.startswith('1'):
-        # Valid: 1 + 10-digit number
+        # Valid: 1 + 10-digit number (bare or formatted)
         normalized = digits[1:]
         area_code = normalized[:3]
         if area_code.startswith('0') or area_code.startswith('1'):
             suggestion = f"({normalized[:3]}) {normalized[3:6]}-{normalized[6:]}"
             return ('WARNING', "Area code should not start with 0 or 1", f"Try: {suggestion}")
 
-        # If format is unusual (e.g., 15550123948), suggest standard format
-        if has_unusual_format or phone_str != f"+1 {normalized[:3]}-{normalized[3:6]}-{normalized[6:]}":
+        # Accept bare 11-digit numbers (e.g., 15551234567) without formatting requirement
+        # Only warn if has unusual formatting (multiple dots, many dashes, etc.)
+        if has_unusual_format:
             suggestion = f"({normalized[:3]}) {normalized[3:6]}-{normalized[6:]}"
-            return ('WARNING', "Non-standard phone format", f"Consider: {suggestion}")
+            return ('WARNING', "Unusual phone format", f"Consider: {suggestion}")
         return ('PASS', None, None)
 
     elif len(digits) < 10:
@@ -299,10 +300,8 @@ def validate_amount(record: Dict, header_map: Dict, reference: Dict) -> Tuple[st
     if amount_val > valid_range[1]:
         return ('WARNING', f"Amount above typical range (${valid_range[1]})", None)
 
-    # Check high-dollar threshold (this will eventually be a separate flag)
-    high_dollar = reference.get('high_dollar_threshold') or 1000
-    if amount_val >= high_dollar:
-        return ('WARNING', f"High-dollar donation (>= ${high_dollar})", None)
+    # Note: high_dollar_threshold is stored but not used for WARNING tier
+    # (reserved for future use in separate flagging system)
 
     return ('PASS', None, None)
 

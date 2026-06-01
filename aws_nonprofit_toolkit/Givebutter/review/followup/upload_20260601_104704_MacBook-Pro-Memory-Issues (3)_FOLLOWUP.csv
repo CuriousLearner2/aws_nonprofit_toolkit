@@ -1,0 +1,5 @@
+Donation ID,Date,Donor Name,Email,Amount,Validation_Tier,Issues,Suggested_Modifications,Operator_Decision,Operator_Notes
+GB502,2026-06-07,Taylor Kim,taylor@gmail.co,2500.999,WARNING,Phone: Phone number not found; Amount: High-dollar donation (>= $1000),Add phone numbers to your donations export,followup,
+GB505,2026-06-09,Casey Wu,casey@gmail.com.,,FAIL,Phone: Phone number not found; Amount: Missing amount,Add phone numbers to your donations export,followup,
+GB508,2026-06-10,Pat Quinn,pat@ymail.com,1500,WARNING,Phone: Phone number not found; Amount: High-dollar donation (>= $1000),Add phone numbers to your donations export,followup,
+GB511,2026-06-12,Nora White,nora@ gmail.com,  300.00  ,WARNING,Phone: Phone number not found,Add phone numbers to your donations export,followup,

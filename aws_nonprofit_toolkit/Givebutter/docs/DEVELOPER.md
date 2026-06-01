@@ -5,9 +5,34 @@
 
 ## Overview
 
-This document covers the technical architecture, rule systems, Claude AI integration, and maintenance procedures for developers and technical maintainers.
+This document covers the technical architecture, implementation, testing, and maintenance procedures for developers and technical maintainers.
 
-**See [OPERATOR_MANUAL.md](../OPERATOR_MANUAL.md) for user-facing documentation.**
+**See [OPERATOR_MANUAL.md](../OPERATOR_MANUAL.md) for user-facing documentation.**  
+**See [TEST_PLAN.md](../TEST_PLAN.md) for testing strategy and [TESTING.md](../TESTING.md) for practical testing guide.**
+
+---
+
+## ⚠️ Important: Current Implementation vs. Documentation
+
+**Current Status (v3.0)**:
+- ✅ Web-based operator review system
+- ✅ Per-record decision workflow
+- ✅ 330+ comprehensive test suite
+- ✅ CSV processor with 7 validation types
+
+**Outdated References in This Document**:
+The sections below reference features from the planned v2.0 architecture that have not yet been implemented:
+- ❌ Auto-watching intake/new/ folder
+- ❌ env_manager.py auto-discovery
+- ❌ Claude AI skill integration
+- ❌ processor_v2_3.py
+
+**Current Implementation**:
+- `processor.py` — Core validation engine (not auto-watched; called by Flask)
+- `app.py` — Flask uploader (manual upload, not auto-watching)
+- `review.html` — Operator decision UI
+
+See [ARCHITECTURE.md](#updated-architecture-v3) below for current implementation details.
 
 ---
 
@@ -65,11 +90,125 @@ This document covers the technical architecture, rule systems, Claude AI integra
 
 ---
 
-## Environment Setup
+## Testing (v3.0)
 
-### .env File (Auto-Managed)
+### Test Suite Overview
 
-The `env_manager.py` script auto-discovers and manages paths:
+The system includes **330+ tests** across multiple categories:
+
+```
+Unit Tests (130)         Integration Tests (70)      E2E Tests (80+)
+├── Validation (93)      ├── Processor (15)         ├── Workflows (16)
+├── Tier Assignment (18) ├── Persistence (12)       ├── Visual (15)
+└── Mapping (16)         └── CSV Formats (19)       └── Form (25+)
+```
+
+### Running Tests
+
+```bash
+# Install test dependencies
+pip install -r requirements-test.txt
+playwright install chromium
+
+# Run all tests
+pytest tests/ -v
+
+# Run by category
+pytest tests/unit/ -v                    # Unit tests only
+pytest tests/integration/ -v             # Integration tests
+pytest -m e2e -v                         # End-to-end tests
+pytest -m visual -v                      # Visual regression
+pytest -m form -v                        # Form interaction
+
+# With coverage
+pytest tests/ --cov=scripts --cov-report=html
+```
+
+### Test Files
+
+| File | Tests | Focus |
+|------|-------|-------|
+| `tests/unit/test_validation_*.py` | 93 | Email, phone, amount, name, address, headers, tier |
+| `tests/integration/test_processor_full.py` | 15 | Full pipeline, large files, UTF-8 |
+| `tests/integration/test_decision_persistence.py` | 12 | Multi-session saving, notes, overwrite |
+| `tests/integration/test_csv_formats.py` | 19 | Quoted fields, line breaks, BOMs, special chars |
+| `tests/e2e/test_e2e_upload_workflow.py` | 8 | Upload, processing queue, results display |
+| `tests/e2e/test_e2e_decision_workflow.py` | 8+ | Review, decisions, persistence |
+| `tests/e2e/test_e2e_visual_regression.py` | 15 | Screenshots, responsive design, diffs |
+| `tests/e2e/test_e2e_form_input.py` | 25+ | Dropdowns, textarea, validation feedback |
+
+### Test Documentation
+
+- **[TEST_PLAN.md](../TEST_PLAN.md)** — Strategic plan with entry/exit criteria
+- **[TESTING.md](../TESTING.md)** — Practical guide for running tests
+- **[TEST_SUMMARY.md](../TEST_SUMMARY.md)** — High-level overview
+- **[TESTS_DELIVERED.md](../TESTS_DELIVERED.md)** — Delivery checklist
+
+### Key Testing Patterns
+
+**Fixtures** (in `tests/conftest.py`):
+- `temp_dir` — Temporary directory for test files
+- `sample_csv` — 4-record sample data
+- `rules_config` — Email typos, phone patterns
+- `reference_config` — Domains, TLDs, thresholds
+
+**Markers**:
+- `@pytest.mark.unit` — Unit tests
+- `@pytest.mark.integration` — Integration tests
+- `@pytest.mark.e2e` — End-to-end tests
+- `@pytest.mark.visual` — Visual regression
+- `@pytest.mark.form` — Form interaction
+- `@pytest.mark.slow` — Long-running tests
+
+---
+
+## Environment Setup (v3.0)
+
+### Current Directory Structure
+
+```
+Givebutter/
+├── scripts/
+│   ├── processor.py          # Core validation engine
+│   └── uploader/
+│       ├── app.py            # Flask web application
+│       └── templates/
+│           └── review.html   # Operator decision UI
+├── config/
+│   ├── rules/
+│   │   └── rules_v2.4.json   # Validation rules
+│   └── reference_list.json    # Learned patterns
+├── tests/
+│   ├── unit/                 # Unit tests (7 files)
+│   ├── integration/           # Integration tests (3 files)
+│   ├── e2e/                  # E2E tests (4 files)
+│   ├── conftest.py           # Fixtures
+│   └── pytest.ini            # Test configuration
+└── docs/
+    ├── ARCHITECTURE.md       # Technical design
+    ├── DEVELOPER.md          # This file
+    └── ...
+```
+
+### Virtual Environment
+
+```bash
+source venv/bin/activate
+pip install -r requirements.txt        # Main dependencies
+pip install -r requirements-test.txt   # Test dependencies (optional)
+```
+
+**Key dependencies**:
+- `Flask` — Web uploader
+- `pandas` — CSV processing
+- `python-dotenv` — Environment variable loading (optional, for future)
+
+**Test dependencies**:
+- `pytest` — Test framework
+- `pytest-asyncio` — Async test support
+- `playwright` — Browser automation for E2E tests
+
+---
 
 ```bash
 # Auto-populated by env_manager.discover_and_sync_paths()

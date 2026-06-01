@@ -96,11 +96,11 @@ All files include original data + validation metadata + operator notes.
 
 **Components:**
 
-- `processor.py` (700 lines) - Validation engine
-- `app.py` (250 lines) - Flask web application
-- `review.html` (450 lines) - Web UI
-- `rules_v2.4.json` - Configuration
-- `reference_list.json` - Learned patterns
+- `processor.py` (634 lines) - Validation engine with 7 validation types
+- `app.py` (293 lines) - Flask web application with 6 endpoints
+- `review.html` (468 lines) - Web UI for operator review workflow
+- `rules_v2.4.json` - Configuration (email typos, phone patterns, thresholds)
+- `reference_list.json` - Learned patterns (domains, TLDs, amounts, names)
 
 **Data Flow:**
 
@@ -164,10 +164,19 @@ python3 scripts/build_reference_list.py
 
 ## Testing
 
-✅ End-to-end tested with realistic Givebutter exports
-✅ 10 records: 9 warnings detected, 0 failures
-✅ Decisions submitted: 5 approved, 4 follow-up, 1 rejected
-✅ Output files generated and verified
+✅ **Comprehensive test suite: 330+ tests**
+- Unit tests (130 tests) — Validation functions, tier assignment, header mapping
+- Integration tests (70 tests) — Full processor pipeline, decision persistence, CSV formats
+- End-to-end tests (80+ tests) — Upload workflow, UI interaction, decision saving
+- Visual regression (15 tests) — Responsive design at 3 viewports
+- Form interaction (25+ tests) — Input feedback, keyboard navigation, validation messages
+
+✅ **Real-world validation verified**
+- 10 records: 9 warnings detected, 0 failures
+- Decisions submitted: 5 approved, 4 follow-up, 1 rejected
+- Output files generated and verified
+
+📖 **[Testing Guide](TESTING.md)** | 📋 **[Test Plan](TEST_PLAN.md)** | 📊 **[Test Summary](TEST_SUMMARY.md)**
 
 ## API Overview
 
