@@ -156,7 +156,8 @@ class TestDecisionPersistence:
         df.to_csv(processing_file, index=False, encoding='utf-8')
 
         # Verify distinction
-        df_verify = pd.read_csv(processing_file, dtype=str, encoding='utf-8')
+        # Note: pandas converts empty strings to NaN when reading without keep_default_na=False
+        df_verify = pd.read_csv(processing_file, dtype=str, encoding='utf-8', keep_default_na=False)
         assert df_verify.loc[0, 'Operator_Decision'] == 'approved'
         assert df_verify.loc[1, 'Operator_Decision'] == ''
 
@@ -246,7 +247,8 @@ class TestDecisionPersistence:
         df.to_csv(processing_file, index=False, encoding='utf-8')
 
         # Calculate undecided
-        df_verify = pd.read_csv(processing_file, dtype=str, encoding='utf-8')
+        # Use keep_default_na=False to preserve empty strings as '' instead of NaN
+        df_verify = pd.read_csv(processing_file, dtype=str, encoding='utf-8', keep_default_na=False)
         undecided_count = len(df_verify[df_verify['Operator_Decision'] == ''])
 
         # Should have 2 undecided records (original had 4 total)
