@@ -65,6 +65,7 @@ CORE_HEADERS = {
 # Fuzzy Match Fallbacks (catches variations in custom/alternate field names)
 # Use these for slight variations in column naming that might occur
 FUZZY_HEADERS = {
+    'transaction_id': ['Donation ID', 'Gift ID', 'Contribution ID'],
     'name': ['Full Name', 'Donor Name', 'Donor', 'First and Last Name'],
     'email': ['Email Address', 'Primary Email', 'Contact Email', 'Email (Primary)'],
     'phone': ['Phone Number', 'Contact Phone', 'Phone (Primary)', 'Mobile Phone'],

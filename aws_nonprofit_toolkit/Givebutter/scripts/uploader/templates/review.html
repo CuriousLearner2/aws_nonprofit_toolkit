@@ -330,7 +330,7 @@ async function reviewFile(filename) {
 
             return `
                 <tr>
-                    <td><code>${escapeHtml(row['Transaction ID'] || '—')}</code></td>
+                    <td><code>${escapeHtml(row['Transaction ID'] || row['Donation ID'] || '—')}</code></td>
                     <td><strong>${escapeHtml(row['Name'] || '—')}</strong></td>
                     <td><code>${escapeHtml(row['Email'] || '—')}</code></td>
                     <td>${escapeHtml(row['Phone'] || '—')}</td>
