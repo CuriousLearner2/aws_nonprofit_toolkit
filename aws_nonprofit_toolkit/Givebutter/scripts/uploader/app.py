@@ -190,6 +190,16 @@ def submit_decisions(filename):
         if len(df) == 0:
             return jsonify({'error': 'File is empty'}), 400
 
+        # Verify ALL records have decisions before processing
+        missing_decisions = []
+        for idx in range(len(df)):
+            if idx not in decisions or not decisions[idx].get('decision'):
+                missing_decisions.append(idx)
+
+        if missing_decisions:
+            record_count = len(missing_decisions)
+            return jsonify({'error': f'{record_count} record(s) still need a decision. Please review all records.'}), 400
+
         # Split records by decision
         approved_records = []
         followup_records = []
