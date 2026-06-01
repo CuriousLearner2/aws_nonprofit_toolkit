@@ -363,15 +363,22 @@ async function reviewFile(filename) {
         }).join('');
 
         // Restore previously saved decisions
+        alert(`Restoring decisions. First record Operator_Decision: "${data.records[0]['Operator_Decision']}"`);  // Debug
         data.records.forEach((row, idx) => {
             const select = document.querySelector(`.decision-select[data-idx="${idx}"]`);
             const textarea = document.querySelector(`.notes-field[data-idx="${idx}"]`);
 
-            if (select && row['Operator_Decision']) {
-                select.value = row['Operator_Decision'];
+            if (row['Operator_Decision']) {
+                alert(`Record ${idx}: Setting decision to "${row['Operator_Decision']}", select found: ${!!select}`);
+                if (select) {
+                    select.value = row['Operator_Decision'];
+                    alert(`Record ${idx}: Set to ${select.value}`);
+                }
             }
-            if (textarea && row['Operator_Notes']) {
-                textarea.value = row['Operator_Notes'];
+            if (row['Operator_Notes']) {
+                if (textarea) {
+                    textarea.value = row['Operator_Notes'];
+                }
             }
         });
 
