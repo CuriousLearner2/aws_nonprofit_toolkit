@@ -149,11 +149,6 @@ def get_processing(filename):
                 'idx': int(idx),
                 **row.to_dict()
             }
-            if idx == 0:  # Log first record for debugging
-                logger.info(f"First record Issues: '{record_dict.get('Issues', 'MISSING')}'")
-                logger.info(f"First record Suggested_Modifications: '{record_dict.get('Suggested_Modifications', 'MISSING')}'")
-                logger.info(f"First record Operator_Decision: '{record_dict.get('Operator_Decision', 'MISSING')}'")
-                logger.info(f"First record Operator_Notes: '{record_dict.get('Operator_Notes', 'MISSING')}'")
             records.append(record_dict)
 
         return jsonify({'records': records, 'filename': filename})
@@ -213,7 +208,6 @@ def submit_decisions(filename):
         # Save progress back to processing file
         df.to_csv(processing_path, index=False, encoding='utf-8')
         logger.info(f"Saved {decided_count}/{len(df)} decisions for {filename}")
-        logger.info(f"Sample: Record 0 decision = '{df.at[0, 'Operator_Decision']}'")  # Debug
 
         # If all records have decisions, split and archive
         if undecided_count == 0:
