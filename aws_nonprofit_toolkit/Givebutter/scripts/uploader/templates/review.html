@@ -336,6 +336,10 @@ async function reviewFile(filename) {
             const amount = row['Amount'] || '—';
             const campaign = row['Campaign Title'] || row['Campaign'] || row['Fund'] || '—';
 
+            // Load previously saved decision if available
+            const savedDecision = row['Operator_Decision'] || '';
+            const savedNotes = row['Operator_Notes'] || '';
+
             return `
                 <tr>
                     <td><code>${escapeHtml(txnId)}</code></td>
@@ -348,15 +352,15 @@ async function reviewFile(filename) {
                     <td class="issues">${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
                     <td class="suggestions">${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
                     <td>
-                        <select class="decision-select" data-idx="${idx}">
+                        <select class="decision-select" data-idx="${idx}" value="${escapeHtml(savedDecision)}">
                             <option value="">Please Select</option>
-                            <option value="approved">Approved</option>
-                            <option value="followup">Follow-up</option>
-                            <option value="rejected">Rejected</option>
+                            <option value="approved" ${savedDecision === 'approved' ? 'selected' : ''}>Approved</option>
+                            <option value="followup" ${savedDecision === 'followup' ? 'selected' : ''}>Follow-up</option>
+                            <option value="rejected" ${savedDecision === 'rejected' ? 'selected' : ''}>Rejected</option>
                         </select>
                     </td>
                     <td>
-                        <textarea class="notes-field" data-idx="${idx}" placeholder="Notes..."></textarea>
+                        <textarea class="notes-field" data-idx="${idx}" placeholder="Notes...">${escapeHtml(savedNotes)}</textarea>
                     </td>
                 </tr>
             `;
@@ -409,10 +413,15 @@ async function submitDecisions() {
         }
 
         const result = await resp.json();
-        showStatus(`✓ Saved: ${result.approved} approved, ${result.followup} follow-up, ${result.rejected} rejected`, 'success', 'uploadStatus');
 
-        closeReview();
-        loadProcessing();
+        if (result.status === 'complete') {
+            showStatus(`✓ Complete: ${result.approved} approved, ${result.followup} follow-up, ${result.rejected} rejected`, 'success', 'uploadStatus');
+            closeReview();
+            loadProcessing();
+        } else if (result.status === 'progress_saved') {
+            showStatus(`✓ Progress saved: ${result.decided} of ${result.decided + result.remaining} records decided`, 'success', 'uploadStatus');
+            setTimeout(loadProcessing, 500);
+        }
     } catch (err) {
         showStatus(`Error: ${err.message}`, 'error', 'uploadStatus');
     } finally {

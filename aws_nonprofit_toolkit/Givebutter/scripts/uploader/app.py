@@ -190,66 +190,82 @@ def submit_decisions(filename):
         if len(df) == 0:
             return jsonify({'error': 'File is empty'}), 400
 
-        # Verify ALL records have decisions before processing
-        missing_decisions = []
-        for idx in range(len(df)):
-            if idx not in decisions or not decisions[idx].get('decision'):
-                missing_decisions.append(idx)
+        # Initialize tracking columns if not present
+        if 'Operator_Decision' not in df.columns:
+            df['Operator_Decision'] = ''
+        if 'Operator_Notes' not in df.columns:
+            df['Operator_Notes'] = ''
 
-        if missing_decisions:
-            record_count = len(missing_decisions)
-            return jsonify({'error': f'{record_count} record(s) still need a decision. Please review all records.'}), 400
-
-        # Split records by decision
-        approved_records = []
-        followup_records = []
-        rejected_records = []
-
+        # Update decisions and notes
         for idx, row in df.iterrows():
-            decision = decisions.get(idx, {})
-            decision_type = decision.get('decision', 'unknown')
-            notes = decision.get('notes', '')
+            decision_data = decisions.get(idx, {})
+            if decision_data.get('decision'):
+                df.at[idx, 'Operator_Decision'] = decision_data['decision']
+                if decision_data.get('notes'):
+                    df.at[idx, 'Operator_Notes'] = decision_data['notes']
 
-            record = row.to_dict()
-            if notes:
-                record['Operator_Notes'] = notes
+        # Check if all records have decisions
+        undecided_count = len(df[df['Operator_Decision'] == ''])
+        decided_count = len(df) - undecided_count
 
-            if decision_type == 'approved':
-                approved_records.append(record)
-            elif decision_type == 'followup':
-                followup_records.append(record)
-            elif decision_type == 'rejected':
-                rejected_records.append(record)
+        # Save progress back to processing file
+        df.to_csv(processing_path, index=False, encoding='utf-8')
+        logger.info(f"Saved {decided_count}/{len(df)} decisions for {filename}")
 
-        # Write output files
-        base_filename = filename.replace('.csv', '')
+        # If all records have decisions, split and archive
+        if undecided_count == 0:
+            # Split records by decision
+            approved_records = []
+            followup_records = []
+            rejected_records = []
 
-        if approved_records:
-            approved_path = APPROVED_DIR / f"{base_filename}_APPROVED.csv"
-            pd.DataFrame(approved_records).to_csv(approved_path, index=False)
-            logger.info(f"Wrote {len(approved_records)} approved records to {approved_path.name}")
+            for idx, row in df.iterrows():
+                decision_type = row['Operator_Decision']
+                record = row.to_dict()
 
-        if followup_records:
-            followup_path = FOLLOWUP_DIR / f"{base_filename}_FOLLOWUP.csv"
-            pd.DataFrame(followup_records).to_csv(followup_path, index=False)
-            logger.info(f"Wrote {len(followup_records)} followup records to {followup_path.name}")
+                if decision_type == 'approved':
+                    approved_records.append(record)
+                elif decision_type == 'followup':
+                    followup_records.append(record)
+                elif decision_type == 'rejected':
+                    rejected_records.append(record)
 
-        if rejected_records:
-            rejected_path = REJECTED_DIR / f"{base_filename}_REJECTED.csv"
-            pd.DataFrame(rejected_records).to_csv(rejected_path, index=False)
-            logger.info(f"Wrote {len(rejected_records)} rejected records to {rejected_path.name}")
+            # Write output files
+            base_filename = filename.replace('.csv', '')
 
-        # Archive the processed file
-        archive_path = ARCHIVE_DIR / filename
-        shutil.move(str(processing_path), str(archive_path))
-        logger.info(f"Archived processed file {filename}")
+            if approved_records:
+                approved_path = APPROVED_DIR / f"{base_filename}_APPROVED.csv"
+                pd.DataFrame(approved_records).to_csv(approved_path, index=False, encoding='utf-8')
+                logger.info(f"Wrote {len(approved_records)} approved records to {approved_path.name}")
 
-        return jsonify({
-            'status': 'success',
-            'approved': len(approved_records),
-            'followup': len(followup_records),
-            'rejected': len(rejected_records)
-        })
+            if followup_records:
+                followup_path = FOLLOWUP_DIR / f"{base_filename}_FOLLOWUP.csv"
+                pd.DataFrame(followup_records).to_csv(followup_path, index=False, encoding='utf-8')
+                logger.info(f"Wrote {len(followup_records)} followup records to {followup_path.name}")
+
+            if rejected_records:
+                rejected_path = REJECTED_DIR / f"{base_filename}_REJECTED.csv"
+                pd.DataFrame(rejected_records).to_csv(rejected_path, index=False, encoding='utf-8')
+                logger.info(f"Wrote {len(rejected_records)} rejected records to {rejected_path.name}")
+
+            # Archive the processed file
+            archive_path = ARCHIVE_DIR / filename
+            shutil.move(str(processing_path), str(archive_path))
+            logger.info(f"Archived processed file {filename}")
+
+            return jsonify({
+                'status': 'complete',
+                'approved': len(approved_records),
+                'followup': len(followup_records),
+                'rejected': len(rejected_records)
+            })
+        else:
+            # Partial save - file remains in processing queue
+            return jsonify({
+                'status': 'progress_saved',
+                'decided': decided_count,
+                'remaining': undecided_count
+            })
 
     except Exception as e:
         logger.error(f"Error submitting decisions for {filename}: {e}")
