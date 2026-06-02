@@ -8,12 +8,18 @@ detects duplicates, and outputs processed CSV with validation results.
 
 import json
 import re
+import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 from difflib import SequenceMatcher
 from datetime import datetime
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+PROCESSOR_VERSION = "2.5"  # Updated with Date/Transaction ID as required fields
 BASE_DIR = Path(__file__).resolve().parents[1]  # Givebutter/
 RULES_FILE = BASE_DIR / "config" / "rules" / "rules_v2.4.json"
 REFERENCE_FILE = BASE_DIR / "config" / "reference_list.json"
@@ -81,20 +87,33 @@ FUZZY_HEADERS = {
 def load_rules() -> Dict:
     """Load validation rules from config."""
     try:
+        logger.info(f"Loading rules from: {RULES_FILE}")
         with open(RULES_FILE) as f:
-            return json.load(f)
+            rules = json.load(f)
+            logger.info(f"✓ Rules loaded successfully")
+            return rules
     except FileNotFoundError:
-        print(f"Warning: Rules file not found at {RULES_FILE}")
+        logger.warning(f"Rules file not found at {RULES_FILE}")
         return {}
 
 
 def load_reference_list() -> Dict:
     """Load reference list from config."""
     try:
+        logger.info(f"Loading reference list from: {REFERENCE_FILE}")
         with open(REFERENCE_FILE) as f:
-            return json.load(f)
+            reference = json.load(f)
+
+            # Log key configuration values
+            valid_range = reference.get('amount_statistics', {}).get('valid_range', [])
+            high_threshold = reference.get('high_dollar_threshold', 'Not set')
+            logger.info(f"✓ Reference list loaded")
+            logger.info(f"  Amount valid range: ${valid_range[0] if valid_range else '?'} - ${valid_range[1] if len(valid_range) > 1 else '?'}")
+            logger.info(f"  High-dollar threshold: ${high_threshold}")
+
+            return reference
     except FileNotFoundError:
-        print(f"Warning: Reference list not found at {REFERENCE_FILE}")
+        logger.warning(f"Reference list not found at {REFERENCE_FILE}")
         return {}
 
 
@@ -525,7 +544,10 @@ def process_csv(input_file: str, output_file: str) -> None:
 
     Outputs single CSV with validation results and suggested modifications.
     """
-    print(f"\n📋 Processing: {input_file}")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"Givebutter CSV Processor v{PROCESSOR_VERSION}")
+    logger.info(f"{'='*60}")
+    logger.info(f"Processing: {input_file}")
 
     # Load configs
     rules = load_rules()
@@ -571,7 +593,7 @@ def process_csv(input_file: str, output_file: str) -> None:
         print("❌ Error: Could not locate required Givebutter columns")
         return
 
-    print(f"Found {len(df)} records")
+    logger.info(f"Found {len(df)} records")
 
     # Convert to list of dicts for processing
     records = df.to_dict('records')
