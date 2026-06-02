@@ -5,6 +5,8 @@ These fields **MUST** be present and non-empty. Missing or empty required fields
 
 | Field | Behavior | Notes |
 |-------|----------|-------|
+| **Transaction ID** | Required | Unique identifier for each donation record. Used for duplicate detection. |
+| **Date** | Required | Donation/transaction date. Accepted via fuzzy matching (Date, Donation Date, Gift Date, Date Received). |
 | **Name** | Required | Minimum 2 characters, max 100 characters. Checked against reference patterns. |
 | **Email** | Required | Must contain valid email format (@ symbol). Checked for typos and domain variations. |
 | **Amount** | Required | Must be numeric > 0. Checked against typical donation ranges. |
@@ -17,13 +19,12 @@ These fields are **optional**. Missing columns result in **WARNING** tier (soft 
 | **Phone** | Optional | If present, must be 10-11 digits (US format). Checked against invalid patterns. If missing, reviewer gets "Add phone numbers" suggestion. |
 
 ## Not Actively Validated
-These fields are accepted but not actively validated for presence or content.
+These fields are accepted but not actively validated for content (though some are required for presence).
 
 | Field | Notes |
 |-------|-------|
 | **Address** (Address 1, City, State) | Skipped if any address component is missing. Address validation only runs if all three present. |
-| **Date** | Accepted via fuzzy matching (Date, Donation Date, Gift Date, Date Received) but not validated for format/presence. |
-| **Campaign** | Accepted via fuzzy matching but not validated. |
+| **Campaign** | Accepted via fuzzy matching (Campaign Title, Fund, Campaign, Gift Fund) but content not validated. |
 | **Custom Fields** | All unmapped columns pass through unchanged. |
 
 ## Validation Tier Logic

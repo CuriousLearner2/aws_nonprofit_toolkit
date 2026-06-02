@@ -143,6 +143,48 @@ def extract_digits(phone: str) -> str:
     return re.sub(r'\D', '', str(phone))
 
 
+def validate_transaction_id(record: Dict, header_map: Dict) -> Tuple[str, Optional[str]]:
+    """
+    Validate transaction ID is present (required field).
+
+    Args:
+        record: Full record dict
+        header_map: Mapping of logical field names to actual column names
+
+    Returns: (tier, reason)
+    """
+    txn_col = header_map.get('transaction_id')
+    if not txn_col:
+        return ('FAIL', "Transaction ID column not found in input")
+
+    txn_id = record.get(txn_col)
+    if pd.isna(txn_id) or str(txn_id).strip() == '':
+        return ('FAIL', "Transaction ID field is empty")
+
+    return ('PASS', None)
+
+
+def validate_date(record: Dict, header_map: Dict) -> Tuple[str, Optional[str]]:
+    """
+    Validate donation date is present (required field).
+
+    Args:
+        record: Full record dict
+        header_map: Mapping of logical field names to actual column names
+
+    Returns: (tier, reason)
+    """
+    date_col = header_map.get('date')
+    if not date_col:
+        return ('FAIL', "Date column not found in input")
+
+    date_val = record.get(date_col)
+    if pd.isna(date_val) or str(date_val).strip() == '':
+        return ('FAIL', "Date field is empty")
+
+    return ('PASS', None)
+
+
 def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Optional[str], Optional[str]]:
     """
     Validate phone number against USA standards and rules.
@@ -544,6 +586,18 @@ def process_csv(input_file: str, output_file: str) -> None:
         validation_results = {}
         suggestions = []
         issues = []
+
+        # Validate transaction ID (required)
+        tier, reason = validate_transaction_id(record, header_map)
+        validation_results['transaction_id'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Transaction ID: {reason}")
+
+        # Validate date (required)
+        tier, reason = validate_date(record, header_map)
+        validation_results['date'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Date: {reason}")
 
         # Validate email
         tier, reason, suggestion = validate_email(record, header_map, rules, reference)
