@@ -231,11 +231,11 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
     """
     email_col = header_map.get('email')
     if not email_col:
-        return ('PASS', None, None)
+        return ('FAIL', "Email column not found in input", None)
 
     email = record.get(email_col)
     if pd.isna(email) or str(email).strip() == '':
-        return ('PASS', None, None)  # Frontend validates required
+        return ('FAIL', "Email field is empty", None)
 
     email_str = str(email).strip().lower()
 
@@ -279,11 +279,11 @@ def validate_amount(record: Dict, header_map: Dict, reference: Dict) -> Tuple[st
     """
     amount_col = header_map.get('amount')
     if not amount_col:
-        return ('PASS', None, None)
+        return ('FAIL', "Amount column not found in input", None)
 
     amount = record.get(amount_col)
     if pd.isna(amount) or str(amount).strip() == '':
-        return ('FAIL', "Missing amount", None)
+        return ('FAIL', "Amount field is empty", None)
 
     try:
         amount_val = float(str(amount).replace('$', '').replace(',', '').strip())
