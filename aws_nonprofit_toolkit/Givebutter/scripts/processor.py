@@ -69,6 +69,7 @@ FUZZY_HEADERS = {
     'name': ['Full Name', 'Donor Name', 'Donor', 'First and Last Name'],
     'email': ['Email Address', 'Primary Email', 'Contact Email', 'Email (Primary)'],
     'phone': ['Phone Number', 'Contact Phone', 'Phone (Primary)', 'Mobile Phone'],
+    'date': ['Donation Date', 'donation_date', 'Gift Date', 'Date Received'],
     'zip': ['Zipcode', 'Postal Code', 'ZIP Code', 'Postal'],
     'address_1': ['Street Address', 'Address Line 1', 'Street'],
     'address_2': ['Address Line 2', 'Apt/Suite'],
