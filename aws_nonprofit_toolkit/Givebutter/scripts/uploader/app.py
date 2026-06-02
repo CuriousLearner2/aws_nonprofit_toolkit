@@ -103,10 +103,14 @@ def upload():
 
 @app.route('/api/processing')
 def list_processing():
-    """List files in processing (being reviewed)."""
+    """List files in processing (being reviewed). Limited to most recent 5 files."""
     files = []
     try:
-        for f in sorted(PROCESSING_DIR.glob('*.csv'), key=lambda x: x.stat().st_mtime, reverse=True):
+        # Get most recent 5 files sorted by modification time
+        all_files = sorted(PROCESSING_DIR.glob('*.csv'), key=lambda x: x.stat().st_mtime, reverse=True)
+        recent_files = all_files[:5]  # Limit to 5 most recent files
+
+        for f in recent_files:
             try:
                 df = pd.read_csv(f, dtype=str, encoding='utf-8')
                 record_count = len(df)
