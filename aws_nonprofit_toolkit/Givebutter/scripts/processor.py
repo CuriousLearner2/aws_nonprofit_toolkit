@@ -104,7 +104,7 @@ def build_header_mapping(df_columns) -> Dict[str, str]:
 
     Implements two-tier matching strategy:
     1. STRICT matching against exact case-sensitive static platform headers
-    2. FUZZY fallback matching for custom/alternate field names
+    2. FUZZY fallback matching for custom/alternate field names (case-insensitive)
 
     All unmapped columns pass through untouched (custom fields, tracking data).
 
@@ -116,6 +116,8 @@ def build_header_mapping(df_columns) -> Dict[str, str]:
     """
     # Strip whitespace from all column names
     clean_columns = {col.strip(): col for col in df_columns}
+    # Case-insensitive lookup: lowercase -> original case
+    lowercase_columns = {col.strip().lower(): col.strip() for col in df_columns}
 
     mapping = {}
 
@@ -124,11 +126,11 @@ def build_header_mapping(df_columns) -> Dict[str, str]:
         if strict_name in clean_columns:
             mapping[key] = clean_columns[strict_name]
         else:
-            # Try fuzzy matches
+            # Try fuzzy matches (case-insensitive)
             fuzzy_options = FUZZY_HEADERS.get(key, [])
             for fuzzy_name in fuzzy_options:
-                if fuzzy_name in clean_columns:
-                    mapping[key] = clean_columns[fuzzy_name]
+                if fuzzy_name.lower() in lowercase_columns:
+                    mapping[key] = lowercase_columns[fuzzy_name.lower()]
                     break
 
     return mapping

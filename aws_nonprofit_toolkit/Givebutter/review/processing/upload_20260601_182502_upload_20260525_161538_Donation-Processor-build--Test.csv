@@ -1,0 +1,6 @@
+donor_name,email,amount,donation_date,campaign,Validation_Tier,Issues,Suggested_Modifications
+Alice Smith,alice@gmal.com,50.00,2025-05-20,Spring Fundraiser,FAIL,Phone: Phone number not found; Name: Name column not found in input,Add phone numbers to your donations export
+Bob Jones,bob@yaho.com,100.00,2025-05-21,Spring Fundraiser,FAIL,Phone: Phone number not found; Name: Name column not found in input,Add phone numbers to your donations export
+Carol Lee,carol@hotmail.con,75.50,2025-05-22,Annual Gala,FAIL,Phone: Phone number not found; Name: Name column not found in input,Add phone numbers to your donations export
+David Kim,david@outlok.com,25.00,2025-05-23,Annual Gala,FAIL,Phone: Phone number not found; Name: Name column not found in input,Add phone numbers to your donations export
+Eve Patel,eve@gmail.com,200.00,2025-05-24,Spring Fundraiser,FAIL,Phone: Phone number not found; Name: Name column not found in input,Add phone numbers to your donations export
