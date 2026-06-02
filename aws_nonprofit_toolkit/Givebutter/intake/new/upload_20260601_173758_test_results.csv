@@ -1,0 +1,4 @@
+Donation ID,Date,Donor Name,Email,Amount,Campaign Title
+GB001,2026-05-25,John Smith,john@gmail.com,100.00,General Fund
+GB002,2026-05-25,Jane Doe,jane@gmai.com,50.00,Scholarship Fund
+GB003,2026-05-25,Bob Wilson,invalid-email,75.00,Education Fund

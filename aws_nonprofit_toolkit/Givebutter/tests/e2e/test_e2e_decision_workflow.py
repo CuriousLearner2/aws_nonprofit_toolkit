@@ -53,7 +53,8 @@ async def test_view_records_for_review(flask_app_running, temp_dir, sample_csv):
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
-            # Click to review the file
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -93,6 +94,8 @@ async def test_select_decision_for_record(flask_app_running, temp_dir, sample_cs
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -140,6 +143,8 @@ async def test_add_notes_for_record(flask_app_running, temp_dir, sample_csv):
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -182,6 +187,8 @@ async def test_save_decisions_partial(flask_app_running, temp_dir, sample_csv):
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -283,6 +290,8 @@ async def test_decision_persistence_on_reopen(flask_app_running, temp_dir, sampl
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -343,6 +352,8 @@ async def test_cancel_review(flask_app_running, temp_dir, sample_csv):
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -383,6 +394,8 @@ async def test_page_scrolls_to_top_on_load(flask_app_running, temp_dir, sample_c
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()

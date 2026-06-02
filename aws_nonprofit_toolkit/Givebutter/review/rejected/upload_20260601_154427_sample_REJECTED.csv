@@ -1,0 +1,2 @@
+Donation ID,Date,Donor Name,Email,Amount,Campaign Title,Validation_Tier,Issues,Suggested_Modifications,Operator_Decision,Operator_Notes
+GB002,2026-05-25,Jane Doe,jane@gmail.com,50.00,Scholarship Fund,WARNING,Phone: Phone number not found,Add phone numbers to your donations export,rejected,

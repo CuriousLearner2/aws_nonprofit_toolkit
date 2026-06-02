@@ -1,0 +1,5 @@
+Donation ID,Date,Donor Name,Email,Amount,Validation_Tier,Issues,Suggested_Modifications
+GB001,2026-05-25,John Smith,john@gmail.com,100.00,WARNING,Phone: Phone number not found,Add phone numbers to your donations export
+GB002,2026-05-25,Jane Doe,jane@gmai.com,50.00,WARNING,Email: Email typo detected; Phone: Phone number not found,Consider: jane@gmail.com; Add phone numbers to your donations export
+GB003,2026-05-25,Bob Wilson,bob@yahoo.com,75.00,WARNING,Phone: Phone number not found,Add phone numbers to your donations export
+GB004,2026-05-25,Alice Brown,alice@yaho.com,200.00,WARNING,Email: Email typo detected; Phone: Phone number not found,Consider: alice@yahoo.com; Add phone numbers to your donations export
