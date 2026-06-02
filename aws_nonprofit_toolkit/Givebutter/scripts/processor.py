@@ -668,7 +668,9 @@ def process_csv(input_file: str, output_file: str) -> None:
 
         # Write results
         df.at[idx, 'Validation_Tier'] = tier
-        df.at[idx, 'Issues'] = "; ".join(issues) if issues else "None"
+        # Limit issues to 3 for readability
+        max_issues = issues[:3]
+        df.at[idx, 'Issues'] = "; ".join(max_issues) if max_issues else "None"
         # Limit suggestions to 3 for readability
         max_suggestions = suggestions[:3]
         df.at[idx, 'Suggested_Modifications'] = "; ".join(max_suggestions) if max_suggestions else ""
