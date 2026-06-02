@@ -172,8 +172,8 @@ class TestAmountValidation:
         assert tier == 'PASS'
 
     @pytest.mark.unit
-    def test_missing_amount_column(self):
-        """Test when amount column is missing."""
+    def test_missing_amount_column_fails(self):
+        """Test when amount column is missing (required field)."""
         record = {'Name': 'John Smith'}
         header_map = {}  # No amount mapping
         reference = {
@@ -182,7 +182,8 @@ class TestAmountValidation:
         }
 
         tier, reason, suggestion = validate_amount(record, header_map, reference)
-        assert tier == 'PASS'
+        assert tier == 'FAIL'
+        assert 'column not found' in reason.lower()
 
     @pytest.mark.unit
     def test_amount_with_whitespace(self):

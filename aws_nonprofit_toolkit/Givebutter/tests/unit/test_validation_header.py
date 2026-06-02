@@ -208,15 +208,28 @@ class TestHeaderMapping:
         assert 'Custom Field 2' not in mapping.values()
 
     @pytest.mark.unit
-    def test_case_sensitive_matching(self):
-        """Test that matching is case-sensitive for core headers."""
-        # Core headers require exact case match
-        columns = ['transaction id', 'name', 'email']  # lowercase
+    def test_case_insensitive_fuzzy_matching(self):
+        """Test that fuzzy matching is case-insensitive."""
+        # Lowercase headers should match fuzzy options
+        columns = ['donor_name', 'email_address', 'donation_date']
         mapping = build_header_mapping(columns)
 
-        # Should not match (case-sensitive)
+        # Should match despite case differences
+        assert mapping['name'] == 'donor_name'
+        assert mapping['email'] == 'email_address'
+        assert mapping['date'] == 'donation_date'
+
+    @pytest.mark.unit
+    def test_core_headers_case_sensitive_match(self):
+        """Test that core headers still require exact case match."""
+        # Core headers require exact case match (not fuzzy fallback)
+        columns = ['transaction id', 'name', 'email']  # all lowercase
+        mapping = build_header_mapping(columns)
+
+        # Should not match core headers (exact case required)
         assert 'transaction_id' not in mapping
         assert 'name' not in mapping
+        assert 'email' not in mapping
 
     @pytest.mark.unit
     def test_payment_method_variations(self):

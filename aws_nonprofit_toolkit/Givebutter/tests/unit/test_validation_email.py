@@ -64,26 +64,28 @@ class TestEmailValidation:
         assert 'missing @' in reason.lower()
 
     @pytest.mark.unit
-    def test_empty_email(self):
-        """Test empty email is treated as optional."""
+    def test_empty_email_fails(self):
+        """Test empty email field fails validation (required field)."""
         record = {'Email': ''}
         header_map = {'email': 'Email'}
         rules = {'email_typos': []}
         reference = {'email_domains': [], 'email_tlds': []}
 
         tier, reason, suggestion = validate_email(record, header_map, rules, reference)
-        assert tier == 'PASS'
+        assert tier == 'FAIL'
+        assert 'empty' in reason.lower()
 
     @pytest.mark.unit
-    def test_missing_email_column(self):
-        """Test missing email column."""
+    def test_missing_email_column_fails(self):
+        """Test missing email column fails validation (required field)."""
         record = {'Email': 'test@gmail.com'}
         header_map = {}  # No email mapping
         rules = {'email_typos': []}
         reference = {'email_domains': [], 'email_tlds': []}
 
         tier, reason, suggestion = validate_email(record, header_map, rules, reference)
-        assert tier == 'PASS'
+        assert tier == 'FAIL'
+        assert 'column not found' in reason.lower()
 
     @pytest.mark.unit
     def test_email_case_insensitive(self):
