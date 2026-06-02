@@ -178,6 +178,8 @@ async def test_decision_dropdown_has_all_options(flask_app_for_forms, temp_dir, 
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -229,6 +231,8 @@ async def test_decision_selection_changes_visual_state(flask_app_for_forms, temp
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -270,6 +274,8 @@ async def test_dropdown_keyboard_navigation(flask_app_for_forms, temp_dir, sampl
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -317,6 +323,8 @@ async def test_notes_textarea_accepts_input(flask_app_for_forms, temp_dir, sampl
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -357,6 +365,8 @@ async def test_notes_textarea_unicode_input(flask_app_for_forms, temp_dir, sampl
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -398,6 +408,8 @@ async def test_notes_textarea_placeholder_text(flask_app_for_forms, temp_dir, sa
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -438,6 +450,8 @@ async def test_textarea_keyboard_navigation(flask_app_for_forms, temp_dir, sampl
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -514,6 +528,8 @@ async def test_validation_tier_color_coded(flask_app_for_forms, temp_dir, sample
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -554,6 +570,8 @@ async def test_save_button_clear_label(flask_app_for_forms, temp_dir, sample_csv
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -592,6 +610,8 @@ async def test_save_success_message(flask_app_for_forms, temp_dir, sample_csv):
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
@@ -640,6 +660,8 @@ async def test_cancel_button_confirmation(flask_app_for_forms, temp_dir, sample_
 
             await page.wait_for_selector('text=/processed|records/', timeout=5000)
 
+            # Wait for review button to be visible before clicking
+            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
             review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
             if review_button:
                 await review_button.click()
