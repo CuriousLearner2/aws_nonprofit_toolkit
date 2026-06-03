@@ -306,6 +306,10 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
     if '@' in email_str:
         user_part, domain = email_str.rsplit('@', 1)
 
+        # Domain must not be empty
+        if not domain:
+            return ('FAIL', "Invalid email format (missing domain after @)", "Fix email format: add domain after @ symbol")
+
         # Check for typos
         if domain in email_typos:
             correct_domain = email_typos[domain]
