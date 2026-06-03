@@ -125,3 +125,39 @@ Future processor changes should follow this systematic approach:
 6. **Document changes** - Create a log like this one
 
 This prevents missing test updates and ensures confidence in processor changes.
+
+---
+
+## Recent Updates (June 3, 2026)
+
+### Processor Changes
+1. Added "Review duplicate entries" suggestion when duplicates detected
+2. Enhanced FUZZY_HEADERS with underscore variants:
+   - `donor_name`, `full_name` for name matching
+   - `email_address`, `primary_email` for email matching
+   - `phone_number`, `contact_phone` for phone matching
+   - Similar variants for date, transaction_id, campaign, etc.
+
+### UI/Frontend Changes
+1. Added override confirmation dialog for FAIL tier record approval
+2. Dialog shows record name and validation failures
+3. User must explicitly confirm before approving FAIL records
+
+### Test Updates
+1. **test_validation_amount.py** — Fixed to accept both "missing" and "empty" in reason
+2. **test_validation_header.py** — Now passes with underscore header variants
+3. **test_e2e_override_confirmation.py** — 4 new E2E tests added:
+   - `test_pass_record_no_confirmation` — PASS records don't trigger confirmation
+   - `test_fail_record_shows_tier` — FAIL tier displays correctly
+   - `test_confirm_override_allows_approval` — Confirming override saves FAIL approval
+   - `test_cancel_override_prevents_approval` — Canceling prevents approval save
+
+### Test Results
+- **208/208 tests passing** (was 206/208)
+- All E2E override confirmation tests passing
+- No regressions in existing tests
+
+### Documentation Updates
+- **VALIDATION_REQUIREMENTS.md** — Updated header matching examples with underscore variants
+- **VALIDATION_REQUIREMENTS.md** — Added section on "Operator Approval Overrides"
+- **VALIDATION_REQUIREMENTS.md** — Clarified that Amount requires exact case match (no fuzzy fallback)

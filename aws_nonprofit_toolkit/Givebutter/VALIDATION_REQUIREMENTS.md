@@ -66,27 +66,32 @@ This allows operators to override validation when necessary (e.g., verified dupl
 The processor uses **two-tier column matching**:
 
 1. **Strict Match** — Exact case-sensitive match to Givebutter core headers
-   - `Name`, `Email`, `Amount`, `Date`, etc.
+   - `Name`, `Email`, `Amount`, `Date`, `Phone`, `Transaction ID`, etc.
 
-2. **Fuzzy Match** — Case-insensitive match to common variations
-   - `name` (lowercase), `Donor Name`, `Full Name` all match `Name`
-   - `email`, `Email Address`, `Contact Email` all match `Email`
-   - `amount`, `AMOUNT` all match `Amount`
-   - `donation_date`, `Donation Date`, `Gift Date` all match `Date`
+2. **Fuzzy Match** — Case-insensitive match to common variations (in addition to strict matches)
+   - **Transaction ID**: `Donation ID`, `Gift ID`, `Contribution ID`, `donation_id`, `gift_id`
+   - **Name**: `Donor Name`, `Full Name`, `Donor`, `First and Last Name`, `donor_name`, `full_name`
+   - **Email**: `Email Address`, `Primary Email`, `Contact Email`, `email_address`, `primary_email`
+   - **Phone**: `Phone Number`, `Contact Phone`, `phone_number`, `contact_phone`
+   - **Date**: `Donation Date`, `donation_date`, `Gift Date`, `Date Received`, `gift_date`, `date_received`
+   - **Amount**: Only core header `Amount` (strict match, no fuzzy fallback)
+   - **Campaign**: `Fund`, `Campaign`, `Gift Fund`, `Donation Fund`, `campaign_title`
 
 ## CSV Header Examples
 
 Valid headers that will be recognized:
 
 ```csv
-# Exact core headers
-Name,Email,Amount,Date,Campaign Title,Phone
+# Exact core headers (case-sensitive, must match exactly)
+Name,Email,Amount,Date,Transaction ID,Phone,Campaign Title
 
-# Fuzzy variations (all work)
-Donor Name,Email Address,Amount,Donation Date,Campaign,Phone Number
-donor_name,email,amount,donation_date,campaign,phone
-Full Name,Primary Email,AMOUNT,gift_date,Fund,Contact Phone
+# Fuzzy variations (case-insensitive, support underscores and spaces)
+Donor Name,Email Address,Amount,Donation Date,Donation ID,Phone Number,Campaign
+donor_name,email_address,Amount,donation_date,donation_id,phone_number,campaign_title
+Full Name,Primary Email,Amount,Gift Date,Gift ID,Contact Phone,Fund
 ```
+
+**Note**: `Amount` requires exact case match (no fuzzy fallback). Use `Amount` not `amount` or `AMOUNT`.
 
 ## Testing CSV Format Variations
 
