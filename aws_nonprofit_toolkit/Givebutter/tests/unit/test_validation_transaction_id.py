@@ -12,7 +12,7 @@ class TestTransactionIDValidation:
         record = {'Transaction ID': '12345'}
         header_map = {'transaction_id': 'Transaction ID'}
 
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         assert tier == 'PASS'
         assert reason is None
 
@@ -22,7 +22,7 @@ class TestTransactionIDValidation:
         record = {'Donation ID': 'donor-123456'}
         header_map = {'transaction_id': 'Donation ID'}
 
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -31,7 +31,7 @@ class TestTransactionIDValidation:
         record = {'Transaction ID': ''}
         header_map = {'transaction_id': 'Transaction ID'}
 
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         assert tier == 'FAIL'
         assert 'empty' in reason.lower()
 
@@ -41,7 +41,7 @@ class TestTransactionIDValidation:
         record = {'Transaction ID': '   '}
         header_map = {'transaction_id': 'Transaction ID'}
 
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         assert tier == 'FAIL'
         assert 'empty' in reason.lower()
 
@@ -51,7 +51,7 @@ class TestTransactionIDValidation:
         record = {'Name': 'John Smith'}
         header_map = {}  # No transaction_id mapping
 
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         assert tier == 'FAIL'
         assert 'column not found' in reason.lower()
 
@@ -61,7 +61,7 @@ class TestTransactionIDValidation:
         record = {'Transaction ID': '98765432'}
         header_map = {'transaction_id': 'Transaction ID'}
 
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -70,7 +70,7 @@ class TestTransactionIDValidation:
         record = {'Transaction ID': 'TXN-2026-05-001'}
         header_map = {'transaction_id': 'Transaction ID'}
 
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -79,5 +79,5 @@ class TestTransactionIDValidation:
         record = {'Transaction ID': '  12345  '}
         header_map = {'transaction_id': 'Transaction ID'}
 
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         assert tier == 'PASS'

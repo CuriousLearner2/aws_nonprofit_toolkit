@@ -12,7 +12,7 @@ class TestDateValidation:
         record = {'Date': '2026-05-20'}
         header_map = {'date': 'Date'}
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'PASS'
         assert reason is None
 
@@ -22,7 +22,7 @@ class TestDateValidation:
         record = {'Donation Date': '2026-05-20'}
         header_map = {'date': 'Donation Date'}
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -31,7 +31,7 @@ class TestDateValidation:
         record = {'Gift Date': '05/20/2026'}
         header_map = {'date': 'Gift Date'}
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -40,7 +40,7 @@ class TestDateValidation:
         record = {'Date Received': '2026-05-20'}
         header_map = {'date': 'Date Received'}
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -49,7 +49,7 @@ class TestDateValidation:
         record = {'donation_date': '2026-05-20'}
         header_map = {'date': 'donation_date'}
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -58,7 +58,7 @@ class TestDateValidation:
         record = {'Date': ''}
         header_map = {'date': 'Date'}
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'FAIL'
         assert 'empty' in reason.lower()
 
@@ -68,7 +68,7 @@ class TestDateValidation:
         record = {'Date': '   '}
         header_map = {'date': 'Date'}
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'FAIL'
         assert 'empty' in reason.lower()
 
@@ -78,7 +78,7 @@ class TestDateValidation:
         record = {'Name': 'John Smith'}
         header_map = {}  # No date mapping
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'FAIL'
         assert 'column not found' in reason.lower()
 
@@ -99,7 +99,7 @@ class TestDateValidation:
             record = {'Date': date_str}
             header_map = {'date': 'Date'}
 
-            tier, reason = validate_date(record, header_map)
+            tier, reason, suggestion = validate_date(record, header_map)
             assert tier == 'PASS', f"Date format '{date_str}' should pass"
 
     @pytest.mark.unit
@@ -108,5 +108,5 @@ class TestDateValidation:
         record = {'Date': '  2026-05-20  '}
         header_map = {'date': 'Date'}
 
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'PASS'

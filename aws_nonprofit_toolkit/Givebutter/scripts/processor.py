@@ -162,7 +162,7 @@ def extract_digits(phone: str) -> str:
     return re.sub(r'\D', '', str(phone))
 
 
-def validate_transaction_id(record: Dict, header_map: Dict) -> Tuple[str, Optional[str]]:
+def validate_transaction_id(record: Dict, header_map: Dict) -> Tuple[str, Optional[str], Optional[str]]:
     """
     Validate transaction ID is present (required field).
 
@@ -170,20 +170,20 @@ def validate_transaction_id(record: Dict, header_map: Dict) -> Tuple[str, Option
         record: Full record dict
         header_map: Mapping of logical field names to actual column names
 
-    Returns: (tier, reason)
+    Returns: (tier, reason, suggestion)
     """
     txn_col = header_map.get('transaction_id')
     if not txn_col:
-        return ('FAIL', "Transaction ID column not found in input")
+        return ('FAIL', "Transaction ID column not found in input", "Include Transaction ID/Donation ID column in export")
 
     txn_id = record.get(txn_col)
     if pd.isna(txn_id) or str(txn_id).strip() == '':
-        return ('FAIL', "Transaction ID field is empty")
+        return ('FAIL', "Transaction ID field is empty", "Verify transaction ID for each record")
 
-    return ('PASS', None)
+    return ('PASS', None, None)
 
 
-def validate_date(record: Dict, header_map: Dict) -> Tuple[str, Optional[str]]:
+def validate_date(record: Dict, header_map: Dict) -> Tuple[str, Optional[str], Optional[str]]:
     """
     Validate donation date is present (required field).
 
@@ -191,17 +191,17 @@ def validate_date(record: Dict, header_map: Dict) -> Tuple[str, Optional[str]]:
         record: Full record dict
         header_map: Mapping of logical field names to actual column names
 
-    Returns: (tier, reason)
+    Returns: (tier, reason, suggestion)
     """
     date_col = header_map.get('date')
     if not date_col:
-        return ('FAIL', "Date column not found in input")
+        return ('FAIL', "Date column not found in input", "Include Date/Donation Date column in export")
 
     date_val = record.get(date_col)
     if pd.isna(date_val) or str(date_val).strip() == '':
-        return ('FAIL', "Date field is empty")
+        return ('FAIL', "Date field is empty", "Verify donation date for each record")
 
-    return ('PASS', None)
+    return ('PASS', None, None)
 
 
 def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Optional[str], Optional[str]]:
@@ -324,7 +324,7 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
 
         return ('PASS', None, None)
 
-    return ('FAIL', "Invalid email format (missing @)", None)
+    return ('FAIL', "Invalid email format (missing @)", "Fix email format: add @ symbol")
 
 
 def validate_amount(record: Dict, header_map: Dict, reference: Dict) -> Tuple[str, Optional[str], Optional[str]]:
@@ -340,19 +340,19 @@ def validate_amount(record: Dict, header_map: Dict, reference: Dict) -> Tuple[st
     """
     amount_col = header_map.get('amount')
     if not amount_col:
-        return ('FAIL', "Amount column not found in input", None)
+        return ('FAIL', "Amount column not found in input", "Include Amount column in export")
 
     amount = record.get(amount_col)
     if pd.isna(amount) or str(amount).strip() == '':
-        return ('FAIL', "Amount field is empty", None)
+        return ('FAIL', "Amount field is empty", "Verify donation amount")
 
     try:
         amount_val = float(str(amount).replace('$', '').replace(',', '').strip())
     except ValueError:
-        return ('FAIL', "Invalid amount format", None)
+        return ('FAIL', "Invalid amount format", "Enter valid numeric amount")
 
     if amount_val <= 0:
-        return ('FAIL', "Amount must be greater than 0", None)
+        return ('FAIL', "Amount must be greater than 0", "Enter positive amount value")
 
     # Check against reference ranges
     stats = reference.get('amount_statistics', {})
@@ -399,7 +399,7 @@ def validate_address(record: Dict, header_map: Dict) -> Tuple[str, Optional[str]
     return ('PASS', None)
 
 
-def validate_name(record: Dict, header_map: Dict, reference: Dict) -> Tuple[str, Optional[str]]:
+def validate_name(record: Dict, header_map: Dict, reference: Dict) -> Tuple[str, Optional[str], Optional[str]]:
     """
     Validate name against reference patterns.
 
@@ -408,15 +408,15 @@ def validate_name(record: Dict, header_map: Dict, reference: Dict) -> Tuple[str,
         header_map: Mapping of logical field names to actual column names
         reference: Reference list patterns
 
-    Returns: (tier, reason)
+    Returns: (tier, reason, suggestion)
     """
     name_col = header_map.get('name')
     if not name_col:
-        return ('FAIL', "Name column not found in input")
+        return ('FAIL', "Name column not found in input", "Include Name/Donor Name column in export")
 
     name = record.get(name_col)
     if pd.isna(name) or str(name).strip() == '':
-        return ('FAIL', "Name field is empty")
+        return ('FAIL', "Name field is empty", "Verify donor name for each record")
 
     name_str = str(name).strip()
     patterns = reference.get('name_patterns', {})
@@ -425,12 +425,12 @@ def validate_name(record: Dict, header_map: Dict, reference: Dict) -> Tuple[str,
     max_len = patterns.get('max_length', 100)
 
     if len(name_str) < min_len:
-        return ('FAIL', f"Name too short (< {min_len} characters)")
+        return ('FAIL', f"Name too short (< {min_len} characters)", f"Enter name with at least {min_len} characters")
 
     if len(name_str) > max_len:
-        return ('FAIL', f"Name too long (> {max_len} characters)")
+        return ('FAIL', f"Name too long (> {max_len} characters)", f"Shorten name to {max_len} characters or less")
 
-    return ('PASS', None)
+    return ('PASS', None, None)
 
 
 def normalize_for_comparison(value: str) -> str:
@@ -610,16 +610,20 @@ def process_csv(input_file: str, output_file: str) -> None:
         issues = []
 
         # Validate transaction ID (required)
-        tier, reason = validate_transaction_id(record, header_map)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
         validation_results['transaction_id'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Transaction ID: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Validate date (required)
-        tier, reason = validate_date(record, header_map)
+        tier, reason, suggestion = validate_date(record, header_map)
         validation_results['date'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Date: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Validate email
         tier, reason, suggestion = validate_email(record, header_map, rules, reference)
@@ -652,10 +656,12 @@ def process_csv(input_file: str, output_file: str) -> None:
             issues.append(f"Address: {reason}")
 
         # Validate name
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         validation_results['name'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Name: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Check for duplicates
         is_dup, dup_info = check_duplicates(record, records, header_map, rules)

@@ -13,7 +13,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
         assert reason is None
 
@@ -24,7 +24,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -34,7 +34,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -44,7 +44,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'FAIL'
         assert 'too short' in reason.lower()
 
@@ -55,7 +55,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'FAIL'
         assert 'too long' in reason.lower()
 
@@ -66,7 +66,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'FAIL'
         assert 'empty' in reason.lower()
 
@@ -77,7 +77,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'FAIL'
         assert 'empty' in reason.lower()
 
@@ -88,7 +88,7 @@ class TestNameValidation:
         header_map = {}  # No name mapping
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'FAIL'
         assert 'not found' in reason.lower()
 
@@ -99,7 +99,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -109,7 +109,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -119,7 +119,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -129,7 +129,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -139,7 +139,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -149,7 +149,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'PASS'
 
     @pytest.mark.unit
@@ -159,7 +159,7 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 5, 'max_length': 100}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'FAIL'
         assert 'too short' in reason.lower()
 
@@ -170,6 +170,6 @@ class TestNameValidation:
         header_map = {'name': 'Name'}
         reference = {'name_patterns': {'min_length': 2, 'max_length': 50}}
 
-        tier, reason = validate_name(record, header_map, reference)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
         assert tier == 'FAIL'
         assert 'too long' in reason.lower()
