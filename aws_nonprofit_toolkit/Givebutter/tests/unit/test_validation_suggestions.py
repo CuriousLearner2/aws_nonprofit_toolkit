@@ -10,8 +10,21 @@ class TestFailTierSuggestions:
     """Verify that FAIL tier validation errors include suggestions."""
 
     @pytest.mark.unit
+    def test_empty_email_has_suggestion(self):
+        """FAIL tier should return a suggestion for empty email."""
+        record = {'Email': ''}
+        header_map = {'email': 'Email'}
+        rules = {'email_typos': []}
+        reference = {'email_domains': [], 'email_tlds': []}
+
+        tier, reason, suggestion = validate_email(record, header_map, rules, reference)
+        assert tier == 'FAIL'
+        assert suggestion is not None, "FAIL tier should include suggestion"
+        assert len(suggestion) > 0, "Suggestion should not be empty"
+
+    @pytest.mark.unit
     def test_invalid_email_has_suggestion(self):
-        """FAIL tier should return a suggestion for invalid email."""
+        """FAIL tier should return a suggestion for invalid email format."""
         record = {'Email': 'anna.mueller'}  # Missing @
         header_map = {'email': 'Email'}
         rules = {'email_typos': []}

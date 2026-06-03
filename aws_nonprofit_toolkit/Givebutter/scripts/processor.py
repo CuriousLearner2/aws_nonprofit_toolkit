@@ -296,7 +296,7 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
 
     email = record.get(email_col)
     if pd.isna(email) or str(email).strip() == '':
-        return ('FAIL', "Email field is empty", None)
+        return ('FAIL', "Email field is empty", "Verify email address for each record")
 
     email_str = str(email).strip().lower()
 
