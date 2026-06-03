@@ -383,6 +383,8 @@ async function submitDecisions() {
     if (!currentFile) return;
 
     const decisions = [];
+    const failOverrides = [];  // Track FAIL records being approved
+
     document.querySelectorAll('.decision-select').forEach(sel => {
         const idx = parseInt(sel.dataset.idx);
         const decision = sel.value;
@@ -390,12 +392,33 @@ async function submitDecisions() {
 
         if (decision) {  // Only include records with a decision
             decisions.push({ idx, decision, notes });
+
+            // Check if approving a FAIL tier record
+            if (decision === 'approved' && currentRecords && currentRecords[idx]) {
+                const tier = currentRecords[idx]['Validation_Tier'];
+                if (tier === 'FAIL') {
+                    const name = currentRecords[idx]['Name'] || currentRecords[idx]['Donor Name'] || '(Unknown)';
+                    const issues = currentRecords[idx]['Issues'] || 'Unknown issues';
+                    failOverrides.push({ idx, name, issues });
+                }
+            }
         }
     });
 
     if (decisions.length === 0) {
         showStatus('Please make a decision for at least one record', 'error', 'uploadStatus');
         return;
+    }
+
+    // Show confirmation if approving FAIL records
+    if (failOverrides.length > 0) {
+        const confirmMsg = failOverrides.length === 1
+            ? `⚠️ Override: You are approving "${failOverrides[0].name}" despite validation failures:\n\n${failOverrides[0].issues}\n\nAre you sure?`
+            : `⚠️ Override: You are approving ${failOverrides.length} records with validation failures. Are you sure?`;
+
+        if (!confirm(confirmMsg)) {
+            return;
+        }
     }
 
     document.getElementById('submitBtn').disabled = true;
