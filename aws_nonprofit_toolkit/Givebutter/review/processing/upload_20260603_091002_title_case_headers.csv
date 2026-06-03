@@ -1,0 +1,2 @@
+Full Name,Email Address,Amount,Donation Date,Campaign,Validation_Tier,Issues,Suggested_Modifications
+Jane Doe,jane@gmail.com,250.00,2026-05-21,Summer Campaign,FAIL,Transaction ID: Transaction ID column not found in input; Phone: Phone number not found; Duplicate: Email match: unknown; Name match (70%): unknown,Add phone numbers to your donations export; Review duplicate entries

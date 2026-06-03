@@ -44,6 +44,23 @@ Record accepted but flagged for reviewer attention:
 ### PASS
 No issues found. Record ready for review decision.
 
+## Operator Approval Overrides
+
+When reviewing records in the UI, operators can approve records even if they have FAIL tier validation issues. However, an **override confirmation** is required:
+
+1. User selects "Approved" decision for a FAIL tier record
+2. User clicks "Save Decisions"
+3. System detects FAIL records being approved
+4. **Confirmation dialog appears** showing:
+   - Record name
+   - Validation failure details
+   - Warning: "You are approving [record] despite validation failures"
+5. User must confirm to proceed
+   - **Confirm**: Record is approved with noted failures
+   - **Cancel**: Approval is not saved, user can modify decision
+
+This allows operators to override validation when necessary (e.g., verified duplicate that should be merged) while ensuring they're aware of the data quality implications.
+
 ## Header Mapping Strategy
 
 The processor uses **two-tier column matching**:

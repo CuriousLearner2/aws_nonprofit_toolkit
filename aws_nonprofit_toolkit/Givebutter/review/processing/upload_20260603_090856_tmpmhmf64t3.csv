@@ -1,0 +1,5 @@
+Transaction ID,Date,Name,Email,Phone,Amount,Campaign Title,Validation_Tier,Issues,Suggested_Modifications
+TXN001,2026-06-01,John Smith,john@gmail.com,5551234567,100,Annual Giving,PASS,None,
+TXN002,2026-06-01,Jane Doe,,5559876543,250,Annual Giving,FAIL,Email: Email field is empty,
+TXN003,2026-06-01,Bob Wilson,bob@example.com,5551112222,,Campaign X,FAIL,Amount: Amount field is empty,
+TXN004,2026-06-01,Alice Brown,alice@test.com,,0,Campaign X,FAIL,Phone: Phone number is empty; Amount: Amount must be greater than 0,

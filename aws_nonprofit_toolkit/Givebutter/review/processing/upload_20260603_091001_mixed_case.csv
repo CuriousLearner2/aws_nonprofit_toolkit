@@ -1,0 +1,2 @@
+Donor Name,email,AMOUNT,donation_date,Campaign,Validation_Tier,Issues,Suggested_Modifications
+Bob Wilson,bob@gmail.com,75.00,2026-05-23,Monthly Giving,FAIL,Transaction ID: Transaction ID column not found in input; Email: Email column not found in input; Phone: Phone number not found,Add phone numbers to your donations export; Review duplicate entries
