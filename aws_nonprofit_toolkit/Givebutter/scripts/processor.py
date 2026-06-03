@@ -71,16 +71,16 @@ CORE_HEADERS = {
 # Fuzzy Match Fallbacks (catches variations in custom/alternate field names)
 # Use these for slight variations in column naming that might occur
 FUZZY_HEADERS = {
-    'transaction_id': ['Donation ID', 'Gift ID', 'Contribution ID'],
-    'name': ['Full Name', 'Donor Name', 'Donor', 'First and Last Name'],
-    'email': ['Email Address', 'Primary Email', 'Contact Email', 'Email (Primary)'],
-    'phone': ['Phone Number', 'Contact Phone', 'Phone (Primary)', 'Mobile Phone'],
-    'date': ['Donation Date', 'donation_date', 'Gift Date', 'Date Received'],
-    'zip': ['Zipcode', 'Postal Code', 'ZIP Code', 'Postal'],
-    'address_1': ['Street Address', 'Address Line 1', 'Street'],
-    'address_2': ['Address Line 2', 'Apt/Suite'],
-    'campaign': ['Fund', 'Campaign', 'Gift Fund', 'Donation Fund'],
-    'payment_method': ['Payment Type', 'Method'],
+    'transaction_id': ['Donation ID', 'Gift ID', 'Contribution ID', 'donation_id', 'gift_id'],
+    'name': ['Full Name', 'Donor Name', 'Donor', 'First and Last Name', 'donor_name', 'full_name'],
+    'email': ['Email Address', 'Primary Email', 'Contact Email', 'Email (Primary)', 'email_address', 'primary_email'],
+    'phone': ['Phone Number', 'Contact Phone', 'Phone (Primary)', 'Mobile Phone', 'phone_number', 'contact_phone'],
+    'date': ['Donation Date', 'donation_date', 'Gift Date', 'Date Received', 'gift_date', 'date_received'],
+    'zip': ['Zipcode', 'Postal Code', 'ZIP Code', 'Postal', 'postal_code', 'zip_code'],
+    'address_1': ['Street Address', 'Address Line 1', 'Street', 'street_address', 'address_line_1'],
+    'address_2': ['Address Line 2', 'Apt/Suite', 'address_line_2'],
+    'campaign': ['Fund', 'Campaign', 'Gift Fund', 'Donation Fund', 'campaign_title'],
+    'payment_method': ['Payment Type', 'Method', 'payment_type'],
 }
 
 

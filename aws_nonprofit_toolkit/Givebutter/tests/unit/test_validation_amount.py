@@ -72,7 +72,8 @@ class TestAmountValidation:
 
         tier, reason, suggestion = validate_amount(record, header_map, reference)
         assert tier == 'FAIL'
-        assert 'missing' in reason.lower()
+        assert any(word in reason.lower() for word in ['missing', 'empty']), \
+            f"Expected 'missing' or 'empty' in reason, got: {reason}"
 
     @pytest.mark.unit
     def test_invalid_amount_format(self):

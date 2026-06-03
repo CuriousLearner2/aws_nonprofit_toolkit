@@ -1,0 +1,2 @@
+Name,Email,Amount,Date,Campaign Title,Validation_Tier,Issues,Suggested_Modifications
+Alice Johnson,alice@gmail.com,150.00,2026-05-22,Annual Fund,FAIL,Transaction ID: Transaction ID column not found in input; Phone: Phone number not found; Duplicate: Email match: unknown; Name match (70%): unknown,Add phone numbers to your donations export; Review duplicate entries
