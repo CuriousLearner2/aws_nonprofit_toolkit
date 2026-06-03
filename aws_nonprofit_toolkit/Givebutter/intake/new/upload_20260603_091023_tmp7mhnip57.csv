@@ -1,5 +1,0 @@
-Transaction ID,Date,Name,Email,Phone,Amount,Campaign Title
-TXN001,2026-06-01,John Smith,john@gmail.com,5551234567,100,Annual Giving
-TXN002,2026-06-01,Jane Doe,,5559876543,250,Annual Giving
-TXN003,2026-06-01,Bob Wilson,bob@example.com,5551112222,,Campaign X
-TXN004,2026-06-01,Alice Brown,alice@test.com,,0,Campaign X

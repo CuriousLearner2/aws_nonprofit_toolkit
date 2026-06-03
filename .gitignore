@@ -2,3 +2,16 @@
 __pycache__/
 venv/
 datasets/
+.venv/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Test artifacts and uploaded files
+aws_nonprofit_toolkit/Givebutter/intake/new/*.csv
+aws_nonprofit_toolkit/Givebutter/review/processing/*.csv
+aws_nonprofit_toolkit/Givebutter/review/approved/*.csv
+aws_nonprofit_toolkit/Givebutter/review/followup/*.csv
+aws_nonprofit_toolkit/Givebutter/review/rejected/*.csv
+aws_nonprofit_toolkit/Givebutter/archive/*.csv

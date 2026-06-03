@@ -1,4 +1,0 @@
-Donation ID,Date,Donor Name,Email,Amount,Campaign Title,Validation_Tier,Issues,Suggested_Modifications
-GB001,2026-05-25,John Smith,john@gmail.com,100.00,General Fund,WARNING,Phone: Phone number not found,Add phone numbers to your donations export
-GB002,2026-05-25,Jane Doe,jane@gmai.com,50.00,Scholarship Fund,WARNING,Email: Email typo detected; Phone: Phone number not found,Consider: jane@gmail.com; Add phone numbers to your donations export
-GB003,2026-05-25,Bob Wilson,invalid-email,75.00,Education Fund,FAIL,Email: Invalid email format (missing @); Phone: Phone number not found,Add phone numbers to your donations export

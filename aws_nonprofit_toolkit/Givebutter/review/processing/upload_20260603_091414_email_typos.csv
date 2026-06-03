@@ -1,3 +1,0 @@
-donor_name,email,amount,donation_date,campaign,Validation_Tier,Issues,Suggested_Modifications
-Carol Smith,carol@gmal.com,200.00,2026-05-24,Donor Drive,FAIL,Transaction ID: Transaction ID column not found in input; Email: Email column not found in input; Phone: Phone number not found,Add phone numbers to your donations export; Review duplicate entries
-David Lee,david@yaho.com,300.00,2026-05-25,Donor Drive,FAIL,Transaction ID: Transaction ID column not found in input; Email: Email column not found in input; Phone: Phone number not found,Add phone numbers to your donations export; Review duplicate entries

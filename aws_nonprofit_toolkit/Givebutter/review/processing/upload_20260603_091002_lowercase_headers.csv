@@ -1,2 +1,0 @@
-donor_name,email,amount,donation_date,campaign,Validation_Tier,Issues,Suggested_Modifications
-John Smith,john@gmail.com,100.00,2026-05-20,Spring Fundraiser,FAIL,Transaction ID: Transaction ID column not found in input; Email: Email column not found in input; Phone: Phone number not found,Add phone numbers to your donations export
