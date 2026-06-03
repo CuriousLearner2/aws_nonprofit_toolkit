@@ -4,9 +4,30 @@ import tempfile
 import json
 from pathlib import Path
 import sys
+import shutil
 
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
+
+# Define base directories for cleanup
+BASE_DIR = Path(__file__).resolve().parents[2] / "Givebutter"
+INTAKE_DIR = BASE_DIR / "intake" / "new"
+PROCESSING_DIR = BASE_DIR / "review" / "processing"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_e2e_artifacts():
+    """Clean up test artifact files after all E2E tests complete."""
+    yield  # Run tests first
+
+    # After tests, clean up any CSV files left in intake/new and review/processing
+    for directory in [INTAKE_DIR, PROCESSING_DIR]:
+        if directory.exists():
+            for csv_file in directory.glob("*.csv"):
+                try:
+                    csv_file.unlink()
+                except Exception as e:
+                    print(f"Warning: Could not delete {csv_file}: {e}")
 
 
 @pytest.fixture
