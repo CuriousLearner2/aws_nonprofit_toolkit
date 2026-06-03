@@ -173,24 +173,29 @@
             margin-top: 4px;
             display: flex;
             gap: 4px;
+            pointer-events: auto;
         }
         .btn-edit-save, .btn-edit-cancel {
-            padding: 2px 8px;
-            font-size: 0.85em;
+            padding: 4px 10px;
+            font-size: 0.9em;
             cursor: pointer;
             border: none;
-            border-radius: 3px;
-            background: #28a745;
+            border-radius: 4px;
             color: white;
+            font-weight: 600;
+            pointer-events: auto;
+        }
+        .btn-edit-save {
+            background: #28a745;
         }
         .btn-edit-save:hover {
             background: #218838;
         }
         .btn-edit-cancel {
-            background: #6c757d;
+            background: #dc3545;
         }
         .btn-edit-cancel:hover {
-            background: #5a6268;
+            background: #c82333;
         }
         .readonly-cell {
             cursor: default;
