@@ -658,6 +658,8 @@ function switchToEditMode(cell) {
     cancelBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        // Remove blur listener to prevent validation
+        input.onblur = null;
         cancelEdit(cell, input, errorMsg);
     });
 
