@@ -662,6 +662,7 @@ def process_csv(input_file: str, output_file: str) -> None:
         if is_dup:
             issues.append(f"Duplicate: {dup_info}")
             validation_results['duplicate'] = {'tier': 'WARNING', 'reason': dup_info}
+            suggestions.append("Review duplicate entries")
 
         # Assign tier
         tier = assign_tier(validation_results)
