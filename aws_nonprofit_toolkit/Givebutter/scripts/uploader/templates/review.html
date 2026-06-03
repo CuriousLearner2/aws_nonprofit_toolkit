@@ -642,21 +642,35 @@ function switchToEditMode(cell) {
     errorMsg.className = 'edit-error';
 
     const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
     saveBtn.className = 'btn-edit-save';
-    saveBtn.textContent = '✓';
-    saveBtn.addEventListener('click', () => saveEdit(cell, input, errorMsg));
+    saveBtn.textContent = '✓ Save';
+    saveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        saveEdit(cell, input, errorMsg);
+    });
 
     const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
     cancelBtn.className = 'btn-edit-cancel';
-    cancelBtn.textContent = '✗';
-    cancelBtn.addEventListener('click', () => cancelEdit(cell, input, errorMsg));
+    cancelBtn.textContent = '✗ Cancel';
+    cancelBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelEdit(cell, input, errorMsg);
+    });
 
     const actions = document.createElement('div');
     actions.className = 'edit-actions';
     actions.appendChild(saveBtn);
     actions.appendChild(cancelBtn);
 
-    cell.innerHTML = '';
+    // Clear old content
+    while (cell.firstChild) {
+        cell.removeChild(cell.firstChild);
+    }
+
     cell.appendChild(input);
     cell.appendChild(errorMsg);
     cell.appendChild(actions);
