@@ -61,6 +61,28 @@ When reviewing records in the UI, operators can approve records even if they hav
 
 This allows operators to override validation when necessary (e.g., verified duplicate that should be merged) while ensuring they're aware of the data quality implications.
 
+## Suggestion Display Priority
+
+The processor generates suggestions for validation failures and displays them prioritized by impact:
+
+1. **Required Field Failures** (1st priority)
+   - Transaction ID, Date, Email, Amount, Name
+   - FAIL tier errors that must be resolved
+
+2. **Duplicate Detection** (2nd priority)
+   - Records matching existing entries
+   - "Review duplicate entries" suggestion
+
+3. **Address Issues** (3rd priority)
+   - Incomplete address information (if address fields present in CSV)
+   - "Complete address information (street, city, state)" suggestion
+
+4. **Optional Field Issues** (4th priority)
+   - Phone format or missing optional data
+   - Low-priority recommendations
+
+**Display Limits**: Maximum 5 issues and 5 suggestions are displayed per record to maintain readability. Prioritization ensures critical FAIL-tier failures always appear before optional field warnings.
+
 ## Header Mapping Strategy
 
 The processor uses **two-tier column matching**:

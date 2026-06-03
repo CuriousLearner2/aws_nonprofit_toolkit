@@ -610,8 +610,11 @@ def process_csv(input_file: str, output_file: str) -> None:
     # Process each record
     for idx, record in enumerate(records):
         validation_results = {}
-        suggestions = []
         issues = []
+        required_suggestions = []  # Transaction ID, Date, Email, Amount, Name
+        duplicate_suggestions = []
+        address_suggestions = []
+        optional_suggestions = []  # Phone, etc.
 
         # Validate transaction ID (required)
         tier, reason, suggestion = validate_transaction_id(record, header_map)
@@ -619,7 +622,7 @@ def process_csv(input_file: str, output_file: str) -> None:
         if reason:
             issues.append(f"Transaction ID: {reason}")
         if suggestion:
-            suggestions.append(suggestion)
+            required_suggestions.append(suggestion)
 
         # Validate date (required)
         tier, reason, suggestion = validate_date(record, header_map)
@@ -627,63 +630,68 @@ def process_csv(input_file: str, output_file: str) -> None:
         if reason:
             issues.append(f"Date: {reason}")
         if suggestion:
-            suggestions.append(suggestion)
+            required_suggestions.append(suggestion)
 
-        # Validate email
+        # Validate email (required)
         tier, reason, suggestion = validate_email(record, header_map, rules, reference)
         validation_results['email'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Email: {reason}")
         if suggestion:
-            suggestions.append(suggestion)
+            required_suggestions.append(suggestion)
 
-        # Validate phone
-        tier, reason, suggestion = validate_phone(record, header_map, rules)
-        validation_results['phone'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Phone: {reason}")
-        if suggestion:
-            suggestions.append(suggestion)
-
-        # Validate amount
+        # Validate amount (required)
         tier, reason, suggestion = validate_amount(record, header_map, reference)
         validation_results['amount'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Amount: {reason}")
         if suggestion:
-            suggestions.append(suggestion)
+            required_suggestions.append(suggestion)
 
-        # Validate address
-        tier, reason = validate_address(record, header_map)
-        validation_results['address'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Address: {reason}")
-
-        # Validate name
+        # Validate name (required)
         tier, reason, suggestion = validate_name(record, header_map, reference)
         validation_results['name'] = {'tier': tier, 'reason': reason}
         if reason:
             issues.append(f"Name: {reason}")
         if suggestion:
-            suggestions.append(suggestion)
+            required_suggestions.append(suggestion)
 
         # Check for duplicates
         is_dup, dup_info = check_duplicates(record, records, header_map, rules)
         if is_dup:
             issues.append(f"Duplicate: {dup_info}")
             validation_results['duplicate'] = {'tier': 'WARNING', 'reason': dup_info}
-            suggestions.append("Review duplicate entries")
+            duplicate_suggestions.append("Review duplicate entries")
+
+        # Validate address (optional)
+        tier, reason = validate_address(record, header_map)
+        validation_results['address'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Address: {reason}")
+        if reason:  # address validator doesn't return suggestion, but could add one
+            address_suggestions.append("Complete address information (street, city, state)")
+
+        # Validate phone (optional)
+        tier, reason, suggestion = validate_phone(record, header_map, rules)
+        validation_results['phone'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Phone: {reason}")
+        if suggestion:
+            optional_suggestions.append(suggestion)
+
+        # Combine suggestions in priority order: required, duplicates, address, optional
+        suggestions = required_suggestions + duplicate_suggestions + address_suggestions + optional_suggestions
 
         # Assign tier
         tier = assign_tier(validation_results)
 
         # Write results
         df.at[idx, 'Validation_Tier'] = tier
-        # Limit issues to 3 for readability
-        max_issues = issues[:3]
+        # Limit issues to 5 for readability
+        max_issues = issues[:5]
         df.at[idx, 'Issues'] = "; ".join(max_issues) if max_issues else "None"
-        # Limit suggestions to 3 for readability
-        max_suggestions = suggestions[:3]
+        # Limit suggestions to 5 for readability (prioritized: required, duplicates, address, optional)
+        max_suggestions = suggestions[:5]
         df.at[idx, 'Suggested_Modifications'] = "; ".join(max_suggestions) if max_suggestions else ""
 
         # Print progress
