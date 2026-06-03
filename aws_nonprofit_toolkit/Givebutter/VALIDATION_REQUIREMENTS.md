@@ -8,7 +8,7 @@ These fields **MUST** be present and non-empty. Missing or empty required fields
 | **Transaction ID** | Required | Unique identifier for each donation record. Used for duplicate detection. |
 | **Date** | Required | Donation/transaction date. Accepted via fuzzy matching (Date, Donation Date, Gift Date, Date Received). |
 | **Name** | Required | Minimum 2 characters, max 100 characters. Checked against reference patterns. |
-| **Email** | Required | Must contain valid email format (@ symbol). Checked for typos and domain variations. |
+| **Email** | Required | Must contain valid email format: user@domain (@ symbol required, domain cannot be empty). Checked for typos and domain variations. |
 | **Amount** | Required | Must be numeric > 0. Checked against typical donation ranges. |
 
 ## Optional Fields
