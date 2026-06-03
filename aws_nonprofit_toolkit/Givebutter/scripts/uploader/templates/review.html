@@ -121,6 +121,83 @@
             border: 1px solid #e0e0e0;
             border-radius: 6px;
         }
+
+        /* Inline editing styles */
+        .editable-cell {
+            position: relative;
+            cursor: pointer;
+            padding: 6px 8px;
+        }
+        .editable-cell:hover .edit-icon {
+            display: inline;
+            opacity: 0.6;
+            margin-left: 4px;
+            font-size: 0.9em;
+        }
+        .editable-cell .edit-icon {
+            display: none;
+        }
+        .editable-cell.editing {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 4px 6px;
+        }
+        .editable-cell.editing .cell-display {
+            display: none;
+        }
+        .editable-cell.editing .edit-icon {
+            display: none;
+        }
+        .cell-edit {
+            padding: 4px 6px;
+            border: 1px solid #999;
+            border-radius: 3px;
+            width: 95%;
+            font-family: inherit;
+            font-size: 13px;
+        }
+        .cell-edit.error {
+            border-color: #dc3545;
+            background: #fff5f5;
+        }
+        .edit-error {
+            color: #dc3545;
+            font-size: 11px;
+            margin-top: 2px;
+            display: none;
+        }
+        .edit-error.show {
+            display: block;
+        }
+        .edit-actions {
+            margin-top: 4px;
+            display: flex;
+            gap: 4px;
+        }
+        .btn-edit-save, .btn-edit-cancel {
+            padding: 2px 8px;
+            font-size: 0.85em;
+            cursor: pointer;
+            border: none;
+            border-radius: 3px;
+            background: #28a745;
+            color: white;
+        }
+        .btn-edit-save:hover {
+            background: #218838;
+        }
+        .btn-edit-cancel {
+            background: #6c757d;
+        }
+        .btn-edit-cancel:hover {
+            background: #5a6268;
+        }
+        .readonly-cell {
+            cursor: default;
+        }
+        .readonly-cell:hover .edit-icon {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -347,19 +424,43 @@ async function reviewFile(filename) {
             const savedNotes = row['Operator_Notes'] || '';
 
             return `
-                <tr>
-                    <td><code>${escapeHtml(txnId)}</code></td>
-                    <td><strong>${escapeHtml(name)}</strong></td>
-                    <td><code>${escapeHtml(email)}</code></td>
-                    <td>${escapeHtml(phone)}</td>
-                    <td>${escapeHtml(amount)}</td>
-                    <td><small>${escapeHtml(address1)}</small></td>
-                    <td><small>${escapeHtml(city)}</small></td>
-                    <td><small>${escapeHtml(state)}</small></td>
-                    <td><small>${escapeHtml(campaign)}</small></td>
-                    <td><span class="${tierClass}">${tierText}</span></td>
-                    <td class="issues">${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
-                    <td class="suggestions">${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
+                <tr data-record-idx="${idx}">
+                    <td class="readonly-cell"><code>${escapeHtml(txnId)}</code><span class="edit-icon">🔒</span></td>
+                    <td class="editable-cell" data-field="name" data-idx="${idx}" data-original="${escapeHtml(name)}">
+                        <span class="cell-display"><strong>${escapeHtml(name)}</strong></span>
+                        <span class="edit-icon">✏️</span>
+                    </td>
+                    <td class="editable-cell" data-field="email" data-idx="${idx}" data-original="${escapeHtml(email)}">
+                        <span class="cell-display"><code>${escapeHtml(email)}</code></span>
+                        <span class="edit-icon">✏️</span>
+                    </td>
+                    <td class="editable-cell" data-field="phone" data-idx="${idx}" data-original="${escapeHtml(phone)}">
+                        <span class="cell-display">${escapeHtml(phone)}</span>
+                        <span class="edit-icon">✏️</span>
+                    </td>
+                    <td class="editable-cell" data-field="amount" data-idx="${idx}" data-original="${escapeHtml(amount)}">
+                        <span class="cell-display">${escapeHtml(amount)}</span>
+                        <span class="edit-icon">✏️</span>
+                    </td>
+                    <td class="editable-cell" data-field="address_1" data-idx="${idx}" data-original="${escapeHtml(address1)}">
+                        <span class="cell-display"><small>${escapeHtml(address1)}</small></span>
+                        <span class="edit-icon">✏️</span>
+                    </td>
+                    <td class="editable-cell" data-field="city" data-idx="${idx}" data-original="${escapeHtml(city)}">
+                        <span class="cell-display"><small>${escapeHtml(city)}</small></span>
+                        <span class="edit-icon">✏️</span>
+                    </td>
+                    <td class="editable-cell" data-field="state" data-idx="${idx}" data-original="${escapeHtml(state)}">
+                        <span class="cell-display"><small>${escapeHtml(state)}</small></span>
+                        <span class="edit-icon">✏️</span>
+                    </td>
+                    <td class="editable-cell" data-field="campaign" data-idx="${idx}" data-original="${escapeHtml(campaign)}">
+                        <span class="cell-display"><small>${escapeHtml(campaign)}</small></span>
+                        <span class="edit-icon">✏️</span>
+                    </td>
+                    <td class="readonly-cell"><span class="${tierClass}">${tierText}</span></td>
+                    <td class="readonly-cell issues">${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
+                    <td class="readonly-cell suggestions">${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
                     <td>
                         <select class="decision-select" data-idx="${idx}">
                             <option value="">Please Select</option>
@@ -374,6 +475,9 @@ async function reviewFile(filename) {
                 </tr>
             `;
         }).join('');
+
+        // Setup inline editing for all editable cells
+        setupEditableCells();
 
         document.getElementById('reviewPanel').classList.remove('hidden');
         window.scrollTo(0, 0);  // Scroll to top
@@ -390,6 +494,9 @@ function setAllDecision(decision) {
 
 async function submitDecisions() {
     if (!currentFile) return;
+
+    // Collect edits from in-memory tracking
+    const edits = collectEditedChanges();
 
     const decisions = [];
     const failOverrides = [];  // Track FAIL records being approved
@@ -434,10 +541,15 @@ async function submitDecisions() {
     showStatus('Saving decisions...', 'info', 'uploadStatus');
 
     try {
+        const payload = { decisions };
+        if (edits.length > 0) {
+            payload.edits = edits;
+        }
+
         const resp = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/submit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ decisions })
+            body: JSON.stringify(payload)
         });
 
         if (!resp.ok) {
@@ -491,6 +603,181 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Inline editing state
+const editedRecords = {};  // { idx: { field: newValue, field2: newValue2 } }
+
+function setupEditableCells() {
+    document.querySelectorAll('.editable-cell').forEach(cell => {
+        cell.addEventListener('click', (e) => {
+            if (!cell.classList.contains('editing')) {
+                switchToEditMode(cell);
+            }
+        });
+    });
+}
+
+function switchToEditMode(cell) {
+    const idx = parseInt(cell.dataset.idx);
+    const field = cell.dataset.field;
+    const originalValue = cell.dataset.original || '';
+
+    cell.classList.add('editing');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'cell-edit';
+    input.value = originalValue;
+    input.dataset.field = field;
+    input.dataset.idx = idx;
+    input.dataset.original = originalValue;
+
+    const errorMsg = document.createElement('div');
+    errorMsg.className = 'edit-error';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn-edit-save';
+    saveBtn.textContent = '✓';
+    saveBtn.addEventListener('click', () => saveEdit(cell, input, errorMsg));
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn-edit-cancel';
+    cancelBtn.textContent = '✗';
+    cancelBtn.addEventListener('click', () => cancelEdit(cell, input, errorMsg));
+
+    const actions = document.createElement('div');
+    actions.className = 'edit-actions';
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+
+    cell.innerHTML = '';
+    cell.appendChild(input);
+    cell.appendChild(errorMsg);
+    cell.appendChild(actions);
+
+    input.focus();
+    input.select();
+
+    // Real-time validation on blur
+    input.addEventListener('blur', () => {
+        validateFieldValue(field, input.value, input, errorMsg);
+    });
+}
+
+function validateFieldValue(field, value, input, errorMsg) {
+    let error = '';
+
+    if (!value || value === '—') {
+        error = 'Field cannot be empty';
+    } else if (field === 'email') {
+        if (!value.includes('@')) {
+            error = 'Email must contain @ symbol';
+        } else if (!value.includes('.')) {
+            error = 'Email domain must include a dot';
+        }
+    } else if (field === 'phone') {
+        const digits = value.replace(/\D/g, '');
+        if (digits.length < 10 || digits.length > 11) {
+            error = 'Phone must be 10-11 digits';
+        }
+    } else if (field === 'amount') {
+        const num = parseFloat(value);
+        if (isNaN(num)) {
+            error = 'Amount must be numeric';
+        } else if (num <= 0) {
+            error = 'Amount must be greater than 0';
+        }
+    } else if (field === 'name') {
+        if (value.length < 2) {
+            error = 'Name must be at least 2 characters';
+        } else if (value.length > 100) {
+            error = 'Name must be 100 characters or less';
+        }
+    }
+
+    if (error) {
+        input.classList.add('error');
+        errorMsg.textContent = error;
+        errorMsg.classList.add('show');
+        input.dataset.valid = 'false';
+    } else {
+        input.classList.remove('error');
+        errorMsg.classList.remove('show');
+        input.dataset.valid = 'true';
+    }
+
+    return error === '';
+}
+
+function saveEdit(cell, input, errorMsg) {
+    const field = input.dataset.field;
+    const value = input.value;
+    const idx = parseInt(input.dataset.idx);
+
+    // Validate before saving
+    if (!validateFieldValue(field, value, input, errorMsg)) {
+        return;
+    }
+
+    // Update in-memory record
+    if (!editedRecords[idx]) {
+        editedRecords[idx] = {};
+    }
+    editedRecords[idx][field] = value;
+
+    // Switch back to display mode
+    switchToDisplayMode(cell, value);
+}
+
+function cancelEdit(cell, input, errorMsg) {
+    const originalValue = input.dataset.original || '';
+    switchToDisplayMode(cell, originalValue);
+}
+
+function switchToDisplayMode(cell, value) {
+    cell.classList.remove('editing');
+
+    const displaySpan = document.createElement('span');
+    displaySpan.className = 'cell-display';
+
+    // Preserve formatting based on original element type
+    if (value === '—') {
+        displaySpan.textContent = '—';
+    } else if (cell.dataset.field === 'email') {
+        const code = document.createElement('code');
+        code.textContent = value;
+        displaySpan.appendChild(code);
+    } else if (cell.dataset.field === 'name') {
+        const strong = document.createElement('strong');
+        strong.textContent = value;
+        displaySpan.appendChild(strong);
+    } else if (['address_1', 'city', 'state', 'campaign'].includes(cell.dataset.field)) {
+        const small = document.createElement('small');
+        small.textContent = value;
+        displaySpan.appendChild(small);
+    } else {
+        displaySpan.textContent = value;
+    }
+
+    const editIcon = document.createElement('span');
+    editIcon.className = 'edit-icon';
+    editIcon.textContent = '✏️';
+
+    cell.innerHTML = '';
+    cell.appendChild(displaySpan);
+    cell.appendChild(editIcon);
+
+    // Update data attribute for future edits
+    cell.dataset.original = value;
+}
+
+function collectEditedChanges() {
+    return Object.entries(editedRecords).map(([idx, fields]) =>
+        Object.entries(fields).map(([field, value]) =>
+            ({ idx: parseInt(idx), field, value })
+        )
+    ).flat();
 }
 
 // Load files on page load

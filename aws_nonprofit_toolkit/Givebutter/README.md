@@ -36,8 +36,11 @@ Processes Givebutter CSV exports to:
 ✅ **Operator Workflow**
 - Web-based review interface
 - Per-record decisions: approve, follow-up, reject
+- **Inline editing** - Fix data errors directly in the review table
+- Real-time validation on edits (email format, phone digits, amount ranges)
 - Notes field for operator context
 - Bulk action buttons for efficiency
+- Override confirmation for FAIL-tier approvals
 
 ✅ **Configuration-Driven**
 - Rules loaded from JSON (no hardcoding)

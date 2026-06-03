@@ -146,6 +146,71 @@ For **each record**, choose one decision:
 
 ---
 
+### Step 3.5: Fix Issues Inline (Optional)
+
+**You can fix data errors directly in the review table without leaving the page.**
+
+#### How to Edit a Record
+
+1. **Hover** over any data cell (Name, Email, Phone, Amount, Address, City, State, Campaign)
+   - A pencil icon (✏️) appears to indicate the field is editable
+   
+2. **Click** the cell to enter edit mode
+   - The cell turns yellow (#fff3cd) to show you're editing
+   - An input field appears with the current value
+   - Two buttons appear: ✓ (Save) and ✗ (Cancel)
+
+3. **Type** the corrected value
+
+4. **Real-Time Validation** (as you edit)
+   - **Email**: Must contain @ symbol
+   - **Phone**: Must be 10-11 digits
+   - **Amount**: Must be numeric and > 0
+   - **Name**: Must be 2-100 characters
+   - If invalid, a red error message appears below the input
+   - Fix the value until the error goes away
+
+5. **Save the edit** (click ✓)
+   - Cell returns to display mode showing your new value
+   - Change is saved in memory (not yet to database)
+
+6. **Cancel the edit** (click ✗)
+   - Change is discarded
+   - Cell returns to original value
+
+#### Fields You Can Edit
+
+✓ **Editable**: Name, Email, Phone, Amount, Address 1, City, State, Campaign
+
+✗ **Read-only**: Transaction ID (locked 🔒), Validation Tier, Issues, Suggested Fixes, Decision, Notes
+- These are either immutable or have their own controls
+
+#### Example: Fixing a Common Typo
+
+```
+Original email: jane@gmai.com
+Suggested fix:  jane@gmail.com
+
+1. Click the email cell → turns yellow, input appears
+2. Clear the current value
+3. Type: jane@gmail.com
+4. Click ✓ to save
+5. Email now shows corrected value
+```
+
+#### Making Multiple Fixes
+
+You can edit multiple cells in the same record:
+- Edit Name → Save
+- Edit Email → Save  
+- Edit Phone → Save
+- Then set your Decision (Approved/Follow-up/Rejected)
+- Click "Save Decisions" to finalize everything
+
+**The edits and decisions are saved together**, so if you fix 3 fields and then approve the record, all changes go into the output file together.
+
+---
+
 ### Step 4: Save & Generate
 
 **Click "Save Decisions"**

@@ -181,6 +181,7 @@ def submit_decisions(filename):
     try:
         data = request.get_json() or {}
         decisions = {d['idx']: d for d in data.get('decisions', [])}
+        edits = {e['idx']: e for e in data.get('edits', [])} if data.get('edits') else {}
 
         if not decisions:
             return jsonify({'error': 'No decisions provided'}), 400
@@ -196,6 +197,66 @@ def submit_decisions(filename):
             df['Operator_Decision'] = ''
         if 'Operator_Notes' not in df.columns:
             df['Operator_Notes'] = ''
+
+        # Apply edits to the DataFrame
+        # Map field names to actual column names (handling fuzzy matching)
+        field_to_column = {
+            'name': None,
+            'email': None,
+            'phone': None,
+            'amount': None,
+            'address_1': None,
+            'city': None,
+            'state': None,
+            'campaign': None
+        }
+
+        # Detect actual column names from DataFrame
+        for field, col in field_to_column.items():
+            if field == 'name':
+                for variant in ['Name', 'Donor Name', 'Full Name', 'donor_name', 'full_name']:
+                    if variant in df.columns:
+                        field_to_column[field] = variant
+                        break
+            elif field == 'email':
+                for variant in ['Email', 'Email Address', 'Primary Email', 'email_address', 'primary_email']:
+                    if variant in df.columns:
+                        field_to_column[field] = variant
+                        break
+            elif field == 'phone':
+                for variant in ['Phone', 'Phone Number', 'Contact Phone', 'phone_number', 'contact_phone']:
+                    if variant in df.columns:
+                        field_to_column[field] = variant
+                        break
+            elif field == 'amount':
+                if 'Amount' in df.columns:
+                    field_to_column[field] = 'Amount'
+            elif field == 'address_1':
+                for variant in ['Address 1', 'Street Address', 'Address Line 1', 'address_line_1']:
+                    if variant in df.columns:
+                        field_to_column[field] = variant
+                        break
+            elif field == 'city':
+                if 'City' in df.columns:
+                    field_to_column[field] = 'City'
+            elif field == 'state':
+                if 'State' in df.columns:
+                    field_to_column[field] = 'State'
+            elif field == 'campaign':
+                for variant in ['Campaign Title', 'Campaign', 'Fund', 'campaign_title']:
+                    if variant in df.columns:
+                        field_to_column[field] = variant
+                        break
+
+        # Apply each edit to the corresponding column
+        for record_idx, edit_data in edits.items():
+            field = edit_data.get('field')
+            value = edit_data.get('value', '')
+            column = field_to_column.get(field)
+
+            if column and 0 <= record_idx < len(df):
+                df.at[record_idx, column] = value
+                logger.info(f"Applied edit to {filename}[{record_idx}].{field}: {value}")
 
         # Update decisions and notes
         for idx, row in df.iterrows():
