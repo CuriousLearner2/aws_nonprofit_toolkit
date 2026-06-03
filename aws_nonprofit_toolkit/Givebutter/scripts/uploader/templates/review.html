@@ -177,6 +177,9 @@
                             <th style="width: 150px;">Email</th>
                             <th style="width: 100px;">Phone</th>
                             <th style="width: 100px;">Amount</th>
+                            <th style="width: 150px;">Address 1</th>
+                            <th style="width: 100px;">City</th>
+                            <th style="width: 80px;">State</th>
                             <th style="width: 130px;">Campaign</th>
                             <th style="width: 70px;">Tier</th>
                             <th style="width: 200px;">Issues</th>
@@ -335,6 +338,9 @@ async function reviewFile(filename) {
             const phone = row['Phone'] || row['Phone Number'] || row['Contact Phone'] || '—';
             const amount = row['Amount'] || '—';
             const campaign = row['Campaign Title'] || row['Campaign'] || row['Fund'] || '—';
+            const address1 = row['Address 1'] || row['Street Address'] || row['Address Line 1'] || '—';
+            const city = row['City'] || '—';
+            const state = row['State'] || '—';
 
             // Get saved decision and notes
             const savedDecision = row['Operator_Decision'] || '';
@@ -347,6 +353,9 @@ async function reviewFile(filename) {
                     <td><code>${escapeHtml(email)}</code></td>
                     <td>${escapeHtml(phone)}</td>
                     <td>${escapeHtml(amount)}</td>
+                    <td><small>${escapeHtml(address1)}</small></td>
+                    <td><small>${escapeHtml(city)}</small></td>
+                    <td><small>${escapeHtml(state)}</small></td>
                     <td><small>${escapeHtml(campaign)}</small></td>
                     <td><span class="${tierClass}">${tierText}</span></td>
                     <td class="issues">${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
