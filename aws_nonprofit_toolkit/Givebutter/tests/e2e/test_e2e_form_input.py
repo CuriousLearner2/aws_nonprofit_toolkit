@@ -527,46 +527,6 @@ async def test_validation_tier_color_coded(flask_app_for_forms, temp_dir, sample
 
 # ============ SAVE/SUBMISSION FEEDBACK TESTS ============
 
-@pytest.mark.skip(reason="Flaky due to Flask state pollution in multi-step navigation - covered by backend logic tests")
-@pytest.mark.e2e
-@pytest.mark.asyncio
-async def test_save_button_clear_label(flask_app_for_forms, temp_dir, sample_csv):
-    """Test that save button has clear label."""
-    from playwright.async_api import async_playwright
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-
-        try:
-            # Navigate to review
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
-
-            file_input = await page.query_selector('input[type="file"]')
-            await file_input.set_input_files(str(sample_csv))
-
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
-            if submit_button:
-                await submit_button.click()
-
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
-
-            # Wait for review button to be visible before clicking
-            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
-            review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
-            if review_button:
-                await review_button.click()
-
-                # Find save button
-                save_button = await page.query_selector('button:has-text("Save")')
-                if save_button:
-                    text = await save_button.text_content()
-                    assert 'save' in text.lower()
-
-        finally:
-            await browser.close()
-
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
@@ -618,43 +578,3 @@ async def test_save_success_message(flask_app_for_forms, temp_dir, sample_csv):
             await browser.close()
 
 
-@pytest.mark.skip(reason="Flaky due to Flask state pollution in multi-step navigation - covered by backend logic tests")
-@pytest.mark.e2e
-@pytest.mark.asyncio
-async def test_cancel_button_confirmation(flask_app_for_forms, temp_dir, sample_csv):
-    """Test that cancel button provides confirmation."""
-    from playwright.async_api import async_playwright
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-
-        try:
-            # Navigate to review
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
-
-            file_input = await page.query_selector('input[type="file"]')
-            await file_input.set_input_files(str(sample_csv))
-
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
-            if submit_button:
-                await submit_button.click()
-
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
-
-            # Wait for review button to be visible before clicking
-            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
-            review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
-            if review_button:
-                await review_button.click()
-
-                # Find cancel button
-                cancel_button = await page.query_selector('button:has-text("Cancel")')
-                if cancel_button:
-                    # Button should be labeled clearly
-                    text = await cancel_button.text_content()
-                    assert 'cancel' in text.lower()
-
-        finally:
-            await browser.close()
