@@ -1,32 +1,6 @@
 """Form and input testing for UX quality."""
 import pytest
 import asyncio
-from pathlib import Path
-import subprocess
-import time
-import signal
-import os
-
-
-@pytest.fixture(scope="session")
-def flask_app_for_forms():
-    """Start Flask app for form tests."""
-    app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
-    process = subprocess.Popen(
-        ["python", str(app_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        preexec_fn=os.setsid
-    )
-
-    time.sleep(2)
-
-    yield process
-
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    except:
-        process.terminate()
 
 
 # ============ FILE UPLOAD TESTS ============

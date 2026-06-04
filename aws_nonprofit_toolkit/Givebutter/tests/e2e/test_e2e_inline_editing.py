@@ -1,36 +1,9 @@
 """E2E tests for inline record editing feature."""
 import pytest
 import pytest_asyncio
-import asyncio
-from pathlib import Path
-import subprocess
-import time
-import signal
-import os
 from playwright.async_api import async_playwright
 
 pytestmark = pytest.mark.asyncio
-
-
-@pytest.fixture(scope="session")
-def flask_app_running():
-    """Start Flask app for E2E testing."""
-    app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
-    process = subprocess.Popen(
-        ["python", str(app_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        preexec_fn=os.setsid
-    )
-
-    time.sleep(2)
-
-    yield process
-
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    except:
-        process.terminate()
 
 
 @pytest.mark.e2e

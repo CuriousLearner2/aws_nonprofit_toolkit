@@ -17,21 +17,65 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 BASE_DIR = Path(__file__).resolve().parents[2] / "Givebutter"
 INTAKE_DIR = BASE_DIR / "intake" / "new"
 PROCESSING_DIR = BASE_DIR / "review" / "processing"
+APPROVED_DIR = BASE_DIR / "review" / "approved"
+FOLLOWUP_DIR = BASE_DIR / "review" / "followup"
+REJECTED_DIR = BASE_DIR / "review" / "rejected"
+ARCHIVE_DIR = BASE_DIR / "archive"
 
 
-@pytest.fixture(scope="session", autouse=True)
-def cleanup_e2e_artifacts():
-    """Clean up test artifact files after all E2E tests complete."""
-    yield  # Run tests first
-
-    # After tests, clean up any CSV files left in intake/new and review/processing
-    for directory in [INTAKE_DIR, PROCESSING_DIR]:
+def cleanup_csv_files():
+    """Clean up CSV files in test directories."""
+    for directory in [INTAKE_DIR, PROCESSING_DIR, APPROVED_DIR, FOLLOWUP_DIR, REJECTED_DIR, ARCHIVE_DIR]:
         if directory.exists():
             for csv_file in directory.glob("*.csv"):
                 try:
                     csv_file.unlink()
                 except Exception as e:
-                    print(f"Warning: Could not delete {csv_file}: {e}")
+                    pass  # Silently ignore cleanup errors
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_e2e_artifacts():
+    """Clean up test artifact files before and after all E2E tests."""
+    cleanup_csv_files()  # Clean before tests start
+    yield  # Run tests
+
+    cleanup_csv_files()  # Clean after tests complete
+
+
+@pytest.fixture(scope="session")
+def flask_app_running():
+    """Start Flask app for E2E testing (session-scoped, shared across all tests)."""
+    app_path = Path(__file__).parent.parent / "scripts" / "uploader" / "app.py"
+    process = subprocess.Popen(
+        ["python", str(app_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        preexec_fn=os.setsid
+    )
+
+    time.sleep(2)
+
+    yield process
+
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except:
+        pass
+
+
+# Aliases for backwards compatibility with different test files
+flask_app_for_forms = flask_app_running
+flask_app_for_visual = flask_app_running
+start_flask_app = flask_app_running
+
+
+@pytest.fixture(autouse=True)
+def cleanup_between_e2e_tests():
+    """Clean up test artifacts between individual E2E tests."""
+    cleanup_csv_files()  # Clean up BEFORE each test
+    yield  # Run test
+    cleanup_csv_files()  # Clean up AFTER each test
 
 
 @pytest.fixture

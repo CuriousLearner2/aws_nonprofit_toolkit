@@ -10,7 +10,6 @@ import csv
 from datetime import datetime
 
 
-@pytest.fixture(scope="session")
 def flask_app_running():
     """Start Flask app for E2E testing."""
     app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"

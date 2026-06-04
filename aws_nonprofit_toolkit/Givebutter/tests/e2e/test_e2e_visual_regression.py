@@ -8,7 +8,6 @@ import signal
 import os
 
 
-@pytest.fixture(scope="session")
 def flask_app_for_visual():
     """Start Flask app for visual tests."""
     app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"

@@ -66,7 +66,6 @@ def fail_records_csv():
         return f.name
 
 
-@pytest.fixture(scope="session")
 def flask_app_running():
     """Start Flask app for E2E testing."""
     app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
