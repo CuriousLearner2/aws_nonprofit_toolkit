@@ -9,6 +9,7 @@ import subprocess
 import time
 import os
 import signal
+import requests
 
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
@@ -34,6 +35,42 @@ def cleanup_csv_files():
                     pass  # Silently ignore cleanup errors
 
 
+def is_flask_healthy(timeout=2):
+    """Check if Flask app is responding to health check requests."""
+    try:
+        response = requests.get('http://127.0.0.1:8000/health', timeout=timeout)
+        return response.status_code == 200
+    except (requests.ConnectionError, requests.Timeout, Exception):
+        return False
+
+
+def restart_flask_process(process, retry_attempts=3):
+    """Attempt to restart Flask process if it's unresponsive."""
+    # Kill old process
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except:
+        pass
+
+    # Start new process
+    for attempt in range(retry_attempts):
+        app_path = Path(__file__).parent.parent / "scripts" / "uploader" / "app.py"
+        new_process = subprocess.Popen(
+            ["python", str(app_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
+
+        time.sleep(2)
+
+        # Check if new process is healthy
+        if is_flask_healthy():
+            return new_process
+
+    return None  # Failed to restart
+
+
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_e2e_artifacts():
     """Clean up test artifact files before and after all E2E tests."""
@@ -45,7 +82,10 @@ def cleanup_e2e_artifacts():
 
 @pytest.fixture(scope="session")
 def flask_app_running():
-    """Start Flask app for E2E testing (session-scoped, shared across all tests)."""
+    """Start Flask app for E2E testing with health monitoring.
+
+    Automatically restarts Flask if it becomes unresponsive.
+    """
     app_path = Path(__file__).parent.parent / "scripts" / "uploader" / "app.py"
     process = subprocess.Popen(
         ["python", str(app_path)],
@@ -56,8 +96,13 @@ def flask_app_running():
 
     time.sleep(2)
 
+    # Verify initial startup
+    if not is_flask_healthy(timeout=5):
+        raise RuntimeError("Flask app failed to start or is not responding")
+
     yield process
 
+    # Cleanup
     try:
         os.killpg(os.getpgid(process.pid), signal.SIGTERM)
     except:
@@ -71,11 +116,24 @@ start_flask_app = flask_app_running
 
 
 @pytest.fixture(autouse=True)
-def cleanup_between_e2e_tests():
-    """Clean up test artifacts between individual E2E tests."""
+def cleanup_between_e2e_tests(flask_app_running):
+    """Clean up test artifacts and monitor Flask health between E2E tests."""
     cleanup_csv_files()  # Clean up BEFORE each test
+
     yield  # Run test
+
     cleanup_csv_files()  # Clean up AFTER each test
+
+    # Check Flask health and restart if needed
+    if not is_flask_healthy(timeout=3):
+        print("\n⚠️  Flask app unresponsive - attempting restart...")
+        new_process = restart_flask_process(flask_app_running)
+        if new_process:
+            print("✓ Flask app restarted successfully")
+            # Update the fixture's process reference
+            flask_app_running.__dict__.update(new_process.__dict__)
+        else:
+            print("✗ Flask restart failed")
 
 
 @pytest.fixture
