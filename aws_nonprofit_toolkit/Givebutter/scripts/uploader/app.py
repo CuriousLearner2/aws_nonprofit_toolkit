@@ -11,7 +11,7 @@ import sys
 
 # Add parent directory to path so we can import processor
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from processor import process_csv as run_processor
+from processor import process_csv as run_processor, check_duplicates, detect_header_mapping
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -257,6 +257,52 @@ def submit_decisions(filename):
             if column and 0 <= record_idx < len(df):
                 df.at[record_idx, column] = value
                 logger.info(f"Applied edit to {filename}[{record_idx}].{field}: {value}")
+
+        # Re-run duplicate detection if edits were made
+        if edits:
+            try:
+                # Load config for duplicate detection
+                config_dir = BASE_DIR / "config"
+                rules_file = config_dir / "rules" / "rules_v2.4.json"
+                with open(rules_file) as f:
+                    rules = json.load(f)
+
+                # Detect header mapping
+                header_map = detect_header_mapping(df.columns)
+
+                # Convert DataFrame to list of dicts for duplicate checking
+                records_list = df.to_dict('records')
+
+                # Re-check duplicates for all records
+                for idx, record in enumerate(records_list):
+                    is_dup, dup_info = check_duplicates(record, records_list, header_map, rules)
+
+                    if is_dup:
+                        # Add duplicate info to Issues column
+                        current_issues = df.at[idx, 'Issues'] or ''
+                        if 'Duplicate' not in current_issues:
+                            if current_issues:
+                                df.at[idx, 'Issues'] = current_issues + f"; Duplicate: {dup_info}"
+                            else:
+                                df.at[idx, 'Issues'] = f"Duplicate: {dup_info}"
+
+                        # Add suggestion for duplicates
+                        current_suggestions = df.at[idx, 'Suggested_Modifications'] or ''
+                        if 'Review duplicate' not in current_suggestions:
+                            if current_suggestions:
+                                df.at[idx, 'Suggested_Modifications'] = current_suggestions + "; Review duplicate entries"
+                            else:
+                                df.at[idx, 'Suggested_Modifications'] = "Review duplicate entries"
+
+                        # Update Validation_Tier to WARNING if it was PASS
+                        current_tier = df.at[idx, 'Validation_Tier']
+                        if current_tier == 'PASS':
+                            df.at[idx, 'Validation_Tier'] = 'WARNING'
+                            logger.info(f"Updated {filename}[{idx}] tier from PASS to WARNING due to duplicate detection")
+
+                logger.info(f"Re-validated duplicates for {filename} after applying edits")
+            except Exception as e:
+                logger.warning(f"Error during duplicate re-validation for {filename}: {e}")
 
         # Update decisions and notes
         for idx, row in df.iterrows():
