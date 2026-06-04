@@ -831,8 +831,8 @@ function updateIssuesColumnAfterEdit(idx, field) {
     const currentIssuesText = issuesCell.textContent.trim();
     if (!currentIssuesText) return;  // No issues to potentially remove
 
-    // Split issues by semicolon
-    let issues = currentIssuesText.split(';').map(i => i.trim()).filter(i => i);
+    // Split issues by semicolon, newline, or <br> (displayed as newline in textContent)
+    let issues = currentIssuesText.split(/[;\n]+/).map(i => i.trim()).filter(i => i);
 
     // Get issue patterns for this field
     const patterns = fieldIssuePatterns[field] || [];
@@ -867,8 +867,8 @@ function updateSuggestionsColumnAfterEdit(idx, field) {
     const currentSuggestionsText = suggestionsCell.textContent.trim();
     if (!currentSuggestionsText) return;  // No suggestions to potentially remove
 
-    // Split suggestions by semicolon
-    let suggestions = currentSuggestionsText.split(';').map(s => s.trim()).filter(s => s);
+    // Split suggestions by semicolon, newline, or <br> (displayed as newline in textContent)
+    let suggestions = currentSuggestionsText.split(/[;\n]+/).map(s => s.trim()).filter(s => s);
 
     // Get suggestion patterns for this field
     const patterns = fieldSuggestionPatterns[field] || [];
