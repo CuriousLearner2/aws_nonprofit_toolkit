@@ -806,6 +806,18 @@ const fieldIssuePatterns = {
     'campaign': ['Missing Campaign', 'Campaign']
 };
 
+// Map field names to their associated suggestion patterns
+const fieldSuggestionPatterns = {
+    'phone': ['phone', 'Phone'],
+    'email': ['email', 'Email'],
+    'name': ['name', 'Name'],
+    'amount': ['amount', 'Amount'],
+    'address_1': ['address', 'Address'],
+    'city': ['city', 'City'],
+    'state': ['state', 'State'],
+    'campaign': ['campaign', 'Campaign']
+};
+
 function updateIssuesColumnAfterEdit(idx, field) {
     const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
     if (!row) return;
@@ -838,6 +850,42 @@ function updateIssuesColumnAfterEdit(idx, field) {
         } else {
             issuesCell.textContent = issues.join('; ');
             issuesCell.innerHTML = issues.join('<br>');
+        }
+    }
+}
+
+function updateSuggestionsColumnAfterEdit(idx, field) {
+    const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
+    if (!row) return;
+
+    // Find the Suggestions cell (has class 'suggestions')
+    const suggestionsCell = row.querySelector('td.suggestions');
+    if (!suggestionsCell) return;
+
+    const currentSuggestionsText = suggestionsCell.textContent.trim();
+    if (!currentSuggestionsText) return;  // No suggestions to potentially remove
+
+    // Split suggestions by semicolon
+    let suggestions = currentSuggestionsText.split(';').map(s => s.trim()).filter(s => s);
+
+    // Get suggestion patterns for this field
+    const patterns = fieldSuggestionPatterns[field] || [];
+
+    // Remove only suggestions that match the field's patterns
+    const originalCount = suggestions.length;
+    suggestions = suggestions.filter(suggestion => {
+        // Keep the suggestion unless it matches one of the patterns for this field
+        return !patterns.some(pattern => suggestion.toLowerCase().includes(pattern.toLowerCase()));
+    });
+
+    // Only update if we actually removed something
+    if (suggestions.length < originalCount) {
+        if (suggestions.length === 0) {
+            suggestionsCell.textContent = '';
+            suggestionsCell.innerHTML = '';
+        } else {
+            suggestionsCell.textContent = suggestions.join('; ');
+            suggestionsCell.innerHTML = suggestions.join('<br>');
         }
     }
 }
@@ -1081,8 +1129,9 @@ function saveEdit(cell, input, errorMsg) {
     // Switch back to display mode
     switchToDisplayMode(cell, value);
 
-    // Update Issues column: remove issues specific to this field only
+    // Update Issues and Suggestions columns: remove those specific to this field only
     updateIssuesColumnAfterEdit(idx, field);
+    updateSuggestionsColumnAfterEdit(idx, field);
 }
 
 function cancelEdit(cell, input, errorMsg) {
