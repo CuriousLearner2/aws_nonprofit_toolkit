@@ -11,7 +11,7 @@ import sys
 
 # Add parent directory to path so we can import processor
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from processor import process_csv as run_processor, check_duplicates, detect_header_mapping
+from processor import process_csv as run_processor, check_duplicates, build_header_mapping
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -267,8 +267,8 @@ def submit_decisions(filename):
                 with open(rules_file) as f:
                     rules = json.load(f)
 
-                # Detect header mapping
-                header_map = detect_header_mapping(df.columns)
+                # Build header mapping
+                header_map = build_header_mapping(df.columns)
 
                 # Convert DataFrame to list of dicts for duplicate checking
                 records_list = df.to_dict('records')
