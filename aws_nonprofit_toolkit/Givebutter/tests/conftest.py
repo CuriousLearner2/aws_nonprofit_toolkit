@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 import sys
 import shutil
+import subprocess
+import time
+import os
+import signal
 
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
@@ -100,3 +104,26 @@ def reference_config(temp_dir):
     config_file = config_dir / "reference_list.json"
     config_file.write_text(json.dumps(reference))
     return config_file
+
+
+@pytest.fixture(scope="session")
+def start_flask_app():
+    """Start Flask app for E2E tests and clean up after."""
+    app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
+    process = subprocess.Popen(
+        ["python", str(app_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        preexec_fn=os.setsid  # Create new process group for cleanup
+    )
+
+    # Wait for app to start
+    time.sleep(2)
+
+    yield process
+
+    # Cleanup: kill the entire process group
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except:
+        pass
