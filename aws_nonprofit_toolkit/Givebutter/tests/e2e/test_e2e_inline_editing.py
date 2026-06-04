@@ -173,3 +173,166 @@ async def test_inline_editing_invalid_email_shows_error(flask_app_running, sampl
 
         finally:
             await browser.close()
+
+
+@pytest.mark.e2e
+async def test_inline_editing_clears_only_field_specific_issues(flask_app_isolated, temp_dir):
+    """Verify that editing a field only clears issues for that field, not all issues."""
+    from playwright.async_api import async_playwright
+    import csv
+
+    # Create test CSV with multiple issues (email typo, missing phone)
+    test_csv = temp_dir / "test_multiple_issues.csv"
+    with open(test_csv, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
+        ])
+        writer.writeheader()
+        writer.writerow({
+            'Transaction ID': 'TXN001',
+            'Date': '2026-06-04',
+            'Name': 'Test User',
+            'Email': 'test@gmai.com',  # Typo - triggers email issue
+            'Phone': '',  # Missing - triggers phone issue
+            'Amount': '100',
+            'Campaign Title': 'General Fund'
+        })
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+
+        try:
+            await page.goto("http://127.0.0.1:8000/")
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
+
+            # Upload CSV
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(test_csv))
+
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            if submit_button:
+                await submit_button.click()
+
+            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+
+            # Get issues cell and verify both issues exist initially
+            issues_cell = await page.query_selector('td.issues')
+            if issues_cell:
+                initial_issues_json = await issues_cell.get_attribute('data-issues')
+                initial_issues = eval(initial_issues_json) if initial_issues_json else []
+
+                # Should have email and phone issues
+                assert any('Email' in issue for issue in initial_issues), "Should have email issue"
+                assert any('Phone' in issue for issue in initial_issues), "Should have phone issue"
+
+                # Edit phone field to fix it
+                phone_cell = await page.query_selector('td.editable-cell[data-field="phone"]')
+                if phone_cell:
+                    await phone_cell.click()
+                    phone_input = await phone_cell.query_selector('input.cell-edit')
+                    if phone_input:
+                        await phone_input.fill('5551234567')
+
+                        # Save the edit
+                        save_btn = await phone_cell.query_selector('.btn-edit-save')
+                        if save_btn:
+                            await save_btn.click()
+
+                            # Wait for update
+                            await page.wait_for_timeout(500)
+
+                            # Check issues cell again
+                            issues_cell_updated = await page.query_selector('td.issues')
+                            if issues_cell_updated:
+                                updated_issues_json = await issues_cell_updated.get_attribute('data-issues')
+                                updated_issues = eval(updated_issues_json) if updated_issues_json else []
+
+                                # Phone issue should be cleared
+                                assert not any('Phone' in issue for issue in updated_issues), "Phone issue should be cleared"
+
+                                # Email issue should remain
+                                assert any('Email' in issue for issue in updated_issues), "Email issue should remain"
+
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+async def test_inline_editing_updates_suggestions_column(flask_app_isolated, temp_dir):
+    """Verify that Suggested_Modifications column updates when field is edited."""
+    from playwright.async_api import async_playwright
+    import csv
+
+    # Create test CSV with suggestions
+    test_csv = temp_dir / "test_suggestions.csv"
+    with open(test_csv, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
+        ])
+        writer.writeheader()
+        writer.writerow({
+            'Transaction ID': 'TXN002',
+            'Date': '2026-06-04',
+            'Name': 'Test User',
+            'Email': 'test@gmai.com',  # Will suggest correction
+            'Phone': '',  # Will suggest adding phone
+            'Amount': '100',
+            'Campaign Title': 'General Fund'
+        })
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+
+        try:
+            await page.goto("http://127.0.0.1:8000/")
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
+
+            # Upload CSV
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(test_csv))
+
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            if submit_button:
+                await submit_button.click()
+
+            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+
+            # Get suggestions cell
+            suggestions_cell = await page.query_selector('td.suggestions')
+            if suggestions_cell:
+                initial_suggestions_json = await suggestions_cell.get_attribute('data-suggestions')
+                initial_suggestions = eval(initial_suggestions_json) if initial_suggestions_json else []
+                initial_count = len(initial_suggestions)
+
+                # Edit phone field
+                phone_cell = await page.query_selector('td.editable-cell[data-field="phone"]')
+                if phone_cell:
+                    await phone_cell.click()
+                    phone_input = await phone_cell.query_selector('input.cell-edit')
+                    if phone_input:
+                        await phone_input.fill('5551234567')
+
+                        # Save the edit
+                        save_btn = await phone_cell.query_selector('.btn-edit-save')
+                        if save_btn:
+                            await save_btn.click()
+
+                            # Wait for update
+                            await page.wait_for_timeout(500)
+
+                            # Check suggestions again
+                            suggestions_cell_updated = await page.query_selector('td.suggestions')
+                            if suggestions_cell_updated:
+                                updated_suggestions_json = await suggestions_cell_updated.get_attribute('data-suggestions')
+                                updated_suggestions = eval(updated_suggestions_json) if updated_suggestions_json else []
+
+                                # Should have fewer suggestions now
+                                assert len(updated_suggestions) < initial_count, "Phone suggestion should be removed"
+
+                                # Phone-related suggestions should be gone
+                                assert not any('phone' in s.lower() for s in updated_suggestions), "Phone suggestions should be cleared"
+
+        finally:
+            await browser.close()
