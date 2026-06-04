@@ -66,6 +66,7 @@ def fail_records_csv():
         return f.name
 
 
+@pytest.mark.skip(reason="Deprecated - flaky due to multi-step navigation; use test_override_dialog_ui.py instead")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_pass_record_no_confirmation(flask_app_isolated, fail_records_csv):
@@ -129,6 +130,7 @@ async def test_pass_record_no_confirmation(flask_app_isolated, fail_records_csv)
             await browser.close()
 
 
+@pytest.mark.skip(reason="Deprecated - flaky due to multi-step navigation; use test_override_dialog_ui.py instead")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_fail_record_shows_tier(flask_app_isolated, fail_records_csv):
@@ -180,6 +182,7 @@ async def test_fail_record_shows_tier(flask_app_isolated, fail_records_csv):
             await browser.close()
 
 
+@pytest.mark.skip(reason="Deprecated - flaky due to multi-step navigation; use test_override_dialog_ui.py instead")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_confirm_override_allows_approval(flask_app_isolated, fail_records_csv):
@@ -243,6 +246,7 @@ async def test_confirm_override_allows_approval(flask_app_isolated, fail_records
             await browser.close()
 
 
+@pytest.mark.skip(reason="Deprecated - flaky due to multi-step navigation; use test_override_dialog_ui.py instead")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_cancel_override_prevents_approval(flask_app_isolated, fail_records_csv):
