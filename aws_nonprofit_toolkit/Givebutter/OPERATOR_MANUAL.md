@@ -173,6 +173,10 @@ For **each record**, choose one decision:
 5. **Save the edit** (click ✓)
    - Cell returns to display mode showing your new value
    - Change is saved in memory (not yet to database)
+   - **Issues and Suggestions columns update automatically** ✨
+     - Issues related to that field are cleared
+     - Suggestions for that field are removed
+     - Other issues/suggestions stay visible
 
 6. **Cancel the edit** (click ✗)
    - Change is discarded
@@ -185,7 +189,7 @@ For **each record**, choose one decision:
 ✗ **Read-only**: Transaction ID (locked 🔒), Validation Tier, Issues, Suggested Fixes, Decision, Notes
 - These are either immutable or have their own controls
 
-#### Example: Fixing a Common Typo
+#### Example 1: Fixing a Common Typo
 
 ```
 Original email: jane@gmai.com
@@ -196,6 +200,25 @@ Suggested fix:  jane@gmail.com
 3. Type: jane@gmail.com
 4. Click ✓ to save
 5. Email now shows corrected value
+6. ✨ Issues column clears "Email: Email typo detected"
+```
+
+#### Example 2: Multiple Issues, Fix One Field
+
+```
+Before:
+  Email: jane@gmai.com
+  Phone: (empty)
+  Issues: Email: Email typo detected; Phone: Phone number not found
+  Suggestions: Use jane@gmail.com; Add phone number
+
+After editing phone to "5551234567":
+  Email: jane@gmai.com
+  Phone: 5551234567
+  Issues: Email: Email typo detected (phone issue removed ✓)
+  Suggestions: Use jane@gmail.com (phone suggestion removed ✓)
+
+You still see the email issue, so you know to fix that too!
 ```
 
 #### Making Multiple Fixes

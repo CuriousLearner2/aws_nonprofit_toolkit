@@ -2,7 +2,7 @@
 
 Complete donation data validation and operator review system for Givebutter exports.
 
-**Status:** ✅ Production Ready | **Version:** 3.0 | **Last Updated:** 2026-05-30
+**Status:** ✅ Production Ready | **Version:** 3.0 | **Last Updated:** 2026-06-04
 
 ---
 
@@ -38,6 +38,7 @@ Processes Givebutter CSV exports to:
 - Per-record decisions: approve, follow-up, reject
 - **Inline editing** - Fix data errors directly in the review table
 - Real-time validation on edits (email format, phone digits, amount ranges)
+- **Automatic issue clearing** - Issues/suggestions update as you fix fields
 - Notes field for operator context
 - Bulk action buttons for efficiency
 - Override confirmation for FAIL-tier approvals
