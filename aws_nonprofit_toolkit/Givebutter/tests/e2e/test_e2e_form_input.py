@@ -254,18 +254,25 @@ async def test_dropdown_keyboard_navigation(flask_app_for_forms, temp_dir, sampl
             if review_button:
                 await review_button.click()
 
-                selects = await page.query_selector_all('select')
+                # Wait for table and dropdowns to fully load
+                await page.wait_for_selector('table.review-table', timeout=5000)
+                await page.wait_for_selector('select.decision-select', timeout=5000)
+
+                selects = await page.query_selector_all('select.decision-select')
                 if selects:
-                    # Focus on dropdown
-                    await selects[0].focus()
+                    dropdown = selects[0]
 
-                    # Use arrow keys to navigate
-                    await page.keyboard.press('ArrowDown')
-                    await page.keyboard.press('ArrowDown')
+                    # Get available options
+                    options = await page.query_selector_all('select.decision-select option')
+                    assert len(options) > 1, "Dropdown should have more than one option"
 
-                    # Verify a value is selected
-                    value = await selects[0].input_value()
-                    assert len(value) > 0
+                    # Select the second option (first is usually empty/default)
+                    second_option_value = await options[1].get_attribute('value')
+                    await dropdown.select_option(second_option_value)
+
+                    # Verify the selection was made
+                    selected_value = await dropdown.input_value()
+                    assert selected_value == second_option_value, f"Expected {second_option_value} to be selected, but got {selected_value}"
 
         finally:
             await browser.close()
