@@ -794,28 +794,30 @@ function escapeHtml(text) {
 // Inline editing state
 const editedRecords = {};  // { idx: { field: newValue, field2: newValue2 } }
 
-// Map field names to their associated issue patterns
+// Map field names to their associated issue patterns (backend formats as "FieldName: reason")
 const fieldIssuePatterns = {
-    'phone': ['Missing Phone', 'Invalid Phone', 'Phone'],
-    'email': ['Missing Email', 'Invalid Email', 'Email'],
-    'name': ['Missing Name', 'Short Name', 'Name too'],
-    'amount': ['Missing Amount', 'Zero Amount', 'Invalid Amount', 'Amount'],
-    'address_1': ['Missing Address', 'Address'],
-    'city': ['Missing City', 'City'],
-    'state': ['Missing State', 'State'],
-    'campaign': ['Missing Campaign', 'Campaign']
+    'phone': ['Phone:'],
+    'email': ['Email:'],
+    'name': ['Name:'],
+    'amount': ['Amount:'],
+    'address_1': ['Address:'],
+    'city': ['City:'],
+    'state': ['State:'],
+    'campaign': ['Campaign:'],
+    'transaction_id': ['Transaction ID:'],
+    'date': ['Date:']
 };
 
 // Map field names to their associated suggestion patterns
 const fieldSuggestionPatterns = {
-    'phone': ['phone', 'Phone'],
-    'email': ['email', 'Email'],
-    'name': ['name', 'Name'],
-    'amount': ['amount', 'Amount'],
-    'address_1': ['address', 'Address'],
-    'city': ['city', 'City'],
-    'state': ['state', 'State'],
-    'campaign': ['campaign', 'Campaign']
+    'phone': ['phone'],
+    'email': ['email'],
+    'name': ['name'],
+    'amount': ['amount'],
+    'address_1': ['address'],
+    'city': ['city'],
+    'state': ['state'],
+    'campaign': ['campaign']
 };
 
 function updateIssuesColumnAfterEdit(idx, field) {
