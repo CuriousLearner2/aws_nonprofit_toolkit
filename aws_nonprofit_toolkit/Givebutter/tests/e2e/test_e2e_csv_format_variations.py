@@ -1,5 +1,6 @@
 """End-to-end tests for CSV format variations and edge cases."""
 import pytest
+import sys
 import asyncio
 from pathlib import Path
 import subprocess
@@ -14,7 +15,7 @@ def flask_app_running():
     """Start Flask app for E2E testing."""
     app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
     process = subprocess.Popen(
-        ["python", str(app_path)],
+        [sys.executable, str(app_path)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         preexec_fn=os.setsid

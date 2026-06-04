@@ -581,6 +581,94 @@ async function submitDecisions() {
         if (result.status === 'complete') {
             showStatus(`✓ Complete: ${result.approved} approved, ${result.followup} follow-up, ${result.rejected} rejected`, 'success', 'uploadStatus');
             closeReview();
+// Initialize review form with test records if available
+(function() {
+    {%- if records %}
+    // Test mode: pre-populated records available
+    const testRecords = {{ records | tojson }};
+    const testFilename = '{{ filename }}';
+    
+    // Build the review form with test records
+    const tbody = document.getElementById('reviewBody');
+    tbody.innerHTML = '';
+    
+    testRecords.forEach((record, idx) => {
+        const row = document.createElement('tr');
+        
+        // Build row with all fields
+        Object.keys(record).forEach(field => {
+            if (field === 'idx') return;
+            const td = document.createElement('td');
+            
+            // Make data fields clickable/editable if appropriate
+            const editableFields = ['Name', 'Email', 'Phone', 'Amount', 'Address 1', 'City', 'State', 'Campaign', 'Donation ID', 'Date'];
+            const readOnlyFields = ['Validation_Tier', 'Issues', 'Suggested_Modifications'];
+            
+            if (readOnlyFields.includes(field)) {
+                td.textContent = record[field] || '—';
+            } else if (editableFields.includes(field)) {
+                const fieldName = field.toLowerCase().replace(/\s+/g, '_');
+                td.className = 'editable-cell';
+                td.dataset.field = fieldName;
+                td.dataset.idx = idx;
+                
+                const displaySpan = document.createElement('span');
+                displaySpan.className = 'cell-display';
+                displaySpan.textContent = record[field] || '—';
+                
+                const editIcon = document.createElement('span');
+                editIcon.className = 'edit-icon';
+                editIcon.textContent = '✏️';
+                
+                td.appendChild(displaySpan);
+                td.appendChild(editIcon);
+                
+                td.addEventListener('click', function(e) {
+                    setupEditableCell(this);
+                });
+            } else {
+                td.textContent = record[field] || '—';
+            }
+            
+            row.appendChild(td);
+        });
+        
+        // Add decision select
+        const decisionTd = document.createElement('td');
+        const decisionSelect = document.createElement('select');
+        decisionSelect.className = 'decision-select';
+        decisionSelect.dataset.idx = idx;
+        decisionSelect.innerHTML = '<option value="">-- Select --</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="followup">Follow-up</option>';
+        decisionTd.appendChild(decisionSelect);
+        row.appendChild(decisionTd);
+        
+        // Add notes textarea
+        const notesTd = document.createElement('td');
+        const notesTextarea = document.createElement('textarea');
+        notesTextarea.className = 'notes-input';
+        notesTextarea.dataset.idx = idx;
+        notesTextarea.placeholder = 'Add notes...';
+        notesTd.appendChild(notesTextarea);
+        row.appendChild(notesTd);
+        
+        tbody.appendChild(row);
+    });
+    
+    // Update form header
+    document.getElementById('reviewTitle').textContent = `Reviewing: ${testFilename} (${testRecords.length} record${testRecords.length === 1 ? '' : 's'})`;
+    
+    // Show review panel
+    document.getElementById('reviewPanel').classList.remove('hidden');
+    
+    // Set up decision change handlers
+    document.querySelectorAll('.decision-select').forEach(select => {
+        select.addEventListener('change', function() {
+            handleDecisionChange(this);
+        });
+    });
+    {%- endif %}
+})();
+
             loadProcessing();
         } else if (result.status === 'progress_saved') {
             showStatus(`✓ Progress saved: ${result.decided} of ${result.decided + result.remaining} records decided`, 'success', 'uploadStatus');

@@ -396,6 +396,57 @@ def cancel_review(filename):
         logger.error(f"Error cancelling review for {filename}: {e}")
         return jsonify({'error': 'Cancellation failed'}), 500
 
+@app.route('/test-override-dialog')
+def test_override_dialog():
+    """Test endpoint that serves review page with pre-populated FAIL records.
+
+    Used for E2E testing of override confirmation dialog without upload complexity.
+    """
+    # Create test CSV with FAIL tier records
+    test_data = {
+        'Donation ID': ['GB001', 'GB002', 'GB003', 'GB004'],
+        'Date': ['2026-06-01', '2026-06-01', '2026-06-01', '2026-06-01'],
+        'Name': ['John Smith', 'Jane Doe', 'Bob Wilson', 'Alice Brown'],
+        'Email': ['john@gmail.com', '', 'bob@example.com', 'alice@test.com'],
+        'Phone': ['5551234567', '5559876543', '5551112222', ''],
+        'Amount': ['100', '250', '', '0'],
+        'Campaign': ['Annual Giving', 'Annual Giving', 'Campaign X', 'Campaign X']
+    }
+
+    df = pd.DataFrame(test_data)
+
+    # Run validation to get tiers
+    from processor import process_csv
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as input_f:
+        df.to_csv(input_f.name, index=False)
+        input_path = input_f.name
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as output_f:
+        output_path = output_f.name
+
+    try:
+        process_csv(input_path, output_path)
+        result_df = pd.read_csv(output_path, dtype=str)
+
+        # Convert to records for rendering
+        records = []
+        for idx, row in result_df.iterrows():
+            record = row.to_dict()
+            record['idx'] = int(idx)
+            records.append(record)
+
+        # Render review template with test records
+        return render_template('review.html',
+                             test_mode=True,
+                             records=records,
+                             filename='test_override_records.csv')
+    except Exception as e:
+        logger.error(f"Error in test override dialog: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/health')
 def health():
     return jsonify({"status": "ok", "version": "3.0"})

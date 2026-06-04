@@ -1,5 +1,0 @@
-Donation ID,Date,Donor Name,Email,Amount,Campaign Title,Validation_Tier,Issues,Suggested_Modifications,Operator_Decision,Operator_Notes
-GB001,2026-05-25,John Smith,john@gmail.com,100.00,General Fund,WARNING,Phone: Phone number not found,Add phone numbers to your donations export,approved,
-GB002,2026-05-25,Jane Doe,jane@gmail.com,50.00,Scholarship Fund,WARNING,Phone: Phone number not found,Add phone numbers to your donations export,rejected,
-GB003,2026-05-25,Bob Wilson,bob@gmail.com,75.00,Education Fund,WARNING,Phone: Phone number not found,Add phone numbers to your donations export,followup,
-GB004,2026-05-25,Alice Johnson,alice@gmail.com,200.00,Scholarship Fund,WARNING,Phone: Phone number not found,Add phone numbers to your donations export,approved,

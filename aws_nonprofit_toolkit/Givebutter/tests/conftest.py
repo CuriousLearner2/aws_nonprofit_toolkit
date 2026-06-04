@@ -56,7 +56,7 @@ def restart_flask_process(process, retry_attempts=3):
     for attempt in range(retry_attempts):
         app_path = Path(__file__).parent.parent / "scripts" / "uploader" / "app.py"
         new_process = subprocess.Popen(
-            ["python", str(app_path)],
+            [sys.executable, str(app_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             preexec_fn=os.setsid
@@ -88,7 +88,7 @@ def flask_app_running():
     """
     app_path = Path(__file__).parent.parent / "scripts" / "uploader" / "app.py"
     process = subprocess.Popen(
-        ["python", str(app_path)],
+        [sys.executable, str(app_path)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         preexec_fn=os.setsid
@@ -124,7 +124,7 @@ def flask_app_isolated():
     """
     app_path = Path(__file__).parent.parent / "scripts" / "uploader" / "app.py"
     process = subprocess.Popen(
-        ["python", str(app_path)],
+        [sys.executable, str(app_path)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         preexec_fn=os.setsid
@@ -243,7 +243,7 @@ def start_flask_app():
     """Start Flask app for E2E tests and clean up after."""
     app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
     process = subprocess.Popen(
-        ["python", str(app_path)],
+        [sys.executable, str(app_path)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         preexec_fn=os.setsid  # Create new process group for cleanup

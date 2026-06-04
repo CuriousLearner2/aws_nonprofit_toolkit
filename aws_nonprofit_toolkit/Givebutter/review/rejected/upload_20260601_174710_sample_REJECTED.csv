@@ -1,2 +1,0 @@
-Donation ID,Date,Donor Name,Email,Amount,Validation_Tier,Issues,Suggested_Modifications,Operator_Decision,Operator_Notes
-GB002,2026-05-25,Jane Doe,jane@gmai.com,50.00,WARNING,Email: Email typo detected; Phone: Phone number not found,Consider: jane@gmail.com; Add phone numbers to your donations export,rejected,

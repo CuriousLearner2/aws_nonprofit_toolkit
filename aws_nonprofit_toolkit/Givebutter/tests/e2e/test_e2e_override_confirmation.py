@@ -92,7 +92,11 @@ async def test_pass_record_no_confirmation(flask_app_isolated, fail_records_csv)
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing to complete (longer timeout for isolated Flask startup)
+            await page.wait_for_selector('text=/processed|records/', timeout=15000)
+
+            # Wait a bit for page to fully render
+            await page.wait_for_timeout(500)
 
             # Review the file
             review_button = await page.query_selector('button:has-text("Review")')
@@ -147,7 +151,11 @@ async def test_fail_record_shows_tier(flask_app_isolated, fail_records_csv):
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing to complete (longer timeout for isolated Flask startup)
+            await page.wait_for_selector('text=/processed|records/', timeout=15000)
+
+            # Wait a bit for page to fully render
+            await page.wait_for_timeout(500)
 
             # Review the file
             review_button = await page.query_selector('button:has-text("Review")')
@@ -197,7 +205,11 @@ async def test_confirm_override_allows_approval(flask_app_isolated, fail_records
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing to complete (longer timeout for isolated Flask startup)
+            await page.wait_for_selector('text=/processed|records/', timeout=15000)
+
+            # Wait a bit for page to fully render
+            await page.wait_for_timeout(500)
 
             # Review the file
             review_button = await page.query_selector('button:has-text("Review")')
@@ -256,7 +268,11 @@ async def test_cancel_override_prevents_approval(flask_app_isolated, fail_record
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing to complete (longer timeout for isolated Flask startup)
+            await page.wait_for_selector('text=/processed|records/', timeout=15000)
+
+            # Wait a bit for page to fully render
+            await page.wait_for_timeout(500)
 
             # Review the file
             review_button = await page.query_selector('button:has-text("Review")')

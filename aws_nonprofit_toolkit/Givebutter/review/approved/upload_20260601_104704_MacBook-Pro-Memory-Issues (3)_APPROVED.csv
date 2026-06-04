@@ -1,5 +1,0 @@
-Donation ID,Date,Donor Name,Email,Amount,Validation_Tier,Issues,Suggested_Modifications,Operator_Decision,Operator_Notes
-GB501,6/7/2026,Sam Lee,sam@gnail.com,"1,500",WARNING,Email: Email typo detected; Phone: Phone number not found; Amount: High-dollar donation (>= $1000),Consider: sam@gmail.com; Add phone numbers to your donations export,approved,
-GB504,2026-06-08,Morgan Yu,morgan@outlok.com,1000000000,WARNING,Email: Email typo detected; Phone: Phone number not found; Amount: Amount above typical range ($100000),Consider: morgan@outlook.com; Add phone numbers to your donations export,approved,That's a lot of money
-GB507,2026-06-10,Avery Ng,avery@GMAIL.COM ,$ 2 000,FAIL,Phone: Phone number not found; Amount: Invalid amount format,Add phone numbers to your donations export,approved,
-GB510,20260612,Samir Patel,samir@protonmail.ch,,WARNING,Phone: Phone number not found,Add phone numbers to your donations export,approved,

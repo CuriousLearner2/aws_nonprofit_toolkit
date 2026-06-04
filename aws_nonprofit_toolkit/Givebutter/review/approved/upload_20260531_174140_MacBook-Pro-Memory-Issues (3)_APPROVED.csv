@@ -1,2 +1,0 @@
-Donation ID,Date,Donor Name,Email,Amount,Validation_Tier,Issues,Suggested_Modifications
-GB501,6/7/2026,Sam Lee,sam@gnail.com,"1,500",WARNING,Email: Email typo detected; Phone: Phone column not found in input; Amount: High-dollar donation (>= $1000),Consider: sam@gmail.com
