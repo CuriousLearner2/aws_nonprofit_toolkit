@@ -253,7 +253,8 @@
     </div>
 
     <!-- Review Panel Section -->
-    <div id="reviewPanel" class="hidden">
+{%- if not records %}
+    {%- if not records %}<div id="reviewPanel" class="hidden">{%- else %}<div id="reviewPanel" class="hidden" style="display: none;">{%- endif %}
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <h2 id="reviewTitle"></h2>
@@ -296,7 +297,62 @@
                 <button class="btn btn-danger" onclick="cancelReview()">Cancel Review</button>
             </div>
         </div>
+{%- endif %}
     </div>
+
+
+    {%- if records %}
+    <!-- Test mode: render review form directly -->
+    <div id="testReviewPanel" class="card" style="display: block;">
+        <h2>Reviewing: {{ filename }} ({{ records|length }} record{{ 's' if records|length != 1 else '' }})</h2>
+        <table class="review-table" id="reviewTable">
+            <thead>
+                <tr>
+                    <th>Transaction ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Amount</th>
+                    <th>Address 1</th>
+                    <th>City</th>
+                    <th>State</th>
+                    <th>Campaign</th>
+                    <th>Tier</th>
+                    <th>Issues</th>
+                    <th>Suggested Fixes</th>
+                    <th>Decision</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody id="reviewBody">
+                {%- for record in records %}
+            <tr data-tier="{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}">
+                    {%- for key, value in record.items() %}
+                    {%- if key != 'idx' %}
+                    <td>{{ value or '—' }}</td>
+                    {%- endif %}
+                    {%- endfor %}
+                    <td>
+                        <select class="decision-select" data-idx="{{ record.idx }}" onchange="handleOverrideConfirmation(this, '{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}', '{{ record.get('Issues', '') or '' }}')">
+                                <option value="">-- Select --</option>
+                                <option value="approved">Approved</option>
+                                <option value="rejected">Rejected</option>
+                                <option value="followup">Follow-up</option>
+                            </select>
+                    </td>
+                    <td>
+                        <textarea class="notes-input" data-idx="{{ record.idx }}" placeholder="Add notes..."></textarea>
+                    </td>
+                </tr>
+                {%- endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top: 16px;">
+            <button class="btn btn-success" onclick="submitDecisions()">✓ Save Decisions</button>
+            <button class="btn btn-secondary" onclick="location.reload()">Cancel Review</button>
+        </div>
+    </div>
+    {%- endif %}
 
 <script>
 let currentFile = null;
@@ -662,10 +718,33 @@ async function submitDecisions() {
     
     // Set up decision change handlers
     document.querySelectorAll('.decision-select').forEach(select => {
-        select.addEventListener('change', function() {
-            handleDecisionChange(this);
-        });
+    select.addEventListener('change', function() {
+        const decision = this.value;
+        const idx = parseInt(this.dataset.idx);
+        const row = this.closest('tr');
+        const tier = row.dataset.tier;
+        
+        if (decision === 'approved' && tier === 'FAIL') {
+            // Get issues from the row (find the Issues column)
+            const cells = row.querySelectorAll('td');
+            // Issues should be around index 10 based on the header structure
+            let issuesText = 'validation failures';
+            if (cells.length > 10) {
+                issuesText = cells[10].textContent || issuesText;
+            }
+            
+            const msg = `⚠️ Override: You are approving this record despite validation failures:
+
+${issuesText}
+
+Are you sure?`;
+            if (!confirm(msg)) {
+                this.value = '';
+                return;
+            }
+        }
     });
+});
     {%- endif %}
 })();
 
@@ -1007,6 +1086,23 @@ function collectEditedChanges() {
 
 // Load files on page load
 loadProcessing();
+
+function handleOverrideConfirmation(selectElement, tier, issues) {
+    const decision = selectElement.value;
+    
+    if (decision === 'approved' && tier === 'FAIL') {
+        const msg = `⚠️ Override: You are approving this record despite validation failures:
+
+${issues}
+
+Are you sure?`;
+        if (!confirm(msg)) {
+            selectElement.value = '';
+            return;
+        }
+    }
+}
+
 </script>
 </body>
 </html>
