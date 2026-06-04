@@ -66,29 +66,9 @@ def fail_records_csv():
         return f.name
 
 
-def flask_app_running():
-    """Start Flask app for E2E testing."""
-    app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
-    process = subprocess.Popen(
-        ["python", str(app_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        preexec_fn=os.setsid
-    )
-
-    time.sleep(2)
-
-    yield process
-
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    except:
-        process.terminate()
-
-
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_pass_record_no_confirmation(flask_app_running, fail_records_csv):
+async def test_pass_record_no_confirmation(flask_app_isolated, fail_records_csv):
     """Test that PASS tier record approval does NOT show confirmation."""
     from playwright.async_api import async_playwright
 
@@ -147,7 +127,7 @@ async def test_pass_record_no_confirmation(flask_app_running, fail_records_csv):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_fail_record_shows_tier(flask_app_running, fail_records_csv):
+async def test_fail_record_shows_tier(flask_app_isolated, fail_records_csv):
     """Test that records with missing required fields show FAIL tier."""
     from playwright.async_api import async_playwright
 
@@ -194,7 +174,7 @@ async def test_fail_record_shows_tier(flask_app_running, fail_records_csv):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_confirm_override_allows_approval(flask_app_running, fail_records_csv):
+async def test_confirm_override_allows_approval(flask_app_isolated, fail_records_csv):
     """Test that confirming override dialog allows FAIL record approval."""
     from playwright.async_api import async_playwright
 
@@ -253,7 +233,7 @@ async def test_confirm_override_allows_approval(flask_app_running, fail_records_
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_cancel_override_prevents_approval(flask_app_running, fail_records_csv):
+async def test_cancel_override_prevents_approval(flask_app_isolated, fail_records_csv):
     """Test that canceling override dialog prevents FAIL record approval."""
     from playwright.async_api import async_playwright
 

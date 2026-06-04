@@ -115,6 +115,36 @@ flask_app_for_visual = flask_app_running
 start_flask_app = flask_app_running
 
 
+@pytest.fixture(scope="function")
+def flask_app_isolated():
+    """Function-scoped Flask for tests that need isolated state (override tests).
+
+    Creates a fresh Flask instance for each test to prevent state pollution.
+    Slower than session-scoped but ensures clean state.
+    """
+    app_path = Path(__file__).parent.parent / "scripts" / "uploader" / "app.py"
+    process = subprocess.Popen(
+        ["python", str(app_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        preexec_fn=os.setsid
+    )
+
+    time.sleep(2)
+
+    # Verify startup
+    if not is_flask_healthy(timeout=5):
+        raise RuntimeError("Flask app failed to start or is not responding")
+
+    yield process
+
+    # Cleanup
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def cleanup_between_e2e_tests(flask_app_running):
     """Clean up test artifacts and monitor Flask health between E2E tests."""
