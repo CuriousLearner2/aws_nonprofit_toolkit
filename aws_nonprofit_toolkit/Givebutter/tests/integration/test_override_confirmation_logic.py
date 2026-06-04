@@ -37,6 +37,8 @@ class TestOverrideConfirmationLogic:
         from scripts.processor import process_csv
 
         data = {
+            'Date': ['2026-06-01', '2026-06-01'],
+            'Transaction ID': ['TXN001', 'TXN002'],
             'Name': ['Valid Record', 'Missing Email'],
             'Email': ['valid@gmail.com', ''],
             'Phone': ['5551234567', '5551234567'],
