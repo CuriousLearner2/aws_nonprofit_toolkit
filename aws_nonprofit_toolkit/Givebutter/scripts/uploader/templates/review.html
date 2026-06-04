@@ -794,6 +794,54 @@ function escapeHtml(text) {
 // Inline editing state
 const editedRecords = {};  // { idx: { field: newValue, field2: newValue2 } }
 
+// Map field names to their associated issue patterns
+const fieldIssuePatterns = {
+    'phone': ['Missing Phone', 'Invalid Phone', 'Phone'],
+    'email': ['Missing Email', 'Invalid Email', 'Email'],
+    'name': ['Missing Name', 'Short Name', 'Name too'],
+    'amount': ['Missing Amount', 'Zero Amount', 'Invalid Amount', 'Amount'],
+    'address_1': ['Missing Address', 'Address'],
+    'city': ['Missing City', 'City'],
+    'state': ['Missing State', 'State'],
+    'campaign': ['Missing Campaign', 'Campaign']
+};
+
+function updateIssuesColumnAfterEdit(idx, field) {
+    const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
+    if (!row) return;
+
+    // Find the Issues cell (has class 'issues')
+    const issuesCell = row.querySelector('td.issues');
+    if (!issuesCell) return;
+
+    const currentIssuesText = issuesCell.textContent.trim();
+    if (!currentIssuesText) return;  // No issues to potentially remove
+
+    // Split issues by semicolon
+    let issues = currentIssuesText.split(';').map(i => i.trim()).filter(i => i);
+
+    // Get issue patterns for this field
+    const patterns = fieldIssuePatterns[field] || [];
+
+    // Remove only issues that match the field's patterns
+    const originalCount = issues.length;
+    issues = issues.filter(issue => {
+        // Keep the issue unless it matches one of the patterns for this field
+        return !patterns.some(pattern => issue.toLowerCase().includes(pattern.toLowerCase()));
+    });
+
+    // Only update if we actually removed something
+    if (issues.length < originalCount) {
+        if (issues.length === 0) {
+            issuesCell.textContent = '';
+            issuesCell.innerHTML = '';
+        } else {
+            issuesCell.textContent = issues.join('; ');
+            issuesCell.innerHTML = issues.join('<br>');
+        }
+    }
+}
+
 function setupEditableCells() {
     document.querySelectorAll('.editable-cell').forEach(cell => {
         cell.addEventListener('click', (e) => {
@@ -1032,6 +1080,9 @@ function saveEdit(cell, input, errorMsg) {
 
     // Switch back to display mode
     switchToDisplayMode(cell, value);
+
+    // Update Issues column: remove issues specific to this field only
+    updateIssuesColumnAfterEdit(idx, field);
 }
 
 function cancelEdit(cell, input, errorMsg) {
