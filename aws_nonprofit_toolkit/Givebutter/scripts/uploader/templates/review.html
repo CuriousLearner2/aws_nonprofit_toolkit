@@ -534,8 +534,8 @@ async function reviewFile(filename) {
                         <span class="edit-icon">✏️</span>
                     </td>
                     <td class="readonly-cell"><span class="${tierClass}">${tierText}</span></td>
-                    <td class="readonly-cell issues">${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
-                    <td class="readonly-cell suggestions">${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
+                    <td class="readonly-cell issues" data-issues='${JSON.stringify((row['Issues'] || '').split('; ').filter(i => i))}'>${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
+                    <td class="readonly-cell suggestions" data-suggestions='${JSON.stringify((row['Suggested_Modifications'] || '').split('; ').filter(s => s))}'>${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
                     <td>
                         <select class="decision-select" data-idx="${idx}">
                             <option value="">Please Select</option>
@@ -824,15 +824,20 @@ function updateIssuesColumnAfterEdit(idx, field) {
     const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
     if (!row) return;
 
-    // Find the Issues cell (has class 'issues')
     const issuesCell = row.querySelector('td.issues');
     if (!issuesCell) return;
 
-    const currentIssuesText = issuesCell.textContent.trim();
-    if (!currentIssuesText) return;  // No issues to potentially remove
+    // Read original issues from data attribute (JSON array)
+    let issues = [];
+    try {
+        const issuesData = issuesCell.dataset.issues;
+        issues = issuesData ? JSON.parse(issuesData) : [];
+    } catch (e) {
+        console.error('Failed to parse issues data:', e);
+        return;
+    }
 
-    // Split issues by semicolon, newline, or <br> (displayed as newline in textContent)
-    let issues = currentIssuesText.split(/[;\n]+/).map(i => i.trim()).filter(i => i);
+    if (issues.length === 0) return;
 
     // Get issue patterns for this field
     const patterns = fieldIssuePatterns[field] || [];
@@ -846,12 +851,14 @@ function updateIssuesColumnAfterEdit(idx, field) {
 
     // Only update if we actually removed something
     if (issues.length < originalCount) {
+        // Update data attribute
+        issuesCell.dataset.issues = JSON.stringify(issues);
+
+        // Update display
         if (issues.length === 0) {
-            issuesCell.textContent = '';
             issuesCell.innerHTML = '';
         } else {
-            issuesCell.textContent = issues.join('; ');
-            issuesCell.innerHTML = issues.join('<br>');
+            issuesCell.innerHTML = issues.map(i => escapeHtml(i)).join('<br>');
         }
     }
 }
@@ -860,15 +867,20 @@ function updateSuggestionsColumnAfterEdit(idx, field) {
     const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
     if (!row) return;
 
-    // Find the Suggestions cell (has class 'suggestions')
     const suggestionsCell = row.querySelector('td.suggestions');
     if (!suggestionsCell) return;
 
-    const currentSuggestionsText = suggestionsCell.textContent.trim();
-    if (!currentSuggestionsText) return;  // No suggestions to potentially remove
+    // Read original suggestions from data attribute (JSON array)
+    let suggestions = [];
+    try {
+        const suggestionsData = suggestionsCell.dataset.suggestions;
+        suggestions = suggestionsData ? JSON.parse(suggestionsData) : [];
+    } catch (e) {
+        console.error('Failed to parse suggestions data:', e);
+        return;
+    }
 
-    // Split suggestions by semicolon, newline, or <br> (displayed as newline in textContent)
-    let suggestions = currentSuggestionsText.split(/[;\n]+/).map(s => s.trim()).filter(s => s);
+    if (suggestions.length === 0) return;
 
     // Get suggestion patterns for this field
     const patterns = fieldSuggestionPatterns[field] || [];
@@ -882,12 +894,14 @@ function updateSuggestionsColumnAfterEdit(idx, field) {
 
     // Only update if we actually removed something
     if (suggestions.length < originalCount) {
+        // Update data attribute
+        suggestionsCell.dataset.suggestions = JSON.stringify(suggestions);
+
+        // Update display
         if (suggestions.length === 0) {
-            suggestionsCell.textContent = '';
             suggestionsCell.innerHTML = '';
         } else {
-            suggestionsCell.textContent = suggestions.join('; ');
-            suggestionsCell.innerHTML = suggestions.join('<br>');
+            suggestionsCell.innerHTML = suggestions.map(s => escapeHtml(s)).join('<br>');
         }
     }
 }
