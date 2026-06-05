@@ -518,7 +518,10 @@ def recalculate_tier(filename):
             # If found, update all edited fields in the DataFrame
             if record_idx is not None:
                 for field_key, col_name in header_map.items():
-                    if col_name in record and col_name in df.columns:
+                    if col_name in record:
+                        # Create column if it doesn't exist (e.g., adding phone to records without phone)
+                        if col_name not in df.columns:
+                            df[col_name] = ''
                         df.at[record_idx, col_name] = record[col_name]
 
                 # Update validation columns
