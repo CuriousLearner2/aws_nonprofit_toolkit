@@ -810,14 +810,14 @@ const fieldIssuePatterns = {
 
 // Map field names to their associated suggestion patterns
 const fieldSuggestionPatterns = {
-    'phone': ['phone'],
-    'email': ['email'],
+    'phone': ['phone', 'add phone'],
+    'email': ['email', 'consider:', '@'],  // Consider: xyz@abc.com suggestions
     'name': ['name'],
     'amount': ['amount'],
-    'address_1': ['address'],
+    'address_1': ['address', 'street', 'complete address'],
     'city': ['city'],
     'state': ['state'],
-    'campaign': ['campaign']
+    'campaign': ['campaign', 'fund']
 };
 
 function updateIssuesColumnAfterEdit(idx, field) {
@@ -888,7 +888,6 @@ function updateSuggestionsColumnAfterEdit(idx, field) {
     // Remove only suggestions that match the field's patterns
     const originalCount = suggestions.length;
     suggestions = suggestions.filter(suggestion => {
-        // Keep the suggestion unless it matches one of the patterns for this field
         return !patterns.some(pattern => suggestion.toLowerCase().includes(pattern.toLowerCase()));
     });
 
