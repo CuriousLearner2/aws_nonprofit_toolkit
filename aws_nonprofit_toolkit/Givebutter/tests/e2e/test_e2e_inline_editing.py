@@ -336,3 +336,98 @@ async def test_inline_editing_updates_suggestions_column(flask_app_isolated, tem
 
         finally:
             await browser.close()
+
+
+@pytest.mark.e2e
+async def test_inline_editing_recalculates_tier_on_edit(flask_app_isolated, temp_dir):
+    """Verify that Validation_Tier updates when fixes move record between tiers."""
+    from playwright.async_api import async_playwright
+    import csv
+
+    # Create test CSV with record in FAIL tier (missing phone, bad email)
+    test_csv = temp_dir / "test_tier_recalc.csv"
+    with open(test_csv, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
+        ])
+        writer.writeheader()
+        writer.writerow({
+            'Transaction ID': 'TXN003',
+            'Date': '2026-06-04',
+            'Name': 'Test User',
+            'Email': 'test@gmai.com',  # Bad email - triggers Email issue
+            'Phone': '',  # Missing phone - triggers Phone issue
+            'Amount': '100',
+            'Campaign Title': 'General Fund'
+        })
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+
+        try:
+            await page.goto("http://127.0.0.1:8000/")
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
+
+            # Upload CSV
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(test_csv))
+
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            if submit_button:
+                await submit_button.click()
+
+            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+
+            # Get initial tier (should be WARNING due to email issue)
+            tier_cell = await page.query_selector('tr[data-record-idx="0"] td:nth-child(10)')
+            if tier_cell:
+                initial_tier_text = await tier_cell.text_content()
+                assert 'WARNING' in initial_tier_text, f"Initial tier should be WARNING, got {initial_tier_text}"
+
+                # Edit email field to fix the typo
+                email_cell = await page.query_selector('td.editable-cell[data-field="email"]')
+                if email_cell:
+                    await email_cell.click()
+                    email_input = await email_cell.query_selector('input.cell-edit')
+                    if email_input:
+                        await email_input.fill('test@gmail.com')
+
+                        # Save the edit
+                        save_btn = await email_cell.query_selector('.btn-edit-save')
+                        if save_btn:
+                            await save_btn.click()
+
+                            # Wait for tier recalculation
+                            await page.wait_for_timeout(500)
+
+                            # Check tier again (should still be WARNING due to missing phone)
+                            tier_cell_updated = await page.query_selector('tr[data-record-idx="0"] td:nth-child(10)')
+                            if tier_cell_updated:
+                                updated_tier_text = await tier_cell_updated.text_content()
+                                assert 'WARNING' in updated_tier_text, f"After email fix, tier should still be WARNING (phone missing), got {updated_tier_text}"
+
+                                # Now fix the phone number
+                                phone_cell = await page.query_selector('td.editable-cell[data-field="phone"]')
+                                if phone_cell:
+                                    await phone_cell.click()
+                                    phone_input = await phone_cell.query_selector('input.cell-edit')
+                                    if phone_input:
+                                        await phone_input.fill('5551234567')
+
+                                        # Save the edit
+                                        save_btn = await phone_cell.query_selector('.btn-edit-save')
+                                        if save_btn:
+                                            await save_btn.click()
+
+                                            # Wait for tier recalculation
+                                            await page.wait_for_timeout(500)
+
+                                            # Check tier now (should be PASS)
+                                            tier_cell_final = await page.query_selector('tr[data-record-idx="0"] td:nth-child(10)')
+                                            if tier_cell_final:
+                                                final_tier_text = await tier_cell_final.text_content()
+                                                assert 'PASS' in final_tier_text, f"After fixing all issues, tier should be PASS, got {final_tier_text}"
+
+        finally:
+            await browser.close()

@@ -1126,7 +1126,7 @@ function fuzzyMatchSimple(str1, str2) {
     return matches / Math.max(s1.length, s2.length);
 }
 
-function saveEdit(cell, input, errorMsg) {
+async function saveEdit(cell, input, errorMsg) {
     const field = input.dataset.field;
     const value = input.value;
     const idx = parseInt(input.dataset.idx);
@@ -1148,6 +1148,107 @@ function saveEdit(cell, input, errorMsg) {
     // Update Issues and Suggestions columns: remove those specific to this field only
     updateIssuesColumnAfterEdit(idx, field);
     updateSuggestionsColumnAfterEdit(idx, field);
+
+    // Recalculate tier after edit
+    await recalculateTierAfterEdit(idx);
+}
+
+async function recalculateTierAfterEdit(idx) {
+    if (!currentFile || !currentRecords || !currentRecords[idx]) {
+        return;
+    }
+
+    try {
+        // Build record object with current data (including edits)
+        const record = { ...currentRecords[idx] };
+
+        // Apply any pending edits to the record before sending
+        if (editedRecords[idx]) {
+            // Map field names to column names
+            const fieldToColumn = {
+                'name': record['Name'] || record['Donor Name'] || record['Full Name'],
+                'email': record['Email'] || record['Email Address'] || record['Primary Email'],
+                'phone': record['Phone'] || record['Phone Number'] || record['Contact Phone'],
+                'amount': record['Amount'],
+                'address_1': record['Address 1'] || record['Street Address'] || record['Address Line 1'],
+                'city': record['City'],
+                'state': record['State'],
+                'campaign': record['Campaign Title'] || record['Campaign'] || record['Fund']
+            };
+
+            // Apply edits
+            for (const [field, value] of Object.entries(editedRecords[idx])) {
+                if (field === 'name') {
+                    if (record['Name']) record['Name'] = value;
+                    else if (record['Donor Name']) record['Donor Name'] = value;
+                    else if (record['Full Name']) record['Full Name'] = value;
+                } else if (field === 'email') {
+                    if (record['Email']) record['Email'] = value;
+                    else if (record['Email Address']) record['Email Address'] = value;
+                    else if (record['Primary Email']) record['Primary Email'] = value;
+                } else if (field === 'phone') {
+                    if (record['Phone']) record['Phone'] = value;
+                    else if (record['Phone Number']) record['Phone Number'] = value;
+                    else if (record['Contact Phone']) record['Contact Phone'] = value;
+                } else if (field === 'amount') {
+                    record['Amount'] = value;
+                } else if (field === 'address_1') {
+                    if (record['Address 1']) record['Address 1'] = value;
+                    else if (record['Street Address']) record['Street Address'] = value;
+                    else if (record['Address Line 1']) record['Address Line 1'] = value;
+                } else if (field === 'city') {
+                    record['City'] = value;
+                } else if (field === 'state') {
+                    record['State'] = value;
+                } else if (field === 'campaign') {
+                    if (record['Campaign Title']) record['Campaign Title'] = value;
+                    else if (record['Campaign']) record['Campaign'] = value;
+                    else if (record['Fund']) record['Fund'] = value;
+                }
+            }
+        }
+
+        // Call backend to recalculate tier
+        const response = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/recalculate-tier`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ record })
+        });
+
+        if (!response.ok) {
+            console.error(`Failed to recalculate tier: ${response.statusText}`);
+            return;
+        }
+
+        const data = await response.json();
+        const newTier = data.tier;
+        const oldTier = currentRecords[idx]['Validation_Tier'];
+
+        // Update the in-memory record
+        currentRecords[idx]['Validation_Tier'] = newTier;
+
+        // Update the tier display in the DOM
+        const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
+        if (row) {
+            const tierCells = row.querySelectorAll('td');
+            // The tier column is typically the 10th column (0-indexed: 9)
+            if (tierCells.length > 9) {
+                const tierCell = tierCells[9];
+                const tierSpan = tierCell.querySelector('span');
+                if (tierSpan) {
+                    const oldClass = `tier-${oldTier.toLowerCase()}`;
+                    const newClass = `tier-${newTier.toLowerCase()}`;
+                    tierSpan.classList.remove(oldClass);
+                    tierSpan.classList.add(newClass);
+                    tierSpan.textContent = newTier;
+                }
+            }
+        }
+
+        console.log(`Record ${idx}: Tier updated from ${oldTier} to ${newTier}`);
+    } catch (err) {
+        console.error(`Error recalculating tier for record ${idx}:`, err);
+    }
 }
 
 function cancelEdit(cell, input, errorMsg) {

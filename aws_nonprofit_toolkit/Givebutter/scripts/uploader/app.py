@@ -11,7 +11,21 @@ import sys
 
 # Add parent directory to path so we can import processor
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from processor import process_csv as run_processor, check_duplicates, build_header_mapping
+from processor import (
+    process_csv as run_processor,
+    check_duplicates,
+    build_header_mapping,
+    validate_transaction_id,
+    validate_date,
+    validate_email,
+    validate_amount,
+    validate_name,
+    validate_phone,
+    validate_address,
+    assign_tier,
+    load_rules,
+    load_reference_list
+)
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -378,6 +392,87 @@ def submit_decisions(filename):
     except Exception as e:
         logger.error(f"Error submitting decisions for {filename}: {e}")
         return jsonify({'error': f'Submission failed: {str(e)}'}), 500
+
+@app.route('/api/processing/<filename>/recalculate-tier', methods=['POST'])
+def recalculate_tier(filename):
+    """
+    Recalculate validation tier for a record after edits.
+
+    Expected JSON:
+    {
+        "record": {
+            "Name": "John Doe",
+            "Email": "john@gmail.com",
+            "Phone": "5551234567",
+            "Amount": "100",
+            ...
+        }
+    }
+
+    Returns:
+    {
+        "tier": "PASS|WARNING|FAIL"
+    }
+    """
+    if not validate_filename(filename):
+        return jsonify({'error': 'Invalid filename'}), 400
+
+    try:
+        data = request.get_json() or {}
+        record = data.get('record', {})
+
+        if not record:
+            return jsonify({'error': 'No record provided'}), 400
+
+        # Load configs
+        rules = load_rules()
+        reference = load_reference_list()
+
+        # Build header mapping from the record keys
+        # Create a minimal header_map from record keys
+        header_map = build_header_mapping(record.keys())
+
+        # Run all validations on the record
+        validation_results = {}
+
+        # Validate transaction ID (required)
+        tier, reason, suggestion = validate_transaction_id(record, header_map)
+        validation_results['transaction_id'] = {'tier': tier, 'reason': reason}
+
+        # Validate date (required)
+        tier, reason, suggestion = validate_date(record, header_map)
+        validation_results['date'] = {'tier': tier, 'reason': reason}
+
+        # Validate email (required)
+        tier, reason, suggestion = validate_email(record, header_map, rules, reference)
+        validation_results['email'] = {'tier': tier, 'reason': reason}
+
+        # Validate amount (required)
+        tier, reason, suggestion = validate_amount(record, header_map, reference)
+        validation_results['amount'] = {'tier': tier, 'reason': reason}
+
+        # Validate name (required)
+        tier, reason, suggestion = validate_name(record, header_map, reference)
+        validation_results['name'] = {'tier': tier, 'reason': reason}
+
+        # Validate phone (optional)
+        tier, reason, suggestion = validate_phone(record, header_map, rules)
+        validation_results['phone'] = {'tier': tier, 'reason': reason}
+
+        # Validate address (optional)
+        tier, reason = validate_address(record, header_map)
+        validation_results['address'] = {'tier': tier, 'reason': reason}
+
+        # Assign tier based on validation results
+        new_tier = assign_tier(validation_results)
+
+        logger.info(f"Recalculated tier for {filename}: {new_tier}")
+        return jsonify({'tier': new_tier})
+
+    except Exception as e:
+        logger.error(f"Error recalculating tier for {filename}: {e}")
+        return jsonify({'error': f'Recalculation failed: {str(e)}'}), 500
+
 
 @app.route('/api/processing/<filename>/cancel', methods=['POST'])
 @require_auth
