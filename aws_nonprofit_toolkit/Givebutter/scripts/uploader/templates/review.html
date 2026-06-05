@@ -202,8 +202,13 @@
         .btn-edit-save {
             background: #28a745;
         }
-        .btn-edit-save:hover {
+        .btn-edit-save:hover:not(:disabled) {
             background: #218838;
+        }
+        .btn-edit-save:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
         }
         .btn-edit-cancel {
             background: #dc3545;
@@ -1023,6 +1028,19 @@ function switchToEditMode(cell) {
     const duplicateMsg = document.createElement('div');
     duplicateMsg.className = 'edit-duplicate';
 
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'btn-edit-save';
+    saveBtn.textContent = '✓ Save';
+    saveBtn.disabled = true;  // Start disabled until field is valid
+    saveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Remove blur listener to prevent validation
+        input.onblur = null;
+        saveEdit(cell, input, errorMsg);
+    });
+
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'btn-edit-cancel';
@@ -1037,6 +1055,7 @@ function switchToEditMode(cell) {
 
     const actions = document.createElement('div');
     actions.className = 'edit-actions';
+    actions.appendChild(saveBtn);
     actions.appendChild(cancelBtn);
 
     // Clear old content
@@ -1054,18 +1073,17 @@ function switchToEditMode(cell) {
 
     // Real-time validation on input change (as user types)
     input.addEventListener('input', () => {
-        validateFieldValue(field, input.value, input, errorMsg);
+        const isValid = validateFieldValue(field, input.value, input, errorMsg);
+        // Enable/disable save button based on validation
+        saveBtn.disabled = !isValid;
     });
 
-    // Auto-save and duplicate checking on blur
+    // Check for duplicates on blur, but don't auto-save
     input.addEventListener('blur', () => {
         const isValid = validateFieldValue(field, input.value, input, errorMsg);
+        saveBtn.disabled = !isValid;
         if (isValid) {
             checkForDuplicates(field, input.value, idx, duplicateMsg, input);
-            // Auto-save when valid
-            setTimeout(() => {
-                saveEdit(cell, input, errorMsg);
-            }, 100);
         }
     });
 }
