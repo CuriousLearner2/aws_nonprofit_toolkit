@@ -299,6 +299,7 @@
                 <button class="btn btn-secondary" onclick="setAllDecision('approved')">All: Approved</button>
                 <button class="btn btn-secondary" onclick="setAllDecision('followup')">All: Follow-up</button>
                 <button class="btn btn-secondary" onclick="setAllDecision('rejected')">All: Rejected</button>
+                <button class="btn btn-success" onclick="doneReview()">✓ Done</button>
                 <button class="btn btn-danger" onclick="cancelReview()">Cancel Review</button>
             </div>
         </div>
@@ -792,6 +793,16 @@ Are you sure?`;
     } finally {
         document.getElementById('submitBtn').disabled = false;
     }
+}
+
+function doneReview() {
+    if (!currentFile) return;
+
+    // All edits are already saved to the CSV file
+    // Close the review and return to the file queue
+    showStatus(`✓ Review complete for ${currentFile} - all changes saved`, 'success', 'uploadStatus');
+    closeReview();
+    loadProcessing();
 }
 
 async function cancelReview() {
