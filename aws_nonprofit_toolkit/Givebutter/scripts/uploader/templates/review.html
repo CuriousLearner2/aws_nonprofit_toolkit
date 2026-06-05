@@ -1005,7 +1005,16 @@ function switchToEditMode(cell) {
     input.focus();
     input.select();
 
-    // Real-time validation and duplicate checking on blur
+    // Real-time validation on input change (as user types)
+    input.addEventListener('input', () => {
+        const isValid = validateFieldValue(field, input.value, input, errorMsg);
+        // Disable save button if there are errors
+        saveBtn.disabled = !isValid;
+        saveBtn.style.opacity = isValid ? '1' : '0.5';
+        saveBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
+    });
+
+    // Duplicate checking on blur
     input.addEventListener('blur', () => {
         const isValid = validateFieldValue(field, input.value, input, errorMsg);
         if (isValid) {
@@ -1029,6 +1038,21 @@ function validateFieldValue(field, value, input, errorMsg) {
         const digits = value.replace(/\D/g, '');
         if (digits.length < 10 || digits.length > 11) {
             error = 'Phone must be 10-11 digits';
+        } else {
+            // Check against invalid test patterns (same as backend)
+            const invalidPatterns = [
+                { pattern: /^(.)\\1{9}$/, reason: 'All digits are identical' },
+                { pattern: /^1234567890$/, reason: 'Sequential test number' },
+                { pattern: /^9876543210$/, reason: 'Reverse sequential test number' },
+                { pattern: /^555[0-1]\d{6}$/, reason: 'Reserved test number' }
+            ];
+
+            for (let {pattern, reason} of invalidPatterns) {
+                if (pattern.test(digits)) {
+                    error = `Invalid: ${reason}`;
+                    break;
+                }
+            }
         }
     } else if (field === 'amount') {
         const num = parseFloat(value);
@@ -1283,13 +1307,17 @@ async function recalculateTierAfterEdit(idx) {
 
             // Update Issues column
             const issuesCell = row.querySelector('td[data-field-type="issues"]');
+            console.log(`Record ${idx}: newIssues type=${typeof newIssues}, value=${JSON.stringify(newIssues)}`);
             if (issuesCell) {
                 issuesCell.dataset.issues = JSON.stringify(newIssues);
                 if (newIssues.length === 0) {
                     issuesCell.innerHTML = '';
                 } else {
-                    issuesCell.innerHTML = newIssues.map(i => escapeHtml(i)).join('<br>');
+                    const issuesHtml = newIssues.map(i => escapeHtml(i)).join('<br>');
+                    console.log(`Record ${idx}: Setting issues HTML to: ${issuesHtml}`);
+                    issuesCell.innerHTML = issuesHtml;
                 }
+                console.log(`Record ${idx}: Issues cell updated. Current innerHTML: ${issuesCell.innerHTML}`);
             } else {
                 console.warn(`Record ${idx}: Issues cell not found - verify data-field-type="issues" attribute exists`);
             }

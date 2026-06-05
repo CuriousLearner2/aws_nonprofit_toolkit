@@ -2,7 +2,7 @@
 
 Comprehensive test suite for the Givebutter CSV processor with validation, duplicate detection, and operator review workflow.
 
-> **Latest Update (2026-06-05):** Added column structure regression tests and pre-commit hook to prevent template rendering bugs. Covers processor output validation and table DOM alignment. All 271 tests passing (9 new). Tests automatically run before each commit.
+> **Latest Update (2026-06-05):** Implemented inline field validation with real-time feedback. Frontend now catches invalid test phone numbers, invalid email formats, and validates amounts on input change. Added 11 integration tests covering validation logic. All 282 tests passing. Tests auto-run before each commit via pre-commit hook.
 
 ## Test Structure
 
@@ -23,7 +23,8 @@ tests/
 │   ├── test_decision_persistence.py # Decision saving/loading tests
 │   ├── test_csv_formats.py        # CSV format handling tests
 │   ├── test_edit_persistence.py   # Inline edit persistence tests
-│   └── test_column_structure.py   # Column output validation tests (NEW 2026-06-05)
+│   ├── test_column_structure.py   # Column output validation tests
+│   └── test_inline_validation.py  # Inline field validation logic (NEW 2026-06-05)
 │
 ├── e2e/                           # End-to-end UI tests with Playwright
 │   ├── test_e2e_upload_workflow.py # Upload workflow tests
@@ -275,7 +276,7 @@ def test_something(temp_dir, sample_csv, rules_config, reference_config):
 - Single-row CSV
 - Numeric string preservation
 
-### test_column_structure.py (NEW 2026-06-05)
+### test_column_structure.py
 Regression tests to prevent template rendering bugs:
 - All required data columns present in processor output
 - Validation columns (Validation_Tier, Issues, Suggested_Modifications) always added
@@ -284,6 +285,19 @@ Regression tests to prevent template rendering bugs:
 - Original CSV columns preserved and not lost during processing
 
 **Why:** Catches bugs where columns are accidentally removed, reordered, or rendered in wrong positions.
+
+### test_inline_validation.py (NEW 2026-06-05)
+Tests for real-time validation during inline field editing:
+- Phone validation catches sequential test numbers (1234567890)
+- Phone validation catches all-same-digit patterns (1111111111)
+- Phone validation catches reserved test patterns (555-01xx-xxxx)
+- Email validation catches missing @ symbol
+- Email validation detects known typos (gmai.com → gmail.com)
+- Amount validation rejects zero and negative values
+- Amount validation rejects non-numeric input
+- Valid inputs pass all validation checks
+
+**Why:** Ensures operators get immediate feedback when editing fields with invalid test patterns, preventing bad data from being submitted.
 
 ## E2E Tests Overview
 

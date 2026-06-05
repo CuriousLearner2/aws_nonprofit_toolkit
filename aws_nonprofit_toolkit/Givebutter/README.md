@@ -169,23 +169,24 @@ python3 scripts/build_reference_list.py
 
 ## Testing
 
-✅ **Comprehensive test suite: 271 tests (all passing)**
+✅ **Comprehensive test suite: 282 tests (all passing)**
 - Unit tests (157 tests) — All validation functions and edge cases
   - Email, phone, amount, name, address, date, tier assignment, header mapping
-- Integration tests (57 tests) — CSV processing, persistence, decision workflows
+- Integration tests (68 tests) — CSV processing, persistence, decision workflows
   - Full processor pipeline
   - Decision persistence with operator notes
   - Edit persistence and validation on submit
   - CSV format handling and edge cases
   - Override confirmation logic
-  - Column structure validation (NEW: processor output format)
+  - Column structure validation (processor output format)
+  - Inline field validation logic (NEW: phone test patterns, email format, amount ranges)
 - End-to-end tests (59 tests) — Full UI workflows with Playwright
   - Upload and processing queue
   - Decision workflow and record review
   - Inline editing with real-time validation
   - Form inputs and validation feedback
   - Visual regression testing at multiple viewports (mobile, tablet, desktop)
-  - Table DOM structure and column alignment (NEW: prevents rendering regressions)
+  - Table DOM structure and column alignment (prevents rendering regressions)
 
 ✅ **Real-world validation verified**
 - 10 records: 9 warnings detected, 0 failures
@@ -228,7 +229,15 @@ See [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) for full troubleshooting.
 
 ## Changelog
 
-**v3.2** (Current)
+**v3.3** (Current)
+- Implemented inline field validation with real-time feedback
+- Frontend validates against invalid test phone patterns (sequential, all same digits, reserved 555 ranges)
+- Real-time validation on input change shows error messages below fields
+- Save button disabled when validation errors present
+- Added 11 integration tests for inline validation logic
+- All 282 tests passing
+
+**v3.2**
 - Added column structure regression tests (integration + E2E)
 - Added pre-commit hook to auto-run tests before commits
 - Fixed column alignment bug in review table (was rendering all columns, not just mapped ones)
