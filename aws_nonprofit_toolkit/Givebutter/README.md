@@ -169,12 +169,25 @@ python3 scripts/build_reference_list.py
 
 ## Testing
 
-✅ **Comprehensive test suite: 234 tests**
-- Unit tests (130 tests) — Validation functions, tier assignment, header mapping
-- Integration tests (70 tests) — Full processor pipeline, decision persistence, CSV formats
-- End-to-end tests (7 tests) — Inline editing, tier recalculation, UI interaction
+✅ **Comprehensive test suite: 260+ tests**
+- Unit tests (165+ tests)
+  - Validation functions (130 tests)
+  - Field validation edge cases (35+ tests) — Date formats, amount boundaries, name length, phone patterns, email typos, address formats
+- Integration tests (85+ tests)
+  - Full processor pipeline (70 tests)
+  - Edit persistence (5 tests) — Verify edits saved to output CSV
+  - Edit validation on submit (5+ tests) — Revalidation after edits
+  - CSV formats (5 tests)
+- End-to-end tests (9 tests) — Inline editing, tier recalculation, UI interaction
+  - Pencil icon hover
+  - Click-to-edit workflow
+  - Cancel/discard changes
+  - Invalid input error display
+  - Field-specific issue clearing
+  - Field-specific suggestion clearing
+  - Tier recalculation on fix
+  - Tier recalculation on failure
 - Visual regression (15 tests) — Responsive design at 3 viewports
-- Form interaction (12+ tests) — Input feedback, validation messages
 
 ✅ **Real-world validation verified**
 - 10 records: 9 warnings detected, 0 failures
