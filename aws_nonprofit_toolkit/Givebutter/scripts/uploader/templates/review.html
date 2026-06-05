@@ -1243,9 +1243,9 @@ async function recalculateTierAfterEdit(idx) {
         const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
         if (row) {
             const tierCells = row.querySelectorAll('td');
-            // The tier column is typically the 10th column (0-indexed: 9)
-            if (tierCells.length > 9) {
-                const tierCell = tierCells[9];
+            // The tier column is the 11th column (0-indexed: 10)
+            if (tierCells.length > 10) {
+                const tierCell = tierCells[10];
                 const tierSpan = tierCell.querySelector('span');
                 if (tierSpan) {
                     const oldClass = `tier-${oldTier.toLowerCase()}`;
@@ -1256,9 +1256,9 @@ async function recalculateTierAfterEdit(idx) {
                 }
             }
 
-            // Update Issues column (11th column, 0-indexed: 10)
-            if (tierCells.length > 10) {
-                const issuesCell = tierCells[10];
+            // Update Issues column (12th column, 0-indexed: 11)
+            if (tierCells.length > 11) {
+                const issuesCell = tierCells[11];
                 issuesCell.dataset.issues = JSON.stringify(newIssues);
                 if (newIssues.length === 0) {
                     issuesCell.innerHTML = '';
@@ -1267,9 +1267,9 @@ async function recalculateTierAfterEdit(idx) {
                 }
             }
 
-            // Update Suggestions column (12th column, 0-indexed: 11)
-            if (tierCells.length > 11) {
-                const suggestionsCell = tierCells[11];
+            // Update Suggestions column (13th column, 0-indexed: 12)
+            if (tierCells.length > 12) {
+                const suggestionsCell = tierCells[12];
                 suggestionsCell.dataset.suggestions = JSON.stringify(newSuggestions);
                 if (newSuggestions.length === 0) {
                     suggestionsCell.innerHTML = '';
