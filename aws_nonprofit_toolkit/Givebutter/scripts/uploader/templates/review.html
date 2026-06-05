@@ -538,10 +538,10 @@ async function reviewFile(filename) {
                         <span class="cell-display"><small>${escapeHtml(campaign)}</small></span>
                         <span class="edit-icon">✏️</span>
                     </td>
-                    <td class="readonly-cell"><span class="${tierClass}">${tierText}</span></td>
-                    <td class="readonly-cell issues" data-issues='${JSON.stringify((row['Issues'] || '').split('; ').filter(i => i))}'>${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
-                    <td class="readonly-cell suggestions" data-suggestions='${JSON.stringify((row['Suggested_Modifications'] || '').split('; ').filter(s => s))}'>${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
-                    <td>
+                    <td class="readonly-cell" data-field-type="tier"><span class="${tierClass}">${tierText}</span></td>
+                    <td class="readonly-cell issues" data-field-type="issues" data-issues='${JSON.stringify((row['Issues'] || '').split('; ').filter(i => i))}'>${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
+                    <td class="readonly-cell suggestions" data-field-type="suggestions" data-suggestions='${JSON.stringify((row['Suggested_Modifications'] || '').split('; ').filter(s => s))}'>${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
+                    <td data-field-type="decision">
                         <select class="decision-select" data-idx="${idx}">
                             <option value="">Please Select</option>
                             <option value="approved" ${savedDecision === 'approved' ? 'selected' : ''}>Approved</option>
@@ -549,7 +549,7 @@ async function reviewFile(filename) {
                             <option value="rejected" ${savedDecision === 'rejected' ? 'selected' : ''}>Rejected</option>
                         </select>
                     </td>
-                    <td>
+                    <td data-field-type="notes">
                         <textarea class="notes-field" data-idx="${idx}" placeholder="Notes...">${escapeHtml(savedNotes)}</textarea>
                     </td>
                 </tr>
@@ -1242,10 +1242,9 @@ async function recalculateTierAfterEdit(idx) {
         // Update the tier display in the DOM
         const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
         if (row) {
-            const tierCells = row.querySelectorAll('td');
-            // The tier column is the 11th column (0-indexed: 10)
-            if (tierCells.length > 10) {
-                const tierCell = tierCells[10];
+            // Use data attributes instead of hardcoded indices for resilience
+            const tierCell = row.querySelector('td[data-field-type="tier"]');
+            if (tierCell) {
                 const tierSpan = tierCell.querySelector('span');
                 if (tierSpan) {
                     const oldClass = `tier-${oldTier.toLowerCase()}`;
@@ -1254,29 +1253,37 @@ async function recalculateTierAfterEdit(idx) {
                     tierSpan.classList.add(newClass);
                     tierSpan.textContent = newTier;
                 }
+            } else {
+                console.warn(`Record ${idx}: Tier cell not found - verify data-field-type="tier" attribute exists`);
             }
 
-            // Update Issues column (12th column, 0-indexed: 11)
-            if (tierCells.length > 11) {
-                const issuesCell = tierCells[11];
+            // Update Issues column
+            const issuesCell = row.querySelector('td[data-field-type="issues"]');
+            if (issuesCell) {
                 issuesCell.dataset.issues = JSON.stringify(newIssues);
                 if (newIssues.length === 0) {
                     issuesCell.innerHTML = '';
                 } else {
                     issuesCell.innerHTML = newIssues.map(i => escapeHtml(i)).join('<br>');
                 }
+            } else {
+                console.warn(`Record ${idx}: Issues cell not found - verify data-field-type="issues" attribute exists`);
             }
 
-            // Update Suggestions column (13th column, 0-indexed: 12)
-            if (tierCells.length > 12) {
-                const suggestionsCell = tierCells[12];
+            // Update Suggestions column
+            const suggestionsCell = row.querySelector('td[data-field-type="suggestions"]');
+            if (suggestionsCell) {
                 suggestionsCell.dataset.suggestions = JSON.stringify(newSuggestions);
                 if (newSuggestions.length === 0) {
                     suggestionsCell.innerHTML = '';
                 } else {
                     suggestionsCell.innerHTML = newSuggestions.map(s => escapeHtml(s)).join('<br>');
                 }
+            } else {
+                console.warn(`Record ${idx}: Suggestions cell not found - verify data-field-type="suggestions" attribute exists`);
             }
+        } else {
+            console.warn(`Record ${idx}: Row not found in table - verify data-record-idx="${idx}" attribute exists`);
         }
 
         console.log(`Record ${idx}: Tier updated from ${oldTier} to ${newTier}, Issues: ${newIssues.length}, Suggestions: ${newSuggestions.length}`);
