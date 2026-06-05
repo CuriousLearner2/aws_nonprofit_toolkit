@@ -309,6 +309,7 @@
             <thead>
                 <tr>
                     <th>Transaction ID</th>
+                    <th>Date</th>
                     <th>Name</th>
                     <th>Email</th>
                     <th>Phone</th>
@@ -329,6 +330,8 @@
             <tr data-tier="{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}">
                     {# Transaction ID column #}
                     <td>{{ record.get('Donation ID') or record.get('Transaction ID') or '—' }}</td>
+                    {# Date column #}
+                    <td>{{ record.get('Date') or record.get('Donation Date') or record.get('Gift Date') or record.get('Date Received') or '—' }}</td>
                     {# Name column #}
                     <td>{{ record.get('Donor Name') or record.get('Name') or '—' }}</td>
                     {# Email column #}
