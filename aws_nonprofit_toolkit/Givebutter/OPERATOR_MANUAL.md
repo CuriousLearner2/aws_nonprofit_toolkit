@@ -56,8 +56,8 @@ You'll see: `Running on http://127.0.0.1:8000`
 2. **Drag and drop** your Givebutter CSV export
 3. **Wait** for validation (usually < 5 seconds)
 4. **Review** the records with validation results
-5. **Decide** for each record (approve/followup/reject)
-6. **Click "Save Decisions"** to generate output files
+5. **Decide** for each record (approve/followup/reject) — auto-saved as you select
+6. **Click "✓ Done"** button when finished — generates output files
 
 Done! Three clean CSV files are created.
 
@@ -255,21 +255,33 @@ After editing email to "jane@gmail.com":
 #### Making Multiple Fixes
 
 You can edit multiple cells in the same record:
-- Edit Name → Save
-- Edit Email → Save  
-- Edit Phone → Save
-- Then set your Decision (Approved/Follow-up/Rejected)
-- Click "Save Decisions" to finalize everything
+- Edit Name → Click ✓ Save (edit auto-saves to CSV)
+- Edit Email → Click ✓ Save (edit auto-saves to CSV)  
+- Edit Phone → Click ✓ Save (edit auto-saves to CSV)
+- Select Decision (Approved/Follow-up/Rejected) — auto-saves immediately
+- Add Notes (optional) — auto-saves on blur (when you leave the field)
 
-**The edits and decisions are saved together**, so if you fix 3 fields and then approve the record, all changes go into the output file together.
+**All changes are saved automatically as you make them.** No additional "Save" button is needed.
 
 ---
 
-### Step 4: Save & Generate
+### Step 4: Done & Generate
 
-**Click "Save Decisions"**
+**When you're finished reviewing all records:**
 
-System creates three files:
+1. Click the **green "✓ Done"** button (bottom of the review table)
+   - This closes the review and returns the file to the review queue
+   - All your edits and decisions are already saved to the CSV file
+   - You can review the same file again later if needed — your changes will still be there
+
+2. The system will then create three output files:
+
+**About the buttons at the bottom:**
+- **"✓ Done"** — Finish reviewing (closes this file, returns to queue)
+- **"All: Approved/Follow-up/Rejected"** — Bulk set all records to one decision
+- **"Cancel Review"** — Abandon review and return file to intake queue
+
+**System creates three files:
 
 1. **`*_APPROVED.csv`**
    - Records you approved
@@ -634,7 +646,7 @@ A: Yes. Notes are saved in the `_FOLLOWUP.csv` file. Your tech lead can see them
 
 **Q: Can I undo my decisions?**
 
-A: If you haven't clicked "Save Decisions" yet, you can change your mind freely. After saving, the files are generated. You can re-upload and review again.
+A: Yes! Decisions are auto-saved as you select them, but you can change your mind anytime while reviewing. Just click the dropdown again and select a different decision. Once you click "✓ Done", the review closes and the output files are generated. If you need to make changes after that, you can re-upload the file and review again.
 
 ---
 
@@ -657,7 +669,7 @@ You should see: `{"status": "ok", "version": "3.0"}`
 1. **Ask your tech lead** to show you the system once
 2. **Upload a test file** from Givebutter
 3. **Walk through the review** (approve a few, follow-up on some)
-4. **Click "Save Decisions"** and check the output files
+4. **Click "✓ Done"** and check the output files
 5. **Ask questions** if anything is unclear
 
 You're now ready. Thank you for being the data quality guardian! 🎉
