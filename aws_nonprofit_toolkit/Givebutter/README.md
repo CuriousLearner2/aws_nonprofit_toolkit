@@ -2,7 +2,7 @@
 
 Complete donation data validation and operator review system for Givebutter exports.
 
-**Status:** ✅ Production Ready | **Version:** 3.1 | **Last Updated:** 2026-06-05
+**Status:** ✅ Production Ready | **Version:** 3.4 | **Last Updated:** 2026-06-05
 
 ---
 
@@ -41,8 +41,8 @@ Processes Givebutter CSV exports to:
 - **Automatic issue clearing** - Issues/suggestions update as you fix fields
 - **Real-time tier recalculation** - Validation tier updates instantly when edits fix issues
 - Notes field for operator context
-- Bulk action buttons for efficiency
-- Override confirmation for FAIL-tier approvals
+- Bulk action buttons for efficiency (smart confirmation: individual dialogs ≤5 records, summary dialog >5)
+- Override confirmation for FAIL and WARNING tier approvals
 
 ✅ **Configuration-Driven**
 - Rules loaded from JSON (no hardcoding)
@@ -229,7 +229,15 @@ See [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) for full troubleshooting.
 
 ## Changelog
 
-**v3.3** (Current)
+**v3.4** (Current)
+- Add Done button to close review and return to queue (all edits preserved)
+- Per-field Save/Cancel buttons with disabled state until valid
+- Override confirmation for both FAIL and WARNING tier records (not just FAIL)
+- Smart bulk approval logic: individual dialogs for ≤5 records, summary dialog for >5
+- Auto-save for data field edits (click Save when valid) + Decision/Notes fields
+- All 282 tests passing
+
+**v3.3**
 - Implemented inline field validation with real-time feedback
 - Frontend validates against invalid test phone patterns (sequential, all same digits, reserved 555 ranges)
 - Real-time validation on input change shows error messages below fields

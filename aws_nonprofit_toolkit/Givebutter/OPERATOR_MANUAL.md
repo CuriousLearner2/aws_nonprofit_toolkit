@@ -138,11 +138,29 @@ For **each record**, choose one decision:
 - Example: Clearly fake test entry, invalid email beyond repair
 - Will go to `_REJECTED.csv` (exclude from import)
 
+**⚠️ Important: Approving FAIL or WARNING Records**
+When you select "Approved" for a record with FAIL or WARNING validation tier:
+- A confirmation dialog appears showing the specific issues
+- Message: "⚠️ Override: You are approving this record despite validation failures: [issues]. Are you sure?"
+- Click "OK" to proceed with approval, or "Cancel" to choose a different decision
+- This protects against accidentally approving bad data
+
 **Bulk Actions:**
-- "All: Approved" — Mark all as approved at once
-- "All: Follow-up" — Mark all for follow-up
-- "All: Rejected" — Mark all as rejected
+- "All: Approved" — Mark all records as approved (see below for confirmation behavior)
+- "All: Follow-up" — Mark all records for follow-up
+- "All: Rejected" — Mark all records as rejected
 - Then click individual records to change as needed
+
+**When Using "All: Approved":**
+- If ≤5 records have FAIL or WARNING validation:
+  - You get an individual confirmation dialog for EACH problematic record
+  - Allows you to review the specific issues before proceeding
+  - Example: "⚠️ Override: You are approving this record despite validation failures: [issues]"
+- If >5 records have FAIL or WARNING validation:
+  - You get ONE summary confirmation dialog
+  - Message: "⚠️ You are approving N records with failures or warnings. Are you sure?"
+  - This prevents dialog fatigue while protecting against risky bulk operations
+- Click "OK" to proceed, "Cancel" to abandon
 
 ---
 

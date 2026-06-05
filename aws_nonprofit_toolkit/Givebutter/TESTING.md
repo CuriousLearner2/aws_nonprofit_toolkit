@@ -2,7 +2,7 @@
 
 Comprehensive test suite for the Givebutter CSV processor with validation, duplicate detection, and operator review workflow.
 
-> **Latest Update (2026-06-05):** Implemented inline field validation with real-time feedback. Frontend now catches invalid test phone numbers, invalid email formats, and validates amounts on input change. Added 11 integration tests covering validation logic. All 282 tests passing. Tests auto-run before each commit via pre-commit hook.
+> **Latest Update (2026-06-05):** Added override confirmation for WARNING and FAIL tier records. Smart bulk approval: individual dialogs for ≤5 records, summary dialog for >5. Per-field Save/Cancel buttons with disabled state until valid. Done button to close review with edits preserved. All 282 tests passing. Tests auto-run before each commit via pre-commit hook.
 
 ## Test Structure
 
@@ -380,6 +380,9 @@ Form and input interaction testing:
 - Visual state on selection
 - Keyboard navigation (arrow keys)
 - Value preservation
+- Override confirmation for FAIL/WARNING tier approvals
+- Bulk approval logic: individual dialogs (≤5 records) vs summary dialog (>5 records)
+- Auto-save persists decisions to CSV immediately
 
 **Notes Textarea Tests**:
 - Text input acceptance
