@@ -211,14 +211,20 @@ async def test_decision_selection_changes_visual_state(flask_app_for_forms, temp
             if review_button:
                 await review_button.click()
 
-                selects = await page.query_selector_all('select, [class*="decision"]')
+                selects = await page.query_selector_all('select.decision-select')
                 if selects:
+                    # Handle any confirmation dialogs automatically
+                    page.once("dialog", lambda dialog: dialog.accept())
+
                     # Select a decision
                     await selects[0].select_option(value="approved")
 
+                    # Wait for auto-save to complete
+                    await page.wait_for_load_state('networkidle', timeout=5000)
+
                     # Verify it's selected
-                    value = await selects[0].input_value()
-                    assert 'approved' in value.lower()
+                    value = await selects[0].evaluate('el => el.value')
+                    assert value == 'approved'
 
         finally:
             await browser.close()
@@ -268,10 +274,17 @@ async def test_dropdown_keyboard_navigation(flask_app_for_forms, temp_dir, sampl
 
                     # Select the second option (first is usually empty/default)
                     second_option_value = await options[1].get_attribute('value')
+
+                    # Handle any confirmation dialogs automatically
+                    page.once("dialog", lambda dialog: dialog.accept())
+
                     await dropdown.select_option(second_option_value)
 
+                    # Wait for auto-save to complete
+                    await page.wait_for_load_state('networkidle', timeout=5000)
+
                     # Verify the selection was made
-                    selected_value = await dropdown.input_value()
+                    selected_value = await dropdown.evaluate('el => el.value')
                     assert selected_value == second_option_value, f"Expected {second_option_value} to be selected, but got {selected_value}"
 
         finally:

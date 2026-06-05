@@ -209,16 +209,15 @@ async def test_decision_persistence_on_reopen(flask_app_running, temp_dir, sampl
                 await review_button.click()
 
                 # Make decision on first record
-                decision_selects = await page.query_selector_all('select, [class*="decision"]')
+                decision_selects = await page.query_selector_all('select.decision-select')
                 if decision_selects:
+                    # Handle any confirmation dialogs automatically
+                    page.once("dialog", lambda dialog: dialog.accept())
+
                     await decision_selects[0].select_option(value="approved")
 
-                    # Save partial
-                    save_button = await page.query_selector('button:has-text("Save")')
-                    if save_button:
-                        await save_button.click()
-
-                        await page.wait_for_selector('text=/saved|progress/', timeout=5000)
+                    # Wait for auto-save to complete (network idle)
+                    await page.wait_for_load_state('networkidle', timeout=5000)
 
                     # Go back to processing queue
                     await page.goto("http://127.0.0.1:8000/")
@@ -229,12 +228,12 @@ async def test_decision_persistence_on_reopen(flask_app_running, temp_dir, sampl
                         await review_button.click()
 
                         # Check that first record still shows "approved"
-                        await page.wait_for_selector('select, [class*="decision"]', timeout=5000)
+                        await page.wait_for_selector('select.decision-select', timeout=5000)
 
-                        decision_selects = await page.query_selector_all('select, [class*="decision"]')
-                        if decision_selects:
-                            selected_value = await decision_selects[0].input_value()
-                            assert 'approved' in selected_value.lower() or selected_value == 'approved'
+                        decision_select = await page.query_selector('select.decision-select')
+                        if decision_select:
+                            selected_value = await decision_select.evaluate('el => el.value')
+                            assert selected_value == 'approved', f"Expected 'approved', got '{selected_value}'"
 
         finally:
             await browser.close()

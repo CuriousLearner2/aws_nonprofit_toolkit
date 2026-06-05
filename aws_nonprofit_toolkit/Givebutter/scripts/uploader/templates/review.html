@@ -361,7 +361,7 @@
                     {# Suggested Fixes (Suggested_Modifications) #}
                     <td data-field-type="suggestions" data-idx="{{ record.idx }}">{{ record.get('Suggested_Modifications') or '—' }}</td>
                     <td>
-                        <select class="decision-select" data-idx="{{ record.idx }}" onchange="handleOverrideConfirmation(this, '{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}', '{{ record.get('Issues', '') or '' }}')">
+                        <select class="decision-select" data-idx="{{ record.idx }}" data-tier="{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}" data-issues="{{ record.get('Issues', '') or '' }}" onchange="handleOverrideConfirmation(this)">
                                 <option value="">-- Select --</option>
                                 <option value="approved">Approved</option>
                                 <option value="rejected">Rejected</option>
@@ -384,6 +384,7 @@
 <script>
 let currentFile = null;
 let currentRecords = null;
+let skipIndividualConfirmations = false;
 
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
@@ -569,7 +570,7 @@ async function reviewFile(filename) {
                     <td class="readonly-cell issues" data-field-type="issues" data-issues='${JSON.stringify((row['Issues'] || '').split('; ').filter(i => i))}'>${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
                     <td class="readonly-cell suggestions" data-field-type="suggestions" data-suggestions='${JSON.stringify((row['Suggested_Modifications'] || '').split('; ').filter(s => s))}'>${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
                     <td data-field-type="decision">
-                        <select class="decision-select" data-idx="${idx}">
+                        <select class="decision-select" data-idx="${idx}" data-tier="${tierText}" data-issues="${escapeHtml(row['Issues'] || '')}" onchange="handleOverrideConfirmation(this)">
                             <option value="">Please Select</option>
                             <option value="approved" ${savedDecision === 'approved' ? 'selected' : ''}>Approved</option>
                             <option value="followup" ${savedDecision === 'followup' ? 'selected' : ''}>Follow-up</option>
@@ -597,9 +598,34 @@ async function reviewFile(filename) {
 }
 
 function setAllDecision(decision) {
+    if (decision === 'approved') {
+        // Count FAIL and WARNING tier records
+        let failWarningCount = 0;
+        document.querySelectorAll('.decision-select').forEach(sel => {
+            const tier = sel.getAttribute('data-tier');
+            if (tier === 'FAIL' || tier === 'WARNING') {
+                failWarningCount++;
+            }
+        });
+
+        // If > 5 FAIL/WARNING records, show summary confirmation
+        if (failWarningCount > 5) {
+            const msg = `⚠️ You are approving ${failWarningCount} records with failures or warnings. Are you sure?`;
+            if (!confirm(msg)) {
+                return;
+            }
+            // Skip individual confirmations since we already confirmed
+            skipIndividualConfirmations = true;
+        }
+    }
+
+    // Set all decision values
     document.querySelectorAll('.decision-select').forEach(sel => {
         sel.value = decision;
     });
+
+    // Reset the skip flag
+    skipIndividualConfirmations = false;
 }
 
 async function submitDecisions() {
@@ -1473,10 +1499,18 @@ function collectEditedChanges() {
 // Load files on page load
 loadProcessing();
 
-function handleOverrideConfirmation(selectElement, tier, issues) {
+function handleOverrideConfirmation(selectElement) {
+    // Skip if this is part of a bulk operation that already confirmed
+    if (skipIndividualConfirmations) {
+        return;
+    }
+
     const decision = selectElement.value;
-    
-    if (decision === 'approved' && tier === 'FAIL') {
+    const tier = selectElement.getAttribute('data-tier');
+    const issues = selectElement.getAttribute('data-issues');
+
+    // Show confirmation for FAIL or WARNING when approving
+    if (decision === 'approved' && (tier === 'FAIL' || tier === 'WARNING')) {
         const msg = `⚠️ Override: You are approving this record despite validation failures:
 
 ${issues}
