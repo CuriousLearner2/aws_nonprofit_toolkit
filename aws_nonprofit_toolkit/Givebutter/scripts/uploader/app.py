@@ -215,6 +215,7 @@ def submit_decisions(filename):
         # Apply edits to the DataFrame
         # Map field names to actual column names (handling fuzzy matching)
         field_to_column = {
+            'date': None,
             'name': None,
             'email': None,
             'phone': None,
@@ -227,7 +228,12 @@ def submit_decisions(filename):
 
         # Detect actual column names from DataFrame
         for field, col in field_to_column.items():
-            if field == 'name':
+            if field == 'date':
+                for variant in ['Date', 'Donation Date', 'donation_date']:
+                    if variant in df.columns:
+                        field_to_column[field] = variant
+                        break
+            elif field == 'name':
                 for variant in ['Name', 'Donor Name', 'Full Name', 'donor_name', 'full_name']:
                     if variant in df.columns:
                         field_to_column[field] = variant
