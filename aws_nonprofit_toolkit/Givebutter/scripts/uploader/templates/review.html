@@ -291,7 +291,6 @@
             </div>
 
             <div class="actions">
-                <button class="btn btn-success" onclick="submitDecisions()" id="submitBtn">✓ Save Decisions</button>
                 <button class="btn btn-secondary" onclick="setAllDecision('approved')">All: Approved</button>
                 <button class="btn btn-secondary" onclick="setAllDecision('followup')">All: Follow-up</button>
                 <button class="btn btn-secondary" onclick="setAllDecision('rejected')">All: Rejected</button>
@@ -371,7 +370,6 @@
             </tbody>
         </table>
         <div style="margin-top: 16px;">
-            <button class="btn btn-success" onclick="submitDecisions()">✓ Save Decisions</button>
             <button class="btn btn-secondary" onclick="location.reload()">Cancel Review</button>
         </div>
     </div>
@@ -581,6 +579,9 @@ async function reviewFile(filename) {
 
         // Setup inline editing for all editable cells
         setupEditableCells();
+
+        // Setup auto-save for decision and notes fields
+        setupAutoSaveFields();
 
         document.getElementById('reviewPanel').classList.remove('hidden');
         window.scrollTo(0, 0);  // Scroll to top
@@ -939,6 +940,63 @@ function setupEditableCells() {
         cell.addEventListener('click', (e) => {
             if (!cell.classList.contains('editing')) {
                 switchToEditMode(cell);
+            }
+        });
+    });
+}
+
+function setupAutoSaveFields() {
+    // Auto-save Decision field on change
+    document.querySelectorAll('.decision-select').forEach(select => {
+        select.addEventListener('change', async (e) => {
+            const idx = parseInt(select.dataset.idx);
+            const decision = select.value;
+
+            if (!decision) return;  // Skip if empty
+
+            // Update in-memory record
+            if (!currentRecords[idx]) return;
+            currentRecords[idx]['Operator_Decision'] = decision;
+
+            // Send to backend to save
+            try {
+                const response = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/recalculate-tier`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ record: currentRecords[idx] })
+                });
+
+                if (response.ok) {
+                    console.log(`Decision saved for record ${idx}: ${decision}`);
+                }
+            } catch (err) {
+                console.error(`Failed to save decision: ${err.message}`);
+            }
+        });
+    });
+
+    // Auto-save Notes field on blur
+    document.querySelectorAll('.notes-field').forEach(textarea => {
+        textarea.addEventListener('blur', async (e) => {
+            const idx = parseInt(textarea.dataset.idx);
+            const notes = textarea.value;
+
+            if (!currentRecords[idx]) return;
+            currentRecords[idx]['Operator_Notes'] = notes;
+
+            // Send to backend to save
+            try {
+                const response = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/recalculate-tier`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ record: currentRecords[idx] })
+                });
+
+                if (response.ok) {
+                    console.log(`Notes saved for record ${idx}`);
+                }
+            } catch (err) {
+                console.error(`Failed to save notes: ${err.message}`);
             }
         });
     });

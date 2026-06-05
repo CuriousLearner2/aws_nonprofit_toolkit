@@ -501,6 +501,49 @@ def recalculate_tier(filename):
         # Assign tier based on validation results
         new_tier = assign_tier(validation_results)
 
+        # Save the edited record back to the CSV file
+        try:
+            path = PROCESSING_DIR / filename
+            df = pd.read_csv(path, dtype=str, encoding='utf-8').fillna('')
+
+            # Find the record index - use the first column (transaction ID) as lookup
+            record_idx = None
+            txn_id_col = header_map.get('transaction_id')
+            if txn_id_col and txn_id_col in record:
+                for idx, row in df.iterrows():
+                    if str(row[txn_id_col]).strip() == str(record[txn_id_col]).strip():
+                        record_idx = idx
+                        break
+
+            # If found, update all edited fields in the DataFrame
+            if record_idx is not None:
+                for field_key, col_name in header_map.items():
+                    if col_name in record and col_name in df.columns:
+                        df.at[record_idx, col_name] = record[col_name]
+
+                # Update validation columns
+                df.at[record_idx, 'Validation_Tier'] = new_tier
+                df.at[record_idx, 'Issues'] = "; ".join(issues) if issues else "None"
+                df.at[record_idx, 'Suggested_Modifications'] = "; ".join(suggestions) if suggestions else ""
+
+                # Update operator decision and notes if provided
+                if 'Operator_Decision' in record and record['Operator_Decision']:
+                    if 'Operator_Decision' not in df.columns:
+                        df['Operator_Decision'] = ''
+                    df.at[record_idx, 'Operator_Decision'] = record['Operator_Decision']
+
+                if 'Operator_Notes' in record:
+                    if 'Operator_Notes' not in df.columns:
+                        df['Operator_Notes'] = ''
+                    df.at[record_idx, 'Operator_Notes'] = record['Operator_Notes']
+
+                # Save back to CSV
+                df.to_csv(path, index=False, encoding='utf-8')
+                logger.info(f"Saved edits to {filename} at index {record_idx}")
+        except Exception as e:
+            logger.error(f"Failed to save edits to CSV: {e}")
+            # Don't fail the request, just log the error
+
         logger.info(f"Recalculated tier for {filename}: {new_tier}")
         return jsonify({
             'tier': new_tier,
