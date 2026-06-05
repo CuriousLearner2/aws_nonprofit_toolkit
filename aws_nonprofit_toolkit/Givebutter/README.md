@@ -169,21 +169,23 @@ python3 scripts/build_reference_list.py
 
 ## Testing
 
-✅ **Comprehensive test suite: 264 tests (262 passing)**
+✅ **Comprehensive test suite: 271 tests (all passing)**
 - Unit tests (157 tests) — All validation functions and edge cases
   - Email, phone, amount, name, address, date, tier assignment, header mapping
-- Integration tests (52 tests) — CSV processing, persistence, decision workflows
+- Integration tests (57 tests) — CSV processing, persistence, decision workflows
   - Full processor pipeline
   - Decision persistence with operator notes
   - Edit persistence and validation on submit
   - CSV format handling and edge cases
   - Override confirmation logic
-- End-to-end tests (55 tests) — Full UI workflows with Playwright
+  - Column structure validation (NEW: processor output format)
+- End-to-end tests (59 tests) — Full UI workflows with Playwright
   - Upload and processing queue
   - Decision workflow and record review
   - Inline editing with real-time validation
   - Form inputs and validation feedback
   - Visual regression testing at multiple viewports (mobile, tablet, desktop)
+  - Table DOM structure and column alignment (NEW: prevents rendering regressions)
 
 ✅ **Real-world validation verified**
 - 10 records: 9 warnings detected, 0 failures
@@ -226,12 +228,18 @@ See [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) for full troubleshooting.
 
 ## Changelog
 
-**v3.1** (Current)
+**v3.2** (Current)
+- Added column structure regression tests (integration + E2E)
+- Added pre-commit hook to auto-run tests before commits
+- Fixed column alignment bug in review table (was rendering all columns, not just mapped ones)
+- Restored Date field to display
+- All 271 tests passing
+
+**v3.1**
 - Fixed column index bug preventing validation issues from displaying after field edits
 - Refactored DOM updates to use CSS selectors instead of hardcoded indices
 - Added data-field-type attributes for more robust selector targeting
 - Improved console error messages for DOM update failures
-- All 262 tests passing
 
 **v3.0**
 - Per-record validation and operator decisions

@@ -2,7 +2,7 @@
 
 Comprehensive test suite for the Givebutter CSV processor with validation, duplicate detection, and operator review workflow.
 
-> **Latest Update (2026-06-05):** Fixed critical bug where validation issues weren't displayed after field edits due to incorrect DOM column indices. Refactored to use CSS selectors with data attributes for better maintainability and resilience. All 262 tests passing.
+> **Latest Update (2026-06-05):** Added column structure regression tests and pre-commit hook to prevent template rendering bugs. Covers processor output validation and table DOM alignment. All 271 tests passing (9 new). Tests automatically run before each commit.
 
 ## Test Structure
 
@@ -22,7 +22,8 @@ tests/
 │   ├── test_processor_full.py     # Full processor pipeline tests
 │   ├── test_decision_persistence.py # Decision saving/loading tests
 │   ├── test_csv_formats.py        # CSV format handling tests
-│   └── test_edit_persistence.py   # Inline edit persistence tests (NEW)
+│   ├── test_edit_persistence.py   # Inline edit persistence tests
+│   └── test_column_structure.py   # Column output validation tests (NEW 2026-06-05)
 │
 ├── e2e/                           # End-to-end UI tests with Playwright
 │   ├── test_e2e_upload_workflow.py # Upload workflow tests
@@ -31,7 +32,8 @@ tests/
 │   ├── test_e2e_visual_regression.py # Visual regression tests
 │   ├── test_e2e_form_input.py     # Form interaction tests
 │   ├── test_e2e_csv_format_variations.py # CSV format variation tests
-│   └── test_e2e_override_dialog_ui.py # Override confirmation dialog tests
+│   ├── test_e2e_override_dialog_ui.py # Override confirmation dialog tests
+│   └── test_e2e_table_structure.py # Table column alignment tests (NEW 2026-06-05)
 │
 ├── conftest.py                    # Pytest fixtures and configuration
 └── pytest.ini                     # Pytest configuration
@@ -59,6 +61,24 @@ requests==2.31.0
 
 ```bash
 playwright install chromium
+```
+
+## Pre-Commit Hook (Automatic Testing)
+
+Tests automatically run before each commit via `.git/hooks/pre-commit`. This prevents regressions from being committed without being caught by tests.
+
+**If a commit fails due to test failures:**
+```bash
+# Fix the failing tests
+pytest tests/ -v  # Identify and fix issues
+
+# Try commit again
+git commit -m "..."
+```
+
+To bypass the hook (not recommended):
+```bash
+git commit --no-verify
 ```
 
 ## Running Tests
@@ -255,6 +275,16 @@ def test_something(temp_dir, sample_csv, rules_config, reference_config):
 - Single-row CSV
 - Numeric string preservation
 
+### test_column_structure.py (NEW 2026-06-05)
+Regression tests to prevent template rendering bugs:
+- All required data columns present in processor output
+- Validation columns (Validation_Tier, Issues, Suggested_Modifications) always added
+- Validation columns positioned at end of output
+- Fuzzy column name matching works correctly
+- Original CSV columns preserved and not lost during processing
+
+**Why:** Catches bugs where columns are accidentally removed, reordered, or rendered in wrong positions.
+
 ## E2E Tests Overview
 
 ### test_e2e_upload_workflow.py
@@ -362,6 +392,25 @@ pytest tests/e2e/test_e2e_form_input.py -v
 pytest tests/e2e/test_e2e_form_input.py -k "dropdown" -v
 pytest tests/e2e/test_e2e_form_input.py -k "textarea" -v
 pytest tests/e2e/test_e2e_form_input.py -k "save" -v
+```
+
+Requires:
+- Flask app running at `http://127.0.0.1:8000`
+- Playwright with Chromium browser
+
+### test_e2e_table_structure.py (NEW 2026-06-05)
+DOM structure and column alignment tests:
+- Review table has all 15 expected header columns in correct order
+- Each data row has exactly as many cells as headers
+- Date column is always present and populated
+- No extra columns are rendered (prevents misalignment)
+
+**Why:** Catches column alignment bugs that would otherwise only be discovered by manually testing the UI. Regression prevention for template rendering issues.
+
+Usage:
+```bash
+# Run all table structure tests
+pytest tests/e2e/test_e2e_table_structure.py -v
 ```
 
 Requires:
