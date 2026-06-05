@@ -235,7 +235,7 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
         pattern = pattern_obj.get('pattern')
         reason = pattern_obj.get('reason', 'Invalid phone')
         if re.match(pattern, digits):
-            return ('FAIL', f"Invalid: {reason}", None)
+            return ('FAIL', f"Invalid: {reason}", "Please use a valid phone number")
 
     # Check for unusual formatting BEFORE validating digit count
     has_unusual_format = '.' in phone_str or phone_str.count('-') > 2 or phone_str.count('(') > 1

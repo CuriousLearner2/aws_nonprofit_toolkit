@@ -438,42 +438,74 @@ def recalculate_tier(filename):
         # Create a minimal header_map from record keys
         header_map = build_header_mapping(record.keys())
 
-        # Run all validations on the record
+        # Run all validations on the record - collect issues and suggestions
         validation_results = {}
+        issues = []
+        suggestions = []
 
         # Validate transaction ID (required)
         tier, reason, suggestion = validate_transaction_id(record, header_map)
         validation_results['transaction_id'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Transaction ID: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Validate date (required)
         tier, reason, suggestion = validate_date(record, header_map)
         validation_results['date'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Date: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Validate email (required)
         tier, reason, suggestion = validate_email(record, header_map, rules, reference)
         validation_results['email'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Email: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Validate amount (required)
         tier, reason, suggestion = validate_amount(record, header_map, reference)
         validation_results['amount'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Amount: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Validate name (required)
         tier, reason, suggestion = validate_name(record, header_map, reference)
         validation_results['name'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Name: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Validate phone (optional)
         tier, reason, suggestion = validate_phone(record, header_map, rules)
         validation_results['phone'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Phone: {reason}")
+        if suggestion:
+            suggestions.append(suggestion)
 
         # Validate address (optional)
         tier, reason = validate_address(record, header_map)
         validation_results['address'] = {'tier': tier, 'reason': reason}
+        if reason:
+            issues.append(f"Address: {reason}")
 
         # Assign tier based on validation results
         new_tier = assign_tier(validation_results)
 
         logger.info(f"Recalculated tier for {filename}: {new_tier}")
-        return jsonify({'tier': new_tier})
+        return jsonify({
+            'tier': new_tier,
+            'issues': issues[:5],  # Limit to 5 like processor does
+            'suggestions': suggestions[:5]
+        })
 
     except Exception as e:
         logger.error(f"Error recalculating tier for {filename}: {e}")

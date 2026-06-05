@@ -1230,10 +1230,14 @@ async function recalculateTierAfterEdit(idx) {
 
         const data = await response.json();
         const newTier = data.tier;
+        const newIssues = data.issues || [];
+        const newSuggestions = data.suggestions || [];
         const oldTier = currentRecords[idx]['Validation_Tier'];
 
         // Update the in-memory record
         currentRecords[idx]['Validation_Tier'] = newTier;
+        currentRecords[idx]['Issues'] = newIssues.length > 0 ? newIssues.join('; ') : 'None';
+        currentRecords[idx]['Suggested_Modifications'] = newSuggestions.length > 0 ? newSuggestions.join('; ') : '';
 
         // Update the tier display in the DOM
         const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
@@ -1251,9 +1255,31 @@ async function recalculateTierAfterEdit(idx) {
                     tierSpan.textContent = newTier;
                 }
             }
+
+            // Update Issues column (11th column, 0-indexed: 10)
+            if (tierCells.length > 10) {
+                const issuesCell = tierCells[10];
+                issuesCell.dataset.issues = JSON.stringify(newIssues);
+                if (newIssues.length === 0) {
+                    issuesCell.innerHTML = '';
+                } else {
+                    issuesCell.innerHTML = newIssues.map(i => escapeHtml(i)).join('<br>');
+                }
+            }
+
+            // Update Suggestions column (12th column, 0-indexed: 11)
+            if (tierCells.length > 11) {
+                const suggestionsCell = tierCells[11];
+                suggestionsCell.dataset.suggestions = JSON.stringify(newSuggestions);
+                if (newSuggestions.length === 0) {
+                    suggestionsCell.innerHTML = '';
+                } else {
+                    suggestionsCell.innerHTML = newSuggestions.map(s => escapeHtml(s)).join('<br>');
+                }
+            }
         }
 
-        console.log(`Record ${idx}: Tier updated from ${oldTier} to ${newTier}`);
+        console.log(`Record ${idx}: Tier updated from ${oldTier} to ${newTier}, Issues: ${newIssues.length}, Suggestions: ${newSuggestions.length}`);
     } catch (err) {
         console.error(`Error recalculating tier for record ${idx}:`, err);
     }
