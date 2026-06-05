@@ -177,6 +177,10 @@ For **each record**, choose one decision:
      - Issues related to that field are cleared
      - Suggestions for that field are removed
      - Other issues/suggestions stay visible
+   - **Validation Tier updates in real-time** ✨
+     - If your fixes resolve all issues, tier changes from WARNING → PASS
+     - If fixes move it from FAIL → WARNING, that shows immediately
+     - No page refresh needed
 
 6. **Cancel the edit** (click ✗)
    - Change is discarded
@@ -186,8 +190,10 @@ For **each record**, choose one decision:
 
 ✓ **Editable**: Name, Email, Phone, Amount, Address 1, City, State, Campaign
 
-✗ **Read-only**: Transaction ID (locked 🔒), Validation Tier, Issues, Suggested Fixes, Decision, Notes
-- These are either immutable or have their own controls
+✗ **Read-only**: Transaction ID (locked 🔒), Issues, Suggested Fixes
+- These are computed and update automatically when you edit fields
+- **Validation Tier**: Computed field, updates in real-time when issues are cleared
+- **Decision & Notes**: Have their own controls (select menu and text box)
 
 #### Example 1: Fixing a Common Typo
 
@@ -203,22 +209,29 @@ Suggested fix:  jane@gmail.com
 6. ✨ Issues column clears "Email: Email typo detected"
 ```
 
-#### Example 2: Multiple Issues, Fix One Field
+#### Example 2: Multiple Issues, Fix Both to Change Tier
 
 ```
 Before:
   Email: jane@gmai.com
   Phone: (empty)
+  Validation Tier: FAIL (red badge)
   Issues: Email: Email typo detected; Phone: Phone number not found
   Suggestions: Use jane@gmail.com; Add phone number
 
 After editing phone to "5551234567":
   Email: jane@gmai.com
   Phone: 5551234567
+  Validation Tier: WARNING (yellow badge - phone fixed, email still has typo)
   Issues: Email: Email typo detected (phone issue removed ✓)
   Suggestions: Use jane@gmail.com (phone suggestion removed ✓)
 
-You still see the email issue, so you know to fix that too!
+After editing email to "jane@gmail.com":
+  Email: jane@gmail.com
+  Phone: 5551234567
+  Validation Tier: PASS (green badge - all issues resolved!) ✨
+  Issues: None
+  Suggestions: None
 ```
 
 #### Making Multiple Fixes

@@ -39,6 +39,7 @@ Processes Givebutter CSV exports to:
 - **Inline editing** - Fix data errors directly in the review table
 - Real-time validation on edits (email format, phone digits, amount ranges)
 - **Automatic issue clearing** - Issues/suggestions update as you fix fields
+- **Real-time tier recalculation** - Validation tier updates instantly when edits fix issues
 - Notes field for operator context
 - Bulk action buttons for efficiency
 - Override confirmation for FAIL-tier approvals
@@ -168,12 +169,12 @@ python3 scripts/build_reference_list.py
 
 ## Testing
 
-✅ **Comprehensive test suite: 330+ tests**
+✅ **Comprehensive test suite: 234 tests**
 - Unit tests (130 tests) — Validation functions, tier assignment, header mapping
 - Integration tests (70 tests) — Full processor pipeline, decision persistence, CSV formats
-- End-to-end tests (80+ tests) — Upload workflow, UI interaction, decision saving
+- End-to-end tests (7 tests) — Inline editing, tier recalculation, UI interaction
 - Visual regression (15 tests) — Responsive design at 3 viewports
-- Form interaction (25+ tests) — Input feedback, keyboard navigation, validation messages
+- Form interaction (12+ tests) — Input feedback, validation messages
 
 ✅ **Real-world validation verified**
 - 10 records: 9 warnings detected, 0 failures
@@ -190,6 +191,7 @@ python3 scripts/build_reference_list.py
 | `/api/processing` | GET | List files in review |
 | `/api/processing/<file>` | GET | Get records with validation |
 | `/api/processing/<file>/submit` | POST | Save operator decisions |
+| `/api/processing/<file>/recalculate-tier` | POST | Recalculate validation tier for edited record |
 | `/health` | GET | API health check |
 
 See [API.md](API.md) for complete documentation.
