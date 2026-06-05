@@ -327,11 +327,30 @@
             <tbody id="reviewBody">
                 {%- for record in records %}
             <tr data-tier="{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}">
-                    {%- for key, value in record.items() %}
-                    {%- if key != 'idx' %}
-                    <td>{{ value or '—' }}</td>
-                    {%- endif %}
-                    {%- endfor %}
+                    {# Transaction ID column #}
+                    <td>{{ record.get('Donation ID') or record.get('Transaction ID') or '—' }}</td>
+                    {# Name column #}
+                    <td>{{ record.get('Donor Name') or record.get('Name') or '—' }}</td>
+                    {# Email column #}
+                    <td>{{ record.get('Email') or '—' }}</td>
+                    {# Phone column #}
+                    <td>{{ record.get('Phone') or record.get('Phone Number') or record.get('Contact Phone') or '—' }}</td>
+                    {# Amount column #}
+                    <td>{{ record.get('Amount') or '—' }}</td>
+                    {# Address 1 column #}
+                    <td>{{ record.get('Address 1') or record.get('Address') or record.get('Street Address') or '—' }}</td>
+                    {# City column #}
+                    <td>{{ record.get('City') or '—' }}</td>
+                    {# State column #}
+                    <td>{{ record.get('State') or '—' }}</td>
+                    {# Campaign column #}
+                    <td>{{ record.get('Campaign') or '—' }}</td>
+                    {# Tier (Validation_Tier) #}
+                    <td data-field-type="tier" data-idx="{{ record.idx }}">{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}</td>
+                    {# Issues #}
+                    <td data-field-type="issues" data-idx="{{ record.idx }}">{{ record.get('Issues') or '—' }}</td>
+                    {# Suggested Fixes (Suggested_Modifications) #}
+                    <td data-field-type="suggestions" data-idx="{{ record.idx }}">{{ record.get('Suggested_Modifications') or '—' }}</td>
                     <td>
                         <select class="decision-select" data-idx="{{ record.idx }}" onchange="handleOverrideConfirmation(this, '{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}', '{{ record.get('Issues', '') or '' }}')">
                                 <option value="">-- Select --</option>
@@ -1198,6 +1217,7 @@ async function recalculateTierAfterEdit(idx) {
                     if ('Phone' in record) record['Phone'] = value;
                     else if ('Phone Number' in record) record['Phone Number'] = value;
                     else if ('Contact Phone' in record) record['Contact Phone'] = value;
+                    else record['Phone'] = value;  // Create field if it doesn't exist
                 } else if (field === 'amount') {
                     record['Amount'] = value;
                 } else if (field === 'address_1') {
