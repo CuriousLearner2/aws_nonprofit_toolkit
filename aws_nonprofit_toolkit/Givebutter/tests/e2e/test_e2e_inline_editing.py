@@ -339,6 +339,87 @@ async def test_inline_editing_updates_suggestions_column(flask_app_isolated, tem
 
 
 @pytest.mark.e2e
+async def test_inline_editing_clears_email_typo_suggestions(flask_app_isolated, temp_dir):
+    """Verify that email typo suggestions are cleared when email is corrected."""
+    from playwright.async_api import async_playwright
+    import csv
+
+    # Create test CSV with email typo that generates "Consider: corrected@email.com" suggestion
+    test_csv = temp_dir / "test_email_suggestion.csv"
+    with open(test_csv, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
+        ])
+        writer.writeheader()
+        writer.writerow({
+            'Transaction ID': 'TXN004',
+            'Date': '2026-06-05',
+            'Name': 'John Doe',
+            'Email': 'john@gmai.com',  # Typo - will suggest correction
+            'Phone': '5551234567',
+            'Amount': '100',
+            'Campaign Title': 'General Fund'
+        })
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+
+        try:
+            await page.goto("http://127.0.0.1:8000/")
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
+
+            # Upload CSV
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(test_csv))
+
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            if submit_button:
+                await submit_button.click()
+
+            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+
+            # Get initial suggestions
+            suggestions_cell = await page.query_selector('td.suggestions')
+            if suggestions_cell:
+                initial_suggestions_json = await suggestions_cell.get_attribute('data-suggestions')
+                initial_suggestions = eval(initial_suggestions_json) if initial_suggestions_json else []
+
+                # Should have email correction suggestion
+                assert any('gmai' in s.lower() or 'gmail' in s.lower() or 'consider:' in s.lower()
+                          for s in initial_suggestions), f"Should have email correction suggestion, got: {initial_suggestions}"
+
+                # Edit email field to correct the typo
+                email_cell = await page.query_selector('td.editable-cell[data-field="email"]')
+                if email_cell:
+                    await email_cell.click()
+                    email_input = await email_cell.query_selector('input.cell-edit')
+                    if email_input:
+                        await email_input.fill('john@gmail.com')
+
+                        # Save the edit
+                        save_btn = await email_cell.query_selector('.btn-edit-save')
+                        if save_btn:
+                            await save_btn.click()
+
+                            # Wait for update
+                            await page.wait_for_timeout(500)
+
+                            # Check suggestions again
+                            suggestions_cell_updated = await page.query_selector('td.suggestions')
+                            if suggestions_cell_updated:
+                                updated_suggestions_json = await suggestions_cell_updated.get_attribute('data-suggestions')
+                                updated_suggestions = eval(updated_suggestions_json) if updated_suggestions_json else []
+
+                                # Email correction suggestion should be cleared
+                                assert not any('gmai' in s.lower() or 'consider:' in s.lower() for s in updated_suggestions), \
+                                    f"Email correction suggestion should be cleared, remaining: {updated_suggestions}"
+
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
 async def test_inline_editing_recalculates_tier_on_edit(flask_app_isolated, temp_dir):
     """Verify that Validation_Tier updates when fixes move record between tiers."""
     from playwright.async_api import async_playwright
