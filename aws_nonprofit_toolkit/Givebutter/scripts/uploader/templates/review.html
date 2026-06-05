@@ -965,16 +965,6 @@ function switchToEditMode(cell) {
     const duplicateMsg = document.createElement('div');
     duplicateMsg.className = 'edit-duplicate';
 
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'btn-edit-save';
-    saveBtn.textContent = '✓ Save';
-    saveBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        saveEdit(cell, input, errorMsg);
-    });
-
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'btn-edit-cancel';
@@ -989,7 +979,6 @@ function switchToEditMode(cell) {
 
     const actions = document.createElement('div');
     actions.className = 'edit-actions';
-    actions.appendChild(saveBtn);
     actions.appendChild(cancelBtn);
 
     // Clear old content
@@ -1007,18 +996,18 @@ function switchToEditMode(cell) {
 
     // Real-time validation on input change (as user types)
     input.addEventListener('input', () => {
-        const isValid = validateFieldValue(field, input.value, input, errorMsg);
-        // Disable save button if there are errors
-        saveBtn.disabled = !isValid;
-        saveBtn.style.opacity = isValid ? '1' : '0.5';
-        saveBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
+        validateFieldValue(field, input.value, input, errorMsg);
     });
 
-    // Duplicate checking on blur
+    // Auto-save and duplicate checking on blur
     input.addEventListener('blur', () => {
         const isValid = validateFieldValue(field, input.value, input, errorMsg);
         if (isValid) {
             checkForDuplicates(field, input.value, idx, duplicateMsg, input);
+            // Auto-save when valid
+            setTimeout(() => {
+                saveEdit(cell, input, errorMsg);
+            }, 100);
         }
     });
 }
