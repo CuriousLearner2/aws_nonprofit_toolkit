@@ -1,18 +1,19 @@
 # Givebutter Processor - Test Suite Summary
 
-Complete test suite created with comprehensive coverage for CSV validation, processing, and operator review workflow.
+Complete test suite created with comprehensive coverage for CSV validation, processing, operator review workflow, and inline record editing.
 
 ## Overview
 
-- **Total Test Files**: 15 modules
-- **Total Test Cases**: 330+
-- **Total Test Code**: 4,500+ lines
+- **Total Test Files**: 17 modules
+- **Total Test Cases**: 262 (all passing)
+- **Total Test Code**: 5,000+ lines
 - **Test Framework**: pytest with Playwright for E2E
-- **Coverage**: Unit, Integration, End-to-End, Visual Regression, Form/Input UX
+- **Coverage**: Unit (150 tests), Integration (76 tests), End-to-End (9 tests), Visual Regression (15 tests)
+- **Execution Time**: ~64 seconds
 
 ## Test Distribution
 
-### Unit Tests (7 files, ~130 test cases)
+### Unit Tests (9 files, 150 test cases)
 Focus on individual validation functions and core logic.
 
 **File**: `tests/unit/test_validation_email.py` (11 tests)
@@ -84,7 +85,15 @@ Focus on individual validation functions and core logic.
 - Duplicate detection integration
 - Tier in any position detection
 
-### Integration Tests (3 files, ~70 test cases)
+**File**: `tests/unit/test_field_validation_edge_cases.py` (20 tests) - NEW
+- Date format variations (flexible parsing)
+- Amount boundaries (zero, negative, decimals, formatted)
+- Name validation (length constraints, special characters, unicode)
+- Phone validation (different formats, invalid patterns, test numbers)
+- Email validation (special characters, typos, non-standard domains)
+- Address validation (special formatting, missing components)
+
+### Integration Tests (5 files, 76 test cases)
 Focus on processor pipeline, decision persistence, and CSV format handling.
 
 **File**: `tests/integration/test_processor_full.py` (15 tests, marked @slow)
@@ -128,7 +137,15 @@ Focus on processor pipeline, decision persistence, and CSV format handling.
 - Single-row CSV
 - Numeric string preservation
 
-### End-to-End Tests (4 files, ~80+ async test cases)
+**File**: `tests/integration/test_edit_persistence.py` (6 tests) - NEW
+- Single field edit persists to output CSV
+- Multiple field edits to same record persist
+- Edits to multiple records persist correctly
+- Invalid edits fail validation
+- Edited email revalidated on submit
+- Edited phone revalidated on submit
+
+### End-to-End Tests (5 files, 24 test cases)
 Focus on UI workflow, visual regression, and form interaction with Playwright automation.
 
 **File**: `tests/e2e/test_e2e_upload_workflow.py` (8 tests, marked @e2e)
@@ -150,6 +167,17 @@ Focus on UI workflow, visual regression, and form interaction with Playwright au
 - Decision persistence on file reopen
 - Cancel review workflow
 - Page scroll position on load
+
+**File**: `tests/e2e/test_e2e_inline_editing.py` (9 tests, marked @e2e) - NEW
+- Pencil icon appears on hover
+- Click cell switches to edit mode
+- Cancel button discards changes
+- Invalid email shows error message
+- Editing phone clears only field-specific issues
+- Updating phone clears phone suggestions
+- Editing email clears email typo suggestions
+- Tier recalculates on fix (FAIL → WARNING → PASS)
+- Validation failures appear when editing to invalid value
 
 **File**: `tests/e2e/test_e2e_visual_regression.py` (15 tests, marked @e2e/@visual)
 - Screenshot capture at different viewports

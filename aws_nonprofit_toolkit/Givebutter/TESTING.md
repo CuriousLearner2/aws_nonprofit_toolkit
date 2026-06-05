@@ -13,16 +13,21 @@ tests/
 │   ├── test_validation_name.py    # Name validation tests
 │   ├── test_validation_address.py # Address validation tests
 │   ├── test_validation_header.py  # Header mapping tests
-│   └── test_tier_assignment.py    # Tier assignment logic tests
+│   ├── test_tier_assignment.py    # Tier assignment logic tests
+│   └── test_field_validation_edge_cases.py # Edge cases for all fields (NEW)
 │
 ├── integration/                   # Integration tests for processor pipeline
 │   ├── test_processor_full.py     # Full processor pipeline tests
 │   ├── test_decision_persistence.py # Decision saving/loading tests
-│   └── test_csv_formats.py        # CSV format handling tests
+│   ├── test_csv_formats.py        # CSV format handling tests
+│   └── test_edit_persistence.py   # Inline edit persistence tests (NEW)
 │
 ├── e2e/                           # End-to-end UI tests with Playwright
 │   ├── test_e2e_upload_workflow.py # Upload workflow tests
-│   └── test_e2e_decision_workflow.py # Decision review workflow tests
+│   ├── test_e2e_decision_workflow.py # Decision review workflow tests
+│   ├── test_e2e_inline_editing.py # Inline editing feature tests (NEW)
+│   ├── test_e2e_visual_regression.py # Visual regression tests
+│   └── test_e2e_form_input.py     # Form interaction tests
 │
 ├── conftest.py                    # Pytest fixtures and configuration
 └── pytest.ini                     # Pytest configuration
