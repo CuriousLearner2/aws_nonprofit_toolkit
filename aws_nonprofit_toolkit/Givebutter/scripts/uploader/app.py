@@ -8,6 +8,7 @@ from datetime import datetime
 import shutil
 import logging
 import sys
+import tempfile
 
 # Add parent directory to path so we can import processor
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -510,6 +511,67 @@ def recalculate_tier(filename):
     except Exception as e:
         logger.error(f"Error recalculating tier for {filename}: {e}")
         return jsonify({'error': f'Recalculation failed: {str(e)}'}), 500
+
+
+@app.route('/api/processing/<filename>/refresh-validation', methods=['POST'])
+@require_auth
+def refresh_validation(filename):
+    """Re-run validation on existing processing file to regenerate issues/suggestions."""
+    if not validate_filename(filename):
+        return jsonify({'error': 'Invalid filename'}), 400
+
+    processing_path = PROCESSING_DIR / filename
+    try:
+        # Read the original data (before decisions were made)
+        df = pd.read_csv(processing_path, dtype=str, encoding='utf-8').fillna('')
+
+        # Preserve operator decisions and notes
+        decisions = df['Operator_Decision'].to_dict() if 'Operator_Decision' in df.columns else {}
+        notes = df['Operator_Notes'].to_dict() if 'Operator_Notes' in df.columns else {}
+
+        # Create temporary file with just the data columns (no validation columns)
+        temp_df = df.drop(columns=['Validation_Tier', 'Issues', 'Suggested_Modifications',
+                                    'Operator_Decision', 'Operator_Notes'], errors='ignore')
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as temp_input:
+            temp_df.to_csv(temp_input.name, index=False, encoding='utf-8')
+            temp_input_path = temp_input.name
+
+        # Re-run processor
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as temp_output:
+            temp_output_path = temp_output.name
+
+        run_processor(temp_input_path, temp_output_path)
+
+        # Read revalidated data
+        df_revalidated = pd.read_csv(temp_output_path, dtype=str, encoding='utf-8').fillna('')
+
+        # Restore operator decisions and notes
+        if 'Operator_Decision' in df.columns:
+            df_revalidated['Operator_Decision'] = df_revalidated.index.map(
+                lambda idx: decisions.get(idx, '')
+            )
+        if 'Operator_Notes' in df.columns:
+            df_revalidated['Operator_Notes'] = df_revalidated.index.map(
+                lambda idx: notes.get(idx, '')
+            )
+
+        # Save back to processing file
+        df_revalidated.to_csv(processing_path, index=False, encoding='utf-8')
+
+        logger.info(f"Refreshed validation for {filename}")
+
+        # Cleanup temp files
+        Path(temp_input_path).unlink(missing_ok=True)
+        Path(temp_output_path).unlink(missing_ok=True)
+
+        return jsonify({
+            'status': 'refreshed',
+            'message': f'Validation refreshed for {filename}. Reload the page to see updated issues/suggestions.'
+        })
+    except Exception as e:
+        logger.error(f"Error refreshing validation for {filename}: {e}")
+        return jsonify({'error': f'Refresh failed: {str(e)}'}), 500
 
 
 @app.route('/api/processing/<filename>/cancel', methods=['POST'])
