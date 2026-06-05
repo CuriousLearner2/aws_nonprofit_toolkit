@@ -1184,34 +1184,34 @@ async function recalculateTierAfterEdit(idx) {
             // Apply edits
             for (const [field, value] of Object.entries(editedRecords[idx])) {
                 if (field === 'date') {
-                    if (record['Date']) record['Date'] = value;
-                    else if (record['Donation Date']) record['Donation Date'] = value;
+                    if ('Date' in record) record['Date'] = value;
+                    else if ('Donation Date' in record) record['Donation Date'] = value;
                 } else if (field === 'name') {
-                    if (record['Name']) record['Name'] = value;
-                    else if (record['Donor Name']) record['Donor Name'] = value;
-                    else if (record['Full Name']) record['Full Name'] = value;
+                    if ('Name' in record) record['Name'] = value;
+                    else if ('Donor Name' in record) record['Donor Name'] = value;
+                    else if ('Full Name' in record) record['Full Name'] = value;
                 } else if (field === 'email') {
-                    if (record['Email']) record['Email'] = value;
-                    else if (record['Email Address']) record['Email Address'] = value;
-                    else if (record['Primary Email']) record['Primary Email'] = value;
+                    if ('Email' in record) record['Email'] = value;
+                    else if ('Email Address' in record) record['Email Address'] = value;
+                    else if ('Primary Email' in record) record['Primary Email'] = value;
                 } else if (field === 'phone') {
-                    if (record['Phone']) record['Phone'] = value;
-                    else if (record['Phone Number']) record['Phone Number'] = value;
-                    else if (record['Contact Phone']) record['Contact Phone'] = value;
+                    if ('Phone' in record) record['Phone'] = value;
+                    else if ('Phone Number' in record) record['Phone Number'] = value;
+                    else if ('Contact Phone' in record) record['Contact Phone'] = value;
                 } else if (field === 'amount') {
                     record['Amount'] = value;
                 } else if (field === 'address_1') {
-                    if (record['Address 1']) record['Address 1'] = value;
-                    else if (record['Street Address']) record['Street Address'] = value;
-                    else if (record['Address Line 1']) record['Address Line 1'] = value;
+                    if ('Address 1' in record) record['Address 1'] = value;
+                    else if ('Street Address' in record) record['Street Address'] = value;
+                    else if ('Address Line 1' in record) record['Address Line 1'] = value;
                 } else if (field === 'city') {
                     record['City'] = value;
                 } else if (field === 'state') {
                     record['State'] = value;
                 } else if (field === 'campaign') {
-                    if (record['Campaign Title']) record['Campaign Title'] = value;
-                    else if (record['Campaign']) record['Campaign'] = value;
-                    else if (record['Fund']) record['Fund'] = value;
+                    if ('Campaign Title' in record) record['Campaign Title'] = value;
+                    else if ('Campaign' in record) record['Campaign'] = value;
+                    else if ('Fund' in record) record['Fund'] = value;
                 }
             }
         }
