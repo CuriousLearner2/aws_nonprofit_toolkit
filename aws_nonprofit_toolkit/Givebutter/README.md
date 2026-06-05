@@ -2,7 +2,7 @@
 
 Complete donation data validation and operator review system for Givebutter exports.
 
-**Status:** ✅ Production Ready | **Version:** 3.0 | **Last Updated:** 2026-06-04
+**Status:** ✅ Production Ready | **Version:** 3.1 | **Last Updated:** 2026-06-05
 
 ---
 
@@ -169,25 +169,21 @@ python3 scripts/build_reference_list.py
 
 ## Testing
 
-✅ **Comprehensive test suite: 260+ tests**
-- Unit tests (165+ tests)
-  - Validation functions (130 tests)
-  - Field validation edge cases (35+ tests) — Date formats, amount boundaries, name length, phone patterns, email typos, address formats
-- Integration tests (85+ tests)
-  - Full processor pipeline (70 tests)
-  - Edit persistence (5 tests) — Verify edits saved to output CSV
-  - Edit validation on submit (5+ tests) — Revalidation after edits
-  - CSV formats (5 tests)
-- End-to-end tests (9 tests) — Inline editing, tier recalculation, UI interaction
-  - Pencil icon hover
-  - Click-to-edit workflow
-  - Cancel/discard changes
-  - Invalid input error display
-  - Field-specific issue clearing
-  - Field-specific suggestion clearing
-  - Tier recalculation on fix
-  - Tier recalculation on failure
-- Visual regression (15 tests) — Responsive design at 3 viewports
+✅ **Comprehensive test suite: 264 tests (262 passing)**
+- Unit tests (157 tests) — All validation functions and edge cases
+  - Email, phone, amount, name, address, date, tier assignment, header mapping
+- Integration tests (52 tests) — CSV processing, persistence, decision workflows
+  - Full processor pipeline
+  - Decision persistence with operator notes
+  - Edit persistence and validation on submit
+  - CSV format handling and edge cases
+  - Override confirmation logic
+- End-to-end tests (55 tests) — Full UI workflows with Playwright
+  - Upload and processing queue
+  - Decision workflow and record review
+  - Inline editing with real-time validation
+  - Form inputs and validation feedback
+  - Visual regression testing at multiple viewports (mobile, tablet, desktop)
 
 ✅ **Real-world validation verified**
 - 10 records: 9 warnings detected, 0 failures
@@ -230,7 +226,14 @@ See [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) for full troubleshooting.
 
 ## Changelog
 
-**v3.0** (Current)
+**v3.1** (Current)
+- Fixed column index bug preventing validation issues from displaying after field edits
+- Refactored DOM updates to use CSS selectors instead of hardcoded indices
+- Added data-field-type attributes for more robust selector targeting
+- Improved console error messages for DOM update failures
+- All 262 tests passing
+
+**v3.0**
 - Per-record validation and operator decisions
 - Three-tier validation system
 - Duplicate/household detection

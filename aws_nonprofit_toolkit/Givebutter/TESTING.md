@@ -2,6 +2,8 @@
 
 Comprehensive test suite for the Givebutter CSV processor with validation, duplicate detection, and operator review workflow.
 
+> **Latest Update (2026-06-05):** Fixed critical bug where validation issues weren't displayed after field edits due to incorrect DOM column indices. Refactored to use CSS selectors with data attributes for better maintainability and resilience. All 262 tests passing.
+
 ## Test Structure
 
 ```
@@ -25,9 +27,11 @@ tests/
 ├── e2e/                           # End-to-end UI tests with Playwright
 │   ├── test_e2e_upload_workflow.py # Upload workflow tests
 │   ├── test_e2e_decision_workflow.py # Decision review workflow tests
-│   ├── test_e2e_inline_editing.py # Inline editing feature tests (NEW)
+│   ├── test_e2e_inline_editing.py # Inline editing feature tests
 │   ├── test_e2e_visual_regression.py # Visual regression tests
-│   └── test_e2e_form_input.py     # Form interaction tests
+│   ├── test_e2e_form_input.py     # Form interaction tests
+│   ├── test_e2e_csv_format_variations.py # CSV format variation tests
+│   └── test_e2e_override_dialog_ui.py # Override confirmation dialog tests
 │
 ├── conftest.py                    # Pytest fixtures and configuration
 └── pytest.ini                     # Pytest configuration
