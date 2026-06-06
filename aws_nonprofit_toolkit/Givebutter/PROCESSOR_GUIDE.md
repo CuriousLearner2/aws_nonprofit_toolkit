@@ -56,13 +56,15 @@ After submitting decisions, three files are generated:
 - `hotmial.com` → `hotmail.com`
 - And 6+ more patterns
 
-**Fuzzy Domain Matching** - Smart typo detection for common email providers:
+**Fuzzy Domain Matching** - Aggressive typo detection for common email providers:
 - Compares domain NAME only, ignoring TLD (e.g., compares 'gmail' vs 'gmail', not 'gmail.com' vs 'gmail.co')
-- 70% similarity threshold catches typos while avoiding false positives on legitimate TLD variants
+- **Short domains (2-3 chars)**: Flag at 50% similarity (catches very short typos)
+- **Longer domains**: Flag at 55% similarity
+- **2-letter TLDs** (.io, .ai, .co): Flagged if domain name matches common provider
 - Supports multi-level TLDs like `.co.uk`, `.com.au`, `.co.nz`
-- Examples of caught typos: `gmai.com`, `gmial.com`, `hotmai.com`, `outloo.com`
-- Examples allowed: `gmail.co`, `gmail.uk`, `outlook.io` (legitimate TLD variants)
-- Note: Operators can override false positives (e.g., someone intentionally using a .co domain)
+- Examples of caught typos: `gma.com`, `gmai.com`, `gmial.com`, `hotmai.com`, `yah.com`, `ail.com`
+- **Liberal flagging**: Operators can override false positives; missing real typos is worse
+- Examples allowed: `gmail.com`, `example.com`, `example.co` (non-common providers)
 
 **Reference List** - Domain validation against operator-approved donors
 
