@@ -56,6 +56,11 @@ After submitting decisions, three files are generated:
 - `hotmial.com` → `hotmail.com`
 - And 6+ more patterns
 
+**Fuzzy Domain Matching** - Catches variants of common email providers using similarity matching (85% threshold):
+- Matches against: `gmail.com`, `yahoo.com`, `outlook.com`, `hotmail.com`, `aol.com`, `protonmail.com`, `icloud.com`
+- Examples: `gmaild.com` → suggests `gmail.com`, `icloud.co` → suggests `icloud.com`
+- Helps catch typos not in the hardcoded patterns list
+
 **Reference List** - Domain validation against operator-approved donors
 
 ### Phone Validation

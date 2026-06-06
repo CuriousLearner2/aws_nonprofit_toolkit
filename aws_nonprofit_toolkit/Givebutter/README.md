@@ -19,6 +19,7 @@ Processes Givebutter CSV exports to:
 
 ✅ **Smart Validation**
 - Email typo detection (gmai.com → gmail.com, etc.)
+- Fuzzy email domain matching (catches variants like gmaild.com → gmail.com)
 - USA phone validation with unusual format detection
 - Amount range checks and high-dollar flagging
 - Address and name validation
@@ -235,7 +236,8 @@ See [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) for full troubleshooting.
 - Override confirmation for both FAIL and WARNING tier records (not just FAIL)
 - Smart bulk approval logic: individual dialogs for ≤5 records, summary dialog for >5
 - Auto-save for data field edits (click Save when valid) + Decision/Notes fields
-- All 282 tests passing
+- Fuzzy email domain matching (catches typos like gmaild.com, icloud.co, etc.)
+- All 281 tests passing
 
 **v3.3**
 - Implemented inline field validation with real-time feedback

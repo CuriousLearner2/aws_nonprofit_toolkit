@@ -310,11 +310,20 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
         if not domain:
             return ('FAIL', "Invalid email format (missing domain after @)", "Fix email format: add domain after @ symbol")
 
-        # Check for typos
+        # Check for exact typos first
         if domain in email_typos:
             correct_domain = email_typos[domain]
             suggestion = f"{user_part}@{correct_domain}"
             return ('WARNING', "Email typo detected", f"Consider: {suggestion}")
+
+        # Fuzzy match against common domains (only if not exact match)
+        common_domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'aol.com', 'protonmail.com', 'icloud.com']
+        if domain not in common_domains:  # Skip fuzzy matching for exact matches
+            for common_domain in common_domains:
+                similarity = SequenceMatcher(None, domain, common_domain).ratio()
+                if similarity >= 0.85:  # 85% match threshold
+                    suggestion = f"{user_part}@{common_domain}"
+                    return ('WARNING', f"Email domain '{domain}' is similar to '{common_domain}'", f"Consider: {suggestion}")
 
         # Check domain against reference list
         valid_domains = reference.get('email_domains', [])
