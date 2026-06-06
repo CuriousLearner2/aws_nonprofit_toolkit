@@ -1,0 +1,6 @@
+Transaction ID,Date,Donor Name,Email,Phone,Amount,Address 1,City,State,Campaign Title
+TX001,2026-05-10,John Doe,john@gmail.com,5551234567,100,123 Main St,Springfield,IL,General Fund
+TX002,2026-05-11,Jane Smith,jane@gmai.com,,250,456 Oak Ave,Portland,OR,Education
+TX003,2026-05-12,Bob Wilson,bob.smith,5551112222,500,789 Pine Rd,Denver,CO,Healthcare
+TX004,2026-05-13,Alice Brown,alice@example.co,555-1234-5678,1000000,321 Elm St,Seattle,WA,Community
+TX005,2026-05-14,Charlie Lee,charlie@gmial.com,5555555555,75,654 Maple Ln,Austin,TX,Youth Programs
