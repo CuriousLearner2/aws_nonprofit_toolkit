@@ -78,6 +78,29 @@
             font-size: 13px;
             font-family: inherit;
         }
+        .tier-select {
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 500;
+        }
+        .tier-select option {
+            padding: 6px 8px;
+        }
+        .tier-select option[value="Pass"] {
+            background: #d4edda;
+            color: #155724;
+        }
+        .tier-select option[value="Warning"] {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .tier-select option[value="Fail"] {
+            background: #f8d7da;
+            color: #721c24;
+        }
         textarea {
             width: 100%;
             min-height: 50px;
@@ -1372,19 +1395,17 @@ async function recalculateTierAfterEdit(idx) {
         // Update the tier display in the DOM
         const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
         if (row) {
-            // Use data attributes instead of hardcoded indices for resilience
-            const tierCell = row.querySelector('td[data-field-type="tier"]');
-            if (tierCell) {
-                const tierSpan = tierCell.querySelector('span');
-                if (tierSpan) {
-                    const oldClass = `tier-${oldTier.toLowerCase()}`;
-                    const newClass = `tier-${newTier.toLowerCase()}`;
-                    tierSpan.classList.remove(oldClass);
-                    tierSpan.classList.add(newClass);
-                    tierSpan.textContent = newTier;
-                }
+            // Update tier dropdown
+            const tierSelect = row.querySelector('.tier-select');
+            if (tierSelect) {
+                // Map tier to dropdown value (PASS->Pass, WARNING->Warning, FAIL->Fail)
+                const tierMap = { 'PASS': 'Pass', 'WARNING': 'Warning', 'FAIL': 'Fail' };
+                tierSelect.value = tierMap[newTier] || newTier;
+                // Update data-tier attribute for override confirmations
+                tierSelect.setAttribute('data-tier', newTier);
+                console.log(`Record ${idx}: Tier dropdown updated to ${tierSelect.value}`);
             } else {
-                console.warn(`Record ${idx}: Tier cell not found - verify data-field-type="tier" attribute exists`);
+                console.warn(`Record ${idx}: Tier select not found - verify .tier-select class exists`);
             }
 
             // Update Issues column
