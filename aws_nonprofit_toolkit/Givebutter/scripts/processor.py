@@ -335,23 +335,31 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
                     domain_name = domain_parts[0]
                     potential_multi_tld = None
 
+                # Check TLD characteristics first
+                tld = domain_parts[-1] if not potential_multi_tld else potential_multi_tld
+                tld_is_short = len(tld) <= 2  # Flag 2-letter TLDs like .ai, .io
+                tld_is_suspicious = any(
+                    tld.lower().startswith(s)
+                    for s in ['xn--', 'test', 'invalid', 'local', 'localhost']
+                ) or len(tld) > 6
+
                 for common_domain in common_domains:
                     common_name = common_domain.split('.')[0]
                     # Compare domain names, not TLDs
                     similarity = SequenceMatcher(None, domain_name, common_name).ratio()
 
-                    # If domain name matches exactly, only warn if TLD is very suspicious
+                    # If domain name matches exactly
                     if domain_name == common_name:
-                        # Legitimate TLDs are okay even if domain name matches
-                        if not potential_multi_tld:  # Single-level TLD
-                            tld = domain_parts[-1]
-                            suspicious_tlds = ['xn--', 'test', 'invalid', 'local', 'localhost']
-                            if any(tld.lower().startswith(s) for s in suspicious_tlds) or len(tld) > 6:
-                                suggestion = f"{user_part}@{common_domain}"
-                                return ('WARNING', f"Email domain '{domain}' has unusual TLD", f"Consider: {suggestion}")
-                    # If domain name is similar (typo-like), warn regardless of TLD
-                    # Use lower threshold (0.70) to catch more potential typos; operators can override
-                    elif similarity >= 0.70:
+                        # Flag if TLD is suspicious or very short
+                        if tld_is_suspicious or tld_is_short:
+                            suggestion = f"{user_part}@{common_domain}"
+                            return ('WARNING', f"Email domain '{domain}' has unusual TLD", f"Consider: {suggestion}")
+                    # If domain name is very short (2-3 chars), be extra aggressive
+                    elif len(domain_name) <= 3 and similarity >= 0.50:
+                        suggestion = f"{user_part}@{common_domain}"
+                        return ('WARNING', f"Email domain '{domain}' looks like a typo for '{common_domain}'", f"Consider: {suggestion}")
+                    # If domain name is longer, use more lenient threshold (0.55 instead of 0.70)
+                    elif len(domain_name) > 3 and similarity >= 0.55:
                         suggestion = f"{user_part}@{common_domain}"
                         return ('WARNING', f"Email domain '{domain}' looks like a typo for '{common_domain}'", f"Consider: {suggestion}")
 
