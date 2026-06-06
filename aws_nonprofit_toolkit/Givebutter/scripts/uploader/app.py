@@ -499,7 +499,11 @@ def recalculate_tier(filename):
             issues.append(f"Address: {reason}")
 
         # Assign tier based on validation results
-        new_tier = assign_tier(validation_results)
+        # But if the user manually set a tier, use that instead
+        if 'Validation_Tier' in record and record['Validation_Tier']:
+            new_tier = record['Validation_Tier'].upper()
+        else:
+            new_tier = assign_tier(validation_results)
 
         # Save the edited record back to the CSV file
         try:

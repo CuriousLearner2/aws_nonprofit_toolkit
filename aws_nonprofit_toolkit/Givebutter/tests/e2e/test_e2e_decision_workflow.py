@@ -106,7 +106,7 @@ async def test_save_decisions_partial(flask_app_running, temp_dir, sample_csv):
                 await review_button.click()
 
                 # Select decisions for only first 2 records
-                decision_selects = await page.query_selector_all('select, [class*="decision"]')
+                decision_selects = await page.query_selector_all('.decision-select')
                 if len(decision_selects) >= 2:
                     await decision_selects[0].select_option(value="approved")
                     await decision_selects[1].select_option(value="rejected")
@@ -157,7 +157,7 @@ async def test_save_all_decisions_completes_review(flask_app_running, temp_dir, 
                 await review_button.click()
 
                 # Select decisions for ALL records
-                decision_selects = await page.query_selector_all('select, [class*="decision"]')
+                decision_selects = await page.query_selector_all('.decision-select')
                 for i, select in enumerate(decision_selects):
                     decisions = ["approved", "rejected", "followup"]
                     await select.select_option(value=decisions[i % 3])

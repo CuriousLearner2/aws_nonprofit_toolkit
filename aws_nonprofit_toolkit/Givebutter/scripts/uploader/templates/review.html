@@ -559,7 +559,13 @@ async function reviewFile(filename) {
                         <span class="cell-display"><small>${escapeHtml(campaign)}</small></span>
                         <span class="edit-icon">✏️</span>
                     </td>
-                    <td class="readonly-cell" data-field-type="tier"><span class="${tierClass}">${tierText}</span></td>
+                    <td data-field-type="tier">
+                        <select class="tier-select" data-idx="${idx}" onchange="handleTierChange(this)">
+                            <option value="Pass" ${tierText === 'PASS' ? 'selected' : ''}>Pass</option>
+                            <option value="Warning" ${tierText === 'WARNING' ? 'selected' : ''}>Warning</option>
+                            <option value="Fail" ${tierText === 'FAIL' ? 'selected' : ''}>Fail</option>
+                        </select>
+                    </td>
                     <td class="readonly-cell issues" data-field-type="issues" data-issues='${JSON.stringify((row['Issues'] || '').split('; ').filter(i => i))}'>${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
                     <td class="readonly-cell suggestions" data-field-type="suggestions" data-suggestions='${JSON.stringify((row['Suggested_Modifications'] || '').split('; ').filter(s => s))}'>${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
                     <td data-field-type="decision">
@@ -1494,6 +1500,48 @@ Are you sure?`;
             selectElement.value = '';
             return;
         }
+    }
+}
+
+async function handleTierChange(selectElement) {
+    const idx = parseInt(selectElement.dataset.idx);
+    const newTier = selectElement.value;
+
+    // Normalize tier value (convert "Pass" to "PASS", etc)
+    const tierMap = {
+        'Pass': 'PASS',
+        'Warning': 'WARNING',
+        'Fail': 'FAIL'
+    };
+    const normalizedTier = tierMap[newTier] || newTier.toUpperCase();
+
+    if (!currentRecords[idx]) return;
+
+    // Update in-memory record
+    currentRecords[idx]['Validation_Tier'] = normalizedTier;
+
+    // Also update the data-tier attribute on the decision dropdown so override confirmation works correctly
+    const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
+    if (row) {
+        const decisionSelect = row.querySelector('.decision-select');
+        if (decisionSelect) {
+            decisionSelect.setAttribute('data-tier', normalizedTier);
+        }
+    }
+
+    // Send to backend to save
+    try {
+        const response = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/recalculate-tier`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ record: currentRecords[idx] })
+        });
+
+        if (response.ok) {
+            console.log(`Tier saved for record ${idx}: ${normalizedTier}`);
+        }
+    } catch (err) {
+        console.error(`Failed to save tier: ${err.message}`);
     }
 }
 

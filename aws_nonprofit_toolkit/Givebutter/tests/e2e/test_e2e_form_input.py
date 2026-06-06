@@ -158,13 +158,11 @@ async def test_decision_dropdown_has_all_options(flask_app_for_forms, temp_dir, 
             if review_button:
                 await review_button.click()
 
-                # Wait for dropdowns
-                selects = await page.query_selector_all('select, [class*="decision"]')
-                if selects:
-                    first_select = selects[0]
-
+                # Wait for decision dropdown specifically
+                decision_select = await page.query_selector('.decision-select')
+                if decision_select:
                     # Get all options
-                    options = await first_select.query_selector_all('option')
+                    options = await decision_select.query_selector_all('option')
                     option_values = []
                     for opt in options:
                         value = await opt.get_attribute('value')
@@ -572,7 +570,7 @@ async def test_save_success_message(flask_app_for_forms, temp_dir, sample_csv):
                 await review_button.click()
 
                 # Make some decisions
-                decision_selects = await page.query_selector_all('select, [class*="decision"]')
+                decision_selects = await page.query_selector_all('.decision-select')
                 if decision_selects:
                     await decision_selects[0].select_option(value="approved")
 
