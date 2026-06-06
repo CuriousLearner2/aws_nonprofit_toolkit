@@ -80,26 +80,27 @@
         }
         .tier-select {
             padding: 6px 8px;
-            border: 1px solid #ddd;
+            border: 2px solid #ddd;
             border-radius: 4px;
             font-size: 13px;
             font-family: inherit;
-            font-weight: 500;
+            font-weight: 600;
+            cursor: pointer;
         }
-        .tier-select option {
-            padding: 6px 8px;
-        }
-        .tier-select option[value="Pass"] {
+        .tier-select.tier-pass {
             background: #d4edda;
             color: #155724;
+            border-color: #28a745;
         }
-        .tier-select option[value="Warning"] {
+        .tier-select.tier-warning {
             background: #fff3cd;
             color: #856404;
+            border-color: #ffc107;
         }
-        .tier-select option[value="Fail"] {
+        .tier-select.tier-fail {
             background: #f8d7da;
             color: #721c24;
+            border-color: #dc3545;
         }
         textarea {
             width: 100%;
@@ -611,6 +612,11 @@ async function reviewFile(filename) {
 
         // Setup auto-save for decision and notes fields
         setupAutoSaveFields();
+
+        // Apply color coding to all tier dropdowns
+        document.querySelectorAll('.tier-select').forEach(select => {
+            updateTierSelectColor(select, select.value);
+        });
 
         document.getElementById('reviewPanel').classList.remove('hidden');
         window.scrollTo(0, 0);  // Scroll to top
@@ -1400,10 +1406,13 @@ async function recalculateTierAfterEdit(idx) {
             if (tierSelect) {
                 // Map tier to dropdown value (PASS->Pass, WARNING->Warning, FAIL->Fail)
                 const tierMap = { 'PASS': 'Pass', 'WARNING': 'Warning', 'FAIL': 'Fail' };
-                tierSelect.value = tierMap[newTier] || newTier;
+                const tierDisplayValue = tierMap[newTier] || newTier;
+                tierSelect.value = tierDisplayValue;
                 // Update data-tier attribute for override confirmations
                 tierSelect.setAttribute('data-tier', newTier);
-                console.log(`Record ${idx}: Tier dropdown updated to ${tierSelect.value}`);
+                // Update color coding
+                updateTierSelectColor(tierSelect, tierDisplayValue);
+                console.log(`Record ${idx}: Tier dropdown updated to ${tierSelect.value} with color ${tierDisplayValue}`);
             } else {
                 console.warn(`Record ${idx}: Tier select not found - verify .tier-select class exists`);
             }
@@ -1524,6 +1533,20 @@ Are you sure?`;
     }
 }
 
+function updateTierSelectColor(selectElement, tierValue) {
+    // Remove all tier color classes
+    selectElement.classList.remove('tier-pass', 'tier-warning', 'tier-fail');
+
+    // Add the appropriate color class based on tier value
+    if (tierValue === 'Pass') {
+        selectElement.classList.add('tier-pass');
+    } else if (tierValue === 'Warning') {
+        selectElement.classList.add('tier-warning');
+    } else if (tierValue === 'Fail') {
+        selectElement.classList.add('tier-fail');
+    }
+}
+
 async function handleTierChange(selectElement) {
     const idx = parseInt(selectElement.dataset.idx);
     const newTier = selectElement.value;
@@ -1540,6 +1563,9 @@ async function handleTierChange(selectElement) {
 
     // Update in-memory record
     currentRecords[idx]['Validation_Tier'] = normalizedTier;
+
+    // Update color coding
+    updateTierSelectColor(selectElement, newTier);
 
     // Also update the data-tier attribute on the decision dropdown so override confirmation works correctly
     const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
