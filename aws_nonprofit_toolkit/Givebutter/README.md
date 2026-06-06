@@ -37,6 +37,7 @@ Processes Givebutter CSV exports to:
 ✅ **Operator Workflow**
 - Web-based review interface
 - Per-record decisions: approve, follow-up, reject
+- **Editable Tier field** - Change validation tier (Pass/Warning/Fail) to override validators
 - **Inline editing** - Fix data errors directly in the review table
 - Real-time validation on edits (email format, phone digits, amount ranges)
 - **Automatic issue clearing** - Issues/suggestions update as you fix fields
@@ -236,6 +237,7 @@ See [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) for full troubleshooting.
 - Override confirmation for both FAIL and WARNING tier records (not just FAIL)
 - Smart bulk approval logic: individual dialogs for ≤5 records, summary dialog for >5
 - Auto-save for data field edits (click Save when valid) + Decision/Notes fields
+- **Editable Tier dropdown** - Operators can override validation tier (Pass/Warning/Fail)
 - Fuzzy email domain matching (catches typos like gmaild.com, icloud.co, etc.)
 - All 281 tests passing
 

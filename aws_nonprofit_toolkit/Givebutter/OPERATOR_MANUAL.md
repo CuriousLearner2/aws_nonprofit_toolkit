@@ -210,7 +210,13 @@ When you select "Approved" for a record with FAIL or WARNING validation tier:
 
 ✗ **Read-only**: Transaction ID (locked 🔒), Issues, Suggested Fixes
 - These are computed and update automatically when you edit fields
-- **Validation Tier**: Computed field, updates in real-time when issues are cleared
+
+📝 **Editable Dropdown**:
+- **Validation Tier**: Choose Pass, Warning, or Fail to override the computed tier
+  - Default: System-assigned based on validation (can change it if needed)
+  - Use to mark records as Pass despite warnings, or upgrade to Fail if needed
+  - Auto-saves when you change the dropdown
+
 - **Decision & Notes**: Have their own controls (select menu and text box)
 
 #### Example 1: Fixing a Common Typo
