@@ -277,9 +277,8 @@ You can edit multiple cells in the same record:
 2. The system will then create three output files:
 
 **About the buttons at the bottom:**
-- **"✓ Done"** — Finish reviewing (closes this file, returns to queue)
+- **"✓ Done"** — Finish reviewing this session (closes the review, returns to queue with all changes saved)
 - **"All: Approved/Follow-up/Rejected"** — Bulk set all records to one decision
-- **"Cancel Review"** — Abandon review and return file to intake queue
 
 **System creates three files:
 

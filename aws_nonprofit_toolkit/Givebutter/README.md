@@ -169,7 +169,7 @@ python3 scripts/build_reference_list.py
 
 ## Testing
 
-✅ **Comprehensive test suite: 282 tests (all passing)**
+✅ **Comprehensive test suite: 281 tests (all passing)**
 - Unit tests (157 tests) — All validation functions and edge cases
   - Email, phone, amount, name, address, date, tier assignment, header mapping
 - Integration tests (68 tests) — CSV processing, persistence, decision workflows

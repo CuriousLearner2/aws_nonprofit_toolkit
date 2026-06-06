@@ -263,9 +263,6 @@
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <h2 id="reviewTitle"></h2>
-                <div>
-                    <button class="btn btn-secondary" onclick="closeReview()" style="margin-left: 8px;">Cancel Review</button>
-                </div>
             </div>
 
             <div id="reviewSummary" class="summary"></div>
@@ -300,7 +297,6 @@
                 <button class="btn btn-secondary" onclick="setAllDecision('followup')">All: Follow-up</button>
                 <button class="btn btn-secondary" onclick="setAllDecision('rejected')">All: Rejected</button>
                 <button class="btn btn-success" onclick="doneReview()">✓ Done</button>
-                <button class="btn btn-danger" onclick="cancelReview()">Cancel Review</button>
             </div>
         </div>
 {%- endif %}
@@ -375,9 +371,6 @@
                 {%- endfor %}
             </tbody>
         </table>
-        <div style="margin-top: 16px;">
-            <button class="btn btn-secondary" onclick="location.reload()">Cancel Review</button>
-        </div>
     </div>
     {%- endif %}
 
@@ -829,25 +822,6 @@ function doneReview() {
     showStatus(`✓ Review complete for ${currentFile} - all changes saved`, 'success', 'uploadStatus');
     closeReview();
     loadProcessing();
-}
-
-async function cancelReview() {
-    if (!currentFile) return;
-    if (!confirm(`Cancel review for ${currentFile}? It will return to the upload queue.`)) return;
-
-    try {
-        const resp = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/cancel`, {
-            method: 'POST'
-        });
-
-        if (!resp.ok) throw new Error('Cancel failed');
-
-        showStatus(`✓ Review cancelled`, 'success', 'uploadStatus');
-        closeReview();
-        loadProcessing();
-    } catch (err) {
-        showStatus(`Error: ${err.message}`, 'error', 'uploadStatus');
-    }
 }
 
 function closeReview() {

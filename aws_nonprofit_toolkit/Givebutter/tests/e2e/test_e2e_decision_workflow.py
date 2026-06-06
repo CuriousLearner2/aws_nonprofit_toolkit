@@ -241,46 +241,6 @@ async def test_decision_persistence_on_reopen(flask_app_running, temp_dir, sampl
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_cancel_review(flask_app_running, temp_dir, sample_csv):
-    """Test canceling review returns file to intake."""
-    from playwright.async_api import async_playwright
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-
-        try:
-            # Upload and navigate to review
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
-
-            file_input = await page.query_selector('input[type="file"]')
-            await file_input.set_input_files(str(sample_csv))
-
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
-            if submit_button:
-                await submit_button.click()
-
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
-
-            # Wait for review button to be visible before clicking
-            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
-            review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
-            if review_button:
-                await review_button.click()
-
-                # Click cancel button
-                cancel_button = await page.query_selector('button:has-text("Cancel")')
-                if cancel_button:
-                    await cancel_button.click()
-
-                    # Should return to main page
-                    await page.wait_for_selector('div.drop-zone', timeout=5000)
-
-        finally:
-            await browser.close()
-
-
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_page_scrolls_to_top_on_load(flask_app_running, temp_dir, sample_csv):

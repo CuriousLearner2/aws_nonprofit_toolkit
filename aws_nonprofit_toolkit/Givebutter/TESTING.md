@@ -322,7 +322,6 @@ Requires:
 - Save decisions (partial save)
 - Save all decisions (complete review)
 - Decision persistence on reopen
-- Cancel review workflow
 - Page scrolls to top on load
 
 Requires:
