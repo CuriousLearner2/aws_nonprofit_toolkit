@@ -316,14 +316,44 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
             suggestion = f"{user_part}@{correct_domain}"
             return ('WARNING', "Email typo detected", f"Consider: {suggestion}")
 
-        # Fuzzy match against common domains (only if not exact match)
+        # Fuzzy match against common domain names (ignoring TLD)
         common_domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'aol.com', 'protonmail.com', 'icloud.com']
         if domain not in common_domains:  # Skip fuzzy matching for exact matches
-            for common_domain in common_domains:
-                similarity = SequenceMatcher(None, domain, common_domain).ratio()
-                if similarity >= 0.85:  # 85% match threshold
-                    suggestion = f"{user_part}@{common_domain}"
-                    return ('WARNING', f"Email domain '{domain}' is similar to '{common_domain}'", f"Consider: {suggestion}")
+            # Extract domain name and TLD(s)
+            domain_parts = domain.split('.')
+            if len(domain_parts) >= 2:
+                # Handle multi-level TLDs like .co.uk, .co.nz
+                multi_level_tlds = ['co.uk', 'co.nz', 'com.au', 'co.jp', 'com.br', 'co.in']
+                domain_name_with_tld = '.'.join(domain_parts)
+                potential_multi_tld = '.'.join(domain_parts[-2:])
+
+                # Check if this is a known multi-level TLD
+                if potential_multi_tld in multi_level_tlds:
+                    # Extract just the domain name part (ignore the multi-level TLD)
+                    domain_name = '.'.join(domain_parts[:-2])
+                else:
+                    domain_name = domain_parts[0]
+                    potential_multi_tld = None
+
+                for common_domain in common_domains:
+                    common_name = common_domain.split('.')[0]
+                    # Compare domain names, not TLDs
+                    similarity = SequenceMatcher(None, domain_name, common_name).ratio()
+
+                    # If domain name matches exactly, only warn if TLD is very suspicious
+                    if domain_name == common_name:
+                        # Legitimate TLDs are okay even if domain name matches
+                        if not potential_multi_tld:  # Single-level TLD
+                            tld = domain_parts[-1]
+                            suspicious_tlds = ['xn--', 'test', 'invalid', 'local', 'localhost']
+                            if any(tld.lower().startswith(s) for s in suspicious_tlds) or len(tld) > 6:
+                                suggestion = f"{user_part}@{common_domain}"
+                                return ('WARNING', f"Email domain '{domain}' has unusual TLD", f"Consider: {suggestion}")
+                    # If domain name is similar (typo-like), warn regardless of TLD
+                    # Use lower threshold (0.70) to catch more potential typos; operators can override
+                    elif similarity >= 0.70:
+                        suggestion = f"{user_part}@{common_domain}"
+                        return ('WARNING', f"Email domain '{domain}' looks like a typo for '{common_domain}'", f"Consider: {suggestion}")
 
         # Check domain against reference list
         valid_domains = reference.get('email_domains', [])
