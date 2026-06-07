@@ -273,7 +273,9 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
         return ('FAIL', "Phone too short (less than 10 digits)", None)
 
     elif len(digits) > 11:
-        return ('FAIL', f"Phone too long ({len(digits)} digits)", None)
+        # Flag as WARNING for >11 digits, allow operator to confirm
+        suggestion = f"Phone has {len(digits)} digits (expected ≤11). Confirm this is correct or remove extra digits."
+        return ('WARNING', f"Phone too long ({len(digits)} digits)", suggestion)
 
     return ('PASS', None, None)
 
@@ -348,12 +350,11 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
                     # Compare domain names, not TLDs
                     similarity = SequenceMatcher(None, domain_name, common_name).ratio()
 
-                    # If domain name matches exactly
+                    # If domain name matches exactly - ALWAYS suggest this domain
+                    # (exact match is strongest signal, even if TLD seems unusual)
                     if domain_name == common_name:
-                        # Flag if TLD is suspicious or very short
-                        if tld_is_suspicious or tld_is_short:
-                            suggestion = f"{user_part}@{common_domain}"
-                            return ('WARNING', f"Email domain '{domain}' has unusual TLD", f"Consider: {suggestion}")
+                        suggestion = f"{user_part}@{common_domain}"
+                        return ('WARNING', f"Email domain '{domain}' looks like a typo for '{common_domain}'", f"Consider: {suggestion}")
                     # If domain name is very short (2-3 chars), be extra aggressive
                     elif len(domain_name) <= 3 and similarity >= 0.50:
                         suggestion = f"{user_part}@{common_domain}"

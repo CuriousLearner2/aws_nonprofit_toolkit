@@ -1068,6 +1068,11 @@ function switchToEditMode(cell) {
     input.dataset.idx = idx;
     input.dataset.original = originalValue;
 
+    // Add maxlength for phone field
+    if (field === 'phone') {
+        input.maxLength = 15;
+    }
+
     const errorMsg = document.createElement('div');
     errorMsg.className = 'edit-error';
 
@@ -1147,8 +1152,8 @@ function validateFieldValue(field, value, input, errorMsg) {
         }
     } else if (field === 'phone') {
         const digits = value.replace(/\D/g, '');
-        if (digits.length < 10 || digits.length > 11) {
-            error = 'Phone must be 10-11 digits';
+        if (digits.length < 10 || digits.length > 15) {
+            error = 'Phone must be 10-15 digits';
         } else {
             // Check against invalid test patterns (same as backend)
             const invalidPatterns = [
@@ -1311,6 +1316,20 @@ async function saveEdit(cell, input, errorMsg) {
         return;
     }
 
+    // Check for phone >11 digits and ask for confirmation
+    if (field === 'phone') {
+        const digits = value.replace(/\D/g, '');
+        if (digits.length > 11) {
+            const confirmed = confirm(
+                `This phone number has ${digits.length} digits (expected ≤11). ` +
+                `Are you sure you want to save this?`
+            );
+            if (!confirmed) {
+                return;
+            }
+        }
+    }
+
     // Update in-memory record
     if (!editedRecords[idx]) {
         editedRecords[idx] = {};
@@ -1432,6 +1451,14 @@ async function recalculateTierAfterEdit(idx) {
                 console.log(`Record ${idx}: Issues cell updated. Current innerHTML: ${issuesCell.innerHTML}`);
             } else {
                 console.warn(`Record ${idx}: Issues cell not found - verify data-field-type="issues" attribute exists`);
+            }
+
+            // Update decision dropdown's data-issues attribute (for override confirmation)
+            const decisionSelect = row.querySelector('.decision-select');
+            if (decisionSelect) {
+                const issuesText = newIssues.length > 0 ? newIssues.join('; ') : '';
+                decisionSelect.setAttribute('data-issues', issuesText);
+                console.log(`Record ${idx}: Decision dropdown data-issues updated to: ${issuesText}`);
             }
 
             // Update Suggestions column
@@ -1567,12 +1594,18 @@ async function handleTierChange(selectElement) {
     // Update color coding
     updateTierSelectColor(selectElement, newTier);
 
-    // Also update the data-tier attribute on the decision dropdown so override confirmation works correctly
+    // Also update the data-tier and data-issues attributes on the decision dropdown so override confirmation works correctly
     const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
     if (row) {
         const decisionSelect = row.querySelector('.decision-select');
         if (decisionSelect) {
             decisionSelect.setAttribute('data-tier', normalizedTier);
+            // Also sync the current issues to decision dropdown
+            const issuesCell = row.querySelector('td[data-field-type="issues"]');
+            if (issuesCell) {
+                const currentIssues = issuesCell.innerText || '';
+                decisionSelect.setAttribute('data-issues', currentIssues);
+            }
         }
     }
 

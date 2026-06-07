@@ -32,22 +32,76 @@
 **Steps**:
 1. Upload CSV with a WARNING-tier record (e.g., missing phone number)
 2. Click "Review" button
-3. Verify record shows WARNING tier (yellow dropdown)
+3. **Before Edit**: Verify record shows WARNING tier (yellow dropdown)
+   - Tier dropdown value should be "Warning"
+   - Tier dropdown should have CSS class `tier-warning` (yellow #fff3cd)
 4. Click on Phone cell (empty field)
 5. Enter valid phone: `5551234567`
 6. Click Save button
-7. Wait for tier dropdown to update color
-8. Verify:
+7. Wait 1 second for tier dropdown to update
+8. **After Edit**: Verify tier auto-updated from WARNING → PASS (GREEN)
+   - Tier dropdown value should now be "Pass"
+   - Tier dropdown should have CSS class `tier-pass` (green #d4edda)
+   - Tier dropdown should NOT have CSS class `tier-warning` anymore
    - Phone field now displays the new number
-   - Issues column updates (phone issue removed)
-   - Tier dropdown changes from Warning (yellow) → Pass (green)
+   - Issues column no longer shows phone-related issue
+   - Suggested Fixes column is cleared or updated
 
 **Success Criteria**:
 - ✅ Phone field accepts input and saves
-- ✅ Tier dropdown color changes automatically
-- ✅ Issues list updates in real-time
-- ✅ No page refresh needed
+- ✅ Tier dropdown VALUE changes from "Warning" to "Pass"
+- ✅ Tier dropdown CSS CLASS changes from `tier-warning` to `tier-pass` (color updates)
+- ✅ Issues list updates in real-time (phone issue removed)
+- ✅ No page refresh needed for tier to update
 - ✅ Change persists if page is reloaded
+- ✅ CSS color matches expected: Green #d4edda for Pass, Yellow #fff3cd for Warning
+
+---
+
+## P0 Test Case 2b: Partial Edit - Tier Remains WARNING When Issues Persist
+
+**Objective**: Verify that tier only becomes PASS when ALL issues are resolved, not just some.
+
+**Scenario**: A record has MULTIPLE issues. When operator fixes ONE issue, tier should stay WARNING. Only when ALL issues are fixed should tier become PASS.
+
+**Steps**:
+1. Upload CSV with a record that has MULTIPLE issues:
+   - Missing phone number AND email typo (e.g., `jane@gmai.com`)
+   - This record should be WARNING tier (multiple issues)
+2. Click "Review" button
+3. **Before any edits**: Verify record shows WARNING tier
+   - Tier dropdown value = "Warning"
+   - Tier dropdown CSS class = "tier-warning" (yellow)
+   - Issues column shows: "Phone: Phone number not found" AND "Email: Email domain 'gmai.com' looks like a typo"
+4. **Fix Issue 1 (Phone)**: 
+   - Click Phone cell (empty)
+   - Enter valid phone: `2125551234`
+   - Click Save button
+   - Wait 1 second
+5. **CRITICAL CHECK 1**: After fixing phone, tier should **STILL be WARNING**
+   - Tier dropdown value should be "Warning" (NOT "Pass")
+   - Tier dropdown CSS class should be "tier-warning" (yellow, NOT green)
+   - Issues column should still show email typo
+   - Why? Because email issue still exists!
+6. **Fix Issue 2 (Email)**:
+   - Click Email cell (shows `jane@gmai.com`)
+   - Change to: `jane@gmail.com`
+   - Click Save button
+   - Wait 1 second
+7. **CRITICAL CHECK 2**: Now that ALL issues are fixed, tier should become PASS
+   - Tier dropdown value should now be "Pass"
+   - Tier dropdown CSS class should be "tier-pass" (green)
+   - Tier dropdown should NOT have "tier-warning" class anymore
+   - Issues column should be empty
+
+**Success Criteria**:
+- ✅ Record starts with WARNING (multiple issues visible)
+- ✅ After fixing Issue 1 only: Tier stays WARNING (not Pass)
+- ✅ Tier only becomes PASS after ALL issues are fixed
+- ✅ CSS class and color update only when all issues resolved
+- ✅ Changes persist if page is reloaded
+
+**Why This Matters**: Prevents accidental approval of records with partial fixes. Ensures data quality enforcement.
 
 ---
 

@@ -159,14 +159,41 @@ CSV Upload
 
 ### Validation & Tier Auto-Update
 - When operator fixes an issue via inline edit, tier should recalculate immediately
-- Example: Record with "WARNING: missing phone" → Operator adds phone → Tier changes "WARNING (yellow) → PASS (green)"
+- **CRITICAL RULE**: Tier only becomes PASS when ALL issues are resolved, not just some
+- Example 1 (single issue):
+  - Record with "WARNING: missing phone" → Operator adds phone → Tier changes "WARNING (yellow) → PASS (green)"
+- Example 2 (multiple issues):
+  - Record with "WARNING: missing phone + email typo" → Operator adds phone → Tier stays "WARNING" (email typo remains)
+  - Record with "WARNING: missing phone + email typo" → Operator adds phone + fixes email → Tier changes to "PASS"
 - Issues column updates to reflect resolved issues
 - Suggested Fixes updates or clears
+- **CRITICAL**: Both the dropdown VALUE and CSS CLASS must update for this to work correctly
 
-**Test verification**: 
-1. Start: WARNING (yellow), Issues = "Phone: Phone number not found"
-2. Edit: Add phone `5551234567`
-3. Result: PASS (green), Issues = empty
+**Test verification (Single Issue)**: 
+1. **Before Edit**: 
+   - Tier dropdown VALUE = "Warning"
+   - Tier dropdown CSS class = "tier-warning" (yellow #fff3cd)
+   - Issues = "Phone: Phone number not found"
+2. **Edit**: Add phone `5551234567` and click Save
+3. **After Edit** (verify within 1 second):
+   - Tier dropdown VALUE = "Pass" (not "Warning")
+   - Tier dropdown CSS class = "tier-pass" (green #d4edda, NOT "tier-warning")
+   - Issues = empty
+   - Color visually changes from yellow to green in dropdown
+
+**Test verification (Multiple Issues - Partial Fix)**:
+1. **Before Edit**: Record has TWO issues
+   - Tier = "Warning" with class "tier-warning" (yellow)
+   - Issues = "Phone: Phone number not found" AND "Email: Email domain 'gmai.com' looks like a typo"
+2. **Fix Issue 1**: Add phone number and Save
+3. **After Issue 1 Fixed**:
+   - Tier should STILL be "Warning" with class "tier-warning" (NOT "Pass")
+   - Issues = only email typo remains
+   - **THIS IS THE KEY TEST**: Tier should NOT jump to Pass just because one issue is fixed
+4. **Fix Issue 2**: Correct email to `user@gmail.com` and Save
+5. **After ALL Issues Fixed**:
+   - Tier becomes "Pass" with class "tier-pass" (green)
+   - Issues = empty
 
 ---
 
@@ -248,6 +275,20 @@ Fuzzy matching catches 95%+ of typos without needing hardcoded lists.
 Aggressive threshold (70%) means some false positives, but operator can easily override.
 
 ---
+
+### Phone Number Validation Rules
+- **10 digits**: Valid (e.g., `5551234567`)
+- **11 digits starting with 1**: Valid (e.g., `15551234567`)
+- **<10 digits**: FAIL - Too short
+- **>11 digits (but ≤15)**: WARNING - Flagged as "too long" with suggestion. When operator tries to save, confirmation dialog appears: "This phone has X digits (expected ≤11). Are you sure?" Operator can confirm to proceed or cancel to edit.
+- **>15 digits**: Cannot be entered (HTML maxlength prevents it)
+
+**Example**: Operator enters `2125551234567` (13 digits)
+- Input validation passes (13 is within 10-15 range)
+- On save, confirmation dialog appears
+- If confirmed, saved with WARNING tier
+- Issues column flags: "Phone too long (13 digits)"
+- Suggestion: "Phone has 13 digits (expected ≤11). Confirm this is correct or remove extra digits."
 
 ## Related Documentation
 

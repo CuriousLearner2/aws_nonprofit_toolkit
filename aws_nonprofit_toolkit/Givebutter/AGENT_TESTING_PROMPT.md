@@ -21,10 +21,11 @@ Execute the **top 5 critical E2E test cases** for the Givebutter Processor donat
 
 ## Your Task
 
-Run the **5 P0 test cases** from E2E_TEST_PLAN_P0.md:
+Run the **6 P0 test cases** from E2E_TEST_PLAN_P0.md:
 
 1. ✅ **Upload CSV & Process Records** - File appears in review queue with correct tier counts
-2. ✅ **Inline Editing with Real-Time Tier Auto-Update** - Edit phone field → tier changes WARNING→PASS (green)
+2. ✅ **Inline Editing with Real-Time Tier Auto-Update** - Edit phone field → tier dropdown VALUE changes "Warning"→"Pass" + CSS class changes "tier-warning"→"tier-pass" (green)
+2b. ✅ **Partial Edit - Tier Remains WARNING When Issues Persist** - Fix one of multiple issues → tier stays WARNING (NOT Pass) → fix second issue → tier becomes PASS
 3. ✅ **Override Tier via Dropdown** - Manually change FAIL (red) → PASS (green) with color feedback
 4. ✅ **Fix Email Typo & Verify Fuzzy Matching** - Catch `gmai.com` typo, show suggestion, apply fix
 5. ✅ **Bulk Actions & Complete Review** - Approve all → confirmation dialog → Done button → workflow complete
