@@ -71,12 +71,6 @@
 
 ## 🚀 Future Enhancements (v3.6+)
 
-### Enhanced Validation
-- Real-time phone formatting (display as (XXX) XXX-XXXX as user types)
-- Email domain suggestions dropdown (click to autocomplete common domains)
-- Amount formatting (currency symbols, thousand separators)
-- Address validation against postal database (optional: requires API)
-
 ### Operator Experience
 - Keyboard shortcuts: Tab = next field, Shift+Tab = prev field, Esc = cancel edit
 - Undo/redo for inline edits before submission
