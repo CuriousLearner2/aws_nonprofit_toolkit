@@ -18,6 +18,7 @@
 - ✅ Editable tier dropdown (operator overrides)
 - ✅ Bulk decision buttons (All: Approved/Rejected/Follow-up)
 - ✅ Override confirmation dialogs
+- ✅ Duplicate detection (exact match: email/phone/address, fuzzy match: names at 70%)
 
 ### Validation Rules
 - ✅ Email format validation + fuzzy domain typo detection
@@ -75,7 +76,6 @@
 - Email domain suggestions dropdown (click to autocomplete common domains)
 - Amount formatting (currency symbols, thousand separators)
 - Address validation against postal database (optional: requires API)
-- Duplicate detection: flag records that appear to be dupes (same email/phone)
 
 ### Operator Experience
 - Keyboard shortcuts: Tab = next field, Shift+Tab = prev field, Esc = cancel edit
@@ -89,7 +89,7 @@
 - Audit log: timestamp, operator, field edited, old → new value
 - Batch export: download original + processed CSVs together
 - Archive old reviews: move completed reviews to archive storage
-- Merge duplicate records: combine records that appear to be the same donor
+- **Merge duplicate records** (v4.0+): Combine records that appear to be the same donor (flagging already works)
 - Data reconciliation report: compare final output to import system
 
 ### Advanced Features
