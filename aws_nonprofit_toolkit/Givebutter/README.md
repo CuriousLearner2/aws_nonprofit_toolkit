@@ -57,8 +57,8 @@ Processes Givebutter CSV exports to:
 - 🚀 [QUICK_START.md](QUICK_START.md) - 3-minute setup and usage
 
 **For Developers:**
-- 📖 [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) - Complete feature reference
-- 🔌 [API.md](API.md) - Full API documentation
+- 📖 [PROCESSOR_GUIDE.md](docs/PROCESSOR_GUIDE.md) - Complete feature reference
+- 🔌 [API.md](docs/API.md) - Full API documentation
 
 ## Quick Start
 
@@ -227,7 +227,7 @@ Add pattern to `email_typos` in `rules_v2.4.json`
 **Duplicate detection missing?**
 Adjust `fuzzy_match_threshold` (0.0-1.0)
 
-See [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) for full troubleshooting.
+See [PROCESSOR_GUIDE.md](docs/PROCESSOR_GUIDE.md) for full troubleshooting.
 
 ## Changelog
 
@@ -278,4 +278,4 @@ See [PROCESSOR_GUIDE.md](PROCESSOR_GUIDE.md) for full troubleshooting.
 
 ---
 
-📖 **[Read the Full Guide](PROCESSOR_GUIDE.md)** | 🚀 **[Quick Start](QUICK_START.md)** | 🔌 **[API Docs](API.md)**
+📖 **[Read the Full Guide](docs/PROCESSOR_GUIDE.md)** | 🚀 **[Quick Start](QUICK_START.md)** | 🔌 **[API Docs](docs/API.md)**

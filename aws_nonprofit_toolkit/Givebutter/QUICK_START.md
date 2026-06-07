@@ -183,7 +183,7 @@ None yet, but you can:
 
 ## Getting Help
 
-Check the full documentation in `PROCESSOR_GUIDE.md` for:
+Check the full documentation in [PROCESSOR_GUIDE.md](docs/PROCESSOR_GUIDE.md) for:
 - Complete validation rule reference
 - API documentation
 - Configuration options
@@ -215,4 +215,4 @@ This updates `reference_list.json` with patterns from your approved records.
 
 ---
 
-**Questions?** Check `PROCESSOR_GUIDE.md` for the full reference.
+**Questions?** Check [PROCESSOR_GUIDE.md](docs/PROCESSOR_GUIDE.md) for the full reference.
