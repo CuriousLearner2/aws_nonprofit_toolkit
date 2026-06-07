@@ -82,7 +82,6 @@
 ### Data Management
 - Audit log: timestamp, operator, field edited, old → new value
 - Batch export: download original + processed CSVs together
-- Archive old reviews: move completed reviews to archive storage
 - **Merge duplicate records** (v4.0+): Combine records that appear to be the same donor (flagging already works)
 - Data reconciliation report: compare final output to import system
 
@@ -142,7 +141,38 @@
 | **3.5** | Phone validation, tier auto-update fixes, data sync fixes | 2026-06-07 (in progress) |
 | **3.6** | Enhanced validation, keyboard shortcuts, operator UX | 2026-06-30 |
 | **4.0** | Audit log, search, filtering, role-based access | 2026-08-31 |
-| **4.1+** | Advanced features (multi-file, custom rules, ML) | TBD |
+| **4.1+** | Advanced features (multi-file, custom rules, historical archive) | TBD |
+
+---
+
+## 🎯 Future Vision (v4.1+): Historical Review Archive
+
+**Purpose**: Maintain a complete audit trail of donation processing decisions over time.
+
+**What Gets Archived**:
+- Complete review metadata: date completed, operator name, final counts (approved/rejected/followup)
+- Original CSV + all processing outputs (approved, followup, rejected CSVs)
+- Decision history: what was decided for each record + operator notes
+- Validation snapshot: what validation rules were in place when reviewed
+- Performance metrics: time-to-review, operator efficiency trends
+
+**Why It Matters**:
+- **Compliance**: "We approved this donor in March" (audit-ready proof)
+- **Pattern Recognition**: "Are we rejecting more Q3 vs Q2?" (trend analysis)
+- **Operational Context**: "How did we handle similar cases before?" (consistency)
+- **Dispute Resolution**: "This was flagged as FAIL but operator approved it—here's why"
+- **Capacity Planning**: "Avg 200 records/day, taking 4 hours—do we need more operators?"
+
+**Future Queries**:
+- Search: "Show all reviews from June involving emails with typos"
+- Export: "Summary report of all decisions for campaign X, by month"
+- Compare: "How validation rules changed between batch 1 and batch 2"
+- Rollback: "Show what changed if we re-validate with old rules"
+
+**Storage & Scale**:
+- Archive stored separately from active processing (fast queries, scalable)
+- Periodic cleanup: keep 2 years active, offer export-to-cold-storage for older data
+- Index by date range, operator, campaign for fast lookup
 
 ---
 
