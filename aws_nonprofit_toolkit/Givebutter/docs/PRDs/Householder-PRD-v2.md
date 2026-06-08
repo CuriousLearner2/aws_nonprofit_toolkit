@@ -241,13 +241,22 @@ def generate_household_id(primary_contact: Contact) -> str:
 
 **duplicate_candidates** — Likely duplicates (same person, separate transactions)
 - id (PK)
-- contact_id_a (FK)
-- contact_id_b (FK)
-- confidence_score (70-95)
-- match_reasons (JSON, e.g., ["email exact match", "phone exact match"])
-- decision (same_person / different / deferred / unreviewed)
-- decided_by (nullable)
-- decided_at (nullable)
+- import_id (FK, for filtering by import batch)
+- contact_id_a (FK to contacts, first contact in pair)
+- contact_id_b (FK to contacts, second contact in pair)
+- confidence_score (70-95, how confident they're the same person)
+- match_reasons (JSON array, e.g., ["email exact match", "phone exact match", "address + zip5 match"])
+- decision (same_person / different / deferred / unreviewed, operator's judgment)
+- reviewer_notes (text, nullable, operator's notes explaining decision)
+- decided_by (text, nullable, username of operator who reviewed)
+- decided_at (timestamp, nullable, when decision was made)
+
+**Workflow:**
+1. `suggest_duplicates()` creates rows with decision = 'unreviewed'
+2. Operator reviews pair via UI: `/imports/{id}/duplicates`
+3. Operator clicks "Same Person" / "Different" / "Defer" with optional notes
+4. System sets: decision, reviewer_notes, decided_by, decided_at
+5. If decision = 'same_person', the pair can be merged in v2 (not v1)
 
 ### Derived Views (for Export & Display)
 
@@ -675,6 +684,35 @@ def test_no_auto_merge():
     suggestions = HouseholdSuggestion.query.filter_by(import_id=import_id).all()
     assert len(suggestions) > 0
     assert all(s.status == "pending" for s in suggestions)
+
+def test_duplicate_candidates_with_operator_decision():
+    """Duplicate candidates created unreviewed, decision set by operator."""
+    import_id = upload_csv(sample_csv_with_duplicates)
+    
+    # Verify: duplicate candidates created with unreviewed status
+    duplicates = DuplicateCandidate.query.filter_by(import_id=import_id).all()
+    assert len(duplicates) >= 2  # Sample has 2+ duplicate pairs
+    
+    # All created unreviewed
+    assert all(d.decision == "unreviewed" for d in duplicates)
+    assert all(d.decided_by is None for d in duplicates)
+    assert all(d.decided_at is None for d in duplicates)
+    assert all(d.reviewer_notes is None for d in duplicates)
+    
+    # Operator reviews: "Same Person" with notes
+    duplicate = duplicates[0]
+    duplicate.decision = "same_person"
+    duplicate.reviewer_notes = "Both donations from Jane Smith, same email"
+    duplicate.decided_by = "operator@example.com"
+    duplicate.decided_at = datetime.now()
+    db.session.commit()
+    
+    # Verify decision persisted
+    updated = DuplicateCandidate.query.get(duplicate.id)
+    assert updated.decision == "same_person"
+    assert updated.reviewer_notes == "Both donations from Jane Smith, same email"
+    assert updated.decided_by == "operator@example.com"
+    assert updated.decided_at is not None
 ```
 
 ### E2E Tests (Playwright)
