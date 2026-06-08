@@ -300,25 +300,32 @@ Allowed names (these are OK):
 
 **Household ID Generation Algorithm:**
 ```python
-def generate_household_id(primary_contact: Contact) -> str:
+def generate_household_id(address_line_1: str, zip5: str) -> str:
     """
     Generate stable household ID from address + zip5.
     Format: HH_<8-char-md5>
     
+    Uses scalar parameters only (no database lookups), ensuring deterministic
+    computation in loose data loops and standalone test harnesses.
+    
     Input: normalized_address (lowercase, no punctuation) + zip5
     Example: 
-      primary_contact.address = "123 Main Street"
-      primary_contact.zip5 = "94301"
+      address_line_1 = "123 Main Street"
+      zip5 = "94301"
       normalized = "123 main street94301"
       md5_hash = hashlib.md5(normalized.encode()).hexdigest()[:8]
       household_id = f"HH_{md5_hash}"
     
     Generated: Only at approval time (when household_suggestion status → approved)
     Stability: Same across imports (deterministic, based on address + zip only)
+    
+    Note: Caller is responsible for providing address_line_1 from either:
+    - An approved contact_suggestion (if address normalization was approved), or
+    - Raw contacts.address_line_1 (if no normalization exists or was rejected)
     """
     normalized = (
-        f"{primary_contact.address_line_1.lower().replace(' ', '')} "
-        f"{primary_contact.zip5}"
+        f"{address_line_1.lower().replace(' ', '')} "
+        f"{zip5}"
     ).encode()
     return f"HH_{hashlib.md5(normalized).hexdigest()[:8]}"
 ```
@@ -614,14 +621,17 @@ def get_primary_contact(contact_ids: list[int]) -> int:
         (where contact 2 has highest donation amount)
     """
 
-def generate_household_id(contact_id: int, address_line_1: str, zip5: str) -> str:
+def generate_household_id(address_line_1: str, zip5: str) -> str:
     """
     Generate stable, deterministic household ID from address data.
     
-    Format: HH_<8-char-lowercase-md5-hex> (or HH_<12-char-hex> if collision detected)
+    Args:
+        address_line_1: str — The address to use (caller provides either raw or approved-suggestion value)
+        zip5: str — First 5 digits of postal code
     
-    Critical: Use the same normalize_address() function as suggest_normalizations().
-    This ensures '123 Main St' and '123 Main Street' hash to the same ID across imports.
+    Returns: str — Household ID in format HH_<8-char-lowercase-md5-hex>
+    
+    Format: HH_<8-char-lowercase-md5-hex> (or HH_<12-char-hex> if collision detected)
     
     Implementation:
     
@@ -640,31 +650,33 @@ def generate_household_id(contact_id: int, address_line_1: str, zip5: str) -> st
         return value.replace(' ', '').strip()
     
     Steps:
-    1. Check if contact has an approved address normalization:
-       SELECT suggested_value FROM contact_suggestions 
-       WHERE contact_id = contact_id AND field_name = 'address' 
-       AND status = 'approved' LIMIT 1
-    2. If approved suggestion exists, use suggested_value as input_address
-    3. Otherwise, use raw address_line_1 as input_address
-    4. Normalize: normalized_address = normalize_address_for_household_id(input_address)
-    5. Create canonical form: canonical = f"{normalized_address}|{zip5 or ''}"
-    6. Hash: base_hash = hashlib.md5(canonical.encode()).hexdigest()
-    7. Extract 8 chars: candidate = f"HH_{base_hash[:8]}"
-    8. Collision safety (optional):
+    1. Normalize input address: normalized = normalize_address_for_household_id(address_line_1)
+    2. Create canonical form: canonical = f"{normalized}|{zip5 or ''}"
+    3. Hash: base_hash = hashlib.md5(canonical.encode()).hexdigest()
+    4. Extract 8 chars: candidate = f"HH_{base_hash[:8]}"
+    5. Collision safety (optional):
        - Query: SELECT COUNT(*) FROM households WHERE household_id = candidate AND NOT canonical_form = ?
        - If collision exists for different address: candidate = f"HH_{base_hash[:12]}"
-    9. Return: candidate
+    6. Return: candidate
     
     Example:
-      contact_id = 42
       address_line_1 = "123 Main St"
       zip5 = "94301"
-      # No approved suggestion, use raw
       normalized = normalize_address_for_household_id("123 Main St") → "123mainstreet"
       canonical = "123mainstreet|94301"
       base_hash = "a1b2c3d4e5f6g7h8..."
       candidate = "HH_a1b2c3d4"
-      # No collision, return candidate
+      return candidate
+    
+    Caller Responsibility:
+    The approve_household() function must:
+    1. Check if contact has an approved address normalization:
+       SELECT suggested_value FROM contact_suggestions 
+       WHERE contact_id = primary_contact_id AND field_name = 'address' 
+       AND status = 'approved' LIMIT 1
+    2. If approved suggestion exists, pass suggested_value as address_line_1
+    3. Otherwise, pass raw contacts.address_line_1 as address_line_1
+    4. Call: household_id = generate_household_id(input_address, zip5)
     """
 ```
 
@@ -713,18 +725,23 @@ def approve_household(suggestion_id: int, approved_by: str) -> None:
     1. Fetch household_suggestion record by suggestion_id
     2. Extract contact IDs: primary = contact_id_primary, members = contact_ids_other (JSON parse)
     3. Elect primary contact via get_primary_contact(all_contact_ids)
-    4. Fetch primary contact's address: contacts.address_line_1, contacts.zip5
-    5. Generate household_id via generate_household_id(primary_id, address, zip5)
-    6. Create households row:
+    4. Prepare address for household ID generation:
+       a. Check if primary contact has an approved address normalization:
+          SELECT suggested_value FROM contact_suggestions 
+          WHERE contact_id = primary_id AND field_name = 'address' AND status = 'approved'
+       b. If found, use suggested_value; otherwise use contacts.address_line_1
+    5. Fetch primary contact's zip5: contacts.zip5
+    6. Generate household_id via generate_household_id(input_address, zip5)
+    7. Create households row:
        - household_id = generated ID
        - primary_contact_id = elected primary
        - member_count = len(all_contact_ids)
        - created_by = approved_by
        - created_at = now()
-    7. Update contacts table for ALL members:
+    8. Update contacts table for ALL members:
        UPDATE contacts SET household_id = generated_id 
        WHERE id IN (contact_ids_primary + contact_ids_other)
-    8. Update household_suggestion.status = 'approved'
+    9. Update household_suggestion.status = 'approved'
     """
 
 def reject_household(suggestion_id: int, rejected_by: str, notes: str = '') -> None:
@@ -893,16 +910,21 @@ def test_normalize_address_for_household_id():
 
 def test_household_id_format_and_stability():
     """Generated household_id follows HH_<8-char-md5> format and is deterministic."""
-    hh_id_1 = generate_household_id(contact_id=1, address_line_1="123 Main St", zip5="94301")
-    hh_id_2 = generate_household_id(contact_id=2, address_line_1="123 Main St", zip5="94301")
+    hh_id_1 = generate_household_id(address_line_1="123 Main St", zip5="94301")
+    hh_id_2 = generate_household_id(address_line_1="123 Main St", zip5="94301")
     
     # Format check
     assert hh_id_1.startswith("HH_")
     assert len(hh_id_1) == 11  # HH_ + 8 chars
     assert all(c in "0123456789abcdef" for c in hh_id_1[3:])  # Hex chars
     
-    # Stability check
-    assert hh_id_1 == hh_id_2  # Same address + zip = same ID
+    # Stability check: same address + zip = same ID (deterministic)
+    assert hh_id_1 == hh_id_2
+    
+    # Determinism across imports: "123 Main St" and "123 Main Street" normalize to same value
+    hh_id_st = generate_household_id(address_line_1="123 Main St", zip5="94301")
+    hh_id_street = generate_household_id(address_line_1="123 Main Street", zip5="94301")
+    assert hh_id_st == hh_id_street
 ```
 
 ### 11.2 Integration Tests (Database State & Workflows)
