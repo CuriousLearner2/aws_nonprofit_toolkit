@@ -478,7 +478,7 @@ def suggest_normalizations(contact: dict) -> list[dict]:
                 "confidence_score": int(confidence * 100)
             })
     
-    # Phone, name, address similarly
+    # Phone, full_name, and address_line_1 similarly
     # ...
     
     return suggestions  # Plain dicts
@@ -524,7 +524,7 @@ def suggest_normalizations(contact: dict) -> list[dict]:
 **Field-name convention:** Use `full_name` and `address_line_1` in suggestion `field_name` values. Do not use legacy aliases `name` or `address` in persisted suggestions.
 
 **Key Requirement:**
-- All suggestions created with `status='pending' (normalization, household) or `decision='unreviewed'` (duplicates)
+- All suggestions are created with `status='pending'` for normalization/household suggestions or `decision='unreviewed'` for duplicates
 - Idempotency: re-running doesn't create duplicates
 
 ---
