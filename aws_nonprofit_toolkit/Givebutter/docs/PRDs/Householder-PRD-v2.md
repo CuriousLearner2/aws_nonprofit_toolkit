@@ -1366,17 +1366,11 @@ contacts.household_id may only be modified by `approve_household()`. Direct upda
 
 Recommended implementation (choose one):
 
-**Option A: SQLite Trigger (Strong enforcement)**
-- Create a BEFORE UPDATE trigger on contacts table
-- Block direct UPDATE to household_id unless an approval context is active
-- Raise SQLITE_CONSTRAINT error on violation
-- Test: verify trigger blocks direct UPDATE statements
+**Option A: Application-layer repository guard (Enforced Firewall)**
+Create a single `ContactRepository.set_household_id(contact_ids, household_id, system_token)` method. All updates to contacts.household_id must flow through this gatekeeper checkpoint. If the `system_token` does not match the protected internal string key, raise a NotImplementedError or Runtime error.
 
-**Option B: Application-layer repository guard (Simpler)**
-- Create a single `ContactRepository.set_household_id(contact_id, household_id, approval_context)` method
-- Only approve_household() calls this method
-- All other code paths raise NotImplementedError if they try to modify household_id directly
-- Test: verify method is called only from approve_household()
+**Option B: State Context Context Manager Guard**
+Wrap database transaction calls inside an application context flag block that temporarily permits mutations to household_id strictly during approve_household() pipeline processing steps, throwing an operational exception for direct writes outside the block.
 
 **Recommended Implementation: Application-Layer Token Guard (Option B Detailed)**
 
