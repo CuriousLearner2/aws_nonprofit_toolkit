@@ -24,6 +24,19 @@ Householder builds ON TOP OF the existing Givebutter Processor validation system
 - **Reuse existing validation** from Givebutter Processor (fuzzy email matching, phone validation) — do not duplicate.
 - **Do not implement** API writeback, retention features, source attribution, or Meta CAPI in v1 (deferred to v2).
 
+### Critical Implementation Guardrails
+
+These guardrails must be enforced in code and covered by tests:
+
+1. **Never mutate raw_import_rows.** Append-only immutable audit trail.
+2. **Never mutate baseline contact fields:** full_name, email, phone, address_line_1, city, state, postal_code.
+3. **Only approve_household() may set contacts.household_id.** Enforce via database constraint or application guard.
+4. **Suggestion engines return suggestions only; they do not write to approval targets.** No auto-apply behavior.
+5. **Upload processing may create pending suggestions, but may not approve anything.** All approvals require explicit operator action.
+6. **Duplicate decisions in v1 are record-only and never merge contacts.** same_person decision records judgment; v2 may use it for merge.
+7. **Export Clean reads from approved_contacts; it does not update contacts.** Read-only query of derived view.
+8. **Givebutter API writeback is out of scope for v1.** No external writes, no background sync jobs.
+
 ---
 
 ## 2.1 Clarifications for Claude Code
@@ -391,7 +404,12 @@ SELECT
      LIMIT 1),
     c.phone
   ) AS phone,
-  c.address_line_1,
+  COALESCE(
+    (SELECT suggested_value FROM contact_suggestions 
+     WHERE contact_id = c.id AND field_name = 'address_line_1' AND status = 'approved'
+     LIMIT 1),
+    c.address_line_1
+  ) AS address_line_1,
   c.city,
   c.state,
   c.postal_code,
@@ -409,6 +427,12 @@ FROM contacts c
 - "Export Clean" queries this view to generate the CSV (one row per contact with approved values + household_id)
 - Household assignment only appears if the contact is in an approved household_suggestion
 - The view automatically reflects current state: if an approval is withdrawn, the view reverts to raw value
+
+**Address Normalization Clarification:**
+- Approved address_line_1 suggestions are reflected only in approved_contacts and exports
+- They never mutate contacts.address_line_1 (baseline field remains immutable)
+- Household ID generation uses approved address_line_1 suggestion if present; otherwise uses raw contacts.address_line_1
+- Field name standardization: all address suggestions use field_name = 'address_line_1' (not 'address')
 
 **households_summary** — One row per household (for "Export by Household" report)
 ```sql
@@ -434,6 +458,53 @@ GROUP BY h.household_id
 4. Operator clicks "Approve" on a household_suggestion → `households` record created
 5. `households_summary` view includes household with member info
 6. "Export by Household" CSV includes household groupings
+
+### Database Constraints and Enums
+
+**Enum/CHECK constraints:**
+
+contact_suggestions:
+```sql
+ALTER TABLE contact_suggestions 
+  ADD CHECK (status IN ('pending', 'approved', 'rejected', 'deferred'));
+```
+
+household_suggestions:
+```sql
+ALTER TABLE household_suggestions
+  ADD CHECK (status IN ('pending', 'approved', 'rejected', 'deferred'));
+```
+
+duplicate_candidates:
+```sql
+ALTER TABLE duplicate_candidates
+  ADD CHECK (decision IN ('unreviewed', 'same_person', 'different', 'deferred'));
+  
+-- Enforce sorted order: contact_id_a < contact_id_b
+ALTER TABLE duplicate_candidates
+  ADD CHECK (contact_id_a < contact_id_b);
+```
+
+**UNIQUE constraints (prevent duplicates on re-run):**
+
+contact_suggestions:
+```sql
+CREATE UNIQUE INDEX idx_contact_suggestion_idempotency 
+  ON contact_suggestions(import_id, contact_id, field_name, suggested_value);
+```
+
+household_suggestions:
+```sql
+-- Assumes sorted_contact_ids is a stored/computed deterministic key
+CREATE UNIQUE INDEX idx_household_suggestion_idempotency
+  ON household_suggestions(import_id, sorted_contact_ids);
+```
+
+duplicate_candidates:
+```sql
+CREATE UNIQUE INDEX idx_duplicate_idempotency
+  ON duplicate_candidates(import_id, contact_id_a, contact_id_b);
+```
 
 ---
 
@@ -548,6 +619,33 @@ When operator clicks bulk action (e.g., "Approve All Normalizations"):
 2. Require confirmation: [Cancel] [Approve]
 3. Log action: timestamp, operator, # approved, change details
 
+**Bulk Approval Safety Rules:**
+
+- Bulk approval may only apply to currently filtered pending suggestions
+  - Never include deferred, rejected, or already-approved items
+  - Verify filter state matches expectations before confirming
+
+- Bulk normalizations must show counts by field/type before confirmation
+  - Example: "50 emails, 3 phones, 2 addresses"
+
+- Bulk household approval must show:
+  - Number of households to be created
+  - Total unique contacts affected
+  - Primary contact waterfall logic explanation
+
+- Bulk duplicate decisions:
+  - "Different" decisions can use bulk approval safely (no system action)
+  - "Same Person" decisions are higher-risk due to v2 merge potential
+  - Consider disabling bulk "Same Person" approval or requiring explicit per-decision confirmation
+  - v2 merge workflow should require individual approval anyway
+
+- All bulk operations must be audit-logged with:
+  - Timestamp
+  - Operator username and IP address
+  - Action type (approve normalizations / households / duplicates)
+  - Count of items affected
+  - Filter criteria applied
+
 **Backend Optimization for Preview Metrics:**
 
 To prevent performance degradation from parsing thousands of raw JSON objects, use optimized aggregation:
@@ -621,6 +719,60 @@ The "Defer" action hides suggestions from the primary review queue without delet
 - State transitions: pending → deferred → pending (or approved/rejected)
 - Never purges deferred records; all history retained
 
+### 8.7a Status Transitions and Terminal States
+
+**contact_suggestions and household_suggestions allowed transitions:**
+- `pending` → `approved` (operator clicks Approve)
+- `pending` → `rejected` (operator clicks Reject)
+- `pending` → `deferred` (operator clicks Defer)
+- `deferred` → `pending` (operator clicks Un-defer or Restore to Queue)
+- `deferred` → `approved` (operator approves deferred item)
+- `deferred` → `rejected` (operator rejects deferred item)
+
+Terminal states in v1:
+- `approved` and `rejected` are final unless an admin-only reversal feature is explicitly implemented
+- Attempting to transition from approved/rejected to other states should raise an error
+
+**duplicate_candidates allowed transitions:**
+- `unreviewed` → `same_person` (operator marks as Same Person)
+- `unreviewed` → `different` (operator marks as Different)
+- `unreviewed` → `deferred` (operator defers decision)
+- `deferred` → `unreviewed` (operator returns to queue)
+- `deferred` → `same_person` (operator decides on deferred pair)
+- `deferred` → `different` (operator decides on deferred pair)
+
+Terminal states in v1:
+- `same_person` and `different` are final decisions unless an admin-only reversal feature is explicitly implemented
+- Recorded decisions should not be easily reversed; treat them as audit-logged operator judgment
+
+### 8.8 Idempotency Rules for Suggestion Generation
+
+Suggestion generation must be idempotent per import_id to safely handle retries and re-runs.
+
+**Normalization suggestions:**
+- Before creating a contact_suggestion, query for an existing row with the same:
+  - import_id, contact_id, field_name, and suggested_value
+- Do not create duplicate pending suggestions on re-run
+- Example: if re-processing detects the same "email: jane@gmail.com" suggestion, skip insertion
+
+**Household suggestions:**
+- Use a deterministic suggestion key based on import_id + sorted contact IDs
+- Store sorted contact IDs in a deterministic order (e.g., lowest ID first)
+- Do not create duplicate household_suggestions for the same proposed group on re-run
+- Example: if group [1, 2, 3] was already suggested, do not suggest it again
+
+**Duplicate candidates:**
+- Store duplicate pairs in sorted order: contact_id_a < contact_id_b (enforced by UNIQUE constraint)
+- Enforce one duplicate candidate per (import_id, contact_id_a, contact_id_b)
+- Do not create duplicate pairs on re-run
+- Example: pair (1, 5) is identical to pair (5, 1); store only as (1, 5)
+
+**Database enforcement:**
+- Use UNIQUE constraints to prevent duplicate suggestions:
+  - contact_suggestions: UNIQUE(import_id, contact_id, field_name, suggested_value)
+  - household_suggestions: UNIQUE(import_id, sorted_contact_ids)
+  - duplicate_candidates: UNIQUE(import_id, contact_id_a, contact_id_b) where contact_id_a < contact_id_b
+
 ---
 
 ## 9. Function Signatures Claude Must Implement
@@ -644,19 +796,23 @@ def get_primary_contact(contact_ids: list[int]) -> int:
     """
     Select primary contact ID using waterfall logic.
     
+    Data Source: Uses baseline contacts table (NOT approved_contacts view)
+    - amount_cents and donation_date are transaction facts, not normalization fields
+    - Primary contact selection should use raw baseline values, not approved suggestions
+    
     Args:
         contact_ids: list[int] — Native database contact IDs (integers, not strings)
     
     Waterfall Priority (first non-tie wins):
-    1. Highest total donation amount (amount_cents)
-    2. Most recent donation_date
-    3. Oldest database id (first to be created)
+    1. Highest total donation amount (contacts.amount_cents)
+    2. Most recent donation_date (contacts.donation_date)
+    3. Oldest database id (contacts.id, first to be created)
     
     Returns: int — contact_id of elected primary contact
     
     Example:
         get_primary_contact([1, 2, 3]) → 2
-        (where contact 2 has highest donation amount)
+        (where contact 2 has highest amount_cents in baseline contacts table)
     """
 
 def generate_household_id(address_line_1: str, zip5: str) -> tuple[str, str]:
@@ -851,7 +1007,22 @@ def resolve_duplicate(candidate_id: int, decision: str,
     """
 ```
 
-**Forbidden function names:** `merge`, `auto_clean`, `auto_fix`, `auto_write`, `auto_apply`
+**Forbidden function name prefixes:**
+- `auto_*` (e.g., auto_apply, auto_merge, auto_clean, auto_write)
+- `merge_*` (e.g., merge_contacts, merge_households)
+
+**Forbidden behaviors** (regardless of function name):
+- Direct mutation of baseline contact fields (full_name, email, phone, address_line_1, city, state, postal_code)
+- Automatic application of suggestions without explicit operator approval
+- Automatic household creation without explicit approve_household() call
+- Automatic duplicate merge (same_person decision is record-only in v1)
+- Givebutter API writeback
+
+**Allowed function names:**
+- `export_clean_contacts()` — export function (queries view, no mutation)
+- `approved_contacts` — view name (derived, not auto-applied)
+- `clean_contacts.csv` — file name (output file)
+- `normalize_for_matching()` — helper function (calculation, not write)
 
 ---
 
@@ -1429,7 +1600,9 @@ Add these `data-testid` attributes to HTML elements for reliable element selecti
 - ✅ Export by Household groups related contacts with primary contact info
 - ✅ Bulk approvals show confirmation modal with change preview
 - ✅ All tests pass without any auto-write logic
-- ✅ Zero functions named `merge`, `clean`, `auto_*`
+- ✅ Forbidden function name prefixes: `auto_*`, `merge_*`
+- ✅ Forbidden behaviors: no auto-apply, no auto-merge, no direct field mutation, no API writeback
+- ✅ Allowed: `export_clean_contacts()`, `approved_contacts` view, `clean_contacts.csv` file
 - ✅ Audit trail: timestamp, operator, # approved for each action
 
 ---
