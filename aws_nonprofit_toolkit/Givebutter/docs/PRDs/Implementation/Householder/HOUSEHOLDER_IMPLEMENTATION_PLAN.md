@@ -9,9 +9,18 @@
 
 **These directives take precedence over all file paths and technical choices below.**
 
-### ⚠️ PRD IS SOURCE OF TRUTH
+### ⚠️ PRD IS CONTRACT, PLAN IS SEQUENCE
 
-Use this implementation plan as sequencing guidance. **If this plan and the Householder PRD conflict, follow the PRD unless this plan is explicitly safer.**
+Use the PRD as the contract and this plan as the execution sequence. **If this plan and the Householder PRD conflict, follow the PRD unless this plan is explicitly safer. Stop at phase boundaries with a test report before continuing.**
+
+### ⚠️ NO SILENT FALLBACKS ON MISSING DEPENDENCIES
+
+If required Processor validation functions are unavailable, do not silently reimplement them. **Stop and report the missing dependency** unless the PRD explicitly permits an adapter to an equivalent existing function.
+
+Example:
+- ✅ OK: Processor has `fuzzy_match_email()`, but Householder expects `fuzzy_email_match()` → Create adapter
+- ❌ WRONG: Processor has no email validation → Do NOT reimplement; stop and report
+- ✅ OK: PRD says "Or use equivalent validation if Processor's exact function unavailable" → OK to adapt
 
 ### ⚠️ DO NOT PROCEED WITHOUT ADAPTATION DOCUMENT
 
@@ -173,6 +182,18 @@ This is a guideline for focused execution, not a deadline. Adjust as needed base
 - **Phase 7 (1 day):** Final Audit & Documentation
 
 **Total: 9-18 days** (2-4 weeks) depending on codebase complexity and discovery time.
+
+### ⚠️ TEST REPORT AT EACH PHASE BOUNDARY
+
+**At the end of each phase, STOP and report:**
+
+1. **Files changed:** List all new/modified files with line counts
+2. **Tests added:** Count and list new unit/integration/E2E tests
+3. **Tests run and results:** Show test execution output (pass/fail counts, coverage)
+4. **PRD assumptions not matched:** Report any expected Processor functions, DB patterns, or test fixtures that differed from reality
+5. **Safe to proceed?** Explicit yes/no to continue to next phase with reasoning
+
+Do not proceed to the next phase until this report is reviewed and confirmed safe.
 
 ---
 
@@ -402,10 +423,10 @@ def suggest_normalizations(contact: dict) -> list[dict]:
 **Proposed File Location:** `/scripts/householder/approvals.py`
 
 **Functions:**
-- `approve_normalization(suggestion_id, approved_by, ip_address, user_agent)` — UPDATE suggestion, never contacts
-- `reject_normalization(...)` — UPDATE status='rejected'
-- `defer_normalization(...)` — UPDATE status='deferred'
-- `approve_household(...)` — ⚠️ **CRITICAL: ATOMIC TRANSACTION**
+- `approve_normalization(suggestion_id, reviewed_by, ip_address, user_agent)` — UPDATE suggestion, never contacts
+- `reject_normalization(suggestion_id, reviewed_by, ip_address, user_agent)` — UPDATE status='rejected'
+- `defer_normalization(suggestion_id, reviewed_by, ip_address, user_agent)` — UPDATE status='deferred'
+- `approve_household(suggestion_id, reviewed_by, ip_address, user_agent)` — ⚠️ **CRITICAL: ATOMIC TRANSACTION**
   - Verify contact conflicts
   - Elect primary contact
   - Generate household_id
@@ -414,7 +435,9 @@ def suggest_normalizations(contact: dict) -> list[dict]:
   - Mark suggestion='approved'
   - **ROLLBACK if any step fails**
 - `reject_household(...)`, `defer_household(...)`
-- `resolve_duplicate(...)` — record decision only (no merge in v1)
+- `resolve_duplicate(contact_id_a, contact_id_b, decision, reviewed_by, ip_address, user_agent)` — record decision only (no merge in v1)
+
+**Parameter Naming:** All approval functions use `reviewed_by` parameter (not `approved_by`) to align with database field `reviewed_by` per PRD. This prevents drift between API parameter names and database schema.
 
 **Flask Routes:**
 - `GET /householder/imports/<id>/normalizations` — review queue
