@@ -294,7 +294,7 @@ Allowed names (these are OK):
 - import_id (FK, for filtering by import batch)
 - contact_id_primary (FK)
 - contact_ids_other (JSON array of contact IDs)
-- sorted_contact_ids_key (TEXT, GENERATED ALWAYS AS sorted_json_array, STORED) — Deterministic key for idempotency index; stores sorted IDs as "1-4-23"
+- sorted_contact_ids_key (TEXT NOT NULL) — Deterministic key for idempotency index (populated by application using generate_sorted_contact_ids_key()); stores sorted IDs as "1-4-23"
 - match_reason (e.g., "shared address + zip + different first names", "phone + last name match")
 - match_confidence_score (65-95)
 - status (pending / approved / rejected / deferred)
@@ -462,12 +462,31 @@ GROUP BY h.household_id
 
 ### Database Constraints and Enums
 
+**SQLite Migration Note:**
+
+SQLite has limited support for ALTER TABLE ADD CHECK constraints. CHECK constraints should be created during CREATE TABLE migrations (when first creating the table). If adding CHECK constraints to existing tables, use a migration that:
+1. Creates a new table with the CHECK constraints
+2. Copies data from the old table
+3. Renames tables
+
+Alternatively, use Python validation in the ORM layer to enforce these constraints.
+
 **Enum/CHECK constraints:**
 
 contact_suggestions:
 ```sql
-ALTER TABLE contact_suggestions 
-  ADD CHECK (status IN ('pending', 'approved', 'rejected', 'deferred'));
+CREATE TABLE contact_suggestions (
+  id INTEGER PRIMARY KEY,
+  import_id INTEGER NOT NULL,
+  contact_id INTEGER NOT NULL,
+  field_name TEXT NOT NULL,
+  current_value TEXT,
+  suggested_value TEXT NOT NULL,
+  reason TEXT,
+  confidence_score INTEGER,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'deferred')),
+  -- ... other fields ...
+);
 ```
 
 household_suggestions:
@@ -636,9 +655,9 @@ When operator clicks bulk action (e.g., "Approve All Normalizations"):
 
 - Bulk duplicate decisions:
   - "Different" decisions can use bulk approval safely (no system action)
-  - "Same Person" decisions are higher-risk due to v2 merge potential
-  - Consider disabling bulk "Same Person" approval or requiring explicit per-decision confirmation
-  - v2 merge workflow should require individual approval anyway
+  - "Same Person" decisions are higher-risk due to v2 merge potential and must be disabled for bulk approval in v1
+  - Individual "Same Person" decisions must be approved one-at-a-time, never bulk
+  - v2 merge workflow will require individual approval anyway
 
 - All bulk operations must be audit-logged with:
   - Timestamp
@@ -790,7 +809,7 @@ if not existing:
 **Database enforcement:**
 - Use UNIQUE constraints to prevent duplicate suggestions:
   - contact_suggestions: UNIQUE(import_id, contact_id, field_name, suggested_value)
-  - household_suggestions: UNIQUE(import_id, sorted_contact_ids)
+  - household_suggestions: UNIQUE(import_id, sorted_contact_ids_key)
   - duplicate_candidates: UNIQUE(import_id, contact_id_a, contact_id_b) where contact_id_a < contact_id_b
 
 ---
@@ -898,7 +917,7 @@ def generate_household_id(address_line_1: str, zip5: str) -> tuple[str, str]:
     The approve_household() function must:
     1. Check if contact has an approved address normalization:
        SELECT suggested_value FROM contact_suggestions 
-       WHERE contact_id = primary_contact_id AND field_name = 'address' 
+       WHERE contact_id = primary_contact_id AND field_name = 'address_line_1' 
        AND status = 'approved' LIMIT 1
     2. If approved suggestion exists, pass suggested_value as address_line_1
     3. Otherwise, pass raw contacts.address_line_1 as address_line_1
@@ -947,27 +966,35 @@ def approve_household(suggestion_id: int, approved_by: str) -> None:
     """
     Approve a household suggestion and create permanent household record.
     
+    CRITICAL: This function must run in a single database transaction. If any step fails, 
+    roll back all changes so no household row exists without matching contact household_id 
+    assignments, and no suggestion is marked approved without a household record.
+    
     Steps:
     1. Fetch household_suggestion record by suggestion_id
     2. Extract contact IDs: primary = contact_id_primary, members = contact_ids_other (JSON parse)
-    3. Elect primary contact via get_primary_contact(all_contact_ids)
-    4. Prepare address for household ID generation:
+    3. Verify all proposed contacts have contacts.household_id IS NULL or already equal to the same household_id
+       (block approval if any contact belongs to a different household)
+    4. Elect primary contact via get_primary_contact(all_contact_ids)
+    5. Prepare address for household ID generation:
        a. Check if primary contact has an approved address normalization:
           SELECT suggested_value FROM contact_suggestions 
-          WHERE contact_id = primary_id AND field_name = 'address' AND status = 'approved'
+          WHERE contact_id = primary_id AND field_name = 'address_line_1' AND status = 'approved'
        b. If found, use suggested_value; otherwise use contacts.address_line_1
-    5. Fetch primary contact's zip5: contacts.zip5
-    6. Generate household_id via generate_household_id(input_address, zip5)
-    7. Create households row:
+    6. Fetch primary contact's zip5: contacts.zip5
+    7. Generate household_id via generate_household_id(input_address, zip5)
+    8. Create households row:
        - household_id = generated ID
        - primary_contact_id = elected primary
        - member_count = len(all_contact_ids)
        - created_by = approved_by
        - created_at = now()
-    8. Update contacts table for ALL members:
+    9. Update contacts table for ALL members:
        UPDATE contacts SET household_id = generated_id 
        WHERE id IN (contact_ids_primary + contact_ids_other)
-    9. Update household_suggestion.status = 'approved'
+    10. Update household_suggestion.status = 'approved', reviewed_by, reviewed_at
+    
+    If any step fails, ROLLBACK the entire transaction.
     """
 
 def reject_household(suggestion_id: int, rejected_by: str, notes: str = '') -> None:
@@ -1362,116 +1389,66 @@ def test_exports_contain_approved_values():
 
 **Enforcement Strategy for contacts.household_id Write Protection:**
 
-contacts.household_id may only be modified by `approve_household()`. Direct updates must be prevented.
+contacts.household_id may only be modified by `approve_household()`. All household ID assignments must go through a single gatekeeper method.
 
-Recommended implementation (choose one):
+**Implementation Requirement:**
 
-**Option A: Application-layer repository guard (Enforced Firewall)**
-Create a single `ContactRepository.set_household_id(contact_ids, household_id, system_token)` method. All updates to contacts.household_id must flow through this gatekeeper checkpoint. If the `system_token` does not match the protected internal string key, raise a NotImplementedError or Runtime error.
+Create a single `ContactRepository.assign_household_id_from_approval()` method. All updates to contacts.household_id must flow through this method. No other repository or service method may update contacts.household_id directly.
 
-**Option B: State Context Context Manager Guard**
-Wrap database transaction calls inside an application context flag block that temporarily permits mutations to household_id strictly during approve_household() pipeline processing steps, throwing an operational exception for direct writes outside the block.
+**v1 Enforcement:**
+- All contacts.household_id updates must originate from `approve_household()` → `ContactRepository.assign_household_id_from_approval()`
+- Tests must verify that `ContactRepository.assign_household_id_from_approval()` is called only from the approval workflow
+- Code review should confirm no other code paths write to contacts.household_id
 
-**Recommended Implementation: Application-Layer Token Guard (Option B Detailed)**
+**Optional Database-Level Enforcement (SQLite Trigger):**
+
+If you require database-level enforcement, add a SQLite BEFORE UPDATE trigger on the contacts table:
+
+```sql
+CREATE TRIGGER prevent_direct_household_id_update
+BEFORE UPDATE OF household_id ON contacts
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT, 'Direct household_id updates prohibited. Use approve_household() workflow.');
+END;
+```
+
+However, this trigger will also block the legitimate `approve_household()` update. To allow the approval, either:
+1. Drop and recreate the trigger conditionally during approval, or
+2. Use application-layer enforcement without triggers (recommended)
+
+**Tests for approval workflow:**
 
 ```python
-# In scripts/householder/repository.py
-import os
-
-class ContactRepository:
-    """Repository guard for safe contact mutations."""
+def test_approve_household_sets_household_id():
+    """Verify approve_household() correctly sets household_id for all members."""
+    import_id = upload_csv(sample_csv_with_households)
+    suggestion = HouseholdSuggestion.query.filter_by(
+        import_id=import_id, status="pending"
+    ).first()
     
-    APPROVAL_TOKEN = os.getenv("HOUSEHOLDER_APPROVAL_TOKEN")
+    # Before approval: no household_id
+    contact_ids = [suggestion.contact_id_primary] + json.loads(suggestion.contact_ids_other)
+    for cid in contact_ids:
+        assert Contact.query.get(cid).household_id is None
     
-    @classmethod
-    def set_household_id(cls, contact_ids: list[int], household_id: str, system_token: str) -> None:
-        """
-        Set household_id on contacts only with valid approval token.
-        
-        Args:
-            contact_ids: List of contact IDs to update
-            household_id: Household ID to assign (format: HH_<8-char-hex>)
-            system_token: Approval token from environment; must match HOUSEHOLDER_APPROVAL_TOKEN
-        
-        Raises:
-            PermissionError: If system_token does not match expected token
-        
-        Usage: Called ONLY from approve_household_suggestion(); never directly.
-        """
-        if system_token != cls.APPROVAL_TOKEN:
-            raise PermissionError(
-                "Direct household_id mutation blocked. "
-                "Use approve_household_suggestion() which provides the correct token."
-            )
-        
-        db.session.execute(
-            "UPDATE contacts SET household_id = :hh_id WHERE id IN :ids",
-            {"hh_id": household_id, "ids": contact_ids}
-        )
-        db.session.commit()
-
-# In approve_household() function:
-def approve_household(suggestion_id: int, approved_by: str) -> None:
-    # ... existing logic to validate suggestion and compute household_id ...
+    # Approve household
+    approve_household(suggestion.id, approved_by="operator")
     
-    # Approved calls set_household_id with the correct token
-    token = os.getenv("HOUSEHOLDER_APPROVAL_TOKEN")
-    ContactRepository.set_household_id(
-        contact_ids=all_contact_ids,
-        household_id=generated_household_id,
-        system_token=token  # Only approve_household() provides this
-    )
-```
+    # After approval: all members have matching household_id
+    for cid in contact_ids:
+        assert Contact.query.get(cid).household_id is not None
+        assert Contact.query.get(cid).household_id.startswith("HH_")
 
-**Environment Configuration:**
-
-Add to `.env` (and `.env.example`):
-```
-HOUSEHOLDER_APPROVAL_TOKEN=<randomly-generated-secure-token>
-```
-
-Example (in production, generate with `python -c "import secrets; print(secrets.token_hex(32))"`):
-```
-HOUSEHOLDER_APPROVAL_TOKEN=a7f3e8c2d9b1f4e6a5c8d2f1e9b7c4a3d6f8e1c9b2a5d7f4e1c8a3b6d9f2e
-```
-
-**Required behavior (both options):**
-- Direct SQL UPDATE to contacts.household_id must fail or raise PermissionError
-- approve_household() must successfully set household_id for all household members using the guard
-- Audit trail (reviewed_by, reviewed_at) must be logged with the operation
-
-```python
-def test_direct_household_id_write_fails():
-    """CRITICAL GUARDRAIL: Direct UPDATE to contacts.household_id must fail."""
-    # Create a contact and household
-    contact = Contact.create(id=1, import_id=1, full_name="Jane Smith")
-    household = Household.create(
-        import_id=1,
-        household_id="HH_a1b2c3d4",
-        primary_contact_id=1,
-        member_count=1,
-        created_by="system"
-    )
+def test_household_id_only_via_approval():
+    """Verify ContactRepository.assign_household_id_from_approval() is the only update path."""
+    # This test verifies through code inspection that no other service/repository method
+    # calls UPDATE on contacts.household_id except approve_household()
+    import ast
+    import scripts.householder.repository as repo_module
     
-    # Verify initial state: household_id is NULL
-    assert Contact.query.get(1).household_id is None
-    
-    # Application code should NEVER directly write contacts.household_id
-    # This guardrail prevents bypassing approval workflow and audit trail
-    # Attempt should fail via database constraint (trigger) or application code guard
-    with pytest.raises((IntegrityError, RuntimeError, NotImplementedError)):
-        db.session.execute(
-            "UPDATE contacts SET household_id = ? WHERE id = 1",
-            ("HH_a1b2c3d4",)
-        )
-        db.session.commit()
-    
-    # Verify direct write was prevented
-    contact_after = Contact.query.get(1)
-    assert contact_after.household_id is None, (
-        "Guardrail failed: contacts.household_id should only be set via approve_household(), "
-        "never by direct UPDATE. This ensures all household assignments are audit-logged."
-    )
+    # Parse repository source and verify only assign_household_id_from_approval() touches household_id
+    # (Implementation: grep the module for UPDATE statements or use AST to verify)
 ```
 
 ### 11.3 E2E Tests (Playwright UI Workflows)
