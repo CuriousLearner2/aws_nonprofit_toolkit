@@ -1,7 +1,7 @@
 # HOUSEHOLDER V1 IMPLEMENTATION PLAN
 
 **Last Updated:** 2026-06-08  
-**Status:** Final (Quality-first, aspirational timeline)
+**Status:** Final (Quality-first, PRD-consistent)
 
 ---
 
@@ -357,7 +357,7 @@ Do not proceed to the next phase until this report is reviewed and confirmed saf
 2. `imports` — import batches metadata
 3. `contacts` — baseline extracted contacts (raw values only)
 4. `contact_suggestions` — normalization suggestions
-5. `household_suggestions` — household grouping suggestions
+5. `household_suggestions` — household grouping suggestions, including `sorted_contact_ids_key TEXT NOT NULL` for idempotency
 6. `households` — confirmed household groups (created only after approval)
 7. `duplicate_candidates` — likely duplicate pairs
 
@@ -409,9 +409,9 @@ def extract_contacts(import_id: int) -> list[dict]:
     Returns plain dicts (not ORM objects) with EXACT raw values for baseline fields.
     Derived/index fields (zip5, amount_cents) may be computed for matching/querying only.
     """
-    raw_rows = query_raw_import_rows(import_id)
+    raw_import_rows = query_raw_import_rows(import_id)
     contacts = []
-    for row in raw_rows:
+    for row in raw_import_rows:
         contact = {
             "import_id": import_id,
             "raw_row_id": row["id"],
@@ -520,8 +520,11 @@ def suggest_normalizations(contact: dict) -> list[dict]:
 - `persist_household_suggestions(import_id, suggestions)` — check UNIQUE (idempotency key)
 - `persist_duplicate_candidates(import_id, candidates)` — check UNIQUE
 
+
+**Field-name convention:** Use `full_name` and `address_line_1` in suggestion `field_name` values. Do not use legacy aliases `name` or `address` in persisted suggestions.
+
 **Key Requirement:**
-- All suggestions created with `status='pending'` (normalization, household) or `decision='unreviewed'` (duplicates)
+- All suggestions created with `status='pending' (normalization, household) or `decision='unreviewed'` (duplicates)
 - Idempotency: re-running doesn't create duplicates
 
 ---
@@ -547,12 +550,12 @@ def suggest_normalizations(contact: dict) -> list[dict]:
   - Mark suggestion='approved'
   - **ROLLBACK if any step fails**
 - `reject_household(...)`, `defer_household(...)`
-- `resolve_duplicate(candidate_id, decision, reviewer_notes, reviewed_by, ip_address, user_agent)` — record decision only (no merge in v1)
+- `resolve_duplicate(candidate_id, decision, reviewer_notes, decided_by, ip_address, user_agent)` — record decision only (no merge in v1)
 
 **Parameter Naming:** 
 - All normalization/household approval functions use `reviewed_by` parameter to align with database fields `reviewed_by`/`reviewed_at`
 - Duplicate resolution uses `candidate_id` (not two contact IDs) to reference the specific `duplicate_candidates.id` row — less error-prone than passing contact IDs and re-finding the candidate
-- Duplicate decisions record `decided_by`/`decided_at` fields (instead of `reviewed_by`/`reviewed_at`) to distinguish duplicate decisions from suggestion reviews
+- Duplicate resolution uses `decided_by` as the parameter and records `decided_by`/`decided_at` fields to distinguish duplicate decisions from suggestion reviews
 
 This prevents drift between API parameter names and database schema fields.
 
@@ -607,7 +610,7 @@ This prevents drift between API parameter names and database schema fields.
 
 2. **Approval Workflow Tests:**
    - `test_approve_household_atomic_transaction()` — Verify rollback on failure
-   - `test_household_id_deterministic()` — Same address+zip = same ID always
+   - `test_household_id_deterministic()` — Same address+zip = same ID always; unpack `(household_id, canonical_form)` from `generate_household_id()` before asserting string properties
    - `test_primary_contact_waterfall()` — Correct member elected
    - `test_resolve_duplicate_record_only()` — No merge in v1
 
