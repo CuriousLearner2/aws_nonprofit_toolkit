@@ -180,6 +180,41 @@ except (AttributeError, AssertionError) as e:
     raise RuntimeError(f"Processor version incompatible: {e}")
 ```
 
+**Processor Adapter Pattern:**
+
+Before implementing Householder, Claude Code must:
+1. Inspect the existing Givebutter Processor repository
+2. Confirm the actual module path for validation functions (may not be `scripts.processor`)
+3. If functions exist under a different path, create a thin adapter module:
+   ```
+   scripts/householder/processor_adapter.py
+   ```
+4. The adapter may import and re-export:
+   - `fuzzy_email_match`
+   - `normalize_phone`
+   - `validate_email_format`
+
+The adapter must NOT copy or reimplement validation logic. If functions truly do not exist, raise NotImplementedError with a clear message.
+
+**Forbidden Behaviors vs. Forbidden Names:**
+
+Forbidden behaviors (no exceptions):
+- No automatic merge of duplicate records
+- No automatic cleaning of contact fields directly
+- No automatic writeback to Givebutter API
+- No automatic apply of suggestions
+- No modification of raw_import_rows
+
+Forbidden function name prefixes:
+- `auto_*` (auto_merge, auto_clean, auto_apply, auto_write)
+- `merge_*` (merge_contacts, merge_households)
+
+Allowed names (these are OK):
+- `export_clean_contacts()` — export function, not auto-apply
+- `approved_contacts` — view name, not auto-apply
+- `normalize_for_matching()` — normalization helper, not auto-apply
+- `clean_contacts.csv` — file name, not auto-apply
+
 ---
 
 ## 6. Data Model
@@ -767,18 +802,30 @@ Create a 15-row sample CSV with:
 - 2 likely duplicates (same person, different transactions)
 - 3 household candidates (same address, different names)
 
-**Expected behavior after upload:**
-- 0 changes to raw_import (verified by test)
-- 12+ pending normalizations appear in queue
-- 3+ household suggestions appear in queue
-- 2+ duplicate candidates appear in queue
-- Operator must click Approve for each change
+**Expected behavior after upload (specific detections, not broad counts):**
+
+After uploading the 15-row sample CSV, required detections are:
+- 3 email typo suggestions (gmai.com, gmial.com, yahooo.com corrections)
+- 2 invalid email review suggestions (missing @, format broken)
+- 2 missing phone suggestions
+- At least 2 duplicate candidates (same-person pairs)
+- At least 3 household suggestions (same address, different names)
+- Zero approved contact_suggestions before operator action
+- Zero approved household_suggestions before operator action
+- Zero households before operator action
+- raw_import_rows count equals uploaded CSV row count (15)
+- raw_import_rows raw_json field value-for-value equivalent to uploaded data (immutable)
+- Operator must click Approve, Reject, or Defer for each suggestion
 
 ---
 
-## 11. Tests Claude Must Write
+## 11. Testing Strategy
 
-### Unit Tests
+Householder uses a three-tier testing approach: unit tests (isolated functions), integration tests (database interactions with real DB assertions), and E2E tests (full UI workflows).
+
+### 11.1 Unit Tests (Validation & Algorithms)
+
+Unit tests verify suggestion engines and utility functions in isolation, without database writes.
 
 ```python
 def test_processor_dependencies_available():
@@ -815,50 +862,6 @@ def test_suggest_household_does_not_create_household_id():
     assert Household.query.count() == 0
     assert HouseholdSuggestion.query.count() > 0
 
-def test_household_id_generated_at_approval_time():
-    """Household ID generated only when household_suggestion approved, not before."""
-    # Create suggestion (no ID yet)
-    suggestion = HouseholdSuggestion.create(
-        contact_id_primary=1, contact_ids_other=[2],
-        match_reason="same email", confidence_score=95
-    )
-    assert suggestion.household_id is None  # Not yet
-    
-    # Approve
-    apply_suggestion(suggestion.id, approved_by="operator")
-    
-    # After approval: household_id generated (HH_<8-char-md5>)
-    household = Household.query.filter_by(primary_contact_id=1).first()
-    assert household.household_id is not None
-    assert household.household_id.startswith("HH_")
-    assert len(household.household_id) == 11  # HH_ + 8 chars
-
-def test_household_id_deterministic_across_imports():
-    """Same address + zip5 → same household_id across different imports."""
-    contact_1 = Contact.create(
-        id=1, address_line_1="123 Main St", zip5="94301"
-    )
-    contact_2 = Contact.create(
-        id=2, address_line_1="123 Main St", zip5="94301"  # Same address
-    )
-    
-    hh_id_1 = generate_household_id(contact_1)
-    hh_id_2 = generate_household_id(contact_2)
-    
-    assert hh_id_1 == hh_id_2  # Deterministic
-
-def test_apply_suggestion_writes_only_to_approved_table():
-    """Approving a suggestion updates approved tables, not raw."""
-    suggestion = ContactSuggestion.create(contact_id=1, field="email", suggested="jane@gmail.com")
-    apply_suggestion(suggestion.id, approved_by="operator@example.com")
-    
-    # Verify: suggestion marked approved
-    assert suggestion.status == "approved"
-    assert suggestion.approved_by == "operator@example.com"
-    
-    # Verify: raw contact unchanged
-    assert Contact.query.get(1).email != "jane@gmail.com"  # Raw value unchanged
-
 def test_primary_contact_waterfall():
     """Primary contact selected by highest donation → most recent → oldest id."""
     # Create contacts with native database integer IDs
@@ -876,109 +879,173 @@ def test_fuzzy_email_matching_reuses_processor():
     suggestions = suggest_normalizations(contact)
     # Should suggest gmail.com based on Processor's fuzzy logic
     assert any("gmail.com" in s.get("suggested", "") for s in suggestions)
+
+def test_normalize_address_for_household_id():
+    """Address normalization produces deterministic canonical form."""
+    # "123 Main St" and "123 Main Street" should normalize identically
+    addr_st = normalize_address_for_household_id("123 Main St")
+    addr_street = normalize_address_for_household_id("123 Main Street")
+    assert addr_st == addr_street == "123mainstreet"
+    
+    # Punctuation removed
+    addr_punct = normalize_address_for_household_id("123-A Main St, Suite B")
+    assert "-" not in addr_punct and "," not in addr_punct and addr_punct.startswith("123")
+
+def test_household_id_format_and_stability():
+    """Generated household_id follows HH_<8-char-md5> format and is deterministic."""
+    hh_id_1 = generate_household_id(contact_id=1, address_line_1="123 Main St", zip5="94301")
+    hh_id_2 = generate_household_id(contact_id=2, address_line_1="123 Main St", zip5="94301")
+    
+    # Format check
+    assert hh_id_1.startswith("HH_")
+    assert len(hh_id_1) == 11  # HH_ + 8 chars
+    assert all(c in "0123456789abcdef" for c in hh_id_1[3:])  # Hex chars
+    
+    # Stability check
+    assert hh_id_1 == hh_id_2  # Same address + zip = same ID
 ```
 
-### Integration Tests
+### 11.2 Integration Tests (Database State & Workflows)
+
+Integration tests verify database interactions, approval workflows, and state preservation. These tests use a real database (or in-memory SQLite) and make DB assertions.
 
 ```python
-def test_csv_upload_preserves_raw():
-    """Raw import table is never modified after processing."""
+def test_raw_import_rows_immutability():
+    """CRITICAL: raw_import_rows table is never modified after import."""
     raw_json = {"email": "Jane@Gmail.com", "phone": "555.123.4567"}
     import_id = upload_csv([raw_json])
     
-    # Verify raw is unchanged
-    raw = RawImport.query.filter_by(import_id=import_id).first()
-    assert raw.raw_json == raw_json
+    # Fetch original raw row
+    raw_before = RawImport.query.filter_by(import_id=import_id).first()
+    original_json = raw_before.raw_json.copy()
     
-    # Verify suggestions were created (not auto-applied)
+    # Run entire workflow: create suggestions, approve some, reject some
     suggestions = ContactSuggestion.query.filter_by(import_id=import_id).all()
-    assert len(suggestions) > 0
-    assert all(s.status == "pending" for s in suggestions)
+    apply_normalization(suggestions[0].id, approved_by="operator")
+    
+    # Verify raw_json is unchanged (byte-for-byte or value-for-value)
+    raw_after = RawImport.query.get(raw_before.id)
+    assert raw_after.raw_json == original_json
+    # Verify no UPDATE to raw_import_rows occurred
+    assert raw_after.imported_at == raw_before.imported_at
 
-def test_approve_email_suggestion_updates_approved_view_only():
-    """Approving a suggestion writes to approved view, not raw."""
-    suggestion = ContactSuggestion.create(
-        contact_id=1, field="email",
-        current="Jane@Gmail.com", suggested="jane@gmail.com"
-    )
-    apply_suggestion(suggestion.id, approved_by="operator")
+def test_suggestions_are_pending_only_after_upload():
+    """All generated suggestions are pending until operator action."""
+    import_id = upload_csv(sample_csv)
     
-    # Raw contact unchanged
-    contact = Contact.query.get(1)
-    assert contact.email == "Jane@Gmail.com"
+    # All contact_suggestions start pending
+    contact_sugg = ContactSuggestion.query.filter_by(import_id=import_id).all()
+    assert len(contact_sugg) > 0
+    assert all(s.status == "pending" for s in contact_sugg)
     
-    # Approved view (derived from contact_suggestions) shows approved suggestion
-    approved = db.session.execute(
-        "SELECT email FROM approved_contacts WHERE contact_id = 1"
+    # All household_suggestions start pending
+    household_sugg = HouseholdSuggestion.query.filter_by(import_id=import_id).all()
+    assert len(household_sugg) > 0
+    assert all(s.status == "pending" for s in household_sugg)
+    
+    # All duplicate_candidates start unreviewed
+    duplicates = DuplicateCandidate.query.filter_by(import_id=import_id).all()
+    assert len(duplicates) > 0
+    assert all(d.decision == "unreviewed" for d in duplicates)
+
+def test_approve_normalization_updates_approved_view_only():
+    """Approving a normalization suggestion updates approved_contacts view, not raw contacts."""
+    import_id = upload_csv(sample_csv)
+    suggestion = ContactSuggestion.query.filter_by(
+        field_name="email", status="pending", import_id=import_id
     ).first()
-    assert approved[0] == "jane@gmail.com"
+    
+    # Get raw contact before approval
+    contact = Contact.query.get(suggestion.contact_id)
+    raw_email = contact.email
+    
+    # Approve suggestion
+    apply_normalization(suggestion.id, approved_by="operator")
+    
+    # Verify: raw contact unchanged
+    assert Contact.query.get(contact.id).email == raw_email
+    
+    # Verify: approved_contacts view shows approved value
+    approved_row = db.session.execute(
+        "SELECT email FROM approved_contacts WHERE id = ?",
+        (contact.id,)
+    ).first()
+    assert approved_row[0] == suggestion.suggested_value
 
-def test_household_approval_creates_household():
-    """Household suggestion approval creates household record."""
-    suggestion = HouseholdSuggestion.create(
-        import_id=1, contact_id_primary=1,
-        contact_ids_other=[2, 3], match_reason="same email",
-        confidence_score=95
-    )
+def test_approve_household_creates_household_and_sets_household_id():
+    """Approving a household suggestion creates household record and sets contacts.household_id."""
+    import_id = upload_csv(sample_csv_with_households)
+    suggestion = HouseholdSuggestion.query.filter_by(
+        import_id=import_id, status="pending"
+    ).first()
     
-    # Before approval: no household
-    assert Household.query.count() == 0
+    # Before approval: no household record
+    assert Household.query.filter_by(primary_contact_id=suggestion.contact_id_primary).count() == 0
     
-    # Approve
-    apply_suggestion(suggestion.id, approved_by="operator")
+    # Before approval: contacts have no household_id
+    contact_ids = [suggestion.contact_id_primary] + json.loads(suggestion.contact_ids_other)
+    for cid in contact_ids:
+        assert Contact.query.get(cid).household_id is None
     
-    # After approval: household created
-    household = Household.query.filter_by(primary_contact_id=1).first()
+    # Approve household
+    approve_household(suggestion.id, approved_by="operator")
+    
+    # After approval: household record created
+    household = Household.query.filter_by(import_id=import_id).first()
     assert household is not None
-    assert household.member_count == 3
+    assert household.household_id.startswith("HH_")
+    assert household.member_count == len(contact_ids)
+    
+    # After approval: all contacts in household have household_id set
+    for cid in contact_ids:
+        assert Contact.query.get(cid).household_id == household.household_id
 
-def test_no_auto_merge():
-    """CRITICAL: Zero automatic merging or household creation."""
+def test_no_auto_merge_critical():
+    """CRITICAL GUARDRAIL: Zero automatic merging or household creation."""
     import_id = upload_csv(sample_csv_with_duplicates)
     
-    # Verify: no households created
+    # Immediately after upload: no households created
     assert Household.query.filter_by(import_id=import_id).count() == 0
     
-    # Verify: suggestions pending only
+    # All household_suggestions are pending (not approved)
     suggestions = HouseholdSuggestion.query.filter_by(import_id=import_id).all()
     assert len(suggestions) > 0
     assert all(s.status == "pending" for s in suggestions)
+    
+    # All contacts still have NULL household_id
+    contacts = Contact.query.filter_by(import_id=import_id).all()
+    assert all(c.household_id is None for c in contacts)
 
-def test_duplicate_candidates_with_operator_decision():
-    """Duplicate candidates created unreviewed, operator makes decision (v1: different/deferred only)."""
-    import_id = upload_csv(sample_csv_with_duplicates)
-    
-    # Verify: duplicate candidates created with unreviewed status
-    duplicates = DuplicateCandidate.query.filter_by(import_id=import_id).all()
-    assert len(duplicates) >= 2  # Sample has 2+ duplicate pairs
-    
-    # All created unreviewed
-    assert all(d.decision == "unreviewed" for d in duplicates)
-    assert all(d.decided_by is None for d in duplicates)
-    assert all(d.decided_at is None for d in duplicates)
-    assert all(d.reviewer_notes is None for d in duplicates)
-    
-    # Operator reviews: "Different" (different people) with notes
-    duplicate = duplicates[0]
-    duplicate.decision = "different"
-    duplicate.reviewer_notes = "Name similarity is fuzzy match, different people"
-    duplicate.decided_by = "operator@example.com"
-    duplicate.decided_at = datetime.now()
-    db.session.commit()
-    
-    # Verify decision persisted
-    updated = DuplicateCandidate.query.get(duplicate.id)
-    assert updated.decision == "different"
-    assert updated.reviewer_notes == "Name similarity is fuzzy match, different people"
-    assert updated.decided_by == "operator@example.com"
-    assert updated.decided_at is not None
-
-def test_resolve_duplicate_same_person_raises_error():
-    """v1 enforcement: attempting 'same_person' decision raises NotImplementedError."""
+def test_resolve_duplicate_different_decision():
+    """Operator can mark duplicates as 'different' (different people)."""
     import_id = upload_csv(sample_csv_with_duplicates)
     duplicate = DuplicateCandidate.query.filter_by(import_id=import_id).first()
     
-    # Attempting 'same_person' decision should raise NotImplementedError
+    # Before decision: unreviewed
+    assert duplicate.decision == "unreviewed"
+    assert duplicate.decided_by is None
+    
+    # Operator marks as different
+    resolve_duplicate(
+        candidate_id=duplicate.id,
+        decision="different",
+        reviewer_notes="Name similarity is coincidence, different people",
+        decided_by="operator@example.com"
+    )
+    
+    # After decision: persisted
+    updated = DuplicateCandidate.query.get(duplicate.id)
+    assert updated.decision == "different"
+    assert updated.reviewer_notes == "Name similarity is coincidence, different people"
+    assert updated.decided_by == "operator@example.com"
+    assert updated.decided_at is not None
+
+def test_resolve_duplicate_same_person_blocked_v1():
+    """v1 enforcement: 'same_person' decision is blocked with NotImplementedError."""
+    import_id = upload_csv(sample_csv_with_duplicates)
+    duplicate = DuplicateCandidate.query.filter_by(import_id=import_id).first()
+    
+    # Attempting 'same_person' raises error
     with pytest.raises(NotImplementedError) as exc_info:
         resolve_duplicate(
             candidate_id=duplicate.id,
@@ -987,80 +1054,227 @@ def test_resolve_duplicate_same_person_raises_error():
             decided_by="operator@example.com"
         )
     
-    # Verify error message references v2 deferral
+    # Error message explains v2 deferral
     assert "v2" in str(exc_info.value).lower()
     assert "merge" in str(exc_info.value).lower()
 
-def test_direct_household_id_write_fails():
-    """Guardrail: direct UPDATE to contacts.household_id should fail."""
-    contact = Contact.create(id=1, import_id=1, full_name="Jane Smith")
-    household = Household.create(
-        import_id=1,
-        household_id="HH_a1b2c3d4",
-        primary_contact_id=1,
-        member_count=1,
-        created_by="system"
-    )
+def test_exports_contain_approved_values():
+    """Export Clean CSV contains approved normalization values."""
+    import_id = upload_csv(sample_csv)
     
-    # Application code should NEVER directly write contacts.household_id
-    # This test ensures a database constraint or trigger prevents it
-    with pytest.raises((IntegrityError, RuntimeError, NotImplementedError)):
-        # Attempt direct update (should be blocked)
-        db.session.execute(
-            "UPDATE contacts SET household_id = ? WHERE id = 1",
-            ("HH_a1b2c3d4",)
-        )
-        db.session.commit()
+    # Approve all normalizations
+    suggestions = ContactSuggestion.query.filter_by(
+        import_id=import_id, status="pending"
+    ).all()
+    for sugg in suggestions:
+        apply_normalization(sugg.id, approved_by="operator")
     
-    # Verify direct write was not applied
-    contact_after = Contact.query.get(1)
-    assert contact_after.household_id is None
+    # Generate export
+    exported_csv = export_clean(import_id)
+    
+    # Verify: exported values are from approved_contacts view, not raw
+    for suggestion in suggestions:
+        # Find corresponding row in exported CSV
+        row = next((r for r in exported_csv if r["id"] == str(suggestion.contact_id)), None)
+        assert row is not None
+        # Exported value should be approved suggestion, not raw
+        if suggestion.field_name == "email":
+            assert row["email"] == suggestion.suggested_value
 ```
 
-### E2E Tests (Playwright)
+### 11.3 E2E Tests (Playwright UI Workflows)
+
+E2E tests verify complete user workflows through the web interface. These tests use Playwright to simulate operator actions and verify UI behavior. DB assertions in E2E are limited to critical invariants verified via test fixtures (not live queries during test execution).
 
 ```python
-def test_upload_review_approve_export():
-    """Full workflow: upload → review suggestions → approve → export clean."""
-    # 1. Upload sample CSV
+def test_upload_csv_workflow():
+    """Upload CSV, see dashboard with suggestion counts."""
     page.goto("/imports/new")
     page.set_input_files('input[type="file"]', "sample.csv")
-    page.click('button:has-text("Upload")')
-    page.wait_for_selector('text=Processed')
+    page.click('[data-testid="upload-submit"]')
+    page.wait_for_selector('[data-testid="import-summary"]')
     
-    # 2. Verify raw data unchanged
-    import_id = page.url.split("/")[-1]
-    raw_count = db.query(RawImport).filter_by(import_id=import_id).count()
-    assert raw_count == 15  # Sample has 15 rows
-    
-    # 3. Review normalizations
+    # Verify summary shows counts
+    summary = page.text_content('[data-testid="import-summary"]')
+    assert "15 contacts" in summary or "Processed 15" in summary
+    assert "pending" in summary.lower()
+
+def test_review_normalizations_workflow():
+    """Review normalization suggestions and approve one."""
     page.goto(f"/imports/{import_id}/normalizations")
-    suggestions = page.query_selector_all('button:has-text("Approve")')
-    assert len(suggestions) > 0
     
-    # 4. Approve first suggestion
-    page.click('button:has-text("Approve")')
-    page.wait_for_selector('text=Approved')
+    # Verify table visible
+    table = page.wait_for_selector('[data-testid="normalizations-table"]')
+    assert table is not None
     
-    # 5. Verify: raw unchanged, approved view updated
-    raw = db.query(Contact).filter_by(import_id=import_id).first()
-    assert raw.email == "Jane@Gmail.com"  # Raw unchanged
+    # Find and click approve on first row
+    first_row = page.query_selector('[data-testid="normalization-row"]')
+    first_row.scroll_into_view_if_needed()
+    page.click('[data-testid="approve-normalization"]')
     
-    # Approved view (derived from contact_suggestions) shows approved suggestion
-    approved = db.session.execute(
-        "SELECT email FROM approved_contacts WHERE contact_id = ?", (raw.id,)
-    ).first()
-    assert approved[0] == "jane@gmail.com"  # Approved view updated
+    # Verify UI feedback (e.g., row removed or marked approved)
+    page.wait_for_selector('text=Approved', timeout=5000)
+
+def test_bulk_approve_with_confirmation():
+    """Bulk approve shows modal with change preview."""
+    page.goto(f"/imports/{import_id}/normalizations")
     
-    # 6. Export clean (queries approved_contacts view)
+    # Click bulk approve
+    page.click('[data-testid="bulk-approve-normalizations"]')
+    
+    # Modal appears with preview
+    modal = page.wait_for_selector('[data-testid="bulk-confirm-modal"]')
+    assert modal is not None
+    
+    # Verify modal shows count and allows confirmation
+    modal_text = modal.text_content()
+    assert "normalizations" in modal_text.lower() or "changes" in modal_text.lower()
+    
+    # Confirm
+    page.click('[data-testid="bulk-confirm-modal"] button:has-text("Confirm")')
+    page.wait_for_selector('text=Approved', timeout=5000)
+
+def test_review_households_workflow():
+    """Review household suggestions and approve one."""
+    page.goto(f"/imports/{import_id}/households")
+    
+    # Verify household card visible
+    card = page.wait_for_selector('[data-testid="household-card"]')
+    assert card is not None
+    
+    # Click approve
+    page.click('[data-testid="approve-household"]')
+    
+    # Verify feedback
+    page.wait_for_selector('text=Approved', timeout=5000)
+
+def test_review_duplicates_workflow():
+    """Review duplicate candidates and mark as different."""
+    page.goto(f"/imports/{import_id}/duplicates")
+    
+    # Verify duplicate card visible
+    card = page.wait_for_selector('[data-testid="duplicate-card"]')
+    assert card is not None
+    
+    # Click "Different"
+    page.click('[data-testid="duplicate-different"]')
+    
+    # Verify feedback
+    page.wait_for_selector('text=Recorded', timeout=5000)
+
+def test_export_clean_workflow():
+    """Export Clean downloads CSV with approved values."""
     page.goto(f"/imports/{import_id}/export")
-    page.click('button:has-text("Export Clean")')
-    # Verify downloaded file has approved values (from approved_contacts view)
+    
+    # Click export clean
+    async with page.expect_download() as download_info:
+        page.click('[data-testid="export-clean"]')
+    
+    download = await download_info.value
+    path = await download.path()
+    
+    # Verify file contains approved values (parse CSV and spot-check)
+    import csv
+    with open(path) as f:
+        rows = list(csv.DictReader(f))
+        assert len(rows) > 0
+        # Row should have lowercase email (if email was normalized and approved)
+
+def test_defer_suggestion_workflow():
+    """Defer hides suggestion from primary queue."""
+    page.goto(f"/imports/{import_id}/normalizations")
+    
+    # Get initial count
+    initial_rows = page.query_selector_all('[data-testid="normalization-row"]')
+    initial_count = len(initial_rows)
+    
+    # Defer first row
+    first_row = initial_rows[0]
+    first_row.scroll_into_view_if_needed()
+    page.click('[data-testid="defer-normalization"]')
+    
+    # Verify row removed from primary queue (count decreased)
+    page.wait_for_timeout(500)
+    updated_rows = page.query_selector_all('[data-testid="normalization-row"]')
+    assert len(updated_rows) == initial_count - 1
 ```
 
 ---
 
-## 12. Acceptance Criteria v1
+## 12. Test IDs for UI Stability
+
+Add these `data-testid` attributes to HTML elements for reliable element selection in Playwright tests. Test IDs enable stable, semantic element selection independent of CSS changes.
+
+### 12.1 Upload Page
+```html
+<input data-testid="upload-file-input" type="file">
+<button data-testid="upload-submit">Upload</button>
+<div data-testid="import-summary">Processed 50 contacts...</div>
+```
+
+### 12.2 Dashboard
+```html
+<div data-testid="total-contacts-count">50</div>
+<div data-testid="validation-tier-breakdown">✓ PASS: 45, ⚠ WARNING: 5, ✗ FAIL: 0</div>
+<div data-testid="pending-normalizations-count">12</div>
+<div data-testid="pending-households-count">5</div>
+<div data-testid="pending-duplicates-count">3</div>
+```
+
+### 12.3 Normalizations Review Queue
+```html
+<table data-testid="normalizations-table">
+  <tr data-testid="normalization-row">
+    <td data-testid="normalization-field">email</td>
+    <td data-testid="normalization-current">Jane@Gmail.com</td>
+    <td data-testid="normalization-suggested">jane@gmail.com</td>
+    <button data-testid="approve-normalization">Approve</button>
+    <button data-testid="reject-normalization">Reject</button>
+    <button data-testid="defer-normalization">Defer</button>
+  </tr>
+</table>
+<button data-testid="bulk-approve-normalizations">Approve All</button>
+<div data-testid="bulk-confirm-modal">
+  <p>10 email fields will be normalized...</p>
+  <button data-testid="bulk-confirm-approve">Confirm</button>
+  <button data-testid="bulk-confirm-cancel">Cancel</button>
+</div>
+```
+
+### 12.4 Households Review Queue
+```html
+<div data-testid="household-card">
+  <div data-testid="household-primary">Primary: Jane (Donation: $1000)</div>
+  <div data-testid="household-members">Members: Jane, John, Mary</div>
+  <button data-testid="approve-household">Approve Household</button>
+  <button data-testid="reject-household">Reject</button>
+  <button data-testid="defer-household">Defer</button>
+</div>
+```
+
+### 12.5 Duplicates Review Queue
+```html
+<div data-testid="duplicate-card">
+  <div data-testid="duplicate-contact-a">Jane Doe | jane@example.com | 555-1234</div>
+  <div data-testid="duplicate-contact-b">Jane Doe | jane@example.com | 555-1234</div>
+  <div data-testid="duplicate-confidence">95% confidence (email exact match)</div>
+  <button data-testid="duplicate-same-person">Same Person</button>
+  <button data-testid="duplicate-different">Different</button>
+  <button data-testid="duplicate-defer">Defer</button>
+</div>
+```
+
+### 12.6 Export Page
+```html
+<button data-testid="export-clean">Export Clean</button>
+<button data-testid="export-household">Export by Household</button>
+<button data-testid="export-backlog">Export Backlog</button>
+<button data-testid="export-raw">Export Raw</button>
+```
+
+---
+
+## 13. Revised Definition of Done
 
 - ✅ Raw data identical to uploaded CSV after all processing
 - ✅ 100% of normalizations appear as pending suggestions (not auto-applied)
@@ -1076,28 +1290,208 @@ def test_upload_review_approve_export():
 
 ---
 
-## 13. Definition of Done
+### Acceptance Criteria (Detailed)
 
-Claude delivers code where a nonprofit operator can:
-1. Upload a Givebutter export
-2. Review every suggested normalization, household grouping, and duplicate detection
-3. Approve selectively via UI (single or bulk)
-4. Confirm bulk actions with preview modal
-5. Download clean contacts (with household_id for CRM import) or by-household export
-6. With absolute guarantee: **nothing was changed without their explicit click**
+**Data Preservation:**
+- ✅ raw_import_rows table is append-only and immutable (never modified, never deleted)
+- ✅ raw_import_rows.raw_json field is byte-for-byte or value-for-value identical to uploaded CSV
+- ✅ contacts table baseline fields (full_name, email, phone, address_line_1, city, state, postal_code) are immutable after extraction
+- ✅ contacts.household_id is NULL until explicit household approval (cannot be set directly or by accident)
 
-Raw data is preserved forever. All changes are audit-logged. All tests pass.
+**Suggestion Generation & Lifecycle:**
+- ✅ 100% of normalizations appear as pending contact_suggestions (not auto-applied)
+- ✅ 100% of household groupings appear as pending household_suggestions (no household records created until approval)
+- ✅ 100% of duplicates appear as unreviewed duplicate_candidates (not auto-merged, not auto-marked)
+- ✅ All suggestions have confidence scores (no vague recommendations)
+- ✅ Suggestions are not deleted or modified after generation (only status changed via operator actions: approve/reject/defer)
+
+**Operator Workflows:**
+- ✅ Single approval: operator clicks Approve/Reject/Defer button → system immediately updates suggestion status + records decision metadata (approved_by, approved_at, ip_address, user_agent)
+- ✅ Bulk approval: operator clicks "Approve All" → confirmation modal shows change preview → operator clicks Confirm → all approved
+- ✅ Deferred items: operator can defer, hide from primary queue, and later un-defer to reconsider
+- ✅ No accidental writes: all system modifications require explicit operator action (no background jobs, no auto-apply timers)
+
+**Views & Exports:**
+- ✅ approved_contacts view: derives clean contact data from contact baseline + approved contact_suggestions (COALESCE pattern)
+- ✅ households_summary view: one row per approved household (primary contact info, member count, total donation amount)
+- ✅ Export Clean: CSV with approved values (queries approved_contacts view) + household_id if member of approved household
+- ✅ Export by Household: CSV grouped by household (one row per primary contact, member list, total donation)
+- ✅ Export Backlog: CSV of pending suggestions (not yet approved)
+- ✅ Export Raw: original imported CSV (unchanged)
+
+**Audit Trail:**
+- ✅ contact_suggestions: tracks approved_by, approved_at, ip_address, user_agent for all state changes
+- ✅ household_suggestions: tracks approved_by, approved_at, ip_address, user_agent for all state changes
+- ✅ duplicate_candidates: tracks decided_by, decided_at, reviewer_notes for all decisions
+- ✅ All timestamps in UTC
+
+**Testing:**
+- ✅ All unit tests pass (suggestion engines verified, no DB writes)
+- ✅ All integration tests pass (DB state preserved, approval workflows verified, immutability enforced)
+- ✅ All E2E tests pass (Playwright workflows: upload → review → approve → export)
+- ✅ Critical test (`test_no_auto_merge_critical`) confirms zero households/contact.household_id changes without operator click
+- ✅ Test IDs present on all interactive UI elements (data-testid attributes)
+
+**Household ID Generation:**
+- ✅ Deterministic: same address + zip5 → same household_id across imports (enables v2 multi-import linking)
+- ✅ Stable format: HH_<8-char-lowercase-md5-hex> or HH_<12-char-hex> if collision detected
+- ✅ Generated only at approval time (when household_suggestion approved), never during suggestion generation
+
+**Function Signatures & Guards:**
+- ✅ Processor functions imported with version check (requires Processor v3.4+)
+- ✅ resolve_duplicate() raises NotImplementedError if decision = 'same_person' (v1 does not merge)
+- ✅ No functions named merge_*, auto_*, auto_apply, auto_clean, auto_write
+- ✅ Allowed function names: apply_normalization, reject_normalization, defer_normalization, approve_household, reject_household, defer_household, resolve_duplicate, export_clean_contacts, suggest_normalizations, suggest_households, suggest_duplicates
+
+**User Experience:**
+- ✅ Dashboard shows live counts (pending normalizations, households, duplicates)
+- ✅ Review queues are paginated and filterable
+- ✅ Bulk actions include confirmation modal with change preview
+- ✅ Defer state is hidden from primary queue but accessible via "View Deferred" link
+- ✅ Keyboard shortcuts (Tab, Escape) optional but recommended for efficiency
 
 ---
 
-## 14. v2 Scope (Deferred)
+## 14. Implementation Order
+
+Claude Code should follow this 16-step sequence for safe, incremental development. Each step should be committed separately with passing tests before proceeding to the next.
+
+1. **Inspect Givebutter Processor repository**
+   - Verify actual module path for fuzzy_email_match, normalize_phone, validate_email_format
+   - Check processor.__version__ (must be 3.4+)
+   - Create processor_adapter.py if functions live under different path
+
+2. **Create database schema migrations**
+   - raw_import_rows (append-only immutable)
+   - contacts (baseline extracted records, household_id mutable only after approval)
+   - contact_suggestions (with status enum: pending/approved/rejected/deferred)
+   - household_suggestions (with status enum: pending/approved/rejected/deferred)
+   - households (created only after approval)
+   - duplicate_candidates (with decision enum: unreviewed/same_person/different/deferred)
+   - Add ip_address, user_agent fields to suggestion tables
+
+3. **Implement raw_import_rows upload flow (immutable)**
+   - POST /imports/new — file upload handler
+   - Parse CSV, store rows in raw_import_rows (append-only)
+   - Test: raw_import_rows is never modified after creation
+
+4. **Implement contact extraction**
+   - Extract baseline contact records from raw_import_rows
+   - Map CSV columns to contacts table (full_name, email, phone, address_line_1, city, state, postal_code)
+   - No field-level cleaning (preserve original values)
+   - Test: contacts table has exact same values as raw_import_rows
+
+5. **Implement suggestion engines (generators, no writes)**
+   - suggest_normalizations(contact) → returns list of suggestions with confidence scores
+   - suggest_households(contacts) → returns list of household suggestions (no household_id generation)
+   - suggest_duplicates(contacts) → returns list of duplicate candidate pairs
+   - Test: engines return suggestions only, do not write to DB
+
+6. **Implement suggestion persistence (pending only)**
+   - Create contact_suggestions rows (status=pending)
+   - Create household_suggestions rows (status=pending)
+   - Create duplicate_candidates rows (decision=unreviewed)
+   - Test: all suggestions created with correct status values
+
+7. **Implement normalization approval workflow**
+   - apply_normalization(suggestion_id, approved_by) → UPDATE contact_suggestions SET status='approved'
+   - reject_normalization(suggestion_id, rejected_by, notes) → UPDATE status='rejected'
+   - defer_normalization(suggestion_id, deferred_by, notes) → UPDATE status='deferred'
+   - Test: raw contacts unchanged, approved_contacts view reflects approved values
+
+8. **Implement household approval workflow**
+   - approve_household(suggestion_id, approved_by) → CREATE households row, UPDATE contacts.household_id
+   - reject_household(suggestion_id, rejected_by, notes) → UPDATE household_suggestions SET status='rejected'
+   - defer_household(suggestion_id, deferred_by, notes) → UPDATE household_suggestions SET status='deferred'
+   - implement get_primary_contact(contact_ids) waterfall logic
+   - implement generate_household_id(contact_id, address, zip5) with deterministic MD5 hashing
+   - Test: household record created, contacts.household_id set, no accidental writes
+
+9. **Implement duplicate candidate workflow**
+   - resolve_duplicate(candidate_id, decision, reviewer_notes, decided_by) → UPDATE duplicate_candidates
+   - Guard: decision='same_person' raises NotImplementedError (v2 feature)
+   - Allowed decisions: 'different', 'deferred'
+   - Test: operator can mark duplicates, same_person blocked with error
+
+10. **Implement approved_contacts and households_summary views**
+    - approved_contacts: COALESCE pattern for approved normalization values
+    - households_summary: one row per household, member count, total donation
+    - Test: views compute correctly, reflect current approval state
+
+11. **Implement dashboard (GET /imports/{id})**
+    - Show total contacts, validation tier breakdown
+    - Show pending suggestion counts (normalizations, households, duplicates)
+    - Show recent actions by current user
+    - Test: counts are accurate, update after approvals
+
+12. **Implement review queues (GET /imports/{id}/normalizations|households|duplicates)**
+    - Normalizations queue: paginated table with approve/reject/defer per row
+    - Households queue: card layout with approve/reject/defer per suggestion
+    - Duplicates queue: two-column comparison with decision buttons
+    - Bulk actions with confirmation modal
+    - Test: queues load, elements clickable, filters work
+
+13. **Implement exports (GET /imports/{id}/export)**
+    - Export Clean: query approved_contacts view, output CSV
+    - Export by Household: query households_summary view, output CSV
+    - Export Backlog: query pending suggestions, output CSV
+    - Export Raw: output original raw_import_rows as CSV
+    - Test: exported values match expectations, files downloadable
+
+14. **Implement deferred item management (hidden queue)**
+    - Optional: secondary queue page showing deferred items
+    - Allow un-defer action to restore item to primary queue
+    - Test: deferred items hidden from primary queue, un-defer restores
+
+15. **Add all unit, integration, and E2E tests**
+    - Unit tests: suggestion engines, waterfall logic, household ID generation (section 11.1)
+    - Integration tests: DB state preservation, approval workflows, immutability guardrails (section 11.2)
+    - E2E tests: Playwright workflows with data-testid selectors (section 11.3)
+    - Critical test: test_no_auto_merge_critical ensures zero auto-writes
+    - Test coverage target: >90% code coverage for approval paths
+
+16. **Final audit and documentation**
+    - Run full test suite (unit + integration + E2E)
+    - Verify CLAUDE.md matches implementation
+    - Verify all data-testid attributes present for E2E stability
+    - Generate test report with coverage metrics
+    - Commit with message: "feat: Householder v1 complete — raw data preservation, human-in-the-loop approvals, household grouping, duplicate detection"
+
+---
+
+## 15. v2 Scope (Deferred)
 
 - **Salutation generation**: Generate mail_salutation and email_salutation per nonprofit preferences (via Claude/Gemini prompt)
 - **Retention tracking**: Flag donors at risk of lapsing (last gift >12 months ago, low lifetime value)
 - **Source attribution**: Track which import batch / campaign each contact originated from
 - **Givebutter API sync**: Writeback to Givebutter API (if nonprofit wants two-way sync)
 - **Multi-import linking**: Link households across multiple CSV imports (same person donating in May and June)
+- **Duplicate merge**: Implement 'same_person' decision with actual merge logic (only after v1 is hardened)
 
 ---
 
-**Next Step:** Generate starter repo with tables, endpoints, and Playwright tests stubbed (ready for implementation).
+## 16. Success Metrics
+
+**Code Quality:**
+- ✅ All unit/integration/E2E tests pass
+- ✅ Code coverage >90% on approval paths
+- ✅ Zero linting errors (flake8, black)
+- ✅ All imports verified (Processor v3.4+, processor_adapter working)
+
+**Product Quality:**
+- ✅ Operator can upload 15-row sample CSV in <10 seconds
+- ✅ Dashboard loads in <2 seconds with suggestion counts
+- ✅ Operator can approve 1 normalization and export clean result in <1 minute
+- ✅ Operator can approve 1 household and verify 3 members grouped correctly
+- ✅ Export files are well-formed CSV, importable to CRM
+
+**Safety & Compliance:**
+- ✅ Zero automatic writes (all changes logged with operator name)
+- ✅ Zero raw data modifications (audit trail verified)
+- ✅ Zero household_id writes except via approve_household()
+- ✅ Zero merge operations (v1 only records duplicate decisions)
+- ✅ All operator actions timestamped and IP-logged
+
+---
+
+**Next Step:** Begin implementation following the 16-step sequence in section 14.
