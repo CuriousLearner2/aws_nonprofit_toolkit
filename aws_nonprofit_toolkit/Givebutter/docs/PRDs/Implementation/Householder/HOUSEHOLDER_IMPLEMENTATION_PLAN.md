@@ -28,6 +28,9 @@ Example:
 - ❌ WRONG: Processor has no email validation → Do NOT reimplement; stop and report
 - ✅ OK: PRD says "Or use equivalent validation if Processor's exact function unavailable" → OK to adapt
 
+### ⚠️ DATABASE FRAMEWORK APPROVAL GATE
+
+Because the existing Processor has no database layer, SQLite is approved for Householder v1. SQLAlchemy and Flask-Migrate may be used only if they remain the simplest maintainable approach; otherwise use lightweight raw SQL with parameterized queries. Do not introduce a heavier persistence stack without explicit approval.
 
 ### ⚠️ V1 MATCHING IS CURRENT-IMPORT ONLY
 
