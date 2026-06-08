@@ -1,8 +1,8 @@
-# Givebutter Data Hygiene & Householding — v2 PRD for Claude Code (Human-in-Loop Only)
+# Givebutter Data Hygiene & Householding — v2.1 PRD for Claude Code (Human-in-Loop Only)
 
 **Last updated:** 2026-06-07  
 **Owner:** Gautam Biswas  
-**Status:** v2 (Revised for integration with Givebutter Processor)
+**Status:** v2.1 (Revised with clarified schema, deterministic ID safety, and function signatures)
 
 ---
 
@@ -157,7 +157,7 @@ except ImportError:
 - row_count
 - status (processing / complete / archived)
 
-**contacts** — Denormalized view of importable contacts (raw values, never auto-cleaned)
+**contacts** — Denormalized baseline contacts (raw values, never auto-cleaned)
 - id (PK)
 - import_id (FK)
 - raw_row_id (FK to raw_import)
@@ -173,6 +173,7 @@ except ImportError:
 - campaign_title
 - donation_date
 - validation_tier (inherited from Processor)
+- household_id (Text, FK to households.household_id, Nullable) — Populated ONLY when household is approved via approve_household(). Set during step 7 of household approval workflow.
 
 **contact_suggestions** — Proposed normalizations (email case, phone format, address cleanup)
 - id (PK)
@@ -454,7 +455,7 @@ When operator clicks bulk action (e.g., "Approve All Normalizations"):
 
 ## 9. Function Signatures Claude Must Implement
 
-### Suggestion Engines (never write, only suggest)
+### Suggestion Engines (Never Write, Only Suggest)
 
 ```python
 def suggest_normalizations(contact: dict) -> list[dict]:
@@ -469,29 +470,96 @@ def suggest_duplicates(contacts: list[dict]) -> list[dict]:
     """Return duplicate candidate pairs (likely same person)."""
     # Returns: [{"contact_a": "id_1", "contact_b": "id_3", "confidence": 85, "reasons": ["phone match", "address match"]}]
 
-def get_primary_contact(household_ids: list[str]) -> str:
-    """Select primary contact using waterfall logic."""
-    # Waterfall: highest donation amount → most recent → oldest id
+def get_primary_contact(contact_ids: list[int]) -> int:
+    """
+    Select primary contact ID using waterfall logic.
+    
+    Waterfall: highest donation amount → most recent donation date → oldest database ID
+    
+    Returns: contact_id (int) of elected primary
+    """
 
-def generate_household_id(primary_contact: Contact) -> str:
-    """Generate stable household ID from address + zip5."""
-    # Format: HH_<8-char-md5>
-    # Input: normalized_address.lower() + zip5
-    # Generated: Only at approval time
-    # Stability: Deterministic (same address+zip = same ID across imports)
+def generate_household_id(contact_id: int, address_line_1: str, zip5: str) -> str:
+    """
+    Generate stable, deterministic household ID from address data.
     
-def apply_suggestion(suggestion_id: str, approved_by: str) -> None:
-    """Apply a single approved suggestion (write to approved tables only)."""
-    # Writes to contact_suggestions (status=approved) and derived tables
-    # NEVER writes to raw_import
+    Format: HH_<8-char-md5>
     
-def get_hygiene_status(contact_id: str) -> dict:
-    """Return hygiene status for a single contact."""
-    # Returns: {"contact_id": "123", "issues": ["email typo", "phone format"], "status": "WARNING"}
+    Implementation Rule (for ID stability):
+    1. Check if contact has an approved address normalization:
+       SELECT suggested_value FROM contact_suggestions 
+       WHERE contact_id = contact_id AND field_name = 'address' 
+       AND status = 'approved' LIMIT 1
+    2. If approved suggestion exists, use suggested_value for normalization
+    3. Otherwise, use raw address_line_1
+    4. Normalize: lowercase, remove spaces, trim whitespace
+    5. Concatenate: normalized_address + zip5
+    6. Hash: MD5 of concatenated string, take first 8 hex chars
+    7. Return: "HH_" + hash
     
-def count_pending_suggestions(import_id: str) -> dict:
-    """Return pending suggestion counts for an import."""
-    # Returns: {"normalizations": 12, "households": 5, "duplicates": 3}
+    Example:
+      contact_id = 42
+      address_line_1 = "123 Main Street"
+      zip5 = "94301"
+      # No approved suggestion, use raw
+      normalized = "123mainstreet94301"
+      household_id = "HH_a1b2c3d4"
+    """
+```
+
+### State Modification Actions
+
+```python
+def apply_normalization(suggestion_id: int, approved_by: str) -> None:
+    """
+    Set contact_suggestions.status = 'approved'.
+    
+    Never modifies the baseline contacts table.
+    Updates: contact_suggestions.status = 'approved', approved_by, approved_at
+    """
+
+def approve_household(suggestion_id: int, approved_by: str) -> None:
+    """
+    Approve a household suggestion and create permanent household record.
+    
+    Steps:
+    1. Fetch household_suggestion record by suggestion_id
+    2. Extract contact IDs: primary = contact_id_primary, members = contact_ids_other (JSON parse)
+    3. Elect primary contact via get_primary_contact(all_contact_ids)
+    4. Fetch primary contact's address: contacts.address_line_1, contacts.zip5
+    5. Generate household_id via generate_household_id(primary_id, address, zip5)
+    6. Create households row:
+       - household_id = generated ID
+       - primary_contact_id = elected primary
+       - member_count = len(all_contact_ids)
+       - created_by = approved_by
+       - created_at = now()
+    7. Update contacts table for ALL members:
+       UPDATE contacts SET household_id = generated_id 
+       WHERE id IN (contact_ids_primary + contact_ids_other)
+    8. Update household_suggestion.status = 'approved'
+    """
+
+def resolve_duplicate(candidate_id: int, decision: str, 
+                     reviewer_notes: str, decided_by: str) -> None:
+    """
+    Record operator's decision on a duplicate pair.
+    
+    Args:
+        candidate_id: duplicate_candidates.id
+        decision: one of 'same_person', 'different', 'deferred'
+        reviewer_notes: operator's explanation (text, can be empty)
+        decided_by: username of operator
+    
+    Updates duplicate_candidates row:
+        - decision = decision
+        - reviewer_notes = reviewer_notes
+        - decided_by = decided_by
+        - decided_at = now()
+    
+    Note: In v1, 'same_person' decision is recorded but not actioned.
+    v2 will merge these records into households.
+    """
 ```
 
 **Forbidden function names:** `merge`, `auto_clean`, `auto_fix`, `auto_write`, `auto_apply`
