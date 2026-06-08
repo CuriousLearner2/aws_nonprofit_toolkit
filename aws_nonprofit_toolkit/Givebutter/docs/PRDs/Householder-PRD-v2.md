@@ -133,6 +133,16 @@ except ImportError:
 - If Processor functions change, update imports and add compatibility layer
 - Never fork or reimplement these functions in Householder
 
+**Startup Version Check:**
+```python
+# At application startup, verify Processor version
+import scripts.processor as processor
+try:
+    assert processor.__version__ >= '3.4', f"Processor v3.4+ required, got {processor.__version__}"
+except (AttributeError, AssertionError) as e:
+    raise RuntimeError(f"Processor version incompatible: {e}")
+```
+
 ---
 
 ## 6. Data Model
@@ -174,6 +184,7 @@ except ImportError:
 - donation_date
 - validation_tier (inherited from Processor)
 - household_id (Text, FK to households.household_id, Nullable) — Populated ONLY when household is approved via approve_household(). Set during step 7 of household approval workflow.
+  - **GUARDRAIL: Application code must NEVER UPDATE contacts.household_id except in approve_household_suggestion(). Direct writes bypass approval workflow and audit trail.**
 
 **contact_suggestions** — Proposed normalizations (email case, phone format, address cleanup)
 - id (PK)
@@ -184,9 +195,12 @@ except ImportError:
 - reason (e.g., "standardize email case", "extract digits only")
 - confidence_score (80-100)
 - status (pending / approved / rejected)
-- suggested_by
-- approved_by (nullable)
-- approved_at (nullable)
+- suggested_by (username of suggestion engine)
+- suggested_at (timestamp of suggestion creation)
+- approved_by (nullable, username of approver)
+- approved_at (nullable, timestamp of approval)
+- ip_address (nullable, for audit compliance)
+- user_agent (nullable, for audit compliance)
 
 **household_suggestions** — Proposed groupings (multiple people → same household)
 - id (PK)
@@ -196,9 +210,12 @@ except ImportError:
 - match_reason (e.g., "same email", "address + zip + name")
 - match_confidence_score (65-95)
 - status (pending / approved / rejected / deferred)
-- suggested_by
-- approved_by (nullable)
-- approved_at (nullable)
+- suggested_by (username of suggestion engine)
+- suggested_at (timestamp of suggestion creation)
+- approved_by (nullable, username of approver)
+- approved_at (nullable, timestamp of approval)
+- ip_address (nullable, for audit compliance)
+- user_agent (nullable, for audit compliance)
 
 **households** — Confirmed household groups (created ONLY after approval)
 - id (PK)
@@ -294,12 +311,8 @@ SELECT
   c.campaign_title,
   c.donation_date,
   c.validation_tier,
-  h.household_id,
-  h.primary_contact_id
+  c.household_id
 FROM contacts c
-LEFT JOIN households h ON c.id = h.primary_contact_id OR c.id IN (
-  SELECT primary_contact_id FROM households WHERE household_id = h.household_id
-)
 ```
 
 **Implementation Notes:**
@@ -316,12 +329,13 @@ SELECT
   h.primary_contact_id,
   ac_primary.full_name AS primary_name,
   ac_primary.email AS primary_email,
-  COUNT(c.id) AS member_count,
+  h.member_count,
   GROUP_CONCAT(c.id) AS member_ids,
-  SUM(c.amount_cents) AS total_amount_cents
+  SUM(ac.amount_cents) AS total_amount_cents
 FROM households h
 JOIN approved_contacts ac_primary ON h.primary_contact_id = ac_primary.id
-JOIN contacts c ON h.household_id = c.household_id OR h.primary_contact_id = c.id
+JOIN contacts c ON c.household_id = h.household_id
+JOIN approved_contacts ac ON ac.id = c.id
 GROUP BY h.household_id
 ```
 
@@ -529,26 +543,37 @@ def generate_household_id(contact_id: int, address_line_1: str, zip5: str) -> st
     """
     Generate stable, deterministic household ID from address data.
     
-    Format: HH_<8-char-md5>
+    Format: HH_<8-char-lowercase-md5-hex>
+    
+    Critical: Use the same normalize_address() function as suggest_normalizations().
+    This ensures '123 Main St' and '123 Main Street' hash to the same ID across imports.
     
     Implementation Rule (for ID stability):
     1. Check if contact has an approved address normalization:
        SELECT suggested_value FROM contact_suggestions 
        WHERE contact_id = contact_id AND field_name = 'address' 
        AND status = 'approved' LIMIT 1
-    2. If approved suggestion exists, use suggested_value for normalization
-    3. Otherwise, use raw address_line_1
-    4. Normalize: lowercase, remove spaces, trim whitespace
-    5. Concatenate: normalized_address + zip5
-    6. Hash: MD5 of concatenated string, take first 8 hex chars
-    7. Return: "HH_" + hash
+    2. If approved suggestion exists, use suggested_value as input_address
+    3. Otherwise, use raw address_line_1 as input_address
+    4. Normalize using normalize_address(input_address):
+       - Lowercase
+       - Remove double spaces and leading/trailing whitespace
+       - Expand standard suffixes: 'st' → 'street', etc.
+       - Remove remaining spaces
+    5. Concatenate: normalized_address + "|" + zip5
+    6. Hash: MD5 of concatenated string (UTF-8 encoded)
+    7. Extract: first 8 characters of MD5 hex (lowercase)
+    8. Return: "HH_" + hex
     
     Example:
       contact_id = 42
-      address_line_1 = "123 Main Street"
+      address_line_1 = "123 Main St"
       zip5 = "94301"
       # No approved suggestion, use raw
-      normalized = "123mainstreet94301"
+      input = "123 Main St"
+      normalized = normalize_address(input) → "123mainstreet"
+      input_to_hash = "123mainstreet|94301"
+      md5_hex = hashlib.md5(input_to_hash.encode()).hexdigest() → "a1b2c3d4e5f6g7h8"
       household_id = "HH_a1b2c3d4"
     """
 ```
@@ -597,14 +622,23 @@ def resolve_duplicate(candidate_id: int, decision: str,
         reviewer_notes: operator's explanation (text, can be empty)
         decided_by: username of operator
     
+    GUARDRAIL (v1 enforcement):
+    if decision == 'same_person':
+        raise NotImplementedError(
+            "Merging duplicates is deferred to v2. "
+            "In v1, 'same_person' decision is recorded only (no merge action). "
+            "Only 'different' and 'deferred' are permitted in v1."
+        )
+    
     Updates duplicate_candidates row:
         - decision = decision
         - reviewer_notes = reviewer_notes
         - decided_by = decided_by
         - decided_at = now()
     
-    Note: In v1, 'same_person' decision is recorded but not actioned.
-    v2 will merge these records into households.
+    Note: In v1, 'same_person' decision is blocked by guardrail above.
+    Allowed decisions: 'different' (confirmed different people), 'deferred' (review later).
+    v2 will implement merging for 'same_person' decisions.
     """
 ```
 
@@ -801,7 +835,7 @@ def test_no_auto_merge():
     assert all(s.status == "pending" for s in suggestions)
 
 def test_duplicate_candidates_with_operator_decision():
-    """Duplicate candidates created unreviewed, decision set by operator."""
+    """Duplicate candidates created unreviewed, operator makes decision (v1: different/deferred only)."""
     import_id = upload_csv(sample_csv_with_duplicates)
     
     # Verify: duplicate candidates created with unreviewed status
@@ -814,20 +848,63 @@ def test_duplicate_candidates_with_operator_decision():
     assert all(d.decided_at is None for d in duplicates)
     assert all(d.reviewer_notes is None for d in duplicates)
     
-    # Operator reviews: "Same Person" with notes
+    # Operator reviews: "Different" (different people) with notes
     duplicate = duplicates[0]
-    duplicate.decision = "same_person"
-    duplicate.reviewer_notes = "Both donations from Jane Smith, same email"
+    duplicate.decision = "different"
+    duplicate.reviewer_notes = "Name similarity is fuzzy match, different people"
     duplicate.decided_by = "operator@example.com"
     duplicate.decided_at = datetime.now()
     db.session.commit()
     
     # Verify decision persisted
     updated = DuplicateCandidate.query.get(duplicate.id)
-    assert updated.decision == "same_person"
-    assert updated.reviewer_notes == "Both donations from Jane Smith, same email"
+    assert updated.decision == "different"
+    assert updated.reviewer_notes == "Name similarity is fuzzy match, different people"
     assert updated.decided_by == "operator@example.com"
     assert updated.decided_at is not None
+
+def test_resolve_duplicate_same_person_raises_error():
+    """v1 enforcement: attempting 'same_person' decision raises NotImplementedError."""
+    import_id = upload_csv(sample_csv_with_duplicates)
+    duplicate = DuplicateCandidate.query.filter_by(import_id=import_id).first()
+    
+    # Attempting 'same_person' decision should raise NotImplementedError
+    with pytest.raises(NotImplementedError) as exc_info:
+        resolve_duplicate(
+            candidate_id=duplicate.id,
+            decision="same_person",
+            reviewer_notes="Same person",
+            decided_by="operator@example.com"
+        )
+    
+    # Verify error message references v2 deferral
+    assert "v2" in str(exc_info.value).lower()
+    assert "merge" in str(exc_info.value).lower()
+
+def test_direct_household_id_write_fails():
+    """Guardrail: direct UPDATE to contacts.household_id should fail."""
+    contact = Contact.create(id=1, import_id=1, full_name="Jane Smith")
+    household = Household.create(
+        import_id=1,
+        household_id="HH_a1b2c3d4",
+        primary_contact_id=1,
+        member_count=1,
+        created_by="system"
+    )
+    
+    # Application code should NEVER directly write contacts.household_id
+    # This test ensures a database constraint or trigger prevents it
+    with pytest.raises((IntegrityError, RuntimeError, NotImplementedError)):
+        # Attempt direct update (should be blocked)
+        db.session.execute(
+            "UPDATE contacts SET household_id = ? WHERE id = 1",
+            ("HH_a1b2c3d4",)
+        )
+        db.session.commit()
+    
+    # Verify direct write was not applied
+    contact_after = Contact.query.get(1)
+    assert contact_after.household_id is None
 ```
 
 ### E2E Tests (Playwright)
