@@ -38,6 +38,87 @@ Example:
 
 **Pause after Step 1 (Processor Adapter) and show the adaptation document before proceeding to Step 2.**
 
+#### Repository Adaptation Document Template
+
+Before beginning schema, route, or feature implementation, produce a short repository adaptation document with the following sections:
+
+1. **Processor Location**
+   - Actual file path(s) for the Givebutter Processor core logic
+   - Example: `/actual/path/to/processor.py`
+   - Notes on whether Householder should import directly or through an adapter
+
+2. **Validation Functions Found**
+   - `fuzzy_email_match`: found yes/no
+     - Actual function name:
+     - Actual signature:
+     - Return shape:
+   - `normalize_phone`: found yes/no
+     - Actual function name:
+     - Actual signature:
+     - Return shape:
+   - `validate_email_format`: found yes/no
+     - Actual function name:
+     - Actual signature:
+     - Return shape:
+   - If equivalent functions exist under different names, describe the adapter mapping.
+   - If required functionality is missing, stop and report instead of reimplementing.
+
+3. **Database Pattern**
+   - Current database technology:
+   - Schema initialization pattern:
+     - Raw SQL / SQLAlchemy / Alembic / Flask command / other
+   - Existing database file/location:
+   - Existing table definitions:
+   - Recommended Householder schema integration approach:
+   - Any migration constraints or risks:
+
+4. **Flask App and Route Structure**
+   - Actual Flask app entry point:
+   - Existing route files/modules:
+   - Existing template folder:
+   - Existing static asset folder:
+   - Recommended location for Householder routes:
+   - Recommended location for Householder templates:
+
+5. **Test Structure**
+   - Test framework:
+   - Test root folder:
+   - Existing unit test pattern:
+   - Existing integration test pattern:
+   - Existing E2E/Playwright pattern, if any:
+   - Existing fixtures/conftest files:
+   - Recommended location for Householder tests:
+
+6. **CSV Column Mapping**
+   - Existing Processor CSV mapping function/file:
+   - Actual Givebutter column names observed:
+   - Householder target field mapping:
+     - `full_name` ←
+     - `email` ←
+     - `phone` ←
+     - `address_line_1` ←
+     - `city` ←
+     - `state` ←
+     - `postal_code` ←
+     - `amount_cents` ←
+     - `campaign_title` ←
+     - `donation_date` ←
+   - Missing/ambiguous columns:
+   - Recommended fallback handling:
+
+7. **PRD Assumptions That Did Not Match the Repo**
+   - List any mismatch between the PRD/plan and the actual repository.
+   - For each mismatch, propose the safest adaptation.
+   - Do not implement beyond this point until these adaptations are reviewed.
+
+8. **Safe to Proceed?**
+   - Yes/No:
+   - Reason:
+   - Blockers:
+   - Recommended next step:
+
+**Claude Code must stop after producing this document and wait for approval before implementing database schema, routes, or UI.**
+
 ### 1. Repository Structure First
 
 Before writing any code, inspect the existing Givebutter Processor repository:
