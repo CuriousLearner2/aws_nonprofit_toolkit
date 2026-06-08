@@ -91,20 +91,43 @@ Before beginning schema, route, or feature implementation, produce a short repos
 
 6. **CSV Column Mapping**
    - Existing Processor CSV mapping function/file:
+   - Sample Givebutter export inspected:
+     - File path or fixture used:
+     - Header row copied exactly:
+     - Number of columns:
    - Actual Givebutter column names observed:
+     - Contact/name column:
+     - Email column:
+     - Phone column:
+     - Address line 1 column:
+     - City column:
+     - State column:
+     - Postal/ZIP column:
+     - Donation amount column:
+     - Campaign/title column:
+     - Donation date column:
    - Householder target field mapping:
-     - `full_name` ←
-     - `email` ←
-     - `phone` ←
-     - `address_line_1` ←
-     - `city` ←
-     - `state` ←
-     - `postal_code` ←
-     - `amount_cents` ←
-     - `campaign_title` ←
-     - `donation_date` ←
+     - `full_name` ← exact source column:
+     - `email` ← exact source column:
+     - `phone` ← exact source column:
+     - `address_line_1` ← exact source column:
+     - `city` ← exact source column:
+     - `state` ← exact source column:
+     - `postal_code` ← exact source column:
+     - `amount_cents` ← exact source column:
+     - `campaign_title` ← exact source column:
+     - `donation_date` ← exact source column:
+   - Column aliases supported:
+     - `full_name`: e.g., `Contact Name`, `Full Name`, `Name`
+     - `email`: e.g., `Email`, `Email Address`, `Contact Email`
+     - `phone`: e.g., `Phone`, `Phone Number`, `Mobile Phone`
+     - `address_line_1`: e.g., `Address`, `Address Line 1`, `Street Address`
+     - `postal_code`: e.g., `ZIP`, `Zip Code`, `Postal Code`
    - Missing/ambiguous columns:
    - Recommended fallback handling:
+   - Extraction safety check:
+     - Confirm baseline fields preserve exact raw CSV values.
+     - Confirm derived fields such as `zip5` and `amount_cents` do not replace raw `postal_code` or raw donation amount values.
 
 7. **PRD Assumptions That Did Not Match the Repo**
    - List any mismatch between the PRD/plan and the actual repository.
@@ -181,6 +204,8 @@ Instead:
 - Support multiple column name variations (e.g., "full_name" vs "name" vs "contact_name")
 
 **Action:** Use `processor.column_mapping()` or equivalent before implementing column extraction.
+
+**Required:** Claude Code must inspect at least one real or fixture Givebutter CSV header row before implementing extraction. Do not hard-code PRD example column names unless they match the actual Processor mapping or sample export.
 
 ### 5. Contact Extraction is Read-Only; Suggestion Generation is Separate
 
