@@ -90,7 +90,48 @@ Export Clean (approved suggestions) OR Export by Household
 - **Frontend**: Server-rendered Jinja templates (consistent with Processor)
 - **Storage**: SQLite (extend existing Processor database, design for Postgres migration)
 - **Tests**: pytest + Playwright (consistent with Processor)
-- **Data science**: Pandas for matching logic, difflib.SequenceMatcher for fuzzy matching (reuse from Processor)
+- **Data science**: Pandas for matching logic, difflib.SequenceMatcher for fuzzy matching
+
+### Processor Dependencies (Reuse, Do Not Duplicate)
+
+Householder reuses validation logic from Givebutter Processor. **Do not reimplement these functions.**
+
+```python
+# Import from Givebutter Processor's validation module
+from scripts.processor import (
+    fuzzy_email_match,      # (typo_email: str) -> (confidence: float, suggestion: str)
+    normalize_phone,        # (phone: str) -> (normalized: str, valid: bool)
+    validate_email_format,  # (email: str) -> (valid: bool, reason: str)
+)
+
+# Enforcement: If import fails, raise NotImplementedError
+# Example:
+try:
+    from scripts.processor import fuzzy_email_match
+except ImportError:
+    raise NotImplementedError(
+        "Householder requires fuzzy_email_match from Processor. "
+        "Ensure scripts/processor.py exports this function."
+    )
+```
+
+**Contract:**
+- `fuzzy_email_match(email: str)` → `(confidence: float, suggested_value: str | None)`
+  - Returns confidence 0.0-1.0 for domain typos (e.g., "jane@gmai.com" → 0.95 for "gmail.com")
+  - Used in `suggest_normalizations()` for email field suggestions
+  
+- `normalize_phone(phone: str)` → `(normalized: str, valid: bool)`
+  - Returns digits-only format (e.g., "555.123.4567" → "5551234567")
+  - Used in `suggest_normalizations()` for phone field suggestions
+
+- `validate_email_format(email: str)` → `(valid: bool, reason: str)`
+  - Returns True if email matches standard format (includes @, domain, TLD)
+  - Used in `suggest_normalizations()` to flag invalid emails
+
+**Version Compatibility:**
+- Householder v1 requires Givebutter Processor v3.4+
+- If Processor functions change, update imports and add compatibility layer
+- Never fork or reimplement these functions in Householder
 
 ---
 
@@ -473,6 +514,24 @@ Create a 15-row sample CSV with:
 ### Unit Tests
 
 ```python
+def test_processor_dependencies_available():
+    """Householder imports required functions from Processor or raises NotImplementedError."""
+    try:
+        from scripts.processor import (
+            fuzzy_email_match,
+            normalize_phone,
+            validate_email_format,
+        )
+        # Verify functions are callable
+        assert callable(fuzzy_email_match)
+        assert callable(normalize_phone)
+        assert callable(validate_email_format)
+    except ImportError as e:
+        raise NotImplementedError(
+            "Householder requires fuzzy_email_match, normalize_phone, validate_email_format "
+            f"from Processor. Import failed: {e}"
+        )
+
 def test_suggest_normalization_returns_suggestion_not_write():
     """Engine returns suggestions, does not write to DB."""
     contact = {"email": "Jane@Gmail.com"}
