@@ -1,8 +1,8 @@
-# Givebutter Data Hygiene & Householding — v2.1 PRD for Claude Code (Human-in-Loop Only)
+# Givebutter Data Hygiene & Householding — v2.4 PRD for Claude Code (Human-in-Loop Only)
 
-**Last updated:** 2026-06-07  
+**Last updated:** 2026-06-08  
 **Owner:** Gautam Biswas  
-**Status:** v2.1 (Revised with clarified schema, deterministic ID safety, and function signatures)
+**Status:** v2.4 final candidate (Reconciled with implementation plan)
 
 ---
 
@@ -16,7 +16,7 @@ Householder builds ON TOP OF the existing Givebutter Processor validation system
 
 ## 2. Non-Negotiables for Claude Code
 
-- **Preserve raw imported data forever.** Never overwrite raw_rows.
+- **Preserve raw imported data forever.** Never overwrite raw_import_rows.
 - **No automatic cleaning.** No automatic merging. No automatic household assignment.
 - **All engine outputs are suggestions with confidence scores.**
 - **Human must click Approve before any suggestion is applied** to derived tables.
@@ -41,7 +41,7 @@ These guardrails must be enforced in code and covered by tests:
 
 ## 2.1 Clarifications for Claude Code
 
-**Document Version:** v2.1 | **Product Target:** Householder v1 | **Deferred Release:** Householder v2
+**Document Version:** v2.4 | **Product Target:** Householder v1 | **Deferred Release:** Householder v2
 
 ### Terminology & Data Model
 
@@ -255,7 +255,7 @@ Allowed names (these are OK):
 **contacts** — Denormalized baseline contacts (raw values, never auto-cleaned)
 - id (PK)
 - import_id (FK)
-- raw_row_id (FK to raw_import)
+- raw_row_id (FK to raw_import_rows)
 - full_name
 - email
 - phone
@@ -269,13 +269,13 @@ Allowed names (these are OK):
 - donation_date
 - validation_tier (inherited from Processor)
 - household_id (Text, FK to households.household_id, Nullable) — Populated ONLY when household is approved via approve_household(). Set during step 7 of household approval workflow.
-  - **GUARDRAIL: Application code must NEVER UPDATE contacts.household_id except in approve_household_suggestion(). Direct writes bypass approval workflow and audit trail.**
+  - **GUARDRAIL: Application code must NEVER UPDATE contacts.household_id except in approve_household(). Direct writes bypass approval workflow and audit trail.**
 
 **contact_suggestions** — Proposed normalizations (email case, phone format, address cleanup)
 - id (PK)
 - import_id (FK to imports, for filtering by import batch)
 - contact_id (FK)
-- field_name (email / phone / address / name)
+- field_name (email / phone / full_name / address_line_1)
 - current_value
 - suggested_value
 - reason (e.g., "standardize email case", "extract digits only")
@@ -491,18 +491,34 @@ CREATE TABLE contact_suggestions (
 
 household_suggestions:
 ```sql
-ALTER TABLE household_suggestions
-  ADD CHECK (status IN ('pending', 'approved', 'rejected', 'deferred'));
+CREATE TABLE household_suggestions (
+  id INTEGER PRIMARY KEY,
+  import_id INTEGER NOT NULL,
+  contact_id_primary INTEGER NOT NULL,
+  contact_ids_other TEXT NOT NULL,
+  sorted_contact_ids_key TEXT NOT NULL,
+  match_reason TEXT,
+  match_confidence_score INTEGER,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'deferred')),
+  -- ... other fields ...
+);
 ```
 
 duplicate_candidates:
 ```sql
-ALTER TABLE duplicate_candidates
-  ADD CHECK (decision IN ('unreviewed', 'same_person', 'different', 'deferred'));
-  
--- Enforce sorted order: contact_id_a < contact_id_b
-ALTER TABLE duplicate_candidates
-  ADD CHECK (contact_id_a < contact_id_b);
+CREATE TABLE duplicate_candidates (
+  id INTEGER PRIMARY KEY,
+  import_id INTEGER NOT NULL,
+  contact_id_a INTEGER NOT NULL,
+  contact_id_b INTEGER NOT NULL,
+  confidence_score INTEGER,
+  match_reasons TEXT,
+  decision TEXT NOT NULL CHECK (decision IN ('unreviewed', 'same_person', 'different', 'deferred')),
+  reviewer_notes TEXT,
+  decided_by TEXT,
+  decided_at TEXT,
+  CHECK (contact_id_a < contact_id_b)
+);
 ```
 
 **UNIQUE constraints (prevent duplicates on re-run):**
@@ -515,7 +531,7 @@ CREATE UNIQUE INDEX idx_contact_suggestion_idempotency
 
 household_suggestions:
 ```sql
--- sorted_contact_ids_key is a generated column storing sorted contact IDs (e.g., "1-4-23")
+-- sorted_contact_ids_key is populated by application using generate_sorted_contact_ids_key() (e.g., "1-4-23")
 CREATE UNIQUE INDEX idx_household_suggestion_idempotency
   ON household_suggestions(import_id, sorted_contact_ids_key);
 ```
@@ -538,8 +554,8 @@ For each contact, generate suggestions:
 |-------|------|--------|-----------|
 | **email** | Lowercase, trim whitespace | Standardize case | 100 |
 | **phone** | Extract digits only (last 10 for US) | Standardize format | 95 |
-| **name** | Title Case | Consistency | 90 |
-| **address** | Lowercase, remove double spaces, expand "st" → "street" | Match households | 85 |
+| **full_name** | Title Case | Consistency | 90 |
+| **address_line_1** | Lowercase, remove double spaces, expand "st" → "street" | Match households | 85 |
 
 Store each as `contact_suggestions` with status = `pending`.
 
@@ -611,7 +627,7 @@ Store as `duplicate_candidates` with decision = `'unreviewed'`. Operator decides
 - Columns: Contact Name, Field, Current Value, Suggested Value, Reason, Confidence, Actions
 - Row actions: Approve / Reject (buttons)
 - Bulk actions: "Approve All" (with confirmation preview)
-- Filters: Field (email / phone / name / address), Confidence (high / medium / low)
+- Filters: Field (email / phone / full_name / address_line_1), Confidence (high / medium / low)
 
 ### 8.3 Households Review Queue
 
@@ -821,7 +837,7 @@ if not existing:
 ```python
 def suggest_normalizations(contact: dict) -> list[dict]:
     """Return list of normalization suggestions for a single contact."""
-    # Returns: [{"field": "email", "current": "Jane@Gmail.com", "suggested": "jane@gmail.com", "reason": "standardize case", "confidence": 100}]
+    # Returns: [{"field_name": "email", "current_value": "Jane@Gmail.com", "suggested_value": "jane@gmail.com", "reason": "standardize case", "confidence_score": 100}]
     
 def suggest_households(contacts: list[dict]) -> list[dict]:
     """Return household grouping suggestions for a batch of contacts."""
@@ -902,7 +918,7 @@ def generate_household_id(address_line_1: str, zip5: str) -> tuple[str, str]:
     5. Collision safety (optional):
        - Query: SELECT COUNT(*) FROM households WHERE household_id = candidate AND NOT canonical_form = ?
        - If collision exists for different address: candidate = f"HH_{base_hash[:12]}"
-    6. Return: candidate
+    6. Return: (candidate, canonical)
     
     Example:
       address_line_1 = "123 Main St"
@@ -911,7 +927,7 @@ def generate_household_id(address_line_1: str, zip5: str) -> tuple[str, str]:
       canonical = "123mainstreet|94301"
       base_hash = "a1b2c3d4e5f6g7h8..."
       candidate = "HH_a1b2c3d4"
-      return candidate
+      return (candidate, canonical)
     
     Caller Responsibility:
     The approve_household() function must:
@@ -921,14 +937,14 @@ def generate_household_id(address_line_1: str, zip5: str) -> tuple[str, str]:
        AND status = 'approved' LIMIT 1
     2. If approved suggestion exists, pass suggested_value as address_line_1
     3. Otherwise, pass raw contacts.address_line_1 as address_line_1
-    4. Call: household_id = generate_household_id(input_address, zip5)
+    4. Call: household_id, canonical_form = generate_household_id(input_address, zip5)
     """
 ```
 
 ### State Modification Actions
 
 ```python
-def apply_normalization(suggestion_id: int, approved_by: str) -> None:
+def approve_normalization(suggestion_id: int, reviewed_by: str) -> None:
     """
     Set contact_suggestions.status = 'approved'.
     
@@ -936,19 +952,19 @@ def apply_normalization(suggestion_id: int, approved_by: str) -> None:
     Updates: contact_suggestions.status = 'approved', reviewed_by, reviewed_at, ip_address, user_agent
     """
 
-def reject_normalization(suggestion_id: int, rejected_by: str, notes: str = '') -> None:
+def reject_normalization(suggestion_id: int, reviewed_by: str, notes: str = '') -> None:
     """
     Reject a normalization suggestion.
     
     Args:
         suggestion_id: contact_suggestions.id
-        rejected_by: username of operator
+        reviewed_by: username of operator
         notes: optional explanation for rejection
     
-    Updates: contact_suggestions.status = 'rejected', reviewed_by = rejected_by, reviewed_at = now(), ip_address, user_agent
+    Updates: contact_suggestions.status = 'rejected', reviewed_by = reviewed_by, reviewed_at = now(), ip_address, user_agent
     """
 
-def defer_normalization(suggestion_id: int, deferred_by: str, notes: str = '') -> None:
+def defer_normalization(suggestion_id: int, reviewed_by: str, notes: str = '') -> None:
     """
     Defer a normalization suggestion to review later.
     
@@ -956,13 +972,13 @@ def defer_normalization(suggestion_id: int, deferred_by: str, notes: str = '') -
     
     Args:
         suggestion_id: contact_suggestions.id
-        deferred_by: username of operator
+        reviewed_by: username of operator
         notes: optional explanation for deferral
     
-    Updates: contact_suggestions.status = 'deferred', reviewed_by = deferred_by, reviewed_at = now(), ip_address, user_agent
+    Updates: contact_suggestions.status = 'deferred', reviewed_by = reviewed_by, reviewed_at = now(), ip_address, user_agent
     """
 
-def approve_household(suggestion_id: int, approved_by: str) -> None:
+def approve_household(suggestion_id: int, reviewed_by: str) -> None:
     """
     Approve a household suggestion and create permanent household record.
     
@@ -982,12 +998,13 @@ def approve_household(suggestion_id: int, approved_by: str) -> None:
           WHERE contact_id = primary_id AND field_name = 'address_line_1' AND status = 'approved'
        b. If found, use suggested_value; otherwise use contacts.address_line_1
     6. Fetch primary contact's zip5: contacts.zip5
-    7. Generate household_id via generate_household_id(input_address, zip5)
+    7. Generate household_id and canonical_form via generate_household_id(input_address, zip5)
     8. Create households row:
        - household_id = generated ID
+       - canonical_form = generated canonical form
        - primary_contact_id = elected primary
        - member_count = len(all_contact_ids)
-       - created_by = approved_by
+       - created_by = reviewed_by
        - created_at = now()
     9. Update contacts table for ALL members:
        UPDATE contacts SET household_id = generated_id 
@@ -997,7 +1014,7 @@ def approve_household(suggestion_id: int, approved_by: str) -> None:
     If any step fails, ROLLBACK the entire transaction.
     """
 
-def reject_household(suggestion_id: int, rejected_by: str, notes: str = '') -> None:
+def reject_household(suggestion_id: int, reviewed_by: str, notes: str = '') -> None:
     """
     Reject a household suggestion.
     
@@ -1005,13 +1022,13 @@ def reject_household(suggestion_id: int, rejected_by: str, notes: str = '') -> N
     
     Args:
         suggestion_id: household_suggestions.id
-        rejected_by: username of operator
+        reviewed_by: username of operator
         notes: optional explanation for rejection
     
-    Updates: household_suggestions.status = 'rejected', reviewed_by = rejected_by, reviewed_at = now(), ip_address, user_agent
+    Updates: household_suggestions.status = 'rejected', reviewed_by = reviewed_by, reviewed_at = now(), ip_address, user_agent
     """
 
-def defer_household(suggestion_id: int, deferred_by: str, notes: str = '') -> None:
+def defer_household(suggestion_id: int, reviewed_by: str, notes: str = '') -> None:
     """
     Defer a household suggestion to review later.
     
@@ -1020,10 +1037,10 @@ def defer_household(suggestion_id: int, deferred_by: str, notes: str = '') -> No
     
     Args:
         suggestion_id: household_suggestions.id
-        deferred_by: username of operator
+        reviewed_by: username of operator
         notes: optional explanation for deferral
     
-    Updates: household_suggestions.status = 'deferred', reviewed_by = deferred_by, reviewed_at = now(), ip_address, user_agent
+    Updates: household_suggestions.status = 'deferred', reviewed_by = reviewed_by, reviewed_at = now(), ip_address, user_agent
     """
 
 def resolve_duplicate(candidate_id: int, decision: str, 
@@ -1132,17 +1149,35 @@ def test_suggest_normalization_returns_suggestion_not_write():
     """Engine returns suggestions, does not write to DB."""
     contact = {"email": "Jane@Gmail.com"}
     suggestions = suggest_normalizations(contact)
-    assert suggestions[0]["suggested"] == "jane@gmail.com"
+    assert suggestions[0]["suggested_value"] == "jane@gmail.com"
     # Verify DB was NOT written to
     assert Contact.query.filter_by(email="jane@gmail.com").first() is None
 
 def test_suggest_household_does_not_create_household_id():
-    """Household engine returns suggestions only, no household created."""
-    contacts = [{"id": "1", "email": "same@email.com"}, {"id": "2", "email": "same@email.com"}]
+    """Household engine returns suggestions only, no household or DB suggestion row created."""
+    contacts = [
+        {
+            "id": 1,
+            "full_name": "Jane Smith",
+            "email": "jane@example.com",
+            "phone": "5551112222",
+            "address_line_1": "123 Main St",
+            "zip5": "94301",
+        },
+        {
+            "id": 2,
+            "full_name": "John Smith",
+            "email": "john@example.com",
+            "phone": "5551112222",
+            "address_line_1": "123 Main St",
+            "zip5": "94301",
+        },
+    ]
     suggestions = suggest_households(contacts)
-    assert suggestions[0]["suggested_household_id"] is None
+    assert len(suggestions) > 0
+    assert "household_id" not in suggestions[0]
     assert Household.query.count() == 0
-    assert HouseholdSuggestion.query.count() > 0
+    assert HouseholdSuggestion.query.count() == 0
 
 def test_primary_contact_waterfall():
     """Primary contact selected by highest donation → most recent → oldest id."""
@@ -1160,7 +1195,7 @@ def test_fuzzy_email_matching_reuses_processor():
     contact = {"email": "jane@gmai.com"}
     suggestions = suggest_normalizations(contact)
     # Should suggest gmail.com based on Processor's fuzzy logic
-    assert any("gmail.com" in s.get("suggested", "") for s in suggestions)
+    assert any("gmail.com" in s.get("suggested_value", "") for s in suggestions)
 
 def test_normalize_address_for_household_id():
     """Address normalization produces deterministic canonical form (token-based)."""
@@ -1183,21 +1218,23 @@ def test_normalize_address_for_household_id():
 
 def test_household_id_format_and_stability():
     """Generated household_id follows HH_<8-char-md5> format and is deterministic."""
-    hh_id_1 = generate_household_id(address_line_1="123 Main St", zip5="94301")
-    hh_id_2 = generate_household_id(address_line_1="123 Main St", zip5="94301")
-    
+    hh_id_1, canonical_1 = generate_household_id(address_line_1="123 Main St", zip5="94301")
+    hh_id_2, canonical_2 = generate_household_id(address_line_1="123 Main St", zip5="94301")
+
     # Format check
     assert hh_id_1.startswith("HH_")
     assert len(hh_id_1) == 11  # HH_ + 8 chars
     assert all(c in "0123456789abcdef" for c in hh_id_1[3:])  # Hex chars
-    
-    # Stability check: same address + zip = same ID (deterministic)
+
+    # Stability check: same address + zip = same ID and canonical form (deterministic)
     assert hh_id_1 == hh_id_2
-    
+    assert canonical_1 == canonical_2
+
     # Determinism across imports: "123 Main St" and "123 Main Street" normalize to same value
-    hh_id_st = generate_household_id(address_line_1="123 Main St", zip5="94301")
-    hh_id_street = generate_household_id(address_line_1="123 Main Street", zip5="94301")
+    hh_id_st, canonical_st = generate_household_id(address_line_1="123 Main St", zip5="94301")
+    hh_id_street, canonical_street = generate_household_id(address_line_1="123 Main Street", zip5="94301")
     assert hh_id_st == hh_id_street
+    assert canonical_st == canonical_street
 ```
 
 ### 11.2 Integration Tests (Database State & Workflows)
@@ -1216,7 +1253,7 @@ def test_raw_import_rows_immutability():
     
     # Run entire workflow: create suggestions, approve some, reject some
     suggestions = ContactSuggestion.query.filter_by(import_id=import_id).all()
-    apply_normalization(suggestions[0].id, approved_by="operator")
+    approve_normalization(suggestions[0].id, reviewed_by="operator")
     
     # Verify raw_json is unchanged (byte-for-byte or value-for-value)
     raw_after = RawImport.query.get(raw_before.id)
@@ -1255,7 +1292,7 @@ def test_approve_normalization_updates_approved_view_only():
     raw_email = contact.email
     
     # Approve suggestion
-    apply_normalization(suggestion.id, approved_by="operator")
+    approve_normalization(suggestion.id, reviewed_by="operator")
     
     # Verify: raw contact unchanged
     assert Contact.query.get(contact.id).email == raw_email
@@ -1283,7 +1320,7 @@ def test_approve_household_creates_household_and_sets_household_id():
         assert Contact.query.get(cid).household_id is None
     
     # Approve household
-    approve_household(suggestion.id, approved_by="operator")
+    approve_household(suggestion.id, reviewed_by="operator")
     
     # After approval: household record created
     household = Household.query.filter_by(import_id=import_id).first()
@@ -1373,7 +1410,7 @@ def test_exports_contain_approved_values():
         import_id=import_id, status="pending"
     ).all()
     for sugg in suggestions:
-        apply_normalization(sugg.id, approved_by="operator")
+        approve_normalization(sugg.id, reviewed_by="operator")
     
     # Generate export
     exported_csv = export_clean(import_id)
@@ -1433,7 +1470,7 @@ def test_approve_household_sets_household_id():
         assert Contact.query.get(cid).household_id is None
     
     # Approve household
-    approve_household(suggestion.id, approved_by="operator")
+    approve_household(suggestion.id, reviewed_by="operator")
     
     # After approval: all members have matching household_id
     for cid in contact_ids:
@@ -1713,7 +1750,7 @@ Add these `data-testid` attributes to HTML elements for reliable element selecti
 - ✅ resolve_duplicate() records 'same_person' decision (record-only, no merge in v1)
 - ✅ CRITICAL: No auto-merge, no automatic household creation, no automatic contact field modification
 - ✅ No functions named merge_*, auto_*, auto_apply, auto_clean, auto_write
-- ✅ Allowed function names: apply_normalization, reject_normalization, defer_normalization, approve_household, reject_household, defer_household, resolve_duplicate, export_clean_contacts, suggest_normalizations, suggest_households, suggest_duplicates
+- ✅ Allowed function names: approve_normalization, reject_normalization, defer_normalization, approve_household, reject_household, defer_household, resolve_duplicate, export_clean_contacts, suggest_normalizations, suggest_households, suggest_duplicates
 
 **User Experience:**
 - ✅ Dashboard shows live counts (pending normalizations, households, duplicates)
@@ -1766,15 +1803,15 @@ Claude Code should follow this 16-step sequence for safe, incremental developmen
    - Test: all suggestions created with correct status values
 
 7. **Implement normalization approval workflow**
-   - apply_normalization(suggestion_id, approved_by) → UPDATE contact_suggestions SET status='approved', reviewed_by, reviewed_at
-   - reject_normalization(suggestion_id, rejected_by, notes) → UPDATE status='rejected', reviewed_by, reviewed_at
-   - defer_normalization(suggestion_id, deferred_by, notes) → UPDATE status='deferred', reviewed_by, reviewed_at
+   - approve_normalization(suggestion_id, reviewed_by) → UPDATE contact_suggestions SET status='approved', reviewed_by, reviewed_at
+   - reject_normalization(suggestion_id, reviewed_by, notes) → UPDATE status='rejected', reviewed_by, reviewed_at
+   - defer_normalization(suggestion_id, reviewed_by, notes) → UPDATE status='deferred', reviewed_by, reviewed_at
    - Test: raw contacts unchanged, approved_contacts view reflects approved values
 
 8. **Implement household approval workflow**
-   - approve_household(suggestion_id, approved_by) → CREATE households row, UPDATE contacts.household_id, reviewed_by, reviewed_at
-   - reject_household(suggestion_id, rejected_by, notes) → UPDATE household_suggestions SET status='rejected'
-   - defer_household(suggestion_id, deferred_by, notes) → UPDATE household_suggestions SET status='deferred'
+   - approve_household(suggestion_id, reviewed_by) → CREATE households row, UPDATE contacts.household_id, reviewed_by, reviewed_at
+   - reject_household(suggestion_id, reviewed_by, notes) → UPDATE household_suggestions SET status='rejected'
+   - defer_household(suggestion_id, reviewed_by, notes) → UPDATE household_suggestions SET status='deferred'
    - implement get_primary_contact(contact_ids) waterfall logic
    - implement generate_household_id(address_line_1, zip5) with deterministic MD5 hashing (scalar parameters only)
    - Test: household record created, contacts.household_id set, no accidental writes
