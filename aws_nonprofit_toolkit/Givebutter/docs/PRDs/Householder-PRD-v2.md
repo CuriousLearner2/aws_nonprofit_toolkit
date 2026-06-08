@@ -451,6 +451,42 @@ When operator clicks bulk action (e.g., "Approve All Normalizations"):
 - Button 3: "Export Backlog" — Download CSV of pending suggestions not yet approved
 - Button 4: "Export Raw" — Download original import (unchanged)
 
+### 8.7 Defer State Implementation
+
+**Schema & Lifecycle:**
+
+The "Defer" action hides suggestions from the primary review queue without deleting or rejecting them. It maps to a discrete `status = 'deferred'` state in the suggestion tables.
+
+**For contact_suggestions (normalizations):**
+- Query primary queue: `SELECT * WHERE status = 'pending'`
+- Defer action: `UPDATE contact_suggestions SET status = 'deferred' WHERE id = ?`
+- Deferred items hidden from normalizations queue until explicitly un-deferred
+- Operator can un-defer: shows button "Restore to Queue" in deferred view
+
+**For household_suggestions:**
+- Query primary queue: `SELECT * WHERE status = 'pending'`
+- Defer action: `UPDATE household_suggestions SET status = 'deferred' WHERE id = ?`
+- Deferred household suggestions do NOT create household records
+- Can be un-deferred anytime during same import batch
+
+**For duplicate_candidates:**
+- Query primary queue: `SELECT * WHERE decision = 'unreviewed'`
+- Defer action: `UPDATE duplicate_candidates SET decision = 'deferred' WHERE id = ?`
+- Deferred duplicates hidden from review queue but decision field preserved
+- Can be revisited in "Deferred Items" sidebar
+
+**UI Behavior:**
+- Each queue page shows count of deferred items: "3 normalizations deferred (show/hide)"
+- Clicking "Defer" removes card from view immediately (no page refresh needed)
+- Deferred items accessible via "View Deferred" link (optional secondary queue)
+- Un-defer restores item to primary queue with state = 'pending'/'unreviewed'
+- Deferred items can be edited before un-deferring
+
+**Audit Trail:**
+- Defer action logged: timestamp, operator, reason (optional notes)
+- State transitions: pending → deferred → pending (or approved/rejected)
+- Never purges deferred records; all history retained
+
 ---
 
 ## 9. Function Signatures Claude Must Implement
@@ -474,9 +510,19 @@ def get_primary_contact(contact_ids: list[int]) -> int:
     """
     Select primary contact ID using waterfall logic.
     
-    Waterfall: highest donation amount → most recent donation date → oldest database ID
+    Args:
+        contact_ids: list[int] — Native database contact IDs (integers, not strings)
     
-    Returns: contact_id (int) of elected primary
+    Waterfall Priority (first non-tie wins):
+    1. Highest total donation amount (amount_cents)
+    2. Most recent donation_date
+    3. Oldest database id (first to be created)
+    
+    Returns: int — contact_id of elected primary contact
+    
+    Example:
+        get_primary_contact([1, 2, 3]) → 2
+        (where contact 2 has highest donation amount)
     """
 
 def generate_household_id(contact_id: int, address_line_1: str, zip5: str) -> str:
@@ -671,13 +717,14 @@ def test_apply_suggestion_writes_only_to_approved_table():
 
 def test_primary_contact_waterfall():
     """Primary contact selected by highest donation → most recent → oldest id."""
-    contacts = [
-        {"id": "a", "amount": 100, "date": "2026-01-01"},
-        {"id": "b", "amount": 500, "date": "2026-01-02"},  # Highest donation
-        {"id": "c", "amount": 100, "date": "2026-06-01"},  # Most recent
-    ]
-    primary = get_primary_contact(["a", "b", "c"])
-    assert primary == "b"  # Highest donation wins
+    # Create contacts with native database integer IDs
+    Contact.create(id=1, amount_cents=10000, donation_date="2026-01-01")
+    Contact.create(id=2, amount_cents=50000, donation_date="2026-01-02")  # Highest donation
+    Contact.create(id=3, amount_cents=10000, donation_date="2026-06-01")  # Most recent
+    
+    # Test waterfall: highest donation wins
+    primary = get_primary_contact([1, 2, 3])
+    assert primary == 2  # ID 2 has highest donation amount
 
 def test_fuzzy_email_matching_reuses_processor():
     """Email suggestions reuse Processor's 70% fuzzy threshold."""
