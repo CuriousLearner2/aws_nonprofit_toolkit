@@ -1102,6 +1102,38 @@ def test_exports_contain_approved_values():
         # Exported value should be approved suggestion, not raw
         if suggestion.field_name == "email":
             assert row["email"] == suggestion.suggested_value
+
+def test_direct_household_id_write_fails():
+    """CRITICAL GUARDRAIL: Direct UPDATE to contacts.household_id must fail."""
+    # Create a contact and household
+    contact = Contact.create(id=1, import_id=1, full_name="Jane Smith")
+    household = Household.create(
+        import_id=1,
+        household_id="HH_a1b2c3d4",
+        primary_contact_id=1,
+        member_count=1,
+        created_by="system"
+    )
+    
+    # Verify initial state: household_id is NULL
+    assert Contact.query.get(1).household_id is None
+    
+    # Application code should NEVER directly write contacts.household_id
+    # This guardrail prevents bypassing approval workflow and audit trail
+    # Attempt should fail via database constraint or application code guard
+    with pytest.raises((IntegrityError, RuntimeError, NotImplementedError)):
+        db.session.execute(
+            "UPDATE contacts SET household_id = ? WHERE id = 1",
+            ("HH_a1b2c3d4",)
+        )
+        db.session.commit()
+    
+    # Verify direct write was prevented
+    contact_after = Contact.query.get(1)
+    assert contact_after.household_id is None, (
+        "Guardrail failed: contacts.household_id should only be set via approve_household(), "
+        "never by direct UPDATE. This ensures all household assignments are audit-logged."
+    )
 ```
 
 ### 11.3 E2E Tests (Playwright UI Workflows)
