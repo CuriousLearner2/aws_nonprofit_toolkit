@@ -260,6 +260,7 @@ Allowed names (these are OK):
 
 **contact_suggestions** — Proposed normalizations (email case, phone format, address cleanup)
 - id (PK)
+- import_id (FK to imports, for filtering by import batch)
 - contact_id (FK)
 - field_name (email / phone / address / name)
 - current_value
@@ -271,21 +272,23 @@ Allowed names (these are OK):
 - suggested_at (timestamp of suggestion creation)
 - reviewed_by (nullable, username of reviewer who approved/rejected/deferred)
 - reviewed_at (nullable, timestamp of review action)
+- reviewer_notes (nullable, notes on rejection or deferral)
 - ip_address (nullable, for audit compliance)
 - user_agent (nullable, for audit compliance)
 
 **household_suggestions** — Proposed groupings (multiple people → same household)
 - id (PK)
-- import_id (FK)
+- import_id (FK, for filtering by import batch)
 - contact_id_primary (FK)
 - contact_ids_other (JSON array of contact IDs)
-- match_reason (e.g., "same email", "address + zip + name")
+- match_reason (e.g., "shared address + zip + different first names", "phone + last name match")
 - match_confidence_score (65-95)
 - status (pending / approved / rejected / deferred)
 - suggested_by (username of suggestion engine)
 - suggested_at (timestamp of suggestion creation)
 - reviewed_by (nullable, username of reviewer who approved/rejected/deferred)
 - reviewed_at (nullable, timestamp of review action)
+- reviewer_notes (nullable, notes on rejection or deferral)
 - ip_address (nullable, for audit compliance)
 - user_agent (nullable, for audit compliance)
 
@@ -631,7 +634,7 @@ def suggest_normalizations(contact: dict) -> list[dict]:
     
 def suggest_households(contacts: list[dict]) -> list[dict]:
     """Return household grouping suggestions for a batch of contacts."""
-    # Returns: [{"primary_id": "contact_1", "member_ids": ["contact_2", "contact_5"], "match_reason": "same email", "confidence": 95}]
+    # Returns: [{"primary_id": "contact_1", "member_ids": ["contact_2", "contact_5"], "match_reason": "same address + zip + different first names", "confidence": 80}]
 
 def suggest_duplicates(contacts: list[dict]) -> list[dict]:
     """Return duplicate candidate pairs (likely same person)."""
@@ -656,7 +659,7 @@ def get_primary_contact(contact_ids: list[int]) -> int:
         (where contact 2 has highest donation amount)
     """
 
-def generate_household_id(address_line_1: str, zip5: str) -> str:
+def generate_household_id(address_line_1: str, zip5: str) -> tuple[str, str]:
     """
     Generate stable, deterministic household ID from address data.
     
@@ -664,9 +667,9 @@ def generate_household_id(address_line_1: str, zip5: str) -> str:
         address_line_1: str — The address to use (caller provides either raw or approved-suggestion value)
         zip5: str — First 5 digits of postal code
     
-    Returns: str — Household ID in format HH_<8-char-lowercase-md5-hex>
-    
-    Format: HH_<8-char-lowercase-md5-hex> (or HH_<12-char-hex> if collision detected)
+    Returns: tuple[str, str] — (household_id, canonical_form)
+      - household_id: HH_<8-char-lowercase-md5-hex> (or HH_<12-char-hex> if collision detected)
+      - canonical_form: normalized address + "|" + zip5 (used for collision detection)
     
     Implementation:
     
@@ -1166,6 +1169,30 @@ def test_exports_contain_approved_values():
         if suggestion.field_name == "email":
             assert row["email"] == suggestion.suggested_value
 
+**Enforcement Strategy for contacts.household_id Write Protection:**
+
+contacts.household_id may only be modified by `approve_household()`. Direct updates must be prevented.
+
+Recommended implementation (choose one):
+
+**Option A: SQLite Trigger (Strong enforcement)**
+- Create a BEFORE UPDATE trigger on contacts table
+- Block direct UPDATE to household_id unless an approval context is active
+- Raise SQLITE_CONSTRAINT error on violation
+- Test: verify trigger blocks direct UPDATE statements
+
+**Option B: Application-layer repository guard (Simpler)**
+- Create a single `ContactRepository.set_household_id(contact_id, household_id, approval_context)` method
+- Only approve_household() calls this method
+- All other code paths raise NotImplementedError if they try to modify household_id directly
+- Test: verify method is called only from approve_household()
+
+**Required behavior (both options):**
+- Direct SQL UPDATE to contacts.household_id must fail
+- approve_household() must successfully set household_id for all household members
+- Audit trail (reviewed_by, reviewed_at) must be logged with the operation
+
+```python
 def test_direct_household_id_write_fails():
     """CRITICAL GUARDRAIL: Direct UPDATE to contacts.household_id must fail."""
     # Create a contact and household
@@ -1183,7 +1210,7 @@ def test_direct_household_id_write_fails():
     
     # Application code should NEVER directly write contacts.household_id
     # This guardrail prevents bypassing approval workflow and audit trail
-    # Attempt should fail via database constraint or application code guard
+    # Attempt should fail via database constraint (trigger) or application code guard
     with pytest.raises((IntegrityError, RuntimeError, NotImplementedError)):
         db.session.execute(
             "UPDATE contacts SET household_id = ? WHERE id = 1",
@@ -1527,9 +1554,9 @@ Claude Code should follow this 16-step sequence for safe, incremental developmen
 
 9. **Implement duplicate candidate workflow**
    - resolve_duplicate(candidate_id, decision, reviewer_notes, decided_by) → UPDATE duplicate_candidates
-   - Guard: decision='same_person' raises NotImplementedError (v2 feature)
-   - Allowed decisions: 'different', 'deferred'
-   - Test: operator can mark duplicates, same_person blocked with error
+   - Allowed decisions: 'same_person', 'different', 'deferred'
+   - v1 behavior: record-only; no contact merge, no household assignment, no field mutation
+   - Test: same_person decision is persisted but contacts remain separate (not merged)
 
 10. **Implement approved_contacts and households_summary views**
     - approved_contacts: COALESCE pattern for approved normalization values
