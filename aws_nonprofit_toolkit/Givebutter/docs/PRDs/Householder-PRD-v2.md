@@ -90,10 +90,10 @@ Export Clean (approved suggestions) OR Export by Household
 ## 4. v1 Scope — Build Only
 
 ### Core Features
-- CSV upload with raw preservation (raw_import table)
+- CSV upload with raw preservation in raw_import_rows
 - Contact extraction and normalization suggestions (email case, phone format, address)
-- Household matching engine (same email, address+zip, phone+name patterns)
-- Duplicate candidate detection (pairs likely to be same person)
+- Household matching engine using household-level evidence: shared address+zip, shared phone+last name, different first names at same address, related name/address patterns
+- Duplicate candidate detection (pairs likely to be same person, including exact email matches)
 - Householder dashboard (PASS/WARNING/FAIL counts, suggestion queue status)
 - Three review queues:
   - **Normalizations**: Email/phone/address format fixes
@@ -269,8 +269,8 @@ Allowed names (these are OK):
 - status (pending / approved / rejected / deferred)
 - suggested_by (username of suggestion engine)
 - suggested_at (timestamp of suggestion creation)
-- approved_by (nullable, username of approver)
-- approved_at (nullable, timestamp of approval)
+- reviewed_by (nullable, username of reviewer who approved/rejected/deferred)
+- reviewed_at (nullable, timestamp of review action)
 - ip_address (nullable, for audit compliance)
 - user_agent (nullable, for audit compliance)
 
@@ -284,8 +284,8 @@ Allowed names (these are OK):
 - status (pending / approved / rejected / deferred)
 - suggested_by (username of suggestion engine)
 - suggested_at (timestamp of suggestion creation)
-- approved_by (nullable, username of approver)
-- approved_at (nullable, timestamp of approval)
+- reviewed_by (nullable, username of reviewer who approved/rejected/deferred)
+- reviewed_at (nullable, timestamp of review action)
 - ip_address (nullable, for audit compliance)
 - user_agent (nullable, for audit compliance)
 
@@ -293,6 +293,7 @@ Allowed names (these are OK):
 - id (PK)
 - import_id (FK)
 - household_id (text, format: `HH_` + first 8 chars of MD5 hash)
+- canonical_form (text, the normalized address + "|" + zip5 used for household_id generation; enables collision detection)
 - primary_contact_id (FK to contacts)
 - member_count
 - created_by
@@ -300,10 +301,13 @@ Allowed names (these are OK):
 
 **Household ID Generation Algorithm:**
 ```python
-def generate_household_id(address_line_1: str, zip5: str) -> str:
+def generate_household_id(address_line_1: str, zip5: str) -> tuple[str, str]:
     """
     Generate stable household ID from address + zip5.
-    Format: HH_<8-char-md5>
+    
+    Returns: (household_id, canonical_form)
+    - household_id: HH_<8-char-lowercase-md5-hex> format
+    - canonical_form: the normalized address + "|" + zip5 (used for collision detection)
     
     Uses scalar parameters only (no database lookups), ensuring deterministic
     computation in loose data loops and standalone test harnesses.
@@ -312,9 +316,11 @@ def generate_household_id(address_line_1: str, zip5: str) -> str:
     Example: 
       address_line_1 = "123 Main Street"
       zip5 = "94301"
-      normalized = "123 main street94301"
-      md5_hash = hashlib.md5(normalized.encode()).hexdigest()[:8]
-      household_id = f"HH_{md5_hash}"
+      normalized = normalize_address_for_household_id("123 Main Street")
+      canonical = f"{normalized}|{zip5}"  → "123mainstreet|94301"
+      md5_hash = hashlib.md5(canonical.encode()).hexdigest()[:8]
+      household_id = f"HH_{md5_hash}"  → "HH_a1b2c3d4"
+      return (household_id, canonical)
     
     Generated: Only at approval time (when household_suggestion status → approved)
     Stability: Same across imports (deterministic, based on address + zip only)
@@ -323,11 +329,11 @@ def generate_household_id(address_line_1: str, zip5: str) -> str:
     - An approved contact_suggestion (if address normalization was approved), or
     - Raw contacts.address_line_1 (if no normalization exists or was rejected)
     """
-    normalized = (
-        f"{address_line_1.lower().replace(' ', '')} "
-        f"{zip5}"
-    ).encode()
-    return f"HH_{hashlib.md5(normalized).hexdigest()[:8]}"
+    normalized = normalize_address_for_household_id(address_line_1)
+    canonical = f"{normalized}|{zip5 or ''}"
+    base_hash = hashlib.md5(canonical.encode()).hexdigest()
+    candidate = f"HH_{base_hash[:8]}"
+    return (candidate, canonical)
 ```
 
 **Why this approach:**
@@ -487,7 +493,7 @@ Identify contacts that likely represent the same person (separate donations):
 | 75 | Name fuzzy (85%+) + phone exact | Possible name variation, same phone |
 | 70 | Phone + address exact, name fuzzy (70%+) | Likely same person, minor name variance |
 
-Store as `duplicate_candidates` with status = `unreviewed`. Operator decides: "Same Person" / "Different" / "Defer".
+Store as `duplicate_candidates` with decision = `'unreviewed'`. Operator decides: "Same Person" / "Different" / "Defer".
 
 ---
 
@@ -535,7 +541,7 @@ When operator clicks bulk action (e.g., "Approve All Normalizations"):
 1. Show modal: "Preview Changes"
    - "50 email fields will be normalized"
    - "3 phone fields will be reformatted"
-   - "This cannot be undone. Approve?"
+   - "These changes will affect approved exports. Raw data will remain unchanged. You can reverse the approval by changing the suggestion status later."
 2. Require confirmation: [Cancel] [Approve]
 3. Log action: timestamp, operator, # approved, change details
 
@@ -636,18 +642,30 @@ def generate_household_id(address_line_1: str, zip5: str) -> str:
     Implementation:
     
     def normalize_address_for_household_id(address_line_1: str) -> str:
+        import re
+        import string
+        
         value = (address_line_1 or '').lower().strip()
         # Remove punctuation
         value = value.translate(str.maketrans('', '', string.punctuation))
         # Collapse multiple spaces
-        value = re.sub(r'\\s+', ' ', value)
-        # Reverse abbreviations to canonical form (st→street, ave→avenue, etc)
-        value = value.replace(' st ', ' street ')
-        value = value.replace(' ave ', ' avenue ')
-        value = value.replace(' rd ', ' road ')
-        value = value.replace(' dr ', ' drive ')
-        # Final cleanup: remove all spaces for hash input
-        return value.replace(' ', '').strip()
+        value = re.sub(r'\s+', ' ', value).strip()
+        
+        # Token-based abbreviation mapping (handles terminal abbreviations like "St")
+        mapping = {
+            'st': 'street',
+            'ave': 'avenue',
+            'rd': 'road',
+            'dr': 'drive',
+            'ln': 'lane',
+            'blvd': 'boulevard',
+            'ct': 'court',
+            'pl': 'place',
+            'ter': 'terrace',
+        }
+        tokens = value.split()
+        tokens = [mapping.get(token, token) for token in tokens]
+        return ''.join(tokens)  # Remove all spaces for hash input
     
     Steps:
     1. Normalize input address: normalized = normalize_address_for_household_id(address_line_1)
@@ -688,7 +706,7 @@ def apply_normalization(suggestion_id: int, approved_by: str) -> None:
     Set contact_suggestions.status = 'approved'.
     
     Never modifies the baseline contacts table.
-    Updates: contact_suggestions.status = 'approved', approved_by, approved_at, ip_address, user_agent
+    Updates: contact_suggestions.status = 'approved', reviewed_by, reviewed_at, ip_address, user_agent
     """
 
 def reject_normalization(suggestion_id: int, rejected_by: str, notes: str = '') -> None:
@@ -784,23 +802,20 @@ def resolve_duplicate(candidate_id: int, decision: str,
         reviewer_notes: operator's explanation (text, can be empty)
         decided_by: username of operator
     
-    GUARDRAIL (v1 enforcement):
-    if decision == 'same_person':
-        raise NotImplementedError(
-            "Merging duplicates is deferred to v2. "
-            "In v1, 'same_person' decision is recorded only (no merge action). "
-            "Only 'different' and 'deferred' are permitted in v1."
-        )
+    v1 Behavior (record-only, no merge):
+    - 'same_person' decision is recorded and can be exported for audit
+    - 'different' decision indicates operator confirmed they are different people
+    - 'deferred' decision hides from queue for later review
+    
+    CRITICAL: v1 does NOT merge contacts or modify contact fields.
+    No automatic merge action occurs in v1, even if decision = 'same_person'.
+    The recorded decision is available for v2 merge workflow.
     
     Updates duplicate_candidates row:
         - decision = decision
         - reviewer_notes = reviewer_notes
         - decided_by = decided_by
         - decided_at = now()
-    
-    Note: In v1, 'same_person' decision is blocked by guardrail above.
-    Allowed decisions: 'different' (confirmed different people), 'deferred' (review later).
-    v2 will implement merging for 'same_person' decisions.
     """
 ```
 
@@ -898,15 +913,23 @@ def test_fuzzy_email_matching_reuses_processor():
     assert any("gmail.com" in s.get("suggested", "") for s in suggestions)
 
 def test_normalize_address_for_household_id():
-    """Address normalization produces deterministic canonical form."""
+    """Address normalization produces deterministic canonical form (token-based)."""
     # "123 Main St" and "123 Main Street" should normalize identically
     addr_st = normalize_address_for_household_id("123 Main St")
     addr_street = normalize_address_for_household_id("123 Main Street")
     assert addr_st == addr_street == "123mainstreet"
     
+    # Terminal abbreviations (St at end) are converted correctly
+    assert normalize_address_for_household_id("123 Main St") == "123mainstreet"
+    assert normalize_address_for_household_id("123 Oak Ave") == "123oakavenue"
+    
     # Punctuation removed
     addr_punct = normalize_address_for_household_id("123-A Main St, Suite B")
-    assert "-" not in addr_punct and "," not in addr_punct and addr_punct.startswith("123")
+    assert "-" not in addr_punct and "," not in addr_punct
+    
+    # Token mapping works for all abbreviations
+    assert normalize_address_for_household_id("456 Park Ln") == "456parklane"
+    assert normalize_address_for_household_id("789 Commerce Blvd") == "789commerceboulevard"
 
 def test_household_id_format_and_stability():
     """Generated household_id follows HH_<8-char-md5> format and is deterministic."""
@@ -1062,23 +1085,34 @@ def test_resolve_duplicate_different_decision():
     assert updated.decided_by == "operator@example.com"
     assert updated.decided_at is not None
 
-def test_resolve_duplicate_same_person_blocked_v1():
-    """v1 enforcement: 'same_person' decision is blocked with NotImplementedError."""
+def test_resolve_duplicate_same_person_record_only():
+    """v1 allows 'same_person' decision (record-only, no merge)."""
     import_id = upload_csv(sample_csv_with_duplicates)
     duplicate = DuplicateCandidate.query.filter_by(import_id=import_id).first()
     
-    # Attempting 'same_person' raises error
-    with pytest.raises(NotImplementedError) as exc_info:
-        resolve_duplicate(
-            candidate_id=duplicate.id,
-            decision="same_person",
-            reviewer_notes="Same person",
-            decided_by="operator@example.com"
-        )
+    # Operator marks as same_person with notes
+    resolve_duplicate(
+        candidate_id=duplicate.id,
+        decision="same_person",
+        reviewer_notes="Same person, verified by operator",
+        decided_by="operator@example.com"
+    )
     
-    # Error message explains v2 deferral
-    assert "v2" in str(exc_info.value).lower()
-    assert "merge" in str(exc_info.value).lower()
+    # Decision is recorded
+    updated = DuplicateCandidate.query.get(duplicate.id)
+    assert updated.decision == "same_person"
+    assert updated.reviewer_notes == "Same person, verified by operator"
+    assert updated.decided_by == "operator@example.com"
+    assert updated.decided_at is not None
+    
+    # CRITICAL: No merge action occurs in v1 (contacts remain separate)
+    # The recorded decision is available for v2 merge workflow
+    contact_a = Contact.query.get(duplicate.contact_id_a)
+    contact_b = Contact.query.get(duplicate.contact_id_b)
+    assert contact_a.id != contact_b.id  # Still separate contacts
+    assert contact_a.household_id != contact_b.household_id or (
+        contact_a.household_id is None and contact_b.household_id is None
+    )  # Not merged into same household
 
 def test_exports_contain_approved_values():
     """Export Clean CSV contains approved normalization values."""
