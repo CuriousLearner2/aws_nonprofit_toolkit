@@ -48,7 +48,7 @@ Householder builds ON TOP OF the existing Givebutter Processor validation system
 - `households` — Permanent household records created only after operator approval. Never created automatically.
 
 ### Allowed Mutations in v1
-- Suggestion table status/decision fields and approval metadata (approved_by, approved_at, ip_address, user_agent)
+- Suggestion table status/decision fields and review metadata (reviewed_by, reviewed_at, ip_address, user_agent)
 - `contacts.household_id` only after explicit `approve_household()`
 - `households` row creation only after explicit `approve_household()`
 
@@ -747,7 +747,7 @@ def reject_normalization(suggestion_id: int, rejected_by: str, notes: str = '') 
         rejected_by: username of operator
         notes: optional explanation for rejection
     
-    Updates: contact_suggestions.status = 'rejected', approved_by = rejected_by, approved_at = now(), ip_address, user_agent
+    Updates: contact_suggestions.status = 'rejected', reviewed_by = rejected_by, reviewed_at = now(), ip_address, user_agent
     """
 
 def defer_normalization(suggestion_id: int, deferred_by: str, notes: str = '') -> None:
@@ -761,7 +761,7 @@ def defer_normalization(suggestion_id: int, deferred_by: str, notes: str = '') -
         deferred_by: username of operator
         notes: optional explanation for deferral
     
-    Updates: contact_suggestions.status = 'deferred', approved_by = deferred_by, approved_at = now(), ip_address, user_agent
+    Updates: contact_suggestions.status = 'deferred', reviewed_by = deferred_by, reviewed_at = now(), ip_address, user_agent
     """
 
 def approve_household(suggestion_id: int, approved_by: str) -> None:
@@ -802,7 +802,7 @@ def reject_household(suggestion_id: int, rejected_by: str, notes: str = '') -> N
         rejected_by: username of operator
         notes: optional explanation for rejection
     
-    Updates: household_suggestions.status = 'rejected', approved_by = rejected_by, approved_at = now(), ip_address, user_agent
+    Updates: household_suggestions.status = 'rejected', reviewed_by = rejected_by, reviewed_at = now(), ip_address, user_agent
     """
 
 def defer_household(suggestion_id: int, deferred_by: str, notes: str = '') -> None:
@@ -817,7 +817,7 @@ def defer_household(suggestion_id: int, deferred_by: str, notes: str = '') -> No
         deferred_by: username of operator
         notes: optional explanation for deferral
     
-    Updates: household_suggestions.status = 'deferred', approved_by = deferred_by, approved_at = now(), ip_address, user_agent
+    Updates: household_suggestions.status = 'deferred', reviewed_by = deferred_by, reviewed_at = now(), ip_address, user_agent
     """
 
 def resolve_duplicate(candidate_id: int, decision: str, 
@@ -1423,7 +1423,7 @@ Add these `data-testid` attributes to HTML elements for reliable element selecti
 - ✅ Suggestions are not deleted or modified after generation (only status changed via operator actions: approve/reject/defer)
 
 **Operator Workflows:**
-- ✅ Single approval: operator clicks Approve/Reject/Defer button → system immediately updates suggestion status + records decision metadata (approved_by, approved_at, ip_address, user_agent)
+- ✅ Single approval: operator clicks Approve/Reject/Defer button → system immediately updates suggestion status + records review metadata (reviewed_by, reviewed_at, ip_address, user_agent)
 - ✅ Bulk approval: operator clicks "Approve All" → confirmation modal shows change preview → operator clicks Confirm → all approved
 - ✅ Deferred items: operator can defer, hide from primary queue, and later un-defer to reconsider
 - ✅ No accidental writes: all system modifications require explicit operator action (no background jobs, no auto-apply timers)
@@ -1512,13 +1512,13 @@ Claude Code should follow this 16-step sequence for safe, incremental developmen
    - Test: all suggestions created with correct status values
 
 7. **Implement normalization approval workflow**
-   - apply_normalization(suggestion_id, approved_by) → UPDATE contact_suggestions SET status='approved'
-   - reject_normalization(suggestion_id, rejected_by, notes) → UPDATE status='rejected'
-   - defer_normalization(suggestion_id, deferred_by, notes) → UPDATE status='deferred'
+   - apply_normalization(suggestion_id, approved_by) → UPDATE contact_suggestions SET status='approved', reviewed_by, reviewed_at
+   - reject_normalization(suggestion_id, rejected_by, notes) → UPDATE status='rejected', reviewed_by, reviewed_at
+   - defer_normalization(suggestion_id, deferred_by, notes) → UPDATE status='deferred', reviewed_by, reviewed_at
    - Test: raw contacts unchanged, approved_contacts view reflects approved values
 
 8. **Implement household approval workflow**
-   - approve_household(suggestion_id, approved_by) → CREATE households row, UPDATE contacts.household_id
+   - approve_household(suggestion_id, approved_by) → CREATE households row, UPDATE contacts.household_id, reviewed_by, reviewed_at
    - reject_household(suggestion_id, rejected_by, notes) → UPDATE household_suggestions SET status='rejected'
    - defer_household(suggestion_id, deferred_by, notes) → UPDATE household_suggestions SET status='deferred'
    - implement get_primary_contact(contact_ids) waterfall logic
