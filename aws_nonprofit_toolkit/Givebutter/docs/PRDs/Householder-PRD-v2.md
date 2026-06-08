@@ -294,6 +294,7 @@ Allowed names (these are OK):
 - import_id (FK, for filtering by import batch)
 - contact_id_primary (FK)
 - contact_ids_other (JSON array of contact IDs)
+- sorted_contact_ids_key (TEXT, GENERATED ALWAYS AS sorted_json_array, STORED) — Deterministic key for idempotency index; stores sorted IDs as "1-4-23"
 - match_reason (e.g., "shared address + zip + different first names", "phone + last name match")
 - match_confidence_score (65-95)
 - status (pending / approved / rejected / deferred)
@@ -495,9 +496,9 @@ CREATE UNIQUE INDEX idx_contact_suggestion_idempotency
 
 household_suggestions:
 ```sql
--- Assumes sorted_contact_ids is a stored/computed deterministic key
+-- sorted_contact_ids_key is a generated column storing sorted contact IDs (e.g., "1-4-23")
 CREATE UNIQUE INDEX idx_household_suggestion_idempotency
-  ON household_suggestions(import_id, sorted_contact_ids);
+  ON household_suggestions(import_id, sorted_contact_ids_key);
 ```
 
 duplicate_candidates:
@@ -757,9 +758,28 @@ Suggestion generation must be idempotent per import_id to safely handle retries 
 
 **Household suggestions:**
 - Use a deterministic suggestion key based on import_id + sorted contact IDs
-- Store sorted contact IDs in a deterministic order (e.g., lowest ID first)
+- Store sorted contact IDs in deterministic order in `sorted_contact_ids_key` column (lowest ID first)
+- Example: contact_ids [11, 4, 23] → sorted_contact_ids_key = "4-11-23"
 - Do not create duplicate household_suggestions for the same proposed group on re-run
 - Example: if group [1, 2, 3] was already suggested, do not suggest it again
+
+**Implementation (Python):**
+```python
+def generate_sorted_contact_ids_key(contact_ids: list[int]) -> str:
+    """Generate deterministic idempotency key from contact IDs."""
+    sorted_ids = sorted(contact_ids)
+    return "-".join(str(cid) for cid in sorted_ids)
+
+# Before inserting household_suggestion:
+sorted_key = generate_sorted_contact_ids_key([primary_contact_id] + other_contact_ids)
+# Check if this group already exists:
+existing = db.query(HouseholdSuggestion).filter_by(
+    import_id=import_id,
+    sorted_contact_ids_key=sorted_key
+).first()
+if not existing:
+    # Safe to insert new household_suggestion
+```
 
 **Duplicate candidates:**
 - Store duplicate pairs in sorted order: contact_id_a < contact_id_b (enforced by UNIQUE constraint)
@@ -1358,9 +1378,72 @@ Recommended implementation (choose one):
 - All other code paths raise NotImplementedError if they try to modify household_id directly
 - Test: verify method is called only from approve_household()
 
+**Recommended Implementation: Application-Layer Token Guard (Option B Detailed)**
+
+```python
+# In scripts/householder/repository.py
+import os
+
+class ContactRepository:
+    """Repository guard for safe contact mutations."""
+    
+    APPROVAL_TOKEN = os.getenv("HOUSEHOLDER_APPROVAL_TOKEN")
+    
+    @classmethod
+    def set_household_id(cls, contact_ids: list[int], household_id: str, system_token: str) -> None:
+        """
+        Set household_id on contacts only with valid approval token.
+        
+        Args:
+            contact_ids: List of contact IDs to update
+            household_id: Household ID to assign (format: HH_<8-char-hex>)
+            system_token: Approval token from environment; must match HOUSEHOLDER_APPROVAL_TOKEN
+        
+        Raises:
+            PermissionError: If system_token does not match expected token
+        
+        Usage: Called ONLY from approve_household_suggestion(); never directly.
+        """
+        if system_token != cls.APPROVAL_TOKEN:
+            raise PermissionError(
+                "Direct household_id mutation blocked. "
+                "Use approve_household_suggestion() which provides the correct token."
+            )
+        
+        db.session.execute(
+            "UPDATE contacts SET household_id = :hh_id WHERE id IN :ids",
+            {"hh_id": household_id, "ids": contact_ids}
+        )
+        db.session.commit()
+
+# In approve_household() function:
+def approve_household(suggestion_id: int, approved_by: str) -> None:
+    # ... existing logic to validate suggestion and compute household_id ...
+    
+    # Approved calls set_household_id with the correct token
+    token = os.getenv("HOUSEHOLDER_APPROVAL_TOKEN")
+    ContactRepository.set_household_id(
+        contact_ids=all_contact_ids,
+        household_id=generated_household_id,
+        system_token=token  # Only approve_household() provides this
+    )
+```
+
+**Environment Configuration:**
+
+Add to `.env` (and `.env.example`):
+```
+HOUSEHOLDER_APPROVAL_TOKEN=<randomly-generated-secure-token>
+```
+
+Example (in production, generate with `python -c "import secrets; print(secrets.token_hex(32))"`):
+```
+HOUSEHOLDER_APPROVAL_TOKEN=a7f3e8c2d9b1f4e6a5c8d2f1e9b7c4a3d6f8e1c9b2a5d7f4e1c8a3b6d9f2e
+```
+
 **Required behavior (both options):**
-- Direct SQL UPDATE to contacts.household_id must fail
-- approve_household() must successfully set household_id for all household members
+- Direct SQL UPDATE to contacts.household_id must fail or raise PermissionError
+- approve_household() must successfully set household_id for all household members using the guard
 - Audit trail (reviewed_by, reviewed_at) must be logged with the operation
 
 ```python
