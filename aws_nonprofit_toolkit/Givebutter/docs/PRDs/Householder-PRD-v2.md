@@ -26,6 +26,43 @@ Householder builds ON TOP OF the existing Givebutter Processor validation system
 
 ---
 
+## 2.1 Clarifications for Claude Code
+
+**Document Version:** v2.1 | **Product Target:** Householder v1 | **Deferred Release:** Householder v2
+
+### Terminology & Data Model
+
+**Immutable Data (Append-Only):**
+- `raw_import_rows` — Original CSV rows as uploaded. Never modified, never deleted. Provides audit trail and rollback capability.
+
+**Baseline Records (Field Values Immutable After Extraction):**
+- `contacts` — Extracted contact records with baseline field values (full_name, email, phone, address_line_1, etc.). Field values are immutable after initial import to ensure data integrity and audit trail.
+- **Exception:** `contacts.household_id` is the ONLY mutable field on contacts in v1. It may be set only after operator explicitly approves a household suggestion via `approve_household()`.
+
+**Mutable Suggestion Records:**
+- `contact_suggestions` — Proposed field-level changes. Status values: pending, approved, rejected, deferred.
+- `household_suggestions` — Proposed household groupings. Status values: pending, approved, rejected, deferred.
+- `duplicate_candidates` — Proposed same-person duplicate pairs. Decision values: unreviewed, same_person, different, deferred.
+
+**Approved Household Groups:**
+- `households` — Permanent household records created only after operator approval. Never created automatically.
+
+### Allowed Mutations in v1
+- Suggestion table status/decision fields and approval metadata (approved_by, approved_at, ip_address, user_agent)
+- `contacts.household_id` only after explicit `approve_household()`
+- `households` row creation only after explicit `approve_household()`
+
+### Disallowed Mutations in v1
+- Modifying `raw_import_rows` in any way
+- Modifying contact field values (full_name, email, phone, address, etc.) directly
+- Auto-approving suggestions
+- Auto-creating households
+- Auto-merging duplicate contacts
+- Givebutter API writeback
+- Any background data mutation without explicit operator click
+
+---
+
 ## 3. Architecture: Integration with Givebutter Processor
 
 **Workflow:**
@@ -153,7 +190,7 @@ except (AttributeError, AssertionError) as e:
 
 ### New Tables for Householder
 
-**raw_import** — Raw CSV ingestion (NEVER modified)
+**raw_import_rows** — Immutable uploaded CSV rows (NEVER modified)
 - id (PK)
 - import_id (FK to imports)
 - row_number
@@ -194,7 +231,7 @@ except (AttributeError, AssertionError) as e:
 - suggested_value
 - reason (e.g., "standardize email case", "extract digits only")
 - confidence_score (80-100)
-- status (pending / approved / rejected)
+- status (pending / approved / rejected / deferred)
 - suggested_by (username of suggestion engine)
 - suggested_at (timestamp of suggestion creation)
 - approved_by (nullable, username of approver)
@@ -378,17 +415,20 @@ Store each as `contact_suggestions` with status = `pending`.
 
 ### 7.3 Household Matching (Core Logic)
 
+**Critical:** Exact email match is a duplicate signal, NOT a household signal. Household suggestions require shared household-level evidence (address + zip, phone + name, etc.), not just shared email (which indicates same person, not same household).
+
 For each contact, score against all other contacts. Match rules (in priority order):
 
 | Rule | Fields | Confidence | Reason |
 |------|--------|-----------|--------|
-| Exact email match | normalized_email | 95 | Same person, high confidence |
-| Address + zip + last name (all exact) | address_line_1 + zip5 + last_name | 85 | Likely household |
-| Phone + last name + zip (all exact) | phone_digits + last_name + zip5 | 80 | Likely household |
-| Phone + name fuzzy match (70%+) | phone_digits + full_name similarity | 75 | Possible household, needs review |
-| Last name + zip + first initial + address fuzzy (70%+) | last_name + zip5 + first_initial + address similarity | 70 | Weak match, likely same household |
+| Address + zip + last name (all exact) | address_line_1 + zip5 + last_name | 85 | Likely household members |
+| Phone + last name + zip (all exact) | phone_digits + last_name + zip5 | 80 | Likely household members |
+| Shared address + zip with different first names | address_line_1 + zip5 + first_name variation | 80 | Likely household, different people |
+| Phone + different first names + same last name | phone_digits + last_name exact + first_name different | 75 | Possible household members |
+| Last name + zip + first initial + address fuzzy (70%+) | last_name + zip5 + first_initial + address similarity | 70 | Weak household candidate |
 
 **Important:**
+- Exact email match goes to duplicate detection, not household matching
 - Never create household_id automatically
 - Only create `household_suggestions` with status = `pending`
 - Household is confirmed ONLY after operator clicks "Approve Household"
@@ -543,38 +583,53 @@ def generate_household_id(contact_id: int, address_line_1: str, zip5: str) -> st
     """
     Generate stable, deterministic household ID from address data.
     
-    Format: HH_<8-char-lowercase-md5-hex>
+    Format: HH_<8-char-lowercase-md5-hex> (or HH_<12-char-hex> if collision detected)
     
     Critical: Use the same normalize_address() function as suggest_normalizations().
     This ensures '123 Main St' and '123 Main Street' hash to the same ID across imports.
     
-    Implementation Rule (for ID stability):
+    Implementation:
+    
+    def normalize_address_for_household_id(address_line_1: str) -> str:
+        value = (address_line_1 or '').lower().strip()
+        # Remove punctuation
+        value = value.translate(str.maketrans('', '', string.punctuation))
+        # Collapse multiple spaces
+        value = re.sub(r'\\s+', ' ', value)
+        # Reverse abbreviations to canonical form (st→street, ave→avenue, etc)
+        value = value.replace(' st ', ' street ')
+        value = value.replace(' ave ', ' avenue ')
+        value = value.replace(' rd ', ' road ')
+        value = value.replace(' dr ', ' drive ')
+        # Final cleanup: remove all spaces for hash input
+        return value.replace(' ', '').strip()
+    
+    Steps:
     1. Check if contact has an approved address normalization:
        SELECT suggested_value FROM contact_suggestions 
        WHERE contact_id = contact_id AND field_name = 'address' 
        AND status = 'approved' LIMIT 1
     2. If approved suggestion exists, use suggested_value as input_address
     3. Otherwise, use raw address_line_1 as input_address
-    4. Normalize using normalize_address(input_address):
-       - Lowercase
-       - Remove double spaces and leading/trailing whitespace
-       - Expand standard suffixes: 'st' → 'street', etc.
-       - Remove remaining spaces
-    5. Concatenate: normalized_address + "|" + zip5
-    6. Hash: MD5 of concatenated string (UTF-8 encoded)
-    7. Extract: first 8 characters of MD5 hex (lowercase)
-    8. Return: "HH_" + hex
+    4. Normalize: normalized_address = normalize_address_for_household_id(input_address)
+    5. Create canonical form: canonical = f"{normalized_address}|{zip5 or ''}"
+    6. Hash: base_hash = hashlib.md5(canonical.encode()).hexdigest()
+    7. Extract 8 chars: candidate = f"HH_{base_hash[:8]}"
+    8. Collision safety (optional):
+       - Query: SELECT COUNT(*) FROM households WHERE household_id = candidate AND NOT canonical_form = ?
+       - If collision exists for different address: candidate = f"HH_{base_hash[:12]}"
+    9. Return: candidate
     
     Example:
       contact_id = 42
       address_line_1 = "123 Main St"
       zip5 = "94301"
       # No approved suggestion, use raw
-      input = "123 Main St"
-      normalized = normalize_address(input) → "123mainstreet"
-      input_to_hash = "123mainstreet|94301"
-      md5_hex = hashlib.md5(input_to_hash.encode()).hexdigest() → "a1b2c3d4e5f6g7h8"
-      household_id = "HH_a1b2c3d4"
+      normalized = normalize_address_for_household_id("123 Main St") → "123mainstreet"
+      canonical = "123mainstreet|94301"
+      base_hash = "a1b2c3d4e5f6g7h8..."
+      candidate = "HH_a1b2c3d4"
+      # No collision, return candidate
     """
 ```
 
@@ -586,7 +641,33 @@ def apply_normalization(suggestion_id: int, approved_by: str) -> None:
     Set contact_suggestions.status = 'approved'.
     
     Never modifies the baseline contacts table.
-    Updates: contact_suggestions.status = 'approved', approved_by, approved_at
+    Updates: contact_suggestions.status = 'approved', approved_by, approved_at, ip_address, user_agent
+    """
+
+def reject_normalization(suggestion_id: int, rejected_by: str, notes: str = '') -> None:
+    """
+    Reject a normalization suggestion.
+    
+    Args:
+        suggestion_id: contact_suggestions.id
+        rejected_by: username of operator
+        notes: optional explanation for rejection
+    
+    Updates: contact_suggestions.status = 'rejected', approved_by = rejected_by, approved_at = now(), ip_address, user_agent
+    """
+
+def defer_normalization(suggestion_id: int, deferred_by: str, notes: str = '') -> None:
+    """
+    Defer a normalization suggestion to review later.
+    
+    Deferred suggestions are hidden from primary queue but preserved for later review.
+    
+    Args:
+        suggestion_id: contact_suggestions.id
+        deferred_by: username of operator
+        notes: optional explanation for deferral
+    
+    Updates: contact_suggestions.status = 'deferred', approved_by = deferred_by, approved_at = now(), ip_address, user_agent
     """
 
 def approve_household(suggestion_id: int, approved_by: str) -> None:
@@ -609,6 +690,35 @@ def approve_household(suggestion_id: int, approved_by: str) -> None:
        UPDATE contacts SET household_id = generated_id 
        WHERE id IN (contact_ids_primary + contact_ids_other)
     8. Update household_suggestion.status = 'approved'
+    """
+
+def reject_household(suggestion_id: int, rejected_by: str, notes: str = '') -> None:
+    """
+    Reject a household suggestion.
+    
+    Rejected suggestions do not create household records.
+    
+    Args:
+        suggestion_id: household_suggestions.id
+        rejected_by: username of operator
+        notes: optional explanation for rejection
+    
+    Updates: household_suggestions.status = 'rejected', approved_by = rejected_by, approved_at = now(), ip_address, user_agent
+    """
+
+def defer_household(suggestion_id: int, deferred_by: str, notes: str = '') -> None:
+    """
+    Defer a household suggestion to review later.
+    
+    Deferred suggestions are hidden from primary queue but preserved for later review.
+    No household record is created until explicit approve_household().
+    
+    Args:
+        suggestion_id: household_suggestions.id
+        deferred_by: username of operator
+        notes: optional explanation for deferral
+    
+    Updates: household_suggestions.status = 'deferred', approved_by = deferred_by, approved_at = now(), ip_address, user_agent
     """
 
 def resolve_duplicate(candidate_id: int, decision: str, 
