@@ -1,15 +1,15 @@
-# Householder v2 PRD — Cross-Import Identity, Duplicate, and Household Linking
+# Householder v3 PRD — Cross-Import Identity, Duplicate, and Household Linking
 
 **Last updated:** 2026-06-08  
 **Owner:** Gautam Biswas  
-**Status:** v2 starter PRD / enhancement draft  
+**Status:** v3 starter PRD / enhancement draft  
 **Depends on:** Householder v1 PRD v2.5 and successful v1 implementation
 
 ---
 
 ## 1. Mission
 
-Householder v2 extends Householder from an import-batch review tool into a safer long-term donor identity and householding system.
+Householder v3 extends Householder from an import-batch review tool into a safer long-term donor identity and householding system.
 
 Where v1 asks:
 
@@ -41,7 +41,7 @@ It compares contacts inside one uploaded CSV/import batch. It does not automatic
 
 ### v2 Scope
 
-Householder v2 adds cross-import intelligence:
+Householder v3 adds cross-import intelligence:
 
 - Compare new contacts against contacts from prior imports.
 - Suggest that a new contact belongs to an existing household.
@@ -398,7 +398,7 @@ These are intentionally not included unless separately approved:
 
 Householder v1 cleans and households one uploaded CSV at a time.
 
-Householder v2 remembers what reviewers approved in the past.
+Householder v3 remembers what reviewers approved in the past.
 
 When a new CSV is uploaded, v2 can say:
 
