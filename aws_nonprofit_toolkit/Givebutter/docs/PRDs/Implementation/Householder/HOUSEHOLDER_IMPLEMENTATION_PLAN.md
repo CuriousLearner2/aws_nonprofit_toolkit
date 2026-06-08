@@ -5,6 +5,12 @@
 
 ---
 
+## READ FIRST
+
+**Read the PRD first. Then read this implementation plan. Treat the PRD as the contract and this plan as the sequence. Stop after Phase 1 with the repository adaptation document before writing schema or route code.**
+
+---
+
 ## BEFORE IMPLEMENTATION: CRITICAL DIRECTIVES
 
 **These directives take precedence over all file paths and technical choices below.**
@@ -435,9 +441,14 @@ def suggest_normalizations(contact: dict) -> list[dict]:
   - Mark suggestion='approved'
   - **ROLLBACK if any step fails**
 - `reject_household(...)`, `defer_household(...)`
-- `resolve_duplicate(contact_id_a, contact_id_b, decision, reviewed_by, ip_address, user_agent)` — record decision only (no merge in v1)
+- `resolve_duplicate(candidate_id, decision, reviewer_notes, reviewed_by, ip_address, user_agent)` — record decision only (no merge in v1)
 
-**Parameter Naming:** All approval functions use `reviewed_by` parameter (not `approved_by`) to align with database field `reviewed_by` per PRD. This prevents drift between API parameter names and database schema.
+**Parameter Naming:** 
+- All normalization/household approval functions use `reviewed_by` parameter to align with database fields `reviewed_by`/`reviewed_at`
+- Duplicate resolution uses `candidate_id` (not two contact IDs) to reference the specific `duplicate_candidates.id` row — less error-prone than passing contact IDs and re-finding the candidate
+- Duplicate decisions record `decided_by`/`decided_at` fields (instead of `reviewed_by`/`reviewed_at`) to distinguish duplicate decisions from suggestion reviews
+
+This prevents drift between API parameter names and database schema fields.
 
 **Flask Routes:**
 - `GET /householder/imports/<id>/normalizations` — review queue
