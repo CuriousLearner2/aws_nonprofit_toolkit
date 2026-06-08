@@ -151,7 +151,6 @@ Export Clean (approved suggestions) OR Export by Household
 - import_id (FK)
 - contact_id_primary (FK)
 - contact_ids_other (JSON array of contact IDs)
-- suggested_household_id (temporary, created only on approval)
 - match_reason (e.g., "same email", "address + zip + name")
 - match_confidence_score (65-95)
 - status (pending / approved / rejected / deferred)
@@ -162,11 +161,42 @@ Export Clean (approved suggestions) OR Export by Household
 **households** — Confirmed household groups (created ONLY after approval)
 - id (PK)
 - import_id (FK)
-- household_id (UUID, stable across imports)
+- household_id (text, format: `HH_` + first 8 chars of MD5 hash)
 - primary_contact_id (FK to contacts)
 - member_count
 - created_by
 - created_at
+
+**Household ID Generation Algorithm:**
+```python
+def generate_household_id(primary_contact: Contact) -> str:
+    """
+    Generate stable household ID from address + zip5.
+    Format: HH_<8-char-md5>
+    
+    Input: normalized_address (lowercase, no punctuation) + zip5
+    Example: 
+      primary_contact.address = "123 Main Street"
+      primary_contact.zip5 = "94301"
+      normalized = "123 main street94301"
+      md5_hash = hashlib.md5(normalized.encode()).hexdigest()[:8]
+      household_id = f"HH_{md5_hash}"
+    
+    Generated: Only at approval time (when household_suggestion status → approved)
+    Stability: Same across imports (deterministic, based on address + zip only)
+    """
+    normalized = (
+        f"{primary_contact.address_line_1.lower().replace(' ', '')} "
+        f"{primary_contact.zip5}"
+    ).encode()
+    return f"HH_{hashlib.md5(normalized).hexdigest()[:8]}"
+```
+
+**Why this approach:**
+- Deterministic: same address + zip = same ID across imports (useful for multi-batch household linking in v2)
+- Collision-resistant: 8-char hex = 2^32 combinations (sufficient for 10k+ households)
+- Readable: `HH_` prefix makes it obvious it's a household ID
+- Generated at approval time: ensures no accidental household_id before operator approval
 
 **duplicate_candidates** — Likely duplicates (same person, separate transactions)
 - id (PK)
@@ -392,6 +422,13 @@ def suggest_duplicates(contacts: list[dict]) -> list[dict]:
 def get_primary_contact(household_ids: list[str]) -> str:
     """Select primary contact using waterfall logic."""
     # Waterfall: highest donation amount → most recent → oldest id
+
+def generate_household_id(primary_contact: Contact) -> str:
+    """Generate stable household ID from address + zip5."""
+    # Format: HH_<8-char-md5>
+    # Input: normalized_address.lower() + zip5
+    # Generated: Only at approval time
+    # Stability: Deterministic (same address+zip = same ID across imports)
     
 def apply_suggestion(suggestion_id: str, approved_by: str) -> None:
     """Apply a single approved suggestion (write to approved tables only)."""
@@ -451,6 +488,38 @@ def test_suggest_household_does_not_create_household_id():
     assert suggestions[0]["suggested_household_id"] is None
     assert Household.query.count() == 0
     assert HouseholdSuggestion.query.count() > 0
+
+def test_household_id_generated_at_approval_time():
+    """Household ID generated only when household_suggestion approved, not before."""
+    # Create suggestion (no ID yet)
+    suggestion = HouseholdSuggestion.create(
+        contact_id_primary=1, contact_ids_other=[2],
+        match_reason="same email", confidence_score=95
+    )
+    assert suggestion.household_id is None  # Not yet
+    
+    # Approve
+    apply_suggestion(suggestion.id, approved_by="operator")
+    
+    # After approval: household_id generated (HH_<8-char-md5>)
+    household = Household.query.filter_by(primary_contact_id=1).first()
+    assert household.household_id is not None
+    assert household.household_id.startswith("HH_")
+    assert len(household.household_id) == 11  # HH_ + 8 chars
+
+def test_household_id_deterministic_across_imports():
+    """Same address + zip5 → same household_id across different imports."""
+    contact_1 = Contact.create(
+        id=1, address_line_1="123 Main St", zip5="94301"
+    )
+    contact_2 = Contact.create(
+        id=2, address_line_1="123 Main St", zip5="94301"  # Same address
+    )
+    
+    hh_id_1 = generate_household_id(contact_1)
+    hh_id_2 = generate_household_id(contact_2)
+    
+    assert hh_id_1 == hh_id_2  # Deterministic
 
 def test_apply_suggestion_writes_only_to_approved_table():
     """Approving a suggestion updates approved tables, not raw."""
