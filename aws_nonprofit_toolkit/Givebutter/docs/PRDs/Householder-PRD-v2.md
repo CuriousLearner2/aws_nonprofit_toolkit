@@ -545,6 +545,35 @@ When operator clicks bulk action (e.g., "Approve All Normalizations"):
 2. Require confirmation: [Cancel] [Approve]
 3. Log action: timestamp, operator, # approved, change details
 
+**Backend Optimization for Preview Metrics:**
+
+To prevent performance degradation from parsing thousands of raw JSON objects, use optimized aggregation:
+
+```sql
+-- Fast COUNT + GROUP BY on pending suggestions (no JSON parsing)
+SELECT field_name, COUNT(*) as suggestion_count
+FROM contact_suggestions
+WHERE import_id = ? AND status = 'pending'
+GROUP BY field_name
+ORDER BY suggestion_count DESC
+
+-- Fast COUNT of pending households
+SELECT COUNT(*) as household_count
+FROM household_suggestions
+WHERE import_id = ? AND status = 'pending'
+
+-- Fast COUNT of unreviewed duplicates
+SELECT COUNT(*) as duplicate_count
+FROM duplicate_candidates
+WHERE import_id = ? AND decision = 'unreviewed'
+```
+
+**Implementation:**
+- Create dedicated API endpoint: `GET /api/processing/{import_id}/bulk-preview-metrics`
+- Returns lightweight JSON: `{ "email": 50, "phone": 3, "households": 12, "duplicates": 5 }`
+- No row-level iteration, no JSON parsing, O(1) query time
+- UI populates modal from aggregation response (not raw data)
+
 ### 8.6 Export
 
 **GET /imports/{id}/export** — Export options
@@ -1408,8 +1437,8 @@ Add these `data-testid` attributes to HTML elements for reliable element selecti
 - ✅ Export Raw: original imported CSV (unchanged)
 
 **Audit Trail:**
-- ✅ contact_suggestions: tracks approved_by, approved_at, ip_address, user_agent for all state changes
-- ✅ household_suggestions: tracks approved_by, approved_at, ip_address, user_agent for all state changes
+- ✅ contact_suggestions: tracks reviewed_by, reviewed_at, ip_address, user_agent for all state changes (approve/reject/defer)
+- ✅ household_suggestions: tracks reviewed_by, reviewed_at, ip_address, user_agent for all state changes (approve/reject/defer)
 - ✅ duplicate_candidates: tracks decided_by, decided_at, reviewer_notes for all decisions
 - ✅ All timestamps in UTC
 
@@ -1427,7 +1456,8 @@ Add these `data-testid` attributes to HTML elements for reliable element selecti
 
 **Function Signatures & Guards:**
 - ✅ Processor functions imported with version check (requires Processor v3.4+)
-- ✅ resolve_duplicate() raises NotImplementedError if decision = 'same_person' (v1 does not merge)
+- ✅ resolve_duplicate() records 'same_person' decision (record-only, no merge in v1)
+- ✅ CRITICAL: No auto-merge, no automatic household creation, no automatic contact field modification
 - ✅ No functions named merge_*, auto_*, auto_apply, auto_clean, auto_write
 - ✅ Allowed function names: apply_normalization, reject_normalization, defer_normalization, approve_household, reject_household, defer_household, resolve_duplicate, export_clean_contacts, suggest_normalizations, suggest_households, suggest_duplicates
 
@@ -1492,7 +1522,7 @@ Claude Code should follow this 16-step sequence for safe, incremental developmen
    - reject_household(suggestion_id, rejected_by, notes) → UPDATE household_suggestions SET status='rejected'
    - defer_household(suggestion_id, deferred_by, notes) → UPDATE household_suggestions SET status='deferred'
    - implement get_primary_contact(contact_ids) waterfall logic
-   - implement generate_household_id(contact_id, address, zip5) with deterministic MD5 hashing
+   - implement generate_household_id(address_line_1, zip5) with deterministic MD5 hashing (scalar parameters only)
    - Test: household record created, contacts.household_id set, no accidental writes
 
 9. **Implement duplicate candidate workflow**
