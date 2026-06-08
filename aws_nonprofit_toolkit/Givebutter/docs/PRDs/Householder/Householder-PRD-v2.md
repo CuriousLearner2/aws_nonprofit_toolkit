@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-06-08  
 **Owner:** Gautam Biswas  
-**Status:** v2.4 final candidate (Reconciled with implementation plan)
+**Status:** v2.5 final candidate (v1 scope clarified; reconciled with implementation plan)
 
 ---
 
@@ -41,7 +41,7 @@ These guardrails must be enforced in code and covered by tests:
 
 ## 2.1 Clarifications for Claude Code
 
-**Document Version:** v2.4 | **Product Target:** Householder v1 | **Deferred Release:** Householder v2
+**Document Version:** v2.5 | **Product Target:** Householder v1 | **Deferred Release:** Householder v2
 
 ### Terminology & Data Model
 
@@ -131,6 +131,29 @@ Export Clean (approved suggestions) OR Export by Household
 - Source attribution and campaign tracking
 - Givebutter API sync / writeback
 - Multi-import household linking (across multiple batches)
+
+
+### v1 Matching Scope Clarification
+
+Householder v1 performs duplicate and household suggestion generation **within the current import batch only**.
+
+That means v1 compares contacts extracted from the same uploaded CSV/import. It does **not** automatically compare new contacts against:
+- historical contacts from prior imports,
+- previously approved households from prior imports,
+- a global/master contact registry,
+- or prior duplicate decisions from older batches,
+
+unless those older records are explicitly included in the current import contact set.
+
+**Deferred to v2:**
+- Cross-import duplicate detection
+- Linking a new import contact to an existing approved household
+- Maintaining a global household registry across imports
+- Maintaining a master contact/person registry across imports
+- Applying prior reviewer decisions as evidence for future suggestions
+
+This scope boundary prevents v1 from silently modifying or linking historical data and keeps the first release safe, auditable, and import-batch focused.
+
 
 ---
 

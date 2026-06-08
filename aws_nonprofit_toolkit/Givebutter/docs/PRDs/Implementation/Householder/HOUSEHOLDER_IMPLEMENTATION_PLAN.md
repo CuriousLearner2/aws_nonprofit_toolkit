@@ -28,6 +28,19 @@ Example:
 - ❌ WRONG: Processor has no email validation → Do NOT reimplement; stop and report
 - ✅ OK: PRD says "Or use equivalent validation if Processor's exact function unavailable" → OK to adapt
 
+
+### ⚠️ V1 MATCHING IS CURRENT-IMPORT ONLY
+
+Householder v1 duplicate detection and household suggestion generation must compare contacts **within the current import batch only**.
+
+Do not automatically compare a new CSV/import against:
+- contacts from prior imports,
+- previously approved households,
+- historical duplicate decisions,
+- or a global/master contact registry.
+
+Those cross-import capabilities are v2 work. In v1, previously imported records may be considered only if they are explicitly part of the current import contact set. This prevents silent historical linking and keeps v1 approval flows scoped, auditable, and safe.
+
 ### ⚠️ DO NOT PROCEED WITHOUT ADAPTATION DOCUMENT
 
 **Do not begin schema or route implementation until you have:**
@@ -506,6 +519,13 @@ def suggest_normalizations(contact: dict) -> list[dict]:
 - `generate_sorted_contact_ids_key(contact_ids: list[int]) -> str` — idempotency key
 
 **All return plain dicts/values, not ORM objects.**
+
+
+**v1 Matching Scope:**
+- `suggest_households()` and `suggest_duplicates()` operate on contacts from the current `import_id` only.
+- Do not query historical imports, prior households, or prior duplicate decisions during v1 matching.
+- Cross-import matching and global household/person registries belong to the v2 PRD.
+
 
 ---
 
