@@ -178,6 +178,80 @@ Export Clean (approved suggestions) OR Export by Household
 - decided_by (nullable)
 - decided_at (nullable)
 
+### Derived Views (for Export & Display)
+
+**approved_contacts** — Clean contact data (computed view)
+Derived from contacts + approved contact_suggestions:
+```sql
+SELECT 
+  c.id,
+  c.import_id,
+  c.raw_row_id,
+  COALESCE(
+    (SELECT suggested_value FROM contact_suggestions 
+     WHERE contact_id = c.id AND field_name = 'full_name' AND status = 'approved'
+     LIMIT 1),
+    c.full_name
+  ) AS full_name,
+  COALESCE(
+    (SELECT suggested_value FROM contact_suggestions 
+     WHERE contact_id = c.id AND field_name = 'email' AND status = 'approved'
+     LIMIT 1),
+    c.email
+  ) AS email,
+  COALESCE(
+    (SELECT suggested_value FROM contact_suggestions 
+     WHERE contact_id = c.id AND field_name = 'phone' AND status = 'approved'
+     LIMIT 1),
+    c.phone
+  ) AS phone,
+  c.address_line_1,
+  c.city,
+  c.state,
+  c.postal_code,
+  c.amount_cents,
+  c.campaign_title,
+  c.donation_date,
+  c.validation_tier,
+  h.household_id,
+  h.primary_contact_id
+FROM contacts c
+LEFT JOIN households h ON c.id = h.primary_contact_id OR c.id IN (
+  SELECT primary_contact_id FROM households WHERE household_id = h.household_id
+)
+```
+
+**Implementation Notes:**
+- The view is computed at query time (no redundant storage)
+- For each field, if there's an approved suggestion, use suggested_value; otherwise use the raw value from contacts
+- "Export Clean" queries this view to generate the CSV (one row per contact with approved values + household_id)
+- Household assignment only appears if the contact is in an approved household_suggestion
+- The view automatically reflects current state: if an approval is withdrawn, the view reverts to raw value
+
+**households_summary** — One row per household (for "Export by Household" report)
+```sql
+SELECT 
+  h.household_id,
+  h.primary_contact_id,
+  ac_primary.full_name AS primary_name,
+  ac_primary.email AS primary_email,
+  COUNT(c.id) AS member_count,
+  GROUP_CONCAT(c.id) AS member_ids,
+  SUM(c.amount_cents) AS total_amount_cents
+FROM households h
+JOIN approved_contacts ac_primary ON h.primary_contact_id = ac_primary.id
+JOIN contacts c ON h.household_id = c.household_id OR h.primary_contact_id = c.id
+GROUP BY h.household_id
+```
+
+**Data Flow on Approval:**
+1. Operator clicks "Approve" on a contact_suggestion → `contact_suggestions.status = 'approved'`
+2. `approved_contacts` view automatically reflects approved values (recomputed at query time)
+3. "Export Clean" CSV includes these approved values
+4. Operator clicks "Approve" on a household_suggestion → `households` record created
+5. `households_summary` view includes household with member info
+6. "Export by Household" CSV includes household groupings
+
 ---
 
 ## 7. Suggestion Engines (Never Auto-Apply)
@@ -437,9 +511,11 @@ def test_approve_email_suggestion_updates_approved_view_only():
     contact = Contact.query.get(1)
     assert contact.email == "Jane@Gmail.com"
     
-    # Approved view shows suggestion
-    approved = ApprovedContact.query.filter_by(contact_id=1).first()
-    assert approved.email == "jane@gmail.com"
+    # Approved view (derived from contact_suggestions) shows approved suggestion
+    approved = db.session.execute(
+        "SELECT email FROM approved_contacts WHERE contact_id = 1"
+    ).first()
+    assert approved[0] == "jane@gmail.com"
 
 def test_household_approval_creates_household():
     """Household suggestion approval creates household record."""
@@ -502,13 +578,16 @@ def test_upload_review_approve_export():
     raw = db.query(Contact).filter_by(import_id=import_id).first()
     assert raw.email == "Jane@Gmail.com"  # Raw unchanged
     
-    approved = db.query(ApprovedContact).filter_by(contact_id=raw.id).first()
-    assert approved.email == "jane@gmail.com"  # Approved view updated
+    # Approved view (derived from contact_suggestions) shows approved suggestion
+    approved = db.session.execute(
+        "SELECT email FROM approved_contacts WHERE contact_id = ?", (raw.id,)
+    ).first()
+    assert approved[0] == "jane@gmail.com"  # Approved view updated
     
-    # 6. Export clean
+    # 6. Export clean (queries approved_contacts view)
     page.goto(f"/imports/{import_id}/export")
     page.click('button:has-text("Export Clean")')
-    # Verify downloaded file has approved values
+    # Verify downloaded file has approved values (from approved_contacts view)
 ```
 
 ---
