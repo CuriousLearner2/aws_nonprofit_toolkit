@@ -395,7 +395,8 @@
         .queue-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 13px;
+            font-size: 12px;
+            table-layout: fixed;
         }
 
         .queue-table thead {
@@ -403,20 +404,66 @@
         }
 
         .queue-table th {
-            padding: 12px 24px;
+            padding: 10px 12px;
             text-align: left;
             border-bottom: 1px solid var(--border-subtle);
             font-weight: 600;
-            font-size: 11px;
+            font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             color: var(--slate-gray);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .queue-table td {
-            padding: 12px 24px;
+            padding: 10px 12px;
             border-bottom: 1px solid var(--border-subtle);
             vertical-align: middle;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Column widths for 9-column table */
+        .queue-table th:nth-child(1),
+        .queue-table td:nth-child(1) {
+            width: 20%;
+            white-space: normal;
+        }
+        .queue-table th:nth-child(2),
+        .queue-table td:nth-child(2) {
+            width: 10%;
+        }
+        .queue-table th:nth-child(3),
+        .queue-table td:nth-child(3) {
+            width: 8%;
+        }
+        .queue-table th:nth-child(4),
+        .queue-table td:nth-child(4) {
+            width: 15%;
+        }
+        .queue-table th:nth-child(5),
+        .queue-table td:nth-child(5) {
+            width: 10%;
+        }
+        .queue-table th:nth-child(6),
+        .queue-table td:nth-child(6) {
+            width: 10%;
+        }
+        .queue-table th:nth-child(7),
+        .queue-table td:nth-child(7) {
+            width: 10%;
+        }
+        .queue-table th:nth-child(8),
+        .queue-table td:nth-child(8) {
+            width: 10%;
+        }
+        .queue-table th:nth-child(9),
+        .queue-table td:nth-child(9) {
+            width: 12%;
+            white-space: normal;
         }
 
         .queue-table tbody tr:hover {
@@ -426,23 +473,26 @@
         .queue-table td:first-child {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
+            white-space: normal;
         }
 
         .queue-table .file-icon {
             color: var(--slate-gray);
+            flex-shrink: 0;
+            font-size: 18px;
         }
 
         .validation-badges {
             display: flex;
-            gap: 8px;
+            gap: 4px;
             flex-wrap: wrap;
         }
 
         .badge {
-            padding: 2px 8px;
+            padding: 2px 6px;
             border-radius: 3px;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
             white-space: nowrap;
         }
@@ -468,14 +518,15 @@
         }
 
         .action-btn {
-            padding: 8px 16px;
-            border-radius: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
             border: none;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 600;
             transition: all 0.2s;
             white-space: nowrap;
+            display: inline-block;
         }
 
         .action-btn.primary {
