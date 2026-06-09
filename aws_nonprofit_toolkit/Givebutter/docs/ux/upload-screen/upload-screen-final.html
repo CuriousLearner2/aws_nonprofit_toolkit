@@ -1,0 +1,922 @@
+<!DOCTYPE html><html><head>
+    <title>DonorTrust - Upload &amp; Review</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --primary: #000000;
+            --secondary: #0051d5;
+            --pass: #10B981;
+            --warn: #F59E0B;
+            --fail: #EF4444;
+            --surface: #f7f9fb;
+            --surface-lowest: #ffffff;
+            --surface-audit: #F1F5F9;
+            --surface-container-low: #f2f4f6;
+            --surface-container-high: #e6e8ea;
+            --border-subtle: #E2E8F0;
+            --on-surface: #191c1e;
+            --on-surface-variant: #45464d;
+            --on-secondary: #ffffff;
+            --slate-gray: #64748B;
+            --primary-container: #131b2e;
+            --on-secondary-container: #fefcff;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--surface);
+            color: var(--on-surface);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Header / Navigation */
+        header {
+            background: var(--surface-lowest);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: 900;
+            color: var(--primary);
+        }
+
+        nav {
+            display: flex;
+            gap: 24px;
+        }
+
+        nav a {
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--slate-gray);
+            padding-bottom: 8px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        nav a.active {
+            color: var(--secondary);
+            border-bottom-color: var(--secondary);
+        }
+
+        nav a:hover:not(.active) {
+            color: var(--primary);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            color: var(--on-surface-variant);
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn:hover {
+            background: var(--surface-audit);
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            font-size: 24px;
+        }
+
+        .profile-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid var(--border-subtle);
+            overflow: hidden;
+        }
+
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Main Content */
+        main {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        /* Safety Banner */
+        .safety-banner {
+            background: var(--surface-container-low);
+            border-left: 4px solid var(--secondary);
+            padding: 16px;
+            border-radius: 8px;
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .safety-banner .icon {
+            color: var(--secondary);
+            flex-shrink: 0;
+        }
+
+        .safety-banner p {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .safety-banner p:first-child {
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+
+        .safety-banner p:last-child {
+            color: var(--on-surface-variant);
+            margin: 0;
+        }
+
+        /* Grid Layout */
+        .bento-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 1024px) {
+            .bento-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Upload Card */
+        .upload-card {
+            background: var(--surface-lowest);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0.05;
+            background-image: radial-gradient(circle, #0051d5 1px, transparent 1px);
+            background-size: 20px 20px;
+            pointer-events: none;
+        }
+
+        .upload-card:hover {
+            border-color: var(--secondary);
+        }
+
+        .upload-card > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            background: var(--surface-audit);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            transition: background 0.2s;
+        }
+
+        .upload-card:hover .upload-icon {
+            background: var(--primary-fixed);
+        }
+
+        .upload-icon span {
+            color: var(--secondary);
+            font-size: 40px;
+        }
+
+        .upload-card h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .upload-card .subtitle {
+            font-size: 14px;
+            color: var(--slate-gray);
+            margin-bottom: 24px;
+            max-width: 400px;
+        }
+
+        .upload-card .subtitle strong {
+            color: var(--primary);
+        }
+
+        .select-btn {
+            background: var(--secondary);
+            color: var(--on-secondary);
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .select-btn:hover {
+            opacity: 0.9;
+        }
+
+        .select-btn:active {
+            transform: scale(0.95);
+        }
+
+        .upload-card .note {
+            margin-top: 16px;
+            font-size: 11px;
+            color: var(--slate-gray);
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        /* Safety Mode Panel */
+        .safety-panel {
+            background: var(--primary-container);
+            color: var(--on-secondary-container);
+            border-radius: 12px;
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .safety-panel h3 {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.7;
+            margin-bottom: 16px;
+        }
+
+        .safety-checklist {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .safety-item {
+            display: flex;
+            gap: 8px;
+            font-size: 13px;
+            align-items: center;
+        }
+
+        .safety-item .icon {
+            flex-shrink: 0;
+            opacity: 0.7;
+        }
+
+        .safety-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 16px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            opacity: 0.7;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        /* Import Queue Table */
+        .queue-container {
+            background: var(--surface-lowest);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .queue-wrapper {
+            overflow-x: auto;
+            overflow-y: visible;
+            flex: 1;
+        }
+
+        .queue-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(241, 245, 249, 0.5);
+        }
+
+        .queue-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .queue-badge {
+            background: var(--surface-container-high);
+            color: var(--on-surface-variant);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .queue-table {
+            border-collapse: collapse;
+            font-size: 12px;
+            min-width: 1320px;
+        }
+
+        .queue-table thead {
+            background: var(--surface-audit);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .queue-table th {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--slate-gray);
+            white-space: nowrap;
+            background: var(--surface-audit);
+        }
+
+        .queue-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-subtle);
+            vertical-align: middle;
+        }
+
+        /* Column widths - fixed pixel widths for readability */
+        .queue-table th:nth-child(1),
+        .queue-table td:nth-child(1) {
+            width: 280px;
+            min-width: 280px;
+        }
+
+        .queue-table th:nth-child(2),
+        .queue-table td:nth-child(2) {
+            width: 100px;
+            min-width: 100px;
+        }
+
+        .queue-table th:nth-child(3),
+        .queue-table td:nth-child(3) {
+            width: 80px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .queue-table th:nth-child(4),
+        .queue-table td:nth-child(4) {
+            width: 120px;
+            min-width: 120px;
+        }
+
+        .queue-table th:nth-child(5),
+        .queue-table td:nth-child(5) {
+            width: 140px;
+            min-width: 140px;
+        }
+
+        .queue-table th:nth-child(6),
+        .queue-table td:nth-child(6) {
+            width: 120px;
+            min-width: 120px;
+        }
+
+        .queue-table th:nth-child(7),
+        .queue-table td:nth-child(7) {
+            width: 120px;
+            min-width: 120px;
+        }
+
+        .queue-table th:nth-child(8),
+        .queue-table td:nth-child(8) {
+            width: 220px;
+            min-width: 220px;
+            white-space: nowrap;
+        }
+
+        .queue-table th:nth-child(9),
+        .queue-table td:nth-child(9) {
+            width: 140px;
+            min-width: 140px;
+            position: sticky;
+            right: 0;
+            background: var(--surface-lowest);
+            text-align: center;
+            z-index: 5;
+        }
+
+        .queue-table tbody tr:hover td:nth-child(9) {
+            background: var(--surface-audit);
+        }
+
+        .queue-table th:nth-child(9) {
+            background: var(--surface-audit);
+        }
+
+        .queue-table tbody tr:hover {
+            background: var(--surface-audit);
+        }
+
+        .queue-table td:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding: 12px 16px;
+        }
+
+        .queue-table td:first-child strong {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+        }
+
+        .queue-table .file-icon {
+            color: var(--slate-gray);
+            font-size: 16px;
+            margin-right: 4px;
+            display: inline-block;
+            vertical-align: text-bottom;
+        }
+
+        .validation-badges {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .badge.pass {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--pass);
+        }
+
+        .badge.warn {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warn);
+        }
+
+        .badge.fail {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--fail);
+        }
+
+        .status-text {
+            font-weight: 500;
+            color: var(--on-surface);
+        }
+
+        .action-btn {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: all 0.2s;
+            white-space: nowrap;
+            display: inline-block;
+        }
+
+        .action-btn.primary {
+            background: var(--secondary);
+            color: var(--on-secondary);
+        }
+
+        .action-btn.primary:hover {
+            opacity: 0.9;
+        }
+
+        .action-btn.secondary {
+            background: transparent;
+            border: 1px solid #6c757d;
+            color: #6c757d;
+        }
+
+        .action-btn.secondary:hover {
+            background: var(--surface-audit);
+            border-color: #495057;
+            color: #495057;
+        }
+
+        .queue-footer {
+            padding: 12px 24px;
+            background: rgba(241, 245, 249, 0.3);
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--slate-gray);
+        }
+
+        .empty-state {
+            padding: 48px 24px;
+            text-align: center;
+            color: var(--on-surface-variant);
+        }
+
+        /* Status Messages */
+        .status-message {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-top: 16px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+            border-left: 4px solid #28a745;
+        }
+
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+            border-left: 4px solid #dc3545;
+        }
+
+        .status-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+            border-left: 4px solid #17a2b8;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header / Navigation -->
+    <header>
+        <div class="header-left">
+            <div class="logo">DonorTrust</div>
+            <nav>
+                <a href="#" class="active">Upload</a>
+                <a href="#">Imports</a>
+                <a href="#">Review</a>
+                <a href="#">Exports</a>
+                <a href="#">Audit</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <button class="icon-btn">
+                <span class="material-symbols-outlined">notifications</span>
+            </button>
+            <button class="icon-btn">
+                <span class="material-symbols-outlined">settings</span>
+            </button>
+            <div class="profile-avatar">
+                <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuBexCYHzlPI2IWKq5lX3DteYr0yiQ5W6a_b1WsslVRJz_u9Tz93OkbCCP68ImrJS7KtjacZThylkMeD29Ajvn9fVTdMoLB3wFCOhM5bOb3dwIOYdVlH36JNGoFwX0-4a6RQYtYdjIHKvS8MeqDzeWg5rFXdlmR_LakgiOUIdjmrFyY_15KxLs6hVs5WwRuvZelSslkJpDoJinERrdXPB00SWXPdYVbxKifSGdpbALfxX7wMbxfrTzGM1lZ0PaDQrUuPr5zdFEF9FTM" alt="User">
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <!-- Safety Banner -->
+        <div class="safety-banner">
+            <span class="icon material-symbols-outlined">verified_user</span>
+            <div>
+                <p>Suggested changes only.</p>
+                <p>Nothing is applied until a reviewer approves it. Raw import rows are never changed.</p>
+            </div>
+        </div>
+
+        <!-- Upload Section & Safety Panel -->
+        <div class="bento-grid">
+            <!-- Upload Card -->
+            <div class="upload-card" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">
+                    <span class="material-symbols-outlined">upload_file</span>
+                </div>
+                <h2>Upload Givebutter CSV</h2>
+                <p class="subtitle">
+                    Drag and drop your file here, or click to browse.<br>
+                    <span style="font-size: 13px;">Supported file type: <strong>Givebutter CSV only</strong></span>
+                </p>
+                <button class="select-btn" type="button">Select File</button>
+                <p class="note">Upload creates a new import batch. Raw CSV rows are preserved unchanged.</p>
+                <input type="file" id="fileInput" accept=".csv">
+            </div>
+
+            <!-- v1 Safety Mode Panel -->
+            <div class="safety-panel">
+                <div>
+                    <h3>v1 Safety Mode</h3>
+                    <div class="safety-checklist">
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>Current import review only</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>Givebutter CSV files only</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>Raw rows preserved unchanged</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>Suggestions generated as pending review</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>No automatic approvals</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>No merges on upload</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>No Givebutter writeback</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="safety-stats">
+                    <div class="stat-row">
+                        <span class="stat-label">Active imports</span>
+                        <span class="stat-value" id="activeImports">1</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Total pending review items</span>
+                        <span class="stat-value" id="pendingItems">4</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Last upload</span>
+                        <span class="stat-value" id="lastUpload">9m ago</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Import Queue -->
+        <div class="queue-container">
+            <div class="queue-header">
+                <h3>Current Import Queue</h3>
+                <span class="queue-badge">v1 Current Import Review</span>
+            </div>
+            <div class="queue-wrapper">
+                <table class="queue-table">
+                    <thead>
+                        <tr>
+                            <th>Filename</th>
+                            <th>Uploaded</th>
+                            <th>Total Rows</th>
+                            <th>Validation</th>
+                            <th>Normalizations</th>
+                            <th>Households</th>
+                            <th>Duplicates</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queueBody"><tr>
+                        <td title="upload_20260609_132012_final_verify.csv"><span class="material-symbols-outlined file-icon">description</span><strong>upload_20260609_132012_final_verify.csv</strong></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">9m ago</td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">4</td>
+                        <td>
+                            <div class="validation-badges">
+                                <span class="badge pass">0 PASS</span>
+                                <span class="badge warn">4 WARN</span>
+                                <span class="badge fail">0 FAIL</span>
+                            </div>
+                        </td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">0 <span style="font-size: 11px; color: var(--slate-gray);">pending</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">0 <span style="font-size: 11px; color: var(--slate-gray);">suggested</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">0 <span style="font-size: 11px; color: var(--slate-gray);">candidates</span></td>
+                        <td><span class="status-text">Pending Review</span></td>
+                        <td style="text-align: right;"><button class="action-btn primary" onclick="reviewFile('upload_20260609_132012_final_verify.csv')">Review Import</button></td>
+                    </tr></tbody>
+                </table>
+            </div>
+            <div class="queue-footer" id="queueFooter"><span>Showing 1 of 1 active imports</span></div>
+        </div>
+    </main>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+
+        // Upload file handler
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length === 0) return;
+            const file = fileInput.files[0];
+            if (!file.name.endsWith('.csv')) {
+                alert('Please select a CSV file');
+                return;
+            }
+            uploadFile(file);
+        });
+
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const resp = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    console.error('Upload error:', data);
+                    alert('Upload failed: ' + (data.error || 'Unknown error'));
+                    return;
+                }
+
+                // Reload queue after successful upload
+                setTimeout(loadQueue, 500);
+                fileInput.value = '';
+            } catch (err) {
+                console.error('Upload error:', err);
+                alert('Upload failed: ' + err.message);
+            }
+        }
+
+        async function loadQueue() {
+            try {
+                const resp = await fetch('/api/processing');
+                if (!resp.ok) {
+                    console.error('Failed to load queue:', resp.status);
+                    return;
+                }
+
+                const files = await resp.json();
+                const tbody = document.getElementById('queueBody');
+                const footer = document.getElementById('queueFooter');
+
+                if (files.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No imports yet. Upload a CSV to get started.</td></tr>';
+                    footer.innerHTML = '<span>No imports</span>';
+                    updateStats(0, 0, '—');
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                let totalPending = 0;
+
+                files.forEach(f => {
+                    const row = document.createElement('tr');
+
+                    // Determine action button
+                    let actionBtn = '';
+                    if (f.status === 'Pending Review') {
+                        actionBtn = `<button class="action-btn primary" onclick="reviewFile('${f.filename}')">Review Import</button>`;
+                    } else if (f.status === 'In Review') {
+                        actionBtn = `<button class="action-btn primary" onclick="reviewFile('${f.filename}')">Continue Review</button>`;
+                    } else if (f.status === 'Completed') {
+                        actionBtn = `<button class="action-btn secondary" onclick="viewSummary('${f.filename}')">View Summary</button>`;
+                    }
+
+                    row.innerHTML = `
+                        <td title="${f.filename}"><span class="material-symbols-outlined file-icon">description</span><strong>${f.filename}</strong></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.uploaded}</td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.rows}</td>
+                        <td>
+                            <div class="validation-badges">
+                                <span class="badge pass">${f.pass_count} PASS</span>
+                                <span class="badge warn">${f.warning_count} WARN</span>
+                                <span class="badge fail">${f.fail_count} FAIL</span>
+                            </div>
+                        </td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.normalizations} <span style="font-size: 11px; color: var(--slate-gray);">pending</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.households} <span style="font-size: 11px; color: var(--slate-gray);">suggested</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.duplicates} <span style="font-size: 11px; color: var(--slate-gray);">candidates</span></td>
+                        <td><span class="status-text">${f.status}</span></td>
+                        <td style="text-align: right;">${actionBtn}</td>
+                    `;
+                    tbody.appendChild(row);
+
+                    if (f.status !== 'Completed') {
+                        totalPending += f.rows;
+                    }
+                });
+
+                // Update footer
+                footer.innerHTML = `<span>Showing ${files.length} of ${files.length} active imports</span>`;
+
+                // Update stats
+                updateStats(files.length, totalPending, files[0]?.uploaded || '—');
+            } catch (err) {
+                console.error('Error loading queue:', err);
+            }
+        }
+
+        function updateStats(activeCount, pendingCount, lastUpload) {
+            document.getElementById('activeImports').textContent = activeCount;
+            document.getElementById('pendingItems').textContent = pendingCount.toLocaleString();
+            document.getElementById('lastUpload').textContent = lastUpload;
+        }
+
+        function reviewFile(filename) {
+            alert('Review functionality not yet implemented for: ' + filename);
+        }
+
+        function viewSummary(filename) {
+            alert('Summary view not yet implemented for: ' + filename);
+        }
+
+        // Load queue on page load
+        document.addEventListener('DOMContentLoaded', loadQueue);
+    </script>
+
+</body></html>
