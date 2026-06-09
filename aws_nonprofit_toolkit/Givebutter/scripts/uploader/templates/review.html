@@ -362,8 +362,15 @@
             background: var(--surface-lowest);
             border: 1px solid var(--border-subtle);
             border-radius: 12px;
-            overflow: hidden;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .queue-wrapper {
+            overflow-x: auto;
+            overflow-y: visible;
+            flex: 1;
         }
 
         .queue-header {
@@ -393,77 +400,104 @@
         }
 
         .queue-table {
-            width: 100%;
             border-collapse: collapse;
             font-size: 12px;
-            table-layout: fixed;
+            min-width: 1200px;
         }
 
         .queue-table thead {
             background: var(--surface-audit);
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
 
         .queue-table th {
-            padding: 10px 12px;
+            padding: 12px 16px;
             text-align: left;
             border-bottom: 1px solid var(--border-subtle);
             font-weight: 600;
-            font-size: 10px;
+            font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             color: var(--slate-gray);
-            overflow: hidden;
-            text-overflow: ellipsis;
             white-space: nowrap;
+            background: var(--surface-audit);
         }
 
         .queue-table td {
-            padding: 10px 12px;
+            padding: 12px 16px;
             border-bottom: 1px solid var(--border-subtle);
             vertical-align: middle;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
         }
 
-        /* Column widths for 9-column table */
+        /* Column widths - fixed pixel widths for readability */
         .queue-table th:nth-child(1),
         .queue-table td:nth-child(1) {
-            width: 20%;
-            white-space: normal;
+            width: 280px;
+            min-width: 280px;
         }
+
         .queue-table th:nth-child(2),
         .queue-table td:nth-child(2) {
-            width: 10%;
+            width: 100px;
+            min-width: 100px;
         }
+
         .queue-table th:nth-child(3),
         .queue-table td:nth-child(3) {
-            width: 8%;
+            width: 80px;
+            min-width: 80px;
+            text-align: center;
         }
+
         .queue-table th:nth-child(4),
         .queue-table td:nth-child(4) {
-            width: 15%;
+            width: 120px;
+            min-width: 120px;
         }
+
         .queue-table th:nth-child(5),
         .queue-table td:nth-child(5) {
-            width: 10%;
+            width: 140px;
+            min-width: 140px;
         }
+
         .queue-table th:nth-child(6),
         .queue-table td:nth-child(6) {
-            width: 10%;
+            width: 120px;
+            min-width: 120px;
         }
+
         .queue-table th:nth-child(7),
         .queue-table td:nth-child(7) {
-            width: 10%;
+            width: 120px;
+            min-width: 120px;
         }
+
         .queue-table th:nth-child(8),
         .queue-table td:nth-child(8) {
-            width: 10%;
+            width: 130px;
+            min-width: 130px;
         }
+
         .queue-table th:nth-child(9),
         .queue-table td:nth-child(9) {
-            width: 12%;
-            white-space: normal;
+            width: 140px;
+            min-width: 140px;
+            position: sticky;
+            right: 0;
+            background: var(--surface-lowest);
+            text-align: center;
+            z-index: 5;
+        }
+
+        .queue-table tbody tr:hover td:nth-child(9) {
+            background: var(--surface-audit);
+        }
+
+        .queue-table th:nth-child(9) {
+            background: var(--surface-audit);
         }
 
         .queue-table tbody tr:hover {
@@ -471,16 +505,24 @@
         }
 
         .queue-table td:first-child {
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            overflow: hidden;
+            text-overflow: ellipsis;
             white-space: normal;
+            word-break: break-word;
+        }
+
+        .queue-table td:first-child strong {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .queue-table .file-icon {
             color: var(--slate-gray);
-            flex-shrink: 0;
-            font-size: 18px;
+            font-size: 16px;
+            margin-right: 4px;
+            display: inline-block;
+            vertical-align: text-bottom;
         }
 
         .validation-badges {
@@ -711,7 +753,7 @@
                 <h3>Current Import Queue</h3>
                 <span class="queue-badge">v1 Current Import Review</span>
             </div>
-            <div style="overflow-x: auto;">
+            <div class="queue-wrapper">
                 <table class="queue-table">
                     <thead>
                         <tr>
@@ -723,7 +765,7 @@
                             <th>Households</th>
                             <th>Duplicates</th>
                             <th>Status</th>
-                            <th style="text-align: right;">Action</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody id="queueBody">
@@ -816,7 +858,7 @@
                     }
 
                     row.innerHTML = `
-                        <td><span class="material-symbols-outlined file-icon">description</span><strong>${f.filename}</strong></td>
+                        <td title="${f.filename}"><span class="material-symbols-outlined file-icon">description</span><strong>${f.filename}</strong></td>
                         <td style="font-family: 'JetBrains Mono', monospace;">${f.uploaded}</td>
                         <td style="font-family: 'JetBrains Mono', monospace;">${f.rows}</td>
                         <td>
