@@ -6,8 +6,8 @@ This index tracks all finalized UX screens for Householder v1 and provides quick
 
 | Screen | Status | Artifacts | Stitch Notes |
 |--------|--------|-----------|--------------|
-| Upload / Import Queue | ✅ Finalized | [View](./upload-screen/) | [Read](./upload-screen/upload-screen-stitch-reimport-notes.md) |
-| Duplicate Candidate Review | 🔄 Design Complete | TBD | TBD |
+| Upload / Import Queue | ✅ Finalized + Implemented | [View](./upload-screen/) | [Read](./upload-screen/upload-screen-stitch-reimport-notes.md) |
+| Duplicate Candidate Review | 🔄 Design Finalized, Not Yet Packaged | — | — |
 | All Records Review | 📋 Planned | — | — |
 | Normalizations Review | 📋 Planned | — | — |
 | Households Review | 📋 Planned | — | — |
@@ -57,8 +57,8 @@ This index tracks all finalized UX screens for Householder v1 and provides quick
 
 ### Duplicate Candidate Review
 - **Purpose:** Side-by-side comparison of potential intra-file duplicates
-- **Status:** Design finalized (visual in Stitch), implementation in progress
-- **Artifacts:** Coming soon
+- **Status:** Design Finalized, Not Yet Packaged
+- **Artifacts:** Coming soon (design exists in Stitch, artifact package pending)
 
 ### All Records Review
 - **Purpose:** Master table of all records with validation status (PASS/WARNING/FAIL)
