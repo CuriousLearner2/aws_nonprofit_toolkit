@@ -1,1693 +1,819 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Givebutter Processor - Upload & Review</title>
+    <title>DonorTrust - Upload & Review</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --primary: #000000;
+            --secondary: #0051d5;
+            --pass: #10B981;
+            --warn: #F59E0B;
+            --fail: #EF4444;
+            --surface: #f7f9fb;
+            --surface-lowest: #ffffff;
+            --surface-audit: #F1F5F9;
+            --surface-container-low: #f2f4f6;
+            --surface-container-high: #e6e8ea;
+            --border-subtle: #E2E8F0;
+            --on-surface: #191c1e;
+            --on-surface-variant: #45464d;
+            --on-secondary: #ffffff;
+            --slate-gray: #64748B;
+            --primary-container: #131b2e;
+            --on-secondary-container: #fefcff;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            max-width: 1600px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--surface);
+            color: var(--on-surface);
+            line-height: 1.6;
+            min-height: 100vh;
         }
-        .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        h1 { margin: 0 0 8px 0; font-size: 24px; }
-        h2 { margin: 0 0 16px 0; font-size: 18px; }
-        h3 { margin: 24px 0 16px 0; font-size: 16px; }
-        .subtitle { color: #666; margin-bottom: 24px; }
 
-        .drop-zone { border: 2px dashed #ccc; border-radius: 8px; padding: 48px; text-align: center; cursor: pointer; transition: all 0.2s; }
-        .drop-zone:hover, .drop-zone.dragover { border-color: #0066cc; background: #f0f7ff; }
-        .drop-zone input { display: none; }
-
-        .btn { background: #0066cc; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
-        .btn:hover { background: #0052a3; }
-        .btn:disabled { background: #ccc; cursor: not-allowed; }
-        .btn-secondary { background: #6c757d; }
-        .btn-secondary:hover { background: #5a6268; }
-        .btn-success { background: #28a745; }
-        .btn-success:hover { background: #218838; }
-        .btn-danger { background: #dc3545; }
-        .btn-danger:hover { background: #c82333; }
-
-        .status { padding: 12px 16px; border-radius: 6px; margin-top: 16px; display: none; font-size: 14px; }
-        .status.success { background: #d4edda; color: #155724; display: block; border-left: 4px solid #28a745; }
-        .status.error { background: #f8d7da; color: #721c24; display: block; border-left: 4px solid #dc3545; }
-        .status.info { background: #d1ecf1; color: #0c5460; display: block; border-left: 4px solid #17a2b8; }
-
-        .file-list { margin-top: 16px; }
-        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 16px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
-        .file-item:hover { background: #f9f9f9; }
-
-        .import-queue-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
-        .import-queue-table thead { background: #f8f9fa; }
-        .import-queue-table th { padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6; font-weight: 600; font-size: 12px; text-transform: uppercase; color: #666; }
-        .import-queue-table td { padding: 12px; border-bottom: 1px solid #e9ecef; vertical-align: middle; }
-        .import-queue-table tr:hover { background: #f9f9f9; }
-        .import-queue-table .status-text { font-weight: 500; color: #333; }
-        .import-queue-table .validation-badges { display: flex; gap: 6px; }
-        .validation-badge { padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-        .validation-badge.pass { background: #d4edda; color: #155724; }
-        .validation-badge.warning { background: #fff3cd; color: #856404; }
-        .validation-badge.fail { background: #f8d7da; color: #721c24; }
-        .action-col { text-align: right; }
-        .action-btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
-        .action-btn-primary { background: #0066cc; color: white; }
-        .action-btn-primary:hover { background: #0052a3; }
-        .action-btn-secondary { background: transparent; border: 1px solid #6c757d; color: #6c757d; }
-        .action-btn-secondary:hover { background: #f9f9f9; border-color: #495057; color: #495057; }
-
-        .review-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            font-size: 13px;
-        }
-        .review-table th {
-            background: #f8f9fa;
-            padding: 12px;
-            text-align: left;
-            border-bottom: 2px solid #dee2e6;
-            font-weight: 600;
+        /* Header / Navigation */
+        header {
+            background: var(--surface-lowest);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
             position: sticky;
             top: 0;
+            z-index: 50;
         }
-        .review-table td {
-            padding: 12px;
-            border-bottom: 1px solid #e9ecef;
-            vertical-align: top;
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 32px;
         }
-        .review-table tr:hover { background: #f9f9f9; }
 
-        .tier-pass { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
-        .tier-warning { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
-        .tier-fail { background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
-
-        .issues { font-size: 12px; color: #666; line-height: 1.4; }
-        .suggestions { font-size: 12px; color: #0066cc; line-height: 1.4; }
-
-        select, textarea {
-            padding: 6px 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-            font-family: inherit;
+        .logo {
+            font-size: 18px;
+            font-weight: 900;
+            color: var(--primary);
         }
-        .tier-select {
-            padding: 6px 8px;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-            font-family: inherit;
-            font-weight: 600;
+
+        nav {
+            display: flex;
+            gap: 24px;
+        }
+
+        nav a {
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--slate-gray);
+            padding-bottom: 8px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
             cursor: pointer;
         }
-        .tier-select.tier-pass {
-            background: #d4edda;
-            color: #155724;
-            border-color: #28a745;
-        }
-        .tier-select.tier-warning {
-            background: #fff3cd;
-            color: #856404;
-            border-color: #ffc107;
-        }
-        .tier-select.tier-fail {
-            background: #f8d7da;
-            color: #721c24;
-            border-color: #dc3545;
-        }
-        textarea {
-            width: 100%;
-            min-height: 50px;
-            resize: vertical;
+
+        nav a.active {
+            color: var(--secondary);
+            border-bottom-color: var(--secondary);
         }
 
-        .decision-cell {
+        nav a:hover:not(.active) {
+            color: var(--primary);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            color: var(--on-surface-variant);
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn:hover {
+            background: var(--surface-audit);
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            font-size: 24px;
+        }
+
+        .profile-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid var(--border-subtle);
+            overflow: hidden;
+        }
+
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Main Content */
+        main {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 24px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 32px;
         }
 
-        .actions {
+        /* Safety Banner */
+        .safety-banner {
+            background: var(--surface-container-low);
+            border-left: 4px solid var(--secondary);
+            padding: 16px;
+            border-radius: 8px;
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .safety-banner .icon {
+            color: var(--secondary);
+            flex-shrink: 0;
+        }
+
+        .safety-banner p {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .safety-banner p:first-child {
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+
+        .safety-banner p:last-child {
+            color: var(--on-surface-variant);
+            margin: 0;
+        }
+
+        /* Grid Layout */
+        .bento-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 1024px) {
+            .bento-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Upload Card */
+        .upload-card {
+            background: var(--surface-lowest);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0.05;
+            background-image: radial-gradient(circle, #0051d5 1px, transparent 1px);
+            background-size: 20px 20px;
+            pointer-events: none;
+        }
+
+        .upload-card:hover {
+            border-color: var(--secondary);
+        }
+
+        .upload-card > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            background: var(--surface-audit);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            transition: background 0.2s;
+        }
+
+        .upload-card:hover .upload-icon {
+            background: var(--primary-fixed);
+        }
+
+        .upload-icon span {
+            color: var(--secondary);
+            font-size: 40px;
+        }
+
+        .upload-card h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .upload-card .subtitle {
+            font-size: 14px;
+            color: var(--slate-gray);
+            margin-bottom: 24px;
+            max-width: 400px;
+        }
+
+        .upload-card .subtitle strong {
+            color: var(--primary);
+        }
+
+        .select-btn {
+            background: var(--secondary);
+            color: var(--on-secondary);
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .select-btn:hover {
+            opacity: 0.9;
+        }
+
+        .select-btn:active {
+            transform: scale(0.95);
+        }
+
+        .upload-card .note {
+            margin-top: 16px;
+            font-size: 11px;
+            color: var(--slate-gray);
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        /* Safety Mode Panel */
+        .safety-panel {
+            background: var(--primary-container);
+            color: var(--on-secondary-container);
+            border-radius: 12px;
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .safety-panel h3 {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.7;
+            margin-bottom: 16px;
+        }
+
+        .safety-checklist {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .safety-item {
             display: flex;
             gap: 8px;
-            margin-top: 24px;
+            font-size: 13px;
+            align-items: center;
+        }
+
+        .safety-item .icon {
+            flex-shrink: 0;
+            opacity: 0.7;
+        }
+
+        .safety-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 16px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            opacity: 0.7;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        /* Import Queue Table */
+        .queue-container {
+            background: var(--surface-lowest);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .queue-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(241, 245, 249, 0.5);
+        }
+
+        .queue-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .queue-badge {
+            background: var(--surface-container-high);
+            color: var(--on-surface-variant);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .queue-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .queue-table thead {
+            background: var(--surface-audit);
+        }
+
+        .queue-table th {
+            padding: 12px 24px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--slate-gray);
+        }
+
+        .queue-table td {
+            padding: 12px 24px;
+            border-bottom: 1px solid var(--border-subtle);
+            vertical-align: middle;
+        }
+
+        .queue-table tbody tr:hover {
+            background: var(--surface-audit);
+        }
+
+        .queue-table td:first-child {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .queue-table .file-icon {
+            color: var(--slate-gray);
+        }
+
+        .validation-badges {
+            display: flex;
+            gap: 8px;
             flex-wrap: wrap;
         }
 
-        .summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 16px;
-            margin: 20px 0;
-        }
-        .summary-item {
-            padding: 16px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            border-left: 4px solid #0066cc;
-        }
-        .summary-label { font-size: 12px; color: #666; text-transform: uppercase; font-weight: 600; }
-        .summary-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
-
-        .hidden { display: none; }
-        .empty-state { text-align: center; padding: 48px; color: #999; }
-
-        .review-container {
-            max-height: 70vh;
-            overflow-y: auto;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-        }
-
-        /* Inline editing styles */
-        .editable-cell {
-            position: relative;
-            cursor: pointer;
-            padding: 6px 8px;
-        }
-        .editable-cell:hover .edit-icon {
-            display: inline;
-            opacity: 0.6;
-            margin-left: 4px;
-            font-size: 0.9em;
-        }
-        .editable-cell .edit-icon {
-            display: none;
-        }
-        .editable-cell.editing {
-            background: #fff3cd;
-            border: 2px solid #ffc107;
-            padding: 4px 6px;
-        }
-        .editable-cell.editing .cell-display {
-            display: none;
-        }
-        .editable-cell.editing .edit-icon {
-            display: none;
-        }
-        .cell-edit {
-            padding: 4px 6px;
-            border: 1px solid #999;
+        .badge {
+            padding: 2px 8px;
             border-radius: 3px;
-            width: 95%;
-            font-family: inherit;
-            font-size: 13px;
-        }
-        .cell-edit.error {
-            border-color: #dc3545;
-            background: #fff5f5;
-        }
-        .cell-edit.duplicate {
-            border-color: #ff9800;
-            background: #fff8f0;
-        }
-        .edit-error {
-            color: #dc3545;
             font-size: 11px;
-            margin-top: 2px;
-            display: none;
-        }
-        .edit-error.show {
-            display: block;
-        }
-        .edit-duplicate {
-            color: #ff9800;
-            font-size: 11px;
-            margin-top: 2px;
-            display: none;
             font-weight: 600;
+            white-space: nowrap;
         }
-        .edit-duplicate.show {
-            display: block;
+
+        .badge.pass {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--pass);
         }
-        .edit-actions {
-            margin-top: 4px;
-            display: flex;
-            gap: 4px;
-            pointer-events: auto;
+
+        .badge.warn {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warn);
         }
-        .btn-edit-save, .btn-edit-cancel {
-            padding: 4px 10px;
-            font-size: 0.9em;
-            cursor: pointer;
+
+        .badge.fail {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--fail);
+        }
+
+        .status-text {
+            font-weight: 500;
+            color: var(--on-surface);
+        }
+
+        .action-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
             border: none;
-            border-radius: 4px;
-            color: white;
+            cursor: pointer;
+            font-size: 13px;
             font-weight: 600;
-            pointer-events: auto;
+            transition: all 0.2s;
+            white-space: nowrap;
         }
-        .btn-edit-save {
-            background: #28a745;
+
+        .action-btn.primary {
+            background: var(--secondary);
+            color: var(--on-secondary);
         }
-        .btn-edit-save:hover:not(:disabled) {
-            background: #218838;
+
+        .action-btn.primary:hover {
+            opacity: 0.9;
         }
-        .btn-edit-save:disabled {
-            background: #6c757d;
-            cursor: not-allowed;
-            opacity: 0.6;
+
+        .action-btn.secondary {
+            background: transparent;
+            border: 1px solid #6c757d;
+            color: #6c757d;
         }
-        .btn-edit-cancel {
-            background: #dc3545;
+
+        .action-btn.secondary:hover {
+            background: var(--surface-audit);
+            border-color: #495057;
+            color: #495057;
         }
-        .btn-edit-cancel:hover {
-            background: #c82333;
+
+        .queue-footer {
+            padding: 12px 24px;
+            background: rgba(241, 245, 249, 0.3);
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--slate-gray);
         }
-        .readonly-cell {
-            cursor: default;
+
+        .empty-state {
+            padding: 48px 24px;
+            text-align: center;
+            color: var(--on-surface-variant);
         }
-        .readonly-cell:hover .edit-icon {
+
+        /* Status Messages */
+        .status-message {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-top: 16px;
             display: none;
+            font-size: 14px;
+        }
+
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+            border-left: 4px solid #28a745;
+        }
+
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+            border-left: 4px solid #dc3545;
+        }
+
+        .status-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+            border-left: 4px solid #17a2b8;
         }
     </style>
 </head>
 <body>
-    <!-- Upload Section -->
-    <div class="card">
-        <h1>Givebutter Processor</h1>
-        <div class="subtitle">Upload a CSV to process, then review and approve records</div>
+    <!-- Header / Navigation -->
+    <header>
+        <div class="header-left">
+            <div class="logo">DonorTrust</div>
+            <nav>
+                <a href="#" class="active">Upload</a>
+                <a href="#">Imports</a>
+                <a href="#">Review</a>
+                <a href="#">Exports</a>
+                <a href="#">Audit</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <button class="icon-btn">
+                <span class="material-symbols-outlined">notifications</span>
+            </button>
+            <button class="icon-btn">
+                <span class="material-symbols-outlined">settings</span>
+            </button>
+            <div class="profile-avatar">
+                <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuBexCYHzlPI2IWKq5lX3DteYr0yiQ5W6a_b1WsslVRJz_u9Tz93OkbCCP68ImrJS7KtjacZThylkMeD29Ajvn9fVTdMoLB3wFCOhM5bOb3dwIOYdVlH36JNGoFwX0-4a6RQYtYdjIHKvS8MeqDzeWg5rFXdlmR_LakgiOUIdjmrFyY_15KxLs6hVs5WwRuvZelSslkJpDoJinERrdXPB00SWXPdYVbxKifSGdpbALfxX7wMbxfrTzGM1lZ0PaDQrUuPr5zdFEF9FTM" alt="User">
+            </div>
+        </div>
+    </header>
 
-        <div class="drop-zone" id="dropZone">
-            <input type="file" id="fileInput" accept=".csv">
+    <!-- Main Content -->
+    <main>
+        <!-- Safety Banner -->
+        <div class="safety-banner">
+            <span class="icon material-symbols-outlined">verified_user</span>
             <div>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" style="margin-bottom: 12px;">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 5 17 10"></polyline>
-                    <line x1="12" y1="5" x2="12" y2="15"></line>
-                </svg>
-                <div style="font-size: 16px; margin-bottom: 4px;">Drop CSV here or click to browse</div>
-                <div style="font-size: 13px; color: #999;">Givebutter export files only</div>
+                <p>Suggested changes only.</p>
+                <p>Nothing is applied until a reviewer approves it. Raw import rows are never changed.</p>
             </div>
         </div>
 
-        <div id="uploadStatus" class="status"></div>
-    </div>
+        <!-- Upload Section & Safety Panel -->
+        <div class="bento-grid">
+            <!-- Upload Card -->
+            <div class="upload-card" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">
+                    <span class="material-symbols-outlined">upload_file</span>
+                </div>
+                <h2>Upload Givebutter CSV</h2>
+                <p class="subtitle">
+                    Drag and drop your file here, or click to browse.<br>
+                    <span style="font-size: 13px;">Supported file type: <strong>Givebutter CSV only</strong></span>
+                </p>
+                <button class="select-btn" type="button">Select File</button>
+                <p class="note">Upload creates a new import batch. Raw CSV rows are preserved unchanged.</p>
+                <input type="file" id="fileInput" accept=".csv">
+            </div>
 
-    <!-- Current Import Queue Section -->
-    <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2>Current Import Queue</h2>
-            <div style="display: flex; gap: 12px; align-items: center;">
-                <span style="background: #e8f0f7; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #666;">v1 CURRENT IMPORT REVIEW</span>
-                <button class="btn btn-secondary" onclick="loadProcessing()">Refresh</button>
+            <!-- v1 Safety Mode Panel -->
+            <div class="safety-panel">
+                <div>
+                    <h3>v1 Safety Mode</h3>
+                    <div class="safety-checklist">
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>Current import review only</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>Givebutter CSV files only</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>Raw rows preserved unchanged</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>Suggestions generated as pending review</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>No automatic approvals</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>No merges on upload</span>
+                        </div>
+                        <div class="safety-item">
+                            <span class="icon material-symbols-outlined">check_circle</span>
+                            <span>No Givebutter writeback</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="safety-stats">
+                    <div class="stat-row">
+                        <span class="stat-label">Active imports</span>
+                        <span class="stat-value" id="activeImports">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Total pending review items</span>
+                        <span class="stat-value" id="pendingItems">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Last upload</span>
+                        <span class="stat-value" id="lastUpload">—</span>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <table class="import-queue-table" id="importQueueTable">
-            <thead>
-                <tr>
-                    <th>Filename</th>
-                    <th>Uploaded</th>
-                    <th>Total Rows</th>
-                    <th>Validation</th>
-                    <th>Normalizations</th>
-                    <th>Households</th>
-                    <th>Duplicates</th>
-                    <th>Status</th>
-                    <th class="action-col">Action</th>
-                </tr>
-            </thead>
-            <tbody id="importQueueBody">
-                <tr id="emptyState" style="display: none;">
-                    <td colspan="9" style="text-align: center; padding: 24px; color: #999;">No files being reviewed</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Review Panel Section -->
-{%- if not records %}
-    {%- if not records %}<div id="reviewPanel" class="hidden">{%- else %}<div id="reviewPanel" class="hidden" style="display: none;">{%- endif %}
-        <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h2 id="reviewTitle"></h2>
+        <!-- Current Import Queue -->
+        <div class="queue-container">
+            <div class="queue-header">
+                <h3>Current Import Queue</h3>
+                <span class="queue-badge">v1 Current Import Review</span>
             </div>
-
-            <div id="reviewSummary" class="summary"></div>
-
-            <div class="review-container">
-                <table class="review-table" id="reviewTable">
+            <div style="overflow-x: auto;">
+                <table class="queue-table">
                     <thead>
                         <tr>
-                            <th style="width: 120px;">Transaction ID</th>
-                            <th style="width: 100px;">Date</th>
-                            <th style="width: 100px;">Name</th>
-                            <th style="width: 150px;">Email</th>
-                            <th style="width: 100px;">Phone</th>
-                            <th style="width: 100px;">Amount</th>
-                            <th style="width: 150px;">Address 1</th>
-                            <th style="width: 100px;">City</th>
-                            <th style="width: 80px;">State</th>
-                            <th style="width: 130px;">Campaign</th>
-                            <th style="width: 70px;">Tier</th>
-                            <th style="width: 200px;">Issues</th>
-                            <th style="width: 200px;">Suggested Fixes</th>
-                            <th style="width: 150px;">Decision</th>
-                            <th style="width: 150px;">Notes</th>
+                            <th>Filename</th>
+                            <th>Uploaded</th>
+                            <th>Total Rows</th>
+                            <th>Validation</th>
+                            <th>Normalizations</th>
+                            <th>Households</th>
+                            <th>Duplicates</th>
+                            <th>Status</th>
+                            <th style="text-align: right;">Action</th>
                         </tr>
                     </thead>
-                    <tbody id="reviewBody"></tbody>
+                    <tbody id="queueBody">
+                        <tr>
+                            <td colspan="9" class="empty-state">Loading imports...</td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
-
-            <div class="actions">
-                <button class="btn btn-secondary" onclick="setAllDecision('approved')">All: Approved</button>
-                <button class="btn btn-secondary" onclick="setAllDecision('followup')">All: Follow-up</button>
-                <button class="btn btn-secondary" onclick="setAllDecision('rejected')">All: Rejected</button>
-                <button class="btn btn-success" onclick="doneReview()">✓ Done</button>
+            <div class="queue-footer" id="queueFooter">
+                <span>No imports yet</span>
             </div>
         </div>
-{%- endif %}
-    </div>
+    </main>
 
+    <script>
+        const fileInput = document.getElementById('fileInput');
 
-    {%- if records %}
-    <!-- Test mode: render review form directly -->
-    <div id="testReviewPanel" class="card" style="display: block;">
-        <h2>Reviewing: {{ filename }} ({{ records|length }} record{{ 's' if records|length != 1 else '' }})</h2>
-        <table class="review-table" id="reviewTable">
-            <thead>
-                <tr>
-                    <th>Transaction ID</th>
-                    <th>Date</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Amount</th>
-                    <th>Address 1</th>
-                    <th>City</th>
-                    <th>State</th>
-                    <th>Campaign</th>
-                    <th>Tier</th>
-                    <th>Issues</th>
-                    <th>Suggested Fixes</th>
-                    <th>Decision</th>
-                    <th>Notes</th>
-                </tr>
-            </thead>
-            <tbody id="reviewBody">
-                {%- for record in records %}
-            <tr data-tier="{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}">
-                    {# Transaction ID column #}
-                    <td>{{ record.get('Donation ID') or record.get('Transaction ID') or '—' }}</td>
-                    {# Date column #}
-                    <td>{{ record.get('Date') or record.get('Donation Date') or record.get('Gift Date') or record.get('Date Received') or '—' }}</td>
-                    {# Name column #}
-                    <td>{{ record.get('Donor Name') or record.get('Name') or '—' }}</td>
-                    {# Email column #}
-                    <td>{{ record.get('Email') or '—' }}</td>
-                    {# Phone column #}
-                    <td>{{ record.get('Phone') or record.get('Phone Number') or record.get('Contact Phone') or '—' }}</td>
-                    {# Amount column #}
-                    <td>{{ record.get('Amount') or '—' }}</td>
-                    {# Address 1 column #}
-                    <td>{{ record.get('Address 1') or record.get('Address') or record.get('Street Address') or '—' }}</td>
-                    {# City column #}
-                    <td>{{ record.get('City') or '—' }}</td>
-                    {# State column #}
-                    <td>{{ record.get('State') or '—' }}</td>
-                    {# Campaign column #}
-                    <td>{{ record.get('Campaign') or '—' }}</td>
-                    {# Tier (Validation_Tier) #}
-                    <td data-field-type="tier" data-idx="{{ record.idx }}">{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}</td>
-                    {# Issues #}
-                    <td data-field-type="issues" data-idx="{{ record.idx }}">{{ record.get('Issues') or '—' }}</td>
-                    {# Suggested Fixes (Suggested_Modifications) #}
-                    <td data-field-type="suggestions" data-idx="{{ record.idx }}">{{ record.get('Suggested_Modifications') or '—' }}</td>
-                    <td>
-                        <select class="decision-select" data-idx="{{ record.idx }}" data-tier="{{ record.get('Validation_Tier', 'PASS') or 'PASS' }}" data-issues="{{ record.get('Issues', '') or '' }}" onchange="handleOverrideConfirmation(this)">
-                                <option value="">-- Select --</option>
-                                <option value="approved">Approved</option>
-                                <option value="rejected">Rejected</option>
-                                <option value="followup">Follow-up</option>
-                            </select>
-                    </td>
-                    <td>
-                        <textarea class="notes-input" data-idx="{{ record.idx }}" placeholder="Add notes..."></textarea>
-                    </td>
-                </tr>
-                {%- endfor %}
-            </tbody>
-        </table>
-    </div>
-    {%- endif %}
-
-<script>
-let currentFile = null;
-let currentRecords = null;
-let skipIndividualConfirmations = false;
-
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
-
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
-fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-
-async function handleFiles(files) {
-    if (!files.length) return;
-    const file = files[0];
-    if (!file.name.endsWith('.csv')) {
-        showStatus('Please upload a CSV file', 'error', 'uploadStatus');
-        return;
-    }
-
-    showStatus(`Processing ${file.name}...`, 'info', 'uploadStatus');
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-        const resp = await fetch('/upload', { method: 'POST', body: formData });
-        const data = await resp.json();
-
-        if (!resp.ok) {
-            showStatus(`Error: ${data.error || 'Unknown error'}`, 'error', 'uploadStatus');
-            return;
-        }
-
-        const summary = `✓ Processed ${data.record_count} records (${data.warning_count} warnings, ${data.fail_count} failures)`;
-        showStatus(summary, 'success', 'uploadStatus');
-
-        setTimeout(loadProcessing, 500);
-    } catch (err) {
-        showStatus(`Error: ${err.message}`, 'error', 'uploadStatus');
-    }
-    fileInput.value = '';
-}
-
-function showStatus(msg, type, elementId = 'uploadStatus') {
-    const el = document.getElementById(elementId);
-    el.textContent = msg;
-    el.className = `status ${type}`;
-    setTimeout(() => { el.className = 'status'; }, 6000);
-}
-
-async function loadProcessing() {
-    try {
-        const resp = await fetch('/api/processing');
-        const files = await resp.json();
-        const tbody = document.getElementById('importQueueBody');
-        const emptyRow = document.getElementById('emptyState');
-
-        if (files.length === 0) {
-            emptyRow.style.display = '';
-            return;
-        }
-        emptyRow.style.display = 'none';
-
-        tbody.innerHTML = '';
-
-        files.forEach(f => {
-            const row = document.createElement('tr');
-
-            // Determine action button based on status
-            let actionBtn = '';
-            if (f.status === 'Pending Review') {
-                actionBtn = `<button class="action-btn action-btn-primary" onclick="reviewFile('${f.filename}')">Review Import</button>`;
-            } else if (f.status === 'In Review') {
-                actionBtn = `<button class="action-btn action-btn-primary" onclick="reviewFile('${f.filename}')">Continue Review</button>`;
-            } else if (f.status === 'Completed') {
-                actionBtn = `<button class="action-btn action-btn-secondary" onclick="viewSummary('${f.filename}')">View Summary</button>`;
-            }
-
-            row.innerHTML = `
-                <td><strong>${f.filename}</strong></td>
-                <td>${f.uploaded}</td>
-                <td>${f.rows}</td>
-                <td>
-                    <div class="validation-badges">
-                        <span class="validation-badge pass">${f.pass_count} PASS</span>
-                        <span class="validation-badge warning">${f.warning_count} WARN</span>
-                        <span class="validation-badge fail">${f.fail_count} FAIL</span>
-                    </div>
-                </td>
-                <td>${f.normalizations} <span style="font-size: 11px; color: #999;">pending</span></td>
-                <td>${f.households} <span style="font-size: 11px; color: #999;">suggested</span></td>
-                <td>${f.duplicates} <span style="font-size: 11px; color: #999;">candidates</span></td>
-                <td><span class="status-text">${f.status}</span></td>
-                <td class="action-col">${actionBtn}</td>
-            `;
-            tbody.appendChild(row);
-        });
-    } catch (err) {
-        showStatus(`Error loading files: ${err.message}`, 'error', 'uploadStatus');
-    }
-}
-
-function viewSummary(filename) {
-    // TODO: Implement view summary route/page
-    showStatus(`Summary view not yet implemented for ${filename}`, 'info', 'uploadStatus');
-}
-
-async function reviewFile(filename) {
-    showStatus(`Loading ${filename}...`, 'info', 'uploadStatus');
-    try {
-        const resp = await fetch(`/api/processing/${encodeURIComponent(filename)}`);
-        if (!resp.ok) {
-            showStatus('File not found', 'error', 'uploadStatus');
-            return;
-        }
-        const data = await resp.json();
-        currentFile = filename;
-        currentRecords = data.records;
-
-        // Update title
-        document.getElementById('reviewTitle').textContent = `Reviewing: ${filename} (${data.records.length} record${data.records.length === 1 ? '' : 's'})`;
-        showStatus(`✓ Loaded ${filename}`, 'success', 'uploadStatus');
-
-        // Update summary
-        const tierCounts = { PASS: 0, WARNING: 0, FAIL: 0 };
-        data.records.forEach(r => tierCounts[r['Validation_Tier']] = (tierCounts[r['Validation_Tier']] || 0) + 1);
-
-        document.getElementById('reviewSummary').innerHTML = `
-            <div class="summary-item">
-                <div class="summary-label">Total</div>
-                <div class="summary-value">${data.records.length}</div>
-            </div>
-            <div class="summary-item" style="border-left-color: #28a745;">
-                <div class="summary-label">Pass</div>
-                <div class="summary-value">${tierCounts.PASS}</div>
-            </div>
-            <div class="summary-item" style="border-left-color: #ffc107;">
-                <div class="summary-label">Warning</div>
-                <div class="summary-value">${tierCounts.WARNING}</div>
-            </div>
-            <div class="summary-item" style="border-left-color: #dc3545;">
-                <div class="summary-label">Fail</div>
-                <div class="summary-value">${tierCounts.FAIL}</div>
-            </div>
-        `;
-
-        // Render records table
-        const tbody = document.getElementById('reviewBody');
-        tbody.innerHTML = data.records.map((row, idx) => {
-            const tierClass = `tier-${row['Validation_Tier'].toLowerCase()}`;
-            const tierText = row['Validation_Tier'];
-
-            // Fallback column name resolution
-            const txnId = row['Transaction ID'] || row['Donation ID'] || '—';
-            const date = row['Date'] || row['Donation Date'] || '—';
-            const name = row['Name'] || row['Donor Name'] || row['Full Name'] || '—';
-            const email = row['Email'] || row['Email Address'] || row['Primary Email'] || '—';
-            const phone = row['Phone'] || row['Phone Number'] || row['Contact Phone'] || '—';
-            const amount = row['Amount'] || '—';
-            const campaign = row['Campaign Title'] || row['Campaign'] || row['Fund'] || '—';
-            const address1 = row['Address 1'] || row['Street Address'] || row['Address Line 1'] || '—';
-            const city = row['City'] || '—';
-            const state = row['State'] || '—';
-
-            // Get saved decision and notes
-            const savedDecision = row['Operator_Decision'] || '';
-            const savedNotes = row['Operator_Notes'] || '';
-
-            return `
-                <tr data-record-idx="${idx}">
-                    <td class="readonly-cell"><code>${escapeHtml(txnId)}</code><span class="edit-icon">🔒</span></td>
-                    <td class="editable-cell" data-field="date" data-idx="${idx}" data-original="${escapeHtml(date)}">
-                        <span class="cell-display"><small>${escapeHtml(date)}</small></span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td class="editable-cell" data-field="name" data-idx="${idx}" data-original="${escapeHtml(name)}">
-                        <span class="cell-display"><strong>${escapeHtml(name)}</strong></span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td class="editable-cell" data-field="email" data-idx="${idx}" data-original="${escapeHtml(email)}">
-                        <span class="cell-display"><code>${escapeHtml(email)}</code></span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td class="editable-cell" data-field="phone" data-idx="${idx}" data-original="${escapeHtml(phone)}">
-                        <span class="cell-display">${escapeHtml(phone)}</span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td class="editable-cell" data-field="amount" data-idx="${idx}" data-original="${escapeHtml(amount)}">
-                        <span class="cell-display">${escapeHtml(amount)}</span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td class="editable-cell" data-field="address_1" data-idx="${idx}" data-original="${escapeHtml(address1)}">
-                        <span class="cell-display"><small>${escapeHtml(address1)}</small></span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td class="editable-cell" data-field="city" data-idx="${idx}" data-original="${escapeHtml(city)}">
-                        <span class="cell-display"><small>${escapeHtml(city)}</small></span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td class="editable-cell" data-field="state" data-idx="${idx}" data-original="${escapeHtml(state)}">
-                        <span class="cell-display"><small>${escapeHtml(state)}</small></span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td class="editable-cell" data-field="campaign" data-idx="${idx}" data-original="${escapeHtml(campaign)}">
-                        <span class="cell-display"><small>${escapeHtml(campaign)}</small></span>
-                        <span class="edit-icon">✏️</span>
-                    </td>
-                    <td data-field-type="tier">
-                        <select class="tier-select" data-idx="${idx}" onchange="handleTierChange(this)">
-                            <option value="Pass" ${tierText === 'PASS' ? 'selected' : ''}>Pass</option>
-                            <option value="Warning" ${tierText === 'WARNING' ? 'selected' : ''}>Warning</option>
-                            <option value="Fail" ${tierText === 'FAIL' ? 'selected' : ''}>Fail</option>
-                        </select>
-                    </td>
-                    <td class="readonly-cell issues" data-field-type="issues" data-issues='${JSON.stringify((row['Issues'] || '').split('; ').filter(i => i))}'>${escapeHtml(row['Issues'] || '').replace(/; /g, '<br>')}</td>
-                    <td class="readonly-cell suggestions" data-field-type="suggestions" data-suggestions='${JSON.stringify((row['Suggested_Modifications'] || '').split('; ').filter(s => s))}'>${escapeHtml(row['Suggested_Modifications'] || '').replace(/; /g, '<br>')}</td>
-                    <td data-field-type="decision">
-                        <select class="decision-select" data-idx="${idx}" data-tier="${tierText}" data-issues="${escapeHtml(row['Issues'] || '')}" onchange="handleOverrideConfirmation(this)">
-                            <option value="">Please Select</option>
-                            <option value="approved" ${savedDecision === 'approved' ? 'selected' : ''}>Approved</option>
-                            <option value="followup" ${savedDecision === 'followup' ? 'selected' : ''}>Follow-up</option>
-                            <option value="rejected" ${savedDecision === 'rejected' ? 'selected' : ''}>Rejected</option>
-                        </select>
-                    </td>
-                    <td data-field-type="notes">
-                        <textarea class="notes-field" data-idx="${idx}" placeholder="Notes...">${escapeHtml(savedNotes)}</textarea>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-        // Setup inline editing for all editable cells
-        setupEditableCells();
-
-        // Setup auto-save for decision and notes fields
-        setupAutoSaveFields();
-
-        // Apply color coding to all tier dropdowns
-        document.querySelectorAll('.tier-select').forEach(select => {
-            updateTierSelectColor(select, select.value);
-        });
-
-        document.getElementById('reviewPanel').classList.remove('hidden');
-        window.scrollTo(0, 0);  // Scroll to top
-    } catch (err) {
-        showStatus(`Error loading file: ${err.message}`, 'error', 'uploadStatus');
-    }
-}
-
-function setAllDecision(decision) {
-    if (decision === 'approved') {
-        // Count FAIL and WARNING tier records
-        let failWarningCount = 0;
-        document.querySelectorAll('.decision-select').forEach(sel => {
-            const tier = sel.getAttribute('data-tier');
-            if (tier === 'FAIL' || tier === 'WARNING') {
-                failWarningCount++;
-            }
-        });
-
-        // If > 5 FAIL/WARNING records, show summary confirmation
-        if (failWarningCount > 5) {
-            const msg = `⚠️ You are approving ${failWarningCount} records with failures or warnings. Are you sure?`;
-            if (!confirm(msg)) {
+        // Upload file handler
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length === 0) return;
+            const file = fileInput.files[0];
+            if (!file.name.endsWith('.csv')) {
+                alert('Please select a CSV file');
                 return;
             }
-            // Skip individual confirmations since we already confirmed
-            skipIndividualConfirmations = true;
-        }
-    }
-
-    // Set all decision values
-    document.querySelectorAll('.decision-select').forEach(sel => {
-        sel.value = decision;
-    });
-
-    // Reset the skip flag
-    skipIndividualConfirmations = false;
-}
-
-async function submitDecisions() {
-    if (!currentFile) return;
-
-    // Collect edits from in-memory tracking
-    const edits = collectEditedChanges();
-
-    const decisions = [];
-    const failOverrides = [];  // Track FAIL records being approved
-
-    document.querySelectorAll('.decision-select').forEach(sel => {
-        const idx = parseInt(sel.dataset.idx);
-        const decision = sel.value;
-        const notes = document.querySelector(`.notes-field[data-idx="${idx}"]`).value;
-
-        if (decision) {  // Only include records with a decision
-            decisions.push({ idx, decision, notes });
-
-            // Check if approving a FAIL tier record
-            if (decision === 'approved' && currentRecords && currentRecords[idx]) {
-                const tier = currentRecords[idx]['Validation_Tier'];
-                if (tier === 'FAIL') {
-                    const name = currentRecords[idx]['Name'] || currentRecords[idx]['Donor Name'] || '(Unknown)';
-                    const issues = currentRecords[idx]['Issues'] || 'Unknown issues';
-                    failOverrides.push({ idx, name, issues });
-                }
-            }
-        }
-    });
-
-    if (decisions.length === 0) {
-        showStatus('Please make a decision for at least one record', 'error', 'uploadStatus');
-        return;
-    }
-
-    // Show confirmation if approving FAIL records
-    if (failOverrides.length > 0) {
-        const confirmMsg = failOverrides.length === 1
-            ? `⚠️ Override: You are approving "${failOverrides[0].name}" despite validation failures:\n\n${failOverrides[0].issues}\n\nAre you sure?`
-            : `⚠️ Override: You are approving ${failOverrides.length} records with validation failures. Are you sure?`;
-
-        if (!confirm(confirmMsg)) {
-            return;
-        }
-    }
-
-    document.getElementById('submitBtn').disabled = true;
-    showStatus('Saving decisions...', 'info', 'uploadStatus');
-
-    try {
-        const payload = { decisions };
-        if (edits.length > 0) {
-            payload.edits = edits;
-        }
-
-        const resp = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/submit`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            uploadFile(file);
         });
 
-        if (!resp.ok) {
-            const err = await resp.json();
-            throw new Error(err.error || 'Save failed');
-        }
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
 
-        const result = await resp.json();
-
-        if (result.status === 'complete') {
-            showStatus(`✓ Complete: ${result.approved} approved, ${result.followup} follow-up, ${result.rejected} rejected`, 'success', 'uploadStatus');
-            closeReview();
-// Initialize review form with test records if available
-(function() {
-    {%- if records %}
-    // Test mode: pre-populated records available
-    const testRecords = {{ records | tojson }};
-    const testFilename = '{{ filename }}';
-    
-    // Build the review form with test records
-    const tbody = document.getElementById('reviewBody');
-    tbody.innerHTML = '';
-    
-    testRecords.forEach((record, idx) => {
-        const row = document.createElement('tr');
-        
-        // Build row with all fields
-        Object.keys(record).forEach(field => {
-            if (field === 'idx') return;
-            const td = document.createElement('td');
-            
-            // Make data fields clickable/editable if appropriate
-            const editableFields = ['Name', 'Email', 'Phone', 'Amount', 'Address 1', 'City', 'State', 'Campaign', 'Donation ID', 'Date'];
-            const readOnlyFields = ['Validation_Tier', 'Issues', 'Suggested_Modifications'];
-            
-            if (readOnlyFields.includes(field)) {
-                td.textContent = record[field] || '—';
-            } else if (editableFields.includes(field)) {
-                const fieldName = field.toLowerCase().replace(/\s+/g, '_');
-                td.className = 'editable-cell';
-                td.dataset.field = fieldName;
-                td.dataset.idx = idx;
-                
-                const displaySpan = document.createElement('span');
-                displaySpan.className = 'cell-display';
-                displaySpan.textContent = record[field] || '—';
-                
-                const editIcon = document.createElement('span');
-                editIcon.className = 'edit-icon';
-                editIcon.textContent = '✏️';
-                
-                td.appendChild(displaySpan);
-                td.appendChild(editIcon);
-                
-                td.addEventListener('click', function(e) {
-                    setupEditableCell(this);
-                });
-            } else {
-                td.textContent = record[field] || '—';
-            }
-            
-            row.appendChild(td);
-        });
-        
-        // Add decision select
-        const decisionTd = document.createElement('td');
-        const decisionSelect = document.createElement('select');
-        decisionSelect.className = 'decision-select';
-        decisionSelect.dataset.idx = idx;
-        decisionSelect.innerHTML = '<option value="">-- Select --</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="followup">Follow-up</option>';
-        decisionTd.appendChild(decisionSelect);
-        row.appendChild(decisionTd);
-        
-        // Add notes textarea
-        const notesTd = document.createElement('td');
-        const notesTextarea = document.createElement('textarea');
-        notesTextarea.className = 'notes-input';
-        notesTextarea.dataset.idx = idx;
-        notesTextarea.placeholder = 'Add notes...';
-        notesTd.appendChild(notesTextarea);
-        row.appendChild(notesTd);
-        
-        tbody.appendChild(row);
-    });
-    
-    // Update form header
-    document.getElementById('reviewTitle').textContent = `Reviewing: ${testFilename} (${testRecords.length} record${testRecords.length === 1 ? '' : 's'})`;
-    
-    // Show review panel
-    document.getElementById('reviewPanel').classList.remove('hidden');
-    
-    // Set up decision change handlers
-    document.querySelectorAll('.decision-select').forEach(select => {
-    select.addEventListener('change', function() {
-        const decision = this.value;
-        const idx = parseInt(this.dataset.idx);
-        const row = this.closest('tr');
-        const tier = row.dataset.tier;
-        
-        if (decision === 'approved' && tier === 'FAIL') {
-            // Get issues from the row (find the Issues column)
-            const cells = row.querySelectorAll('td');
-            // Issues should be around index 10 based on the header structure
-            let issuesText = 'validation failures';
-            if (cells.length > 10) {
-                issuesText = cells[10].textContent || issuesText;
-            }
-            
-            const msg = `⚠️ Override: You are approving this record despite validation failures:
-
-${issuesText}
-
-Are you sure?`;
-            if (!confirm(msg)) {
-                this.value = '';
-                return;
-            }
-        }
-    });
-});
-    {%- endif %}
-})();
-
-            loadProcessing();
-        } else if (result.status === 'progress_saved') {
-            showStatus(`✓ Progress saved: ${result.decided} of ${result.decided + result.remaining} records decided`, 'success', 'uploadStatus');
-            setTimeout(loadProcessing, 500);
-        }
-    } catch (err) {
-        showStatus(`Error: ${err.message}`, 'error', 'uploadStatus');
-    } finally {
-        document.getElementById('submitBtn').disabled = false;
-    }
-}
-
-function doneReview() {
-    if (!currentFile) return;
-
-    // All edits are already saved to the CSV file
-    // Close the review and return to the file queue
-    showStatus(`✓ Review complete for ${currentFile} - all changes saved`, 'success', 'uploadStatus');
-    closeReview();
-    loadProcessing();
-}
-
-function closeReview() {
-    currentFile = null;
-    currentRecords = null;
-    document.getElementById('reviewPanel').classList.add('hidden');
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Inline editing state
-const editedRecords = {};  // { idx: { field: newValue, field2: newValue2 } }
-
-// Map field names to their associated issue patterns (backend formats as "FieldName: reason")
-const fieldIssuePatterns = {
-    'phone': ['Phone:'],
-    'email': ['Email:'],
-    'name': ['Name:'],
-    'amount': ['Amount:'],
-    'address_1': ['Address:'],
-    'city': ['City:'],
-    'state': ['State:'],
-    'campaign': ['Campaign:'],
-    'transaction_id': ['Transaction ID:'],
-    'date': ['Date:']
-};
-
-// Map field names to their associated suggestion patterns
-const fieldSuggestionPatterns = {
-    'date': ['date', 'format'],
-    'phone': ['phone', 'add phone'],
-    'email': ['email', 'consider:', '@'],  // Consider: xyz@abc.com suggestions
-    'name': ['name'],
-    'amount': ['amount'],
-    'address_1': ['address', 'street', 'complete address'],
-    'city': ['city'],
-    'state': ['state'],
-    'campaign': ['campaign', 'fund']
-};
-
-function updateIssuesColumnAfterEdit(idx, field) {
-    const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
-    if (!row) return;
-
-    const issuesCell = row.querySelector('td.issues');
-    if (!issuesCell) return;
-
-    // Read original issues from data attribute (JSON array)
-    let issues = [];
-    try {
-        const issuesData = issuesCell.dataset.issues;
-        issues = issuesData ? JSON.parse(issuesData) : [];
-    } catch (e) {
-        console.error('Failed to parse issues data:', e);
-        return;
-    }
-
-    if (issues.length === 0) return;
-
-    // Get issue patterns for this field
-    const patterns = fieldIssuePatterns[field] || [];
-
-    // Remove only issues that match the field's patterns
-    const originalCount = issues.length;
-    issues = issues.filter(issue => {
-        // Keep the issue unless it matches one of the patterns for this field
-        return !patterns.some(pattern => issue.toLowerCase().includes(pattern.toLowerCase()));
-    });
-
-    // Only update if we actually removed something
-    if (issues.length < originalCount) {
-        // Update data attribute
-        issuesCell.dataset.issues = JSON.stringify(issues);
-
-        // Update display
-        if (issues.length === 0) {
-            issuesCell.innerHTML = '';
-        } else {
-            issuesCell.innerHTML = issues.map(i => escapeHtml(i)).join('<br>');
-        }
-    }
-}
-
-function updateSuggestionsColumnAfterEdit(idx, field) {
-    const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
-    if (!row) return;
-
-    const suggestionsCell = row.querySelector('td.suggestions');
-    if (!suggestionsCell) return;
-
-    // Read original suggestions from data attribute (JSON array)
-    let suggestions = [];
-    try {
-        const suggestionsData = suggestionsCell.dataset.suggestions;
-        suggestions = suggestionsData ? JSON.parse(suggestionsData) : [];
-    } catch (e) {
-        console.error('Failed to parse suggestions data:', e);
-        return;
-    }
-
-    if (suggestions.length === 0) return;
-
-    // Get suggestion patterns for this field
-    const patterns = fieldSuggestionPatterns[field] || [];
-
-    // Remove only suggestions that match the field's patterns
-    const originalCount = suggestions.length;
-    suggestions = suggestions.filter(suggestion => {
-        return !patterns.some(pattern => suggestion.toLowerCase().includes(pattern.toLowerCase()));
-    });
-
-    // Only update if we actually removed something
-    if (suggestions.length < originalCount) {
-        // Update data attribute
-        suggestionsCell.dataset.suggestions = JSON.stringify(suggestions);
-
-        // Update display
-        if (suggestions.length === 0) {
-            suggestionsCell.innerHTML = '';
-        } else {
-            suggestionsCell.innerHTML = suggestions.map(s => escapeHtml(s)).join('<br>');
-        }
-    }
-}
-
-function setupEditableCells() {
-    document.querySelectorAll('.editable-cell').forEach(cell => {
-        cell.addEventListener('click', (e) => {
-            if (!cell.classList.contains('editing')) {
-                switchToEditMode(cell);
-            }
-        });
-    });
-}
-
-function setupAutoSaveFields() {
-    // Auto-save Decision field on change
-    document.querySelectorAll('.decision-select').forEach(select => {
-        select.addEventListener('change', async (e) => {
-            const idx = parseInt(select.dataset.idx);
-            const decision = select.value;
-
-            if (!decision) return;  // Skip if empty
-
-            // Update in-memory record
-            if (!currentRecords[idx]) return;
-            currentRecords[idx]['Operator_Decision'] = decision;
-
-            // Send to backend to save
             try {
-                const response = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/recalculate-tier`, {
+                const resp = await fetch('/upload', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ record: currentRecords[idx] })
+                    body: formData
                 });
 
-                if (response.ok) {
-                    console.log(`Decision saved for record ${idx}: ${decision}`);
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    console.error('Upload error:', data);
+                    alert('Upload failed: ' + (data.error || 'Unknown error'));
+                    return;
                 }
+
+                // Reload queue after successful upload
+                setTimeout(loadQueue, 500);
+                fileInput.value = '';
             } catch (err) {
-                console.error(`Failed to save decision: ${err.message}`);
+                console.error('Upload error:', err);
+                alert('Upload failed: ' + err.message);
             }
-        });
-    });
+        }
 
-    // Auto-save Notes field on blur
-    document.querySelectorAll('.notes-field').forEach(textarea => {
-        textarea.addEventListener('blur', async (e) => {
-            const idx = parseInt(textarea.dataset.idx);
-            const notes = textarea.value;
-
-            if (!currentRecords[idx]) return;
-            currentRecords[idx]['Operator_Notes'] = notes;
-
-            // Send to backend to save
+        async function loadQueue() {
             try {
-                const response = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/recalculate-tier`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ record: currentRecords[idx] })
+                const resp = await fetch('/api/processing');
+                if (!resp.ok) {
+                    console.error('Failed to load queue:', resp.status);
+                    return;
+                }
+
+                const files = await resp.json();
+                const tbody = document.getElementById('queueBody');
+                const footer = document.getElementById('queueFooter');
+
+                if (files.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No imports yet. Upload a CSV to get started.</td></tr>';
+                    footer.innerHTML = '<span>No imports</span>';
+                    updateStats(0, 0, '—');
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                let totalPending = 0;
+
+                files.forEach(f => {
+                    const row = document.createElement('tr');
+
+                    // Determine action button
+                    let actionBtn = '';
+                    if (f.status === 'Pending Review') {
+                        actionBtn = `<button class="action-btn primary" onclick="reviewFile('${f.filename}')">Review Import</button>`;
+                    } else if (f.status === 'In Review') {
+                        actionBtn = `<button class="action-btn primary" onclick="reviewFile('${f.filename}')">Continue Review</button>`;
+                    } else if (f.status === 'Completed') {
+                        actionBtn = `<button class="action-btn secondary" onclick="viewSummary('${f.filename}')">View Summary</button>`;
+                    }
+
+                    row.innerHTML = `
+                        <td><span class="material-symbols-outlined file-icon">description</span><strong>${f.filename}</strong></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.uploaded}</td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.rows}</td>
+                        <td>
+                            <div class="validation-badges">
+                                <span class="badge pass">${f.pass_count} PASS</span>
+                                <span class="badge warn">${f.warning_count} WARN</span>
+                                <span class="badge fail">${f.fail_count} FAIL</span>
+                            </div>
+                        </td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.normalizations} <span style="font-size: 11px; color: var(--slate-gray);">pending</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.households} <span style="font-size: 11px; color: var(--slate-gray);">suggested</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${f.duplicates} <span style="font-size: 11px; color: var(--slate-gray);">candidates</span></td>
+                        <td><span class="status-text">${f.status}</span></td>
+                        <td style="text-align: right;">${actionBtn}</td>
+                    `;
+                    tbody.appendChild(row);
+
+                    if (f.status !== 'Completed') {
+                        totalPending += f.rows;
+                    }
                 });
 
-                if (response.ok) {
-                    console.log(`Notes saved for record ${idx}`);
-                }
+                // Update footer
+                footer.innerHTML = `<span>Showing ${files.length} of ${files.length} active imports</span>`;
+
+                // Update stats
+                updateStats(files.length, totalPending, files[0]?.uploaded || '—');
             } catch (err) {
-                console.error(`Failed to save notes: ${err.message}`);
-            }
-        });
-    });
-}
-
-function switchToEditMode(cell) {
-    const idx = parseInt(cell.dataset.idx);
-    const field = cell.dataset.field;
-    const originalValue = cell.dataset.original || '';
-
-    cell.classList.add('editing');
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'cell-edit';
-    input.value = originalValue;
-    input.dataset.field = field;
-    input.dataset.idx = idx;
-    input.dataset.original = originalValue;
-
-    // Add maxlength for phone field
-    if (field === 'phone') {
-        input.maxLength = 15;
-    }
-
-    const errorMsg = document.createElement('div');
-    errorMsg.className = 'edit-error';
-
-    const duplicateMsg = document.createElement('div');
-    duplicateMsg.className = 'edit-duplicate';
-
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'btn-edit-save';
-    saveBtn.textContent = '✓ Save';
-    saveBtn.disabled = true;  // Start disabled until field is valid
-    saveBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // Remove blur listener to prevent validation
-        input.onblur = null;
-        saveEdit(cell, input, errorMsg);
-    });
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'btn-edit-cancel';
-    cancelBtn.textContent = '✗ Cancel';
-    cancelBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // Remove blur listener to prevent validation
-        input.onblur = null;
-        cancelEdit(cell, input, errorMsg);
-    });
-
-    const actions = document.createElement('div');
-    actions.className = 'edit-actions';
-    actions.appendChild(saveBtn);
-    actions.appendChild(cancelBtn);
-
-    // Clear old content
-    while (cell.firstChild) {
-        cell.removeChild(cell.firstChild);
-    }
-
-    cell.appendChild(input);
-    cell.appendChild(errorMsg);
-    cell.appendChild(duplicateMsg);
-    cell.appendChild(actions);
-
-    input.focus();
-    input.select();
-
-    // Real-time validation on input change (as user types)
-    input.addEventListener('input', () => {
-        const isValid = validateFieldValue(field, input.value, input, errorMsg);
-        // Enable/disable save button based on validation
-        saveBtn.disabled = !isValid;
-    });
-
-    // Check for duplicates on blur, but don't auto-save
-    input.addEventListener('blur', () => {
-        const isValid = validateFieldValue(field, input.value, input, errorMsg);
-        saveBtn.disabled = !isValid;
-        if (isValid) {
-            checkForDuplicates(field, input.value, idx, duplicateMsg, input);
-        }
-    });
-}
-
-function validateFieldValue(field, value, input, errorMsg) {
-    let error = '';
-
-    if (!value || value === '—') {
-        error = 'Field cannot be empty';
-    } else if (field === 'email') {
-        if (!value.includes('@')) {
-            error = 'Email must contain @ symbol';
-        } else if (!value.includes('.')) {
-            error = 'Email domain must include a dot';
-        }
-    } else if (field === 'phone') {
-        const digits = value.replace(/\D/g, '');
-        if (digits.length < 10 || digits.length > 15) {
-            error = 'Phone must be 10-15 digits';
-        } else {
-            // Check against invalid test patterns (same as backend)
-            const invalidPatterns = [
-                { pattern: /^(.)\\1{9}$/, reason: 'All digits are identical' },
-                { pattern: /^1234567890$/, reason: 'Sequential test number' },
-                { pattern: /^9876543210$/, reason: 'Reverse sequential test number' },
-                { pattern: /^555[0-1]\d{6}$/, reason: 'Reserved test number' }
-            ];
-
-            for (let {pattern, reason} of invalidPatterns) {
-                if (pattern.test(digits)) {
-                    error = `Invalid: ${reason}`;
-                    break;
-                }
-            }
-        }
-    } else if (field === 'amount') {
-        const num = parseFloat(value);
-        if (isNaN(num)) {
-            error = 'Amount must be numeric';
-        } else if (num <= 0) {
-            error = 'Amount must be greater than 0';
-        }
-    } else if (field === 'name') {
-        if (value.length < 2) {
-            error = 'Name must be at least 2 characters';
-        } else if (value.length > 100) {
-            error = 'Name must be 100 characters or less';
-        }
-    } else if (field === 'date') {
-        // Validate date format: YYYY-MM-DD or similar common formats
-        const dateRegex = /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/;
-        if (!dateRegex.test(value)) {
-            error = 'Date must be in format YYYY-MM-DD';
-        } else {
-            // Try to parse as valid date
-            const date = new Date(value);
-            if (isNaN(date.getTime())) {
-                error = 'Invalid date';
-            }
-        }
-    }
-
-    if (error) {
-        input.classList.add('error');
-        errorMsg.textContent = error;
-        errorMsg.classList.add('show');
-        input.dataset.valid = 'false';
-    } else {
-        input.classList.remove('error');
-        errorMsg.classList.remove('show');
-        input.dataset.valid = 'true';
-    }
-
-    return error === '';
-}
-
-function checkForDuplicates(field, value, currentIdx, duplicateMsg, input) {
-    // Check if this value matches another record in the current batch
-    let duplicate = null;
-
-    // Only check duplicate-prone fields
-    const duplicateFields = ['email', 'phone', 'address_1', 'name'];
-    if (!duplicateFields.includes(field)) {
-        duplicateMsg.classList.remove('show');
-        return;
-    }
-
-    // Get all rows in the table
-    const rows = document.querySelectorAll('tr[data-record-idx]');
-
-    rows.forEach(row => {
-        const otherIdx = parseInt(row.dataset.recordIdx);
-        if (otherIdx === currentIdx) return;  // Skip self
-
-        let otherValue = '';
-
-        // Get the value from the other row
-        const cells = row.querySelectorAll('td.editable-cell');
-        cells.forEach(cell => {
-            if (cell.dataset.field === field) {
-                // Get value from either display mode or edit mode
-                const displaySpan = cell.querySelector('.cell-display');
-                const editInput = cell.querySelector('input.cell-edit');
-                if (editInput) {
-                    otherValue = editInput.value;
-                } else if (displaySpan) {
-                    otherValue = displaySpan.textContent.trim();
-                }
-            }
-        });
-
-        // Normalize and compare
-        if (field === 'email') {
-            // Email exact match (case-insensitive)
-            if (value.toLowerCase() === otherValue.toLowerCase() && value !== '—') {
-                const txnCell = row.querySelector('td:first-child code');
-                const txnId = txnCell ? txnCell.textContent : 'unknown';
-                duplicate = `Email matches ${txnId}`;
-            }
-        } else if (field === 'phone') {
-            // Phone exact match (digits only)
-            const valueDigits = value.replace(/\D/g, '');
-            const otherDigits = otherValue.replace(/\D/g, '');
-            if (valueDigits === otherDigits && valueDigits.length >= 10) {
-                const txnCell = row.querySelector('td:first-child code');
-                const txnId = txnCell ? txnCell.textContent : 'unknown';
-                duplicate = `Phone matches ${txnId}`;
-            }
-        } else if (field === 'address_1') {
-            // Address exact match
-            if (value.toLowerCase() === otherValue.toLowerCase() && value !== '—') {
-                const txnCell = row.querySelector('td:first-child code');
-                const txnId = txnCell ? txnCell.textContent : 'unknown';
-                duplicate = `Address matches ${txnId}`;
-            }
-        } else if (field === 'name') {
-            // Name fuzzy match at 70% threshold
-            if (fuzzyMatchSimple(value, otherValue) >= 0.70) {
-                const txnCell = row.querySelector('td:first-child code');
-                const txnId = txnCell ? txnCell.textContent : 'unknown';
-                duplicate = `Name similar to ${txnId}`;
-            }
-        }
-    });
-
-    if (duplicate) {
-        input.classList.add('duplicate');
-        duplicateMsg.textContent = '⚠️ ' + duplicate;
-        duplicateMsg.classList.add('show');
-    } else {
-        input.classList.remove('duplicate');
-        duplicateMsg.classList.remove('show');
-    }
-}
-
-function fuzzyMatchSimple(str1, str2) {
-    // Simple fuzzy match using sequence similarity (0.0 to 1.0)
-    const s1 = str1.toLowerCase().trim();
-    const s2 = str2.toLowerCase().trim();
-
-    if (s1 === s2) return 1.0;
-    if (s1.length === 0 || s2.length === 0) return 0.0;
-
-    // Simple similarity: matching characters / total characters
-    let matches = 0;
-    for (let char of s1) {
-        if (s2.includes(char)) matches++;
-    }
-    return matches / Math.max(s1.length, s2.length);
-}
-
-async function saveEdit(cell, input, errorMsg) {
-    const field = input.dataset.field;
-    const value = input.value;
-    const idx = parseInt(input.dataset.idx);
-
-    // Validate before saving
-    if (!validateFieldValue(field, value, input, errorMsg)) {
-        return;
-    }
-
-    // Check for phone >11 digits and ask for confirmation
-    if (field === 'phone') {
-        const digits = value.replace(/\D/g, '');
-        if (digits.length > 11) {
-            const confirmed = confirm(
-                `This phone number has ${digits.length} digits (expected ≤11). ` +
-                `Are you sure you want to save this?`
-            );
-            if (!confirmed) {
-                return;
-            }
-        }
-    }
-
-    // Update in-memory record
-    if (!editedRecords[idx]) {
-        editedRecords[idx] = {};
-    }
-    editedRecords[idx][field] = value;
-
-    // Switch back to display mode
-    switchToDisplayMode(cell, value);
-
-    // Update Issues and Suggestions columns: remove those specific to this field only
-    updateIssuesColumnAfterEdit(idx, field);
-    updateSuggestionsColumnAfterEdit(idx, field);
-
-    // Recalculate tier after edit
-    await recalculateTierAfterEdit(idx);
-}
-
-async function recalculateTierAfterEdit(idx) {
-    if (!currentFile || !currentRecords || !currentRecords[idx]) {
-        return;
-    }
-
-    try {
-        // Build record object with current data (including edits)
-        const record = { ...currentRecords[idx] };
-
-        // Apply any pending edits to the record before sending
-        if (editedRecords[idx]) {
-            // Apply edits
-            for (const [field, value] of Object.entries(editedRecords[idx])) {
-                if (field === 'date') {
-                    if ('Date' in record) record['Date'] = value;
-                    else if ('Donation Date' in record) record['Donation Date'] = value;
-                } else if (field === 'name') {
-                    if ('Name' in record) record['Name'] = value;
-                    else if ('Donor Name' in record) record['Donor Name'] = value;
-                    else if ('Full Name' in record) record['Full Name'] = value;
-                } else if (field === 'email') {
-                    if ('Email' in record) record['Email'] = value;
-                    else if ('Email Address' in record) record['Email Address'] = value;
-                    else if ('Primary Email' in record) record['Primary Email'] = value;
-                } else if (field === 'phone') {
-                    if ('Phone' in record) record['Phone'] = value;
-                    else if ('Phone Number' in record) record['Phone Number'] = value;
-                    else if ('Contact Phone' in record) record['Contact Phone'] = value;
-                    else record['Phone'] = value;  // Create field if it doesn't exist
-                } else if (field === 'amount') {
-                    record['Amount'] = value;
-                } else if (field === 'address_1') {
-                    if ('Address 1' in record) record['Address 1'] = value;
-                    else if ('Street Address' in record) record['Street Address'] = value;
-                    else if ('Address Line 1' in record) record['Address Line 1'] = value;
-                } else if (field === 'city') {
-                    record['City'] = value;
-                } else if (field === 'state') {
-                    record['State'] = value;
-                } else if (field === 'campaign') {
-                    if ('Campaign Title' in record) record['Campaign Title'] = value;
-                    else if ('Campaign' in record) record['Campaign'] = value;
-                    else if ('Fund' in record) record['Fund'] = value;
-                }
+                console.error('Error loading queue:', err);
             }
         }
 
-        // Call backend to recalculate tier
-        const response = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/recalculate-tier`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ record })
-        });
-
-        if (!response.ok) {
-            console.error(`Failed to recalculate tier: ${response.statusText}`);
-            return;
+        function updateStats(activeCount, pendingCount, lastUpload) {
+            document.getElementById('activeImports').textContent = activeCount;
+            document.getElementById('pendingItems').textContent = pendingCount.toLocaleString();
+            document.getElementById('lastUpload').textContent = lastUpload;
         }
 
-        const data = await response.json();
-        const newTier = data.tier;
-        const newIssues = data.issues || [];
-        const newSuggestions = data.suggestions || [];
-        const oldTier = currentRecords[idx]['Validation_Tier'];
-
-        // Update the in-memory record
-        currentRecords[idx]['Validation_Tier'] = newTier;
-        currentRecords[idx]['Issues'] = newIssues.length > 0 ? newIssues.join('; ') : 'None';
-        currentRecords[idx]['Suggested_Modifications'] = newSuggestions.length > 0 ? newSuggestions.join('; ') : '';
-
-        // Update the tier display in the DOM
-        const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
-        if (row) {
-            // Update tier dropdown
-            const tierSelect = row.querySelector('.tier-select');
-            if (tierSelect) {
-                // Map tier to dropdown value (PASS->Pass, WARNING->Warning, FAIL->Fail)
-                const tierMap = { 'PASS': 'Pass', 'WARNING': 'Warning', 'FAIL': 'Fail' };
-                const tierDisplayValue = tierMap[newTier] || newTier;
-                tierSelect.value = tierDisplayValue;
-                // Update data-tier attribute for override confirmations
-                tierSelect.setAttribute('data-tier', newTier);
-                // Update color coding
-                updateTierSelectColor(tierSelect, tierDisplayValue);
-                console.log(`Record ${idx}: Tier dropdown updated to ${tierSelect.value} with color ${tierDisplayValue}`);
-            } else {
-                console.warn(`Record ${idx}: Tier select not found - verify .tier-select class exists`);
-            }
-
-            // Update Issues column
-            const issuesCell = row.querySelector('td[data-field-type="issues"]');
-            console.log(`Record ${idx}: newIssues type=${typeof newIssues}, value=${JSON.stringify(newIssues)}`);
-            if (issuesCell) {
-                issuesCell.dataset.issues = JSON.stringify(newIssues);
-                if (newIssues.length === 0) {
-                    issuesCell.innerHTML = '';
-                } else {
-                    const issuesHtml = newIssues.map(i => escapeHtml(i)).join('<br>');
-                    console.log(`Record ${idx}: Setting issues HTML to: ${issuesHtml}`);
-                    issuesCell.innerHTML = issuesHtml;
-                }
-                console.log(`Record ${idx}: Issues cell updated. Current innerHTML: ${issuesCell.innerHTML}`);
-            } else {
-                console.warn(`Record ${idx}: Issues cell not found - verify data-field-type="issues" attribute exists`);
-            }
-
-            // Update decision dropdown's data-issues attribute (for override confirmation)
-            const decisionSelect = row.querySelector('.decision-select');
-            if (decisionSelect) {
-                const issuesText = newIssues.length > 0 ? newIssues.join('; ') : '';
-                decisionSelect.setAttribute('data-issues', issuesText);
-                console.log(`Record ${idx}: Decision dropdown data-issues updated to: ${issuesText}`);
-            }
-
-            // Update Suggestions column
-            const suggestionsCell = row.querySelector('td[data-field-type="suggestions"]');
-            if (suggestionsCell) {
-                suggestionsCell.dataset.suggestions = JSON.stringify(newSuggestions);
-                if (newSuggestions.length === 0) {
-                    suggestionsCell.innerHTML = '';
-                } else {
-                    suggestionsCell.innerHTML = newSuggestions.map(s => escapeHtml(s)).join('<br>');
-                }
-            } else {
-                console.warn(`Record ${idx}: Suggestions cell not found - verify data-field-type="suggestions" attribute exists`);
-            }
-        } else {
-            console.warn(`Record ${idx}: Row not found in table - verify data-record-idx="${idx}" attribute exists`);
+        function reviewFile(filename) {
+            alert('Review functionality not yet implemented for: ' + filename);
         }
 
-        console.log(`Record ${idx}: Tier updated from ${oldTier} to ${newTier}, Issues: ${newIssues.length}, Suggestions: ${newSuggestions.length}`);
-    } catch (err) {
-        console.error(`Error recalculating tier for record ${idx}:`, err);
-    }
-}
-
-function cancelEdit(cell, input, errorMsg) {
-    const originalValue = input.dataset.original || '';
-    switchToDisplayMode(cell, originalValue);
-}
-
-function switchToDisplayMode(cell, value) {
-    cell.classList.remove('editing');
-
-    const displaySpan = document.createElement('span');
-    displaySpan.className = 'cell-display';
-
-    // Preserve formatting based on original element type
-    if (value === '—') {
-        displaySpan.textContent = '—';
-    } else if (cell.dataset.field === 'email') {
-        const code = document.createElement('code');
-        code.textContent = value;
-        displaySpan.appendChild(code);
-    } else if (cell.dataset.field === 'name') {
-        const strong = document.createElement('strong');
-        strong.textContent = value;
-        displaySpan.appendChild(strong);
-    } else if (['address_1', 'city', 'state', 'campaign'].includes(cell.dataset.field)) {
-        const small = document.createElement('small');
-        small.textContent = value;
-        displaySpan.appendChild(small);
-    } else {
-        displaySpan.textContent = value;
-    }
-
-    const editIcon = document.createElement('span');
-    editIcon.className = 'edit-icon';
-    editIcon.textContent = '✏️';
-
-    cell.innerHTML = '';
-    cell.appendChild(displaySpan);
-    cell.appendChild(editIcon);
-
-    // Update data attribute for future edits
-    cell.dataset.original = value;
-}
-
-function collectEditedChanges() {
-    return Object.entries(editedRecords).map(([idx, fields]) =>
-        Object.entries(fields).map(([field, value]) =>
-            ({ idx: parseInt(idx), field, value })
-        )
-    ).flat();
-}
-
-// Load files on page load
-loadProcessing();
-
-function handleOverrideConfirmation(selectElement) {
-    // Skip if this is part of a bulk operation that already confirmed
-    if (skipIndividualConfirmations) {
-        return;
-    }
-
-    const decision = selectElement.value;
-    const tier = selectElement.getAttribute('data-tier');
-    const issues = selectElement.getAttribute('data-issues');
-
-    // Show confirmation for FAIL or WARNING when approving
-    if (decision === 'approved' && (tier === 'FAIL' || tier === 'WARNING')) {
-        const msg = `⚠️ Override: You are approving this record despite validation failures:
-
-${issues}
-
-Are you sure?`;
-        if (!confirm(msg)) {
-            selectElement.value = '';
-            return;
+        function viewSummary(filename) {
+            alert('Summary view not yet implemented for: ' + filename);
         }
-    }
-}
 
-function updateTierSelectColor(selectElement, tierValue) {
-    // Remove all tier color classes
-    selectElement.classList.remove('tier-pass', 'tier-warning', 'tier-fail');
-
-    // Add the appropriate color class based on tier value
-    if (tierValue === 'Pass') {
-        selectElement.classList.add('tier-pass');
-    } else if (tierValue === 'Warning') {
-        selectElement.classList.add('tier-warning');
-    } else if (tierValue === 'Fail') {
-        selectElement.classList.add('tier-fail');
-    }
-}
-
-async function handleTierChange(selectElement) {
-    const idx = parseInt(selectElement.dataset.idx);
-    const newTier = selectElement.value;
-
-    // Normalize tier value (convert "Pass" to "PASS", etc)
-    const tierMap = {
-        'Pass': 'PASS',
-        'Warning': 'WARNING',
-        'Fail': 'FAIL'
-    };
-    const normalizedTier = tierMap[newTier] || newTier.toUpperCase();
-
-    if (!currentRecords[idx]) return;
-
-    // Update in-memory record
-    currentRecords[idx]['Validation_Tier'] = normalizedTier;
-
-    // Update color coding
-    updateTierSelectColor(selectElement, newTier);
-
-    // Also update the data-tier and data-issues attributes on the decision dropdown so override confirmation works correctly
-    const row = document.querySelector(`tr[data-record-idx="${idx}"]`);
-    if (row) {
-        const decisionSelect = row.querySelector('.decision-select');
-        if (decisionSelect) {
-            decisionSelect.setAttribute('data-tier', normalizedTier);
-            // Also sync the current issues to decision dropdown
-            const issuesCell = row.querySelector('td[data-field-type="issues"]');
-            if (issuesCell) {
-                const currentIssues = issuesCell.innerText || '';
-                decisionSelect.setAttribute('data-issues', currentIssues);
-            }
-        }
-    }
-
-    // Send to backend to save
-    try {
-        const response = await fetch(`/api/processing/${encodeURIComponent(currentFile)}/recalculate-tier`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ record: currentRecords[idx] })
-        });
-
-        if (response.ok) {
-            console.log(`Tier saved for record ${idx}: ${normalizedTier}`);
-        }
-    } catch (err) {
-        console.error(`Failed to save tier: ${err.message}`);
-    }
-}
-
-</script>
+        // Load queue on page load
+        document.addEventListener('DOMContentLoaded', loadQueue);
+    </script>
 </body>
 </html>
