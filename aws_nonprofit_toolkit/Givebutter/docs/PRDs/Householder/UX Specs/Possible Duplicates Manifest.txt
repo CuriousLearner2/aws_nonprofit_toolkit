@@ -1,0 +1,132 @@
+web application/stitch/projects/9371274764538076058/screens/c9f5552914d7471fa123bffa9bb47777
+# DonorTrust / Householder (v1) Project Brief
+
+**Status:** v1 Specification & Design Roadmap (Audit-Safe, Human-in-the-loop)
+**Platform:** Desktop Web Interface
+**Goal:** Provide a non-destructive interface for reviewing Givebutter CSV imports, identifying duplicate contacts, and normalizing data without altering raw source records.
+
+---
+
+## Design Status
+
+The following represents the current visual and functional design maturity for the v1 scope:
+
+- **Finalized visual screen:** Possible Duplicate in This Import / Duplicate Candidate Review
+- **Planned but not yet finalized:** Upload, Imports Dashboard, All Records Review, Normalizations Review, Households Review, Export Console, Audit Log
+
+The exported Stitch HTML currently represents only the finalized Duplicate Candidate Review screen. It should not be treated as a complete app export. This brief defines the v1 UX direction and safety model, but only the **Duplicate Candidate Review** screen currently has a finalized detailed layout.
+
+---
+
+## 1. Product Vision & Core Principle
+DonorTrust (Householder) is a specialized data processing tool designed to bridge the gap between raw CSV exports and clean, audit-ready donor data. 
+
+**The Golden Rule of v1:**
+> “The system suggests. The reviewer decides. Raw data stays unchanged.”
+
+### Core Design Principles
+- **Non-Destructive:** Marking a record as a duplicate or normalizing an email does NOT merge contacts, overwrite raw CSV rows, or change Givebutter source data.
+- **Audit-Safe:** Every reviewer decision — approve, reject, mark same person, mark different, or defer — is logged with a timestamp and reviewer ID.
+- **Data Transparency:** The interface must clearly separate "Raw Import Data" from "System Suggestions."
+- **Desktop Efficiency:** Optimized for large-screen data density, side-by-side comparisons, and keyboard-efficient navigation.
+
+### v1 Safety Model
+Householder v1 processes only the **currently uploaded** Givebutter CSV/import. It is strictly non-destructive.
+
+**v1 does NOT include:**
+- Cross-import matching
+- Lifetime giving
+- Master people
+- Global households
+- Prior import history
+- Identity links
+- Givebutter writeback
+- Automatic merges
+- Automatic approvals
+
+---
+
+## 2. Scope of v1
+The v1 release is focused entirely on the **Current Import context**. Below is the design status for each required feature:
+
+| Feature | Design Status | Requirement Summary |
+| :--- | :--- | :--- |
+| **Upload & Validation** | Planned (Not Final) | Support for Givebutter CSV files with immediate validation. |
+| **Import Dashboard** | Planned (Not Final) | High-level summary of import health and pending actions. |
+| **All Records Review** | Planned (Not Final) | Tabular view of all records with pass/warning/fail status. |
+| **Normalization Review** | Planned (Not Final) | Review suggested fixes for typos, casing, and formatting. |
+| **Household Review** | Planned (Not Final) | Review suggested household groupings within the current import based on address, ZIP, last name, phone, and donation context. |
+| **Duplicate Review** | **Finalized** | Detailed side-by-side review of potential intra-file duplicates. |
+| **Export Console** | Planned (Not Final) | Download exports based only on approved reviewer decisions. Raw import rows and baseline contact fields remain unchanged. |
+| **Audit / Activity Log** | Planned (Not Final) | Complete trail of reviewer decisions, with notes required for conflicting or high-risk decisions. |
+
+---
+
+## 3. Finalized Screen: Duplicate Candidate Review
+**Screen Title:** “Possible Duplicate in This Import”
+
+### Purpose
+Review whether two contact records from the same uploaded CSV appear to represent the same person.
+
+### Core Layout & UX
+- **Contextual Header:** Clear match headline with confidence score and summary strip.
+- **Side-by-Side Cards:** Contact A vs. Contact B comparison.
+- **Evidence Panels:** Explicit lists for "Supporting Evidence" (e.g., exact email) and "Conflicting Evidence" (e.g., address differs).
+- **Mandatory Accountability:** Required reviewer reasoning field when conflicting evidence exists.
+- **Action Group:** "Mark as Same Person" (Positive), "Mark as Different" (Negative), and "Defer" (Neutral).
+- **Details Drawer:** Right-side persistent drawer for Duplicate Candidate Details.
+
+### Safety Enforcement
+- **Mark as Same Person** records a reviewer decision only.
+- It does **not** merge contacts or donation transactions.
+- It does **not** overwrite raw data or change original CSV rows.
+- It does **not** write back to Givebutter.
+
+---
+
+## 4. Screens Still To Be Designed
+The following screens are required for v1 but still need detailed UX iteration. This brief establishes their requirements, but **not** their final layouts:
+- **Upload / Import Queue**: Drag-and-drop landing area.
+- **Import Dashboard**: Status cards and recent activity.
+- **All Records / Validation Review**: Master list with filtering.
+- **Normalizations Review**: Quick-action approval queue.
+- **Households Review**: Address-based grouping interface.
+- **Export Console**: Download settings and format selection.
+- **Audit / Activity Log**: Searchable table of human decisions.
+
+---
+
+## 5. Success Metrics
+- **Reviewer Speed:** Time to resolve a straightforward duplicate candidate (Target: < 5 seconds). Conflicting-evidence cases may take longer and require notes.
+- **Audit Integrity:** 100% of reviewer decisions captured in the Audit Log; notes required for conflicting or high-risk decisions.
+- **Zero Data Loss:** Absolute preservation of raw CSV rows during the processing lifecycle.
+
+---
+
+## 6. Technical Implementation Guidance
+
+### Frontend Architecture
+Follow the existing Givebutter Processor architecture. If the app is Flask/Jinja, implement the UI as server-rendered Jinja templates with compatible styling. Stitch HTML/React-style output is a **visual reference**, not a required frontend architecture.
+
+### Claude Code Usage Notes
+This project brief is a UX framing document and does not replace the technical PRD. 
+- **v1 PRD** = source of truth for behavior, data model, safety, and tests.
+- **Implementation Plan** = execution guide.
+- **Stitch HTML/screenshots** = visual target for the finalized Duplicate Candidate Review screen.
+- **Only finalized screen HTML/screenshots** should be treated as visual implementation targets. Planned screens should not be treated as finalized designs.
+- **Remaining v1 screens** still require detailed UX iteration.
+
+For the Duplicate Candidate Review screen:
+- Use the exported Stitch HTML as the detailed visual target. 
+- Replace static prototype data with real values from `duplicate_candidates` and `contacts`. 
+- Implement real Flask/Jinja routes, database updates, and audit logging.
+
+---
+
+## 7. Project Glossary
+To maintain an audit-safe and operator-friendly tone, use the following terminology:
+
+The ‘Avoid’ terms are not merely wording preferences. They describe concepts that are out of scope for v1 and must not appear in UI behavior, routes, data models, or backend logic.
+
+- **Use:** Review, Suggestion, Reviewer Decision, Current Import, Uploaded CSV, Audit Trail, Approved Export.
+- **Avoid:** Auto-resolve, Master person, Global identity, Global household, Identity link, Lifetime donor profile, Lifetime giving, Automated merge, Cross-import intelligence.

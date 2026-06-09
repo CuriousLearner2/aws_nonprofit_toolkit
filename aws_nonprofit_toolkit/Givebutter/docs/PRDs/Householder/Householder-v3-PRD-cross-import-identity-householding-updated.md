@@ -1,15 +1,15 @@
-# Householder v3 PRD — Cross-Import Identity, Duplicate, and Household Linking
+# Householder v2 PRD — Cross-Import Identity, Duplicate, and Household Linking
 
 **Last updated:** 2026-06-08  
 **Owner:** Gautam Biswas  
-**Status:** v3 starter PRD / enhancement draft  
+**Status:** v2 starter PRD / enhancement draft  
 **Depends on:** Householder v1 PRD v2.5 and successful v1 implementation
 
 ---
 
 ## 1. Mission
 
-Householder v3 extends Householder from an import-batch review tool into a safer long-term donor identity and householding system.
+Householder v2 extends Householder from an import-batch review tool into a safer long-term donor identity and householding system.
 
 Where v1 asks:
 
@@ -29,6 +29,39 @@ v2 may use historical data as evidence, but it still must not silently merge peo
 
 Every cross-import link must be represented as a suggestion first, then approved, rejected, or deferred by a human reviewer.
 
+### Human-in-the-Loop Write Boundary
+
+Householder v2 may generate cross-import person, duplicate, household-link, and household-merge suggestions programmatically.
+
+However, v2 must not programmatically create, modify, link, merge, or delete durable identity or household records without an explicit human reviewer action.
+
+**Allowed without human approval:**
+- Generate pending cross-import match suggestions
+- Compute confidence scores
+- Display supporting and conflicting evidence
+- Surface prior reviewer decisions as evidence
+- Rank or filter review queues
+
+**Not allowed without human approval:**
+- Create a master person
+- Link a contact to a master person
+- Create a global household
+- Link a contact or master person to a global household
+- Merge households
+- Mark two people as the same person
+- Mark two people as different people
+- Modify baseline contact fields
+- Modify raw import rows
+- Write anything back to Givebutter
+
+Every durable identity or household action must be initiated by a reviewer click, confirmed when high-impact, and audit logged with reviewer, timestamp, action, evidence shown, decision, IP address, user agent, and optional notes.
+
+In short:
+
+> The system suggests.  
+> The reviewer decides.  
+> Only reviewer-approved decisions create durable links or records.
+
 ---
 
 ## 3. v1 vs. v2 Scope
@@ -41,7 +74,7 @@ It compares contacts inside one uploaded CSV/import batch. It does not automatic
 
 ### v2 Scope
 
-Householder v3 adds cross-import intelligence:
+Householder v2 adds cross-import intelligence:
 
 - Compare new contacts against contacts from prior imports.
 - Suggest that a new contact belongs to an existing household.
@@ -63,8 +96,8 @@ v2 inherits all v1 guardrails:
 4. Never auto-merge contacts.
 5. Never auto-create or auto-link households without explicit approval.
 6. Never write back to Givebutter in v2 unless a separate API-writeback PRD is approved.
-7. All cross-import matches are suggestions first.
-8. Human approval is required before creating persistent master-person or household links.
+7. All cross-import matches are suggestions first and must be created with pending status.
+8. Human approval is required before creating, modifying, linking, merging, or deleting any persistent master-person or household relationship.
 9. All actions must be audit logged with reviewer, timestamp, decision, IP address, user agent, and optional notes.
 
 ---
@@ -143,7 +176,7 @@ The exact schema should adapt to the repository’s implementation pattern, but 
 
 ### `master_people`
 
-Durable reviewed person records.
+Durable reviewed person records. These are created only through explicit reviewer approval or an explicit reviewer/admin action.
 
 Suggested fields:
 
@@ -179,7 +212,7 @@ Suggested fields:
 
 ### `global_households`
 
-Durable reviewed households across imports.
+Durable reviewed households across imports. These are created only through explicit reviewer approval or an explicit reviewer/admin action.
 
 Suggested fields:
 
@@ -319,6 +352,34 @@ Shows:
 
 ---
 
+### 9.4 Durable Action Confirmation Workflows
+
+All durable identity and household actions require an explicit reviewer action. The matching engine may create only pending suggestions.
+
+Required reviewer-initiated actions include:
+
+- Link current contact to existing master person
+- Create new master person for current contact
+- Mark suggested person match as different
+- Link current contact or master person to existing global household
+- Create new global household
+- Mark suggested household link as not same household
+- Merge global households
+- Keep global households separate
+- Defer any suggestion
+
+For high-impact actions, such as linking to a master person, creating a global household, or merging households, the UI must show a confirmation modal that states:
+
+- What durable record or link will be created or changed
+- What will not be changed
+- That raw import rows remain unchanged
+- That baseline contact fields remain unchanged
+- That the action will be audit logged
+
+The backend must enforce the same boundary. Confirmation screens are not only UX; server-side handlers must reject durable writes unless they are invoked by an explicit reviewer action and produce an audit record.
+
+---
+
 ## 10. Exports
 
 v2 should add exports that help nonprofits use cross-import intelligence.
@@ -355,12 +416,12 @@ v2 must include tests proving:
 
 - Cross-import suggestions are pending by default.
 - Historical contacts are not mutated.
-- Master-person links require approval.
-- Global-household links require approval.
+- Master-person links require explicit reviewer approval and cannot be created by the matching engine.
+- Global-household links require explicit reviewer approval and cannot be created by the matching engine.
 - Prior decisions affect scoring but do not auto-approve future matches.
 - Rejected historical matches suppress or lower repeat suggestions.
 - Exact email is still a person/duplicate signal, not a household signal.
-- Household merge suggestions never auto-merge.
+- Household merge suggestions never auto-merge and require explicit reviewer confirmation.
 - All cross-import decisions are audit logged.
 
 ---
@@ -373,8 +434,8 @@ v2 is complete when:
 - The system creates pending cross-import person match suggestions.
 - The system creates pending existing-household link suggestions.
 - Reviewers can approve, reject, or defer these suggestions.
-- Approved links create durable master-person or global-household relationships.
-- Original contacts and raw rows remain unchanged.
+- Approved links create durable master-person or global-household relationships only after explicit reviewer approval.
+- Original contacts, baseline contact fields, and raw rows remain unchanged.
 - The app can export master people, global households, cross-import backlog, and identity audit logs.
 - All safety and regression tests pass.
 
@@ -398,7 +459,7 @@ These are intentionally not included unless separately approved:
 
 Householder v1 cleans and households one uploaded CSV at a time.
 
-Householder v3 remembers what reviewers approved in the past.
+Householder v2 remembers what reviewers approved in the past.
 
 When a new CSV is uploaded, v2 can say:
 

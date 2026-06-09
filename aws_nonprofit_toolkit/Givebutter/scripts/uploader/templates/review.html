@@ -42,6 +42,24 @@
         .file-item { display: flex; justify-content: space-between; align-items: center; padding: 16px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
         .file-item:hover { background: #f9f9f9; }
 
+        .import-queue-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
+        .import-queue-table thead { background: #f8f9fa; }
+        .import-queue-table th { padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6; font-weight: 600; font-size: 12px; text-transform: uppercase; color: #666; }
+        .import-queue-table td { padding: 12px; border-bottom: 1px solid #e9ecef; vertical-align: middle; }
+        .import-queue-table tr:hover { background: #f9f9f9; }
+        .import-queue-table .status-text { font-weight: 500; color: #333; }
+        .import-queue-table .validation-badges { display: flex; gap: 6px; }
+        .validation-badge { padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .validation-badge.pass { background: #d4edda; color: #155724; }
+        .validation-badge.warning { background: #fff3cd; color: #856404; }
+        .validation-badge.fail { background: #f8d7da; color: #721c24; }
+        .action-col { text-align: right; }
+        .action-btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+        .action-btn-primary { background: #0066cc; color: white; }
+        .action-btn-primary:hover { background: #0052a3; }
+        .action-btn-secondary { background: transparent; border: 1px solid #6c757d; color: #6c757d; }
+        .action-btn-secondary:hover { background: #f9f9f9; border-color: #495057; color: #495057; }
+
         .review-table {
             width: 100%;
             border-collapse: collapse;
@@ -270,15 +288,36 @@
         <div id="uploadStatus" class="status"></div>
     </div>
 
-    <!-- Review Queue Section -->
+    <!-- Current Import Queue Section -->
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2>Review Queue</h2>
-            <button class="btn btn-secondary" onclick="loadProcessing()">Refresh</button>
+            <h2>Current Import Queue</h2>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <span style="background: #e8f0f7; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #666;">v1 CURRENT IMPORT REVIEW</span>
+                <button class="btn btn-secondary" onclick="loadProcessing()">Refresh</button>
+            </div>
         </div>
 
-        <div id="fileList" class="file-list"></div>
-        <div id="emptyState" class="empty-state hidden">No files being reviewed</div>
+        <table class="import-queue-table" id="importQueueTable">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Uploaded</th>
+                    <th>Total Rows</th>
+                    <th>Validation</th>
+                    <th>Normalizations</th>
+                    <th>Households</th>
+                    <th>Duplicates</th>
+                    <th>Status</th>
+                    <th class="action-col">Action</th>
+                </tr>
+            </thead>
+            <tbody id="importQueueBody">
+                <tr id="emptyState" style="display: none;">
+                    <td colspan="9" style="text-align: center; padding: 24px; color: #999;">No files being reviewed</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
     <!-- Review Panel Section -->
@@ -454,33 +493,57 @@ async function loadProcessing() {
     try {
         const resp = await fetch('/api/processing');
         const files = await resp.json();
-        const list = document.getElementById('fileList');
-        const empty = document.getElementById('emptyState');
+        const tbody = document.getElementById('importQueueBody');
+        const emptyRow = document.getElementById('emptyState');
 
-        list.innerHTML = '';
         if (files.length === 0) {
-            empty.classList.remove('hidden');
-            document.getElementById('reviewPanel').classList.add('hidden');
+            emptyRow.style.display = '';
             return;
         }
-        empty.classList.add('hidden');
+        emptyRow.style.display = 'none';
+
+        tbody.innerHTML = '';
 
         files.forEach(f => {
-            const div = document.createElement('div');
-            div.className = 'file-item';
-            const breakdown = `${f.pass_count} ✓, ${f.warning_count} ⚠, ${f.fail_count} ✗`;
-            div.innerHTML = `
-                <div>
-                    <div style="font-weight: 500;">${f.filename}</div>
-                    <div style="font-size: 12px; color: #666;">${f.rows} records (${breakdown})</div>
-                </div>
-                <button class="btn" onclick="reviewFile('${f.filename}')">Review</button>
+            const row = document.createElement('tr');
+
+            // Determine action button based on status
+            let actionBtn = '';
+            if (f.status === 'Pending Review') {
+                actionBtn = `<button class="action-btn action-btn-primary" onclick="reviewFile('${f.filename}')">Review Import</button>`;
+            } else if (f.status === 'In Review') {
+                actionBtn = `<button class="action-btn action-btn-primary" onclick="reviewFile('${f.filename}')">Continue Review</button>`;
+            } else if (f.status === 'Completed') {
+                actionBtn = `<button class="action-btn action-btn-secondary" onclick="viewSummary('${f.filename}')">View Summary</button>`;
+            }
+
+            row.innerHTML = `
+                <td><strong>${f.filename}</strong></td>
+                <td>${f.uploaded}</td>
+                <td>${f.rows}</td>
+                <td>
+                    <div class="validation-badges">
+                        <span class="validation-badge pass">${f.pass_count} PASS</span>
+                        <span class="validation-badge warning">${f.warning_count} WARN</span>
+                        <span class="validation-badge fail">${f.fail_count} FAIL</span>
+                    </div>
+                </td>
+                <td>${f.normalizations} <span style="font-size: 11px; color: #999;">pending</span></td>
+                <td>${f.households} <span style="font-size: 11px; color: #999;">suggested</span></td>
+                <td>${f.duplicates} <span style="font-size: 11px; color: #999;">candidates</span></td>
+                <td><span class="status-text">${f.status}</span></td>
+                <td class="action-col">${actionBtn}</td>
             `;
-            list.appendChild(div);
+            tbody.appendChild(row);
         });
     } catch (err) {
         showStatus(`Error loading files: ${err.message}`, 'error', 'uploadStatus');
     }
+}
+
+function viewSummary(filename) {
+    // TODO: Implement view summary route/page
+    showStatus(`Summary view not yet implemented for ${filename}`, 'info', 'uploadStatus');
 }
 
 async function reviewFile(filename) {

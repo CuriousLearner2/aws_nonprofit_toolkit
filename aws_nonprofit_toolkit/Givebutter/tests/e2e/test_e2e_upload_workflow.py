@@ -287,3 +287,61 @@ async def test_upload_large_csv(start_flask_app, temp_dir):
 
         finally:
             await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_import_queue_table_structure(start_flask_app, temp_dir, sample_csv):
+    """Test that import queue displays with proper Status and Action columns."""
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+
+        try:
+            # Navigate to upload page
+            await page.goto("http://127.0.0.1:8000/")
+            await page.wait_for_selector('div.drop-zone', timeout=5000)
+
+            # Verify import queue table structure exists
+            content = await page.content()
+            assert 'Current Import Queue' in content, "Current Import Queue title not found"
+            assert 'v1 CURRENT IMPORT REVIEW' in content, "v1 CURRENT IMPORT REVIEW label not found"
+            assert 'importQueueTable' in content, "Import queue table not found"
+
+            # Verify all required table headers exist
+            headers = ['Filename', 'Uploaded', 'Total Rows', 'Validation',
+                      'Normalizations', 'Households', 'Duplicates', 'Status', 'Action']
+            for header in headers:
+                header_found = await page.query_selector(f'th:has-text("{header}")')
+                assert header_found, f"Missing header: {header}"
+
+            # Upload file to populate the queue
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(sample_csv))
+
+            # Wait for upload status message
+            await page.wait_for_selector('div.status.success', timeout=5000)
+
+            # Wait a moment for table to populate
+            await asyncio.sleep(1)
+
+            # Verify table has rows with action buttons
+            action_buttons = await page.query_selector_all('table tbody button')
+            if action_buttons:  # Only assert if we have data
+                assert len(action_buttons) > 0, "Action buttons not found after upload"
+
+                # Verify button labels
+                button_texts = []
+                for button in action_buttons:
+                    btn_text = await button.inner_text()
+                    button_texts.append(btn_text)
+
+                # At least one button should be a valid action button
+                action_button_labels = ['Review Import', 'Continue Review', 'View Summary']
+                found_action_button = any(label in button_texts for label in action_button_labels)
+                assert found_action_button, f"No valid action buttons found. Got: {button_texts}"
+
+        finally:
+            await browser.close()

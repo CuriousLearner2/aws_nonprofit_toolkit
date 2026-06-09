@@ -68,6 +68,24 @@ def validate_filename(filename: str) -> bool:
     except (ValueError, OSError):
         return False
 
+def format_relative_time(dt):
+    """Format datetime as relative time string (e.g., '2h ago')."""
+    now = datetime.now()
+    diff = now - dt
+    seconds = diff.total_seconds()
+
+    if seconds < 60:
+        return 'just now'
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        return f'{minutes}m ago'
+    elif seconds < 86400:
+        hours = int(seconds // 3600)
+        return f'{hours}h ago'
+    else:
+        days = int(seconds // 86400)
+        return f'{days}d ago'
+
 @app.route('/')
 def index():
     return render_template('review.html')
@@ -127,11 +145,50 @@ def list_processing():
 
         for f in recent_files:
             try:
-                df = pd.read_csv(f, dtype=str, encoding='utf-8')
+                df = pd.read_csv(f, dtype=str, encoding='utf-8').fillna('')
                 record_count = len(df)
                 pass_count = len(df[df['Validation_Tier'] == 'PASS'])
                 warning_count = len(df[df['Validation_Tier'] == 'WARNING'])
                 fail_count = len(df[df['Validation_Tier'] == 'FAIL'])
+
+                # Count normalizations, households, duplicates from Issues/Suggested_Modifications
+                normalizations_count = 0
+                households_count = 0
+                duplicates_count = 0
+
+                for col in ['Issues', 'Suggested_Modifications']:
+                    if col in df.columns:
+                        for idx, value in df[col].items():
+                            val_str = str(value).lower() if value else ''
+                            if 'normaliz' in val_str or 'correct' in val_str or 'format' in val_str:
+                                normalizations_count += 1
+                            if 'household' in val_str or 'family' in val_str or 'address' in val_str and 'same' in val_str:
+                                households_count += 1
+                            if 'duplicate' in val_str:
+                                duplicates_count += 1
+
+                # Determine status based on Operator_Decision column
+                decisions_made = 0
+                if 'Operator_Decision' in df.columns:
+                    decisions_made = len(df[df['Operator_Decision'].astype(str).str.strip() != ''])
+
+                if decisions_made == 0:
+                    status = 'Pending Review'
+                elif decisions_made >= record_count:
+                    status = 'Completed'
+                else:
+                    status = 'In Review'
+
+                # Get upload time from filename (format: upload_YYYYMMDD_HHMMSS_*)
+                try:
+                    parts = f.name.split('_')
+                    if len(parts) >= 3:
+                        upload_time = datetime.strptime(f"{parts[1]}_{parts[2]}", '%Y%m%d_%H%M%S')
+                        uploaded_str = format_relative_time(upload_time)
+                    else:
+                        uploaded_str = 'Unknown'
+                except:
+                    uploaded_str = 'Unknown'
 
                 files.append({
                     'filename': f.name,
@@ -139,7 +196,12 @@ def list_processing():
                     'pass_count': pass_count,
                     'warning_count': warning_count,
                     'fail_count': fail_count,
-                    'mtime': f.stat().st_mtime
+                    'mtime': f.stat().st_mtime,
+                    'uploaded': uploaded_str,
+                    'normalizations': normalizations_count,
+                    'households': households_count,
+                    'duplicates': duplicates_count,
+                    'status': status
                 })
             except pd.errors.ParserError as e:
                 logger.warning(f"Failed to read {f.name}: {e}")
