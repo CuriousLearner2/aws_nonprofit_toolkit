@@ -10,7 +10,7 @@
   },
   "artifactsPath": "testing/workspace/ChatGPT/stitch-review/import-dashboard/iteration-003/",
   "createdBy": "claude-code",
-  "timestamp": "2026-06-10T15:17:23.864183Z",
+  "timestamp": "2026-06-10T15:21:08.466591Z",
   "revisionStatus": "design_changes_applied_programmatically",
   "revisionDescription": "Strengthen Import Dashboard as read-only command center. Improve summary hierarchy, validation scanability, queue card clarity, read-only reinforcement, audit trail, guardrails visibility, and export navigation.",
   "designChangesApplied": 8,

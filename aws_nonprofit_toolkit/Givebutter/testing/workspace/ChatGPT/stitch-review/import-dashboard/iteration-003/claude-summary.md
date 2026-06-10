@@ -4,7 +4,7 @@
 - **Design Changes Applied**: 8/8 via programmatic Stitch API
 - **Total Operations**: 23 API operations
 - **Viewport**: 1440×1024 (desktop-first)
-- **Capture Time**: 2026-06-10T08:17:23.863923
+- **Capture Time**: 2026-06-10T08:21:08.466436
 
 ## Artifact Generation
 - ✓ screenshot-above-fold.png
@@ -67,8 +67,41 @@
   - Audit trail and guardrails prominent
   - No safety gaps or unintended actions
 
+## Final Polish Pass (5 Refinements)
+
+After initial capture, a final polish pass was applied for copy clarity and safety reinforcement:
+
+**Polish 1**: Duplicate Queue CTA
+- Changed from "Review Duplicates" to "Review Duplicate Candidates"
+- More specific language clarifies we're reviewing candidate pairs
+
+**Polish 2**: Export Button CTA
+- Changed from "Export Console" to "Open Export Console"
+- Verb "Open" clarifies this is navigation, not immediate export
+
+**Polish 3**: Read-Only Note Visibility
+- Verified "Dashboard is read-only. Decisions happen in review screens." is visible beneath queue cards
+- Reinforces read-only constraint at primary action area
+
+**Polish 4**: Recent Actions Audit Wording
+- Updated to clearly historical/audit-oriented language
+- Format: "Review decision: [action] · [person] · [reviewer] · [time]"
+- Examples: "Review decision: normalization accepted · John Smith · operator@example.com · 2m ago"
+- Clarifies these are past review decisions, not current dashboard actions
+
+**Polish 5**: Safety Badge Enhancement
+- Slightly improved visibility of "HUMAN-IN-LOOP · NO AUTO-APPLY" badge
+- Enhanced font weight (600) and subtle background highlight
+- Maintains secondary prominence relative to title
+
 ## Summary
 
-**Iteration-003 Design Revision**: ✓ COMPLETE AND VERIFIED
+**Iteration-003 Design Revision**: ✓ COMPLETE AND POLISHED
 
-All 8 design improvements have been successfully applied and are visible in the screenshot. The Import Dashboard remains a read-only, human-in-the-loop, audit-safe command center. All DonorTrust v1 constraints are maintained. Ready for OpenAI design review.
+- **8 Major Design Improvements**: All visible and verified
+- **5 Final Polish Refinements**: Copy clarity, audit language, safety badge visibility
+- **13 Total Improvements**: 8 layout/structure + 5 copy/safety polish
+- **All DonorTrust v1 Constraints**: Maintained throughout
+- **Read-only, Human-in-Loop, Audit-Safe**: Reinforced via design and language
+
+The Import Dashboard is now a sharper, safer, more executive-quality read-only command center. All copy is clear, all CTAs are safe navigation, all constraints are visible. Ready for final OpenAI design review.
