@@ -1,0 +1,17 @@
+{
+  "status": "stitch_revision_pending",
+  "screen": "import-dashboard",
+  "iteration": "003",
+  "stitchProjectId": "9371274764538076058",
+  "stitchCanonicalPreviewUrl": "https://stitch.withgoogle.com/preview/9371274764538076058?node-id=4d9abeed14714f3aa2202140280c81cb&raw=1",
+  "viewport": {
+    "width": 1440,
+    "height": 1024
+  },
+  "artifactsPath": "testing/workspace/ChatGPT/stitch-review/import-dashboard/iteration-003/",
+  "createdBy": "claude-code",
+  "timestamp": "2026-06-10T00:00:00Z",
+  "revisionStatus": "stitch_prompt_ready_awaiting_application",
+  "revisionDescription": "Strengthen Import Dashboard as read-only command center. Improve summary hierarchy, validation scanability, queue card clarity, read-only reinforcement, audit trail, guardrails visibility, and export navigation.",
+  "nextStep": "Apply stitch-prompt.md changes to Stitch Import Dashboard screen, then capture iteration-003 screenshots and artifacts."
+}
