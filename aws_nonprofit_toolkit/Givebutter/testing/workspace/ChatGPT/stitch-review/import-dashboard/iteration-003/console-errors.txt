@@ -1,0 +1,9 @@
+Console Messages: 2
+======================================================================
+
+[WARNING] No `HydrateFallback` element provided to render during initial hydration
+  Location: {'url': 'https://app-companion-430619.appspot.com/assets/chunk-UIGDSWPH-DQ7ujm74.js', 'lineNumber': 0, 'columnNumber': 778}
+
+[WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+  Location: {'url': 'https://cdn.tailwindcss.com/?plugins=forms,container-queries', 'lineNumber': 63, 'columnNumber': 13404}
+
