@@ -1,5 +1,5 @@
 {
-  "status": "stitch_revision_pending",
+  "status": "stitch_revision_applied_awaiting_capture",
   "screen": "import-dashboard",
   "iteration": "003",
   "stitchProjectId": "9371274764538076058",
@@ -11,7 +11,23 @@
   "artifactsPath": "testing/workspace/ChatGPT/stitch-review/import-dashboard/iteration-003/",
   "createdBy": "claude-code",
   "timestamp": "2026-06-10T00:00:00Z",
-  "revisionStatus": "stitch_prompt_ready_awaiting_application",
+  "revisionStatus": "design_changes_applied_programmatically",
   "revisionDescription": "Strengthen Import Dashboard as read-only command center. Improve summary hierarchy, validation scanability, queue card clarity, read-only reinforcement, audit trail, guardrails visibility, and export navigation.",
-  "nextStep": "Apply stitch-prompt.md changes to Stitch Import Dashboard screen, then capture iteration-003 screenshots and artifacts."
+  "designChangesApplied": 8,
+  "designChangesLog": "design-changes-applied.json",
+  "applicationType": "programmatic_via_stitch_api",
+  "applicationMethod": "stitch_design_applier.py",
+  "changesSummary": [
+    "1. Strengthen Top Summary Hierarchy (3 operations)",
+    "2. Make Validation Breakdown Scannable (4 operations)",
+    "3. Improve Review Queue Cards (3 operations)",
+    "4. Clarify Read-Only Dashboard Behavior (1 operation)",
+    "5. Improve Recent Actions (2 operations)",
+    "6. Improve v1 Guardrails Panel (5 operations)",
+    "7. Refine Export Access (2 operations)",
+    "8. Visual Polish (3 operations)"
+  ],
+  "totalOperations": 23,
+  "nextStep": "Capture iteration-003 screenshots and artifacts using Playwright",
+  "nextAction": "Run Playwright capture script to generate 9-file artifact packet"
 }

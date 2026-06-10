@@ -1,0 +1,570 @@
+<!DOCTYPE html><html class="light" lang="en" style=""><head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>DonorTrust | Possible Duplicate in This Import</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+    <style>
+            .material-symbols-outlined {
+                font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            }
+            body {
+                font-family: 'Inter', sans-serif;
+                background-color: #f7f9fb;
+            }
+            .modal-backdrop {
+                background-color: rgba(25, 28, 30, 0.4);
+                backdrop-filter: blur(2px);
+            }
+            .custom-scrollbar::-webkit-scrollbar {
+                width: 6px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-track {
+                background: #f1f5f9;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb {
+                background: #cbd5e1;
+                border-radius: 10px;
+            }
+        </style>
+    <script id="tailwind-config">
+            tailwind.config = {
+                darkMode: "class",
+                theme: {
+                    extend: {
+                        "colors": {
+                            "primary": "#000000",
+                            "fail": "#EF4444",
+                            "secondary-fixed": "#dbe1ff",
+                            "secondary": "#0051d5",
+                            "on-error": "#ffffff",
+                            "on-error-container": "#93000a",
+                            "inverse-surface": "#2d3133",
+                            "tertiary-fixed": "#fcdeb5",
+                            "border-subtle": "#E2E8F0",
+                            "tertiary-fixed-dim": "#dec29a",
+                            "surface-container-high": "#e6e8ea",
+                            "on-primary-fixed": "#131b2e",
+                            "surface-container-lowest": "#ffffff",
+                            "warning": "#F59E0B",
+                            "surface": "#f7f9fb",
+                            "primary-container": "#131b2e",
+                            "on-primary-container": "#7c839b",
+                            "tertiary": "#000000",
+                            "outline-variant": "#c6c6cd",
+                            "on-secondary": "#ffffff",
+                            "surface-bright": "#f7f9fb",
+                            "secondary-fixed-dim": "#b4c5ff",
+                            "on-surface-variant": "#45464d",
+                            "on-primary": "#ffffff",
+                            "on-tertiary": "#ffffff",
+                            "slate-gray": "#64748B",
+                            "inverse-on-surface": "#eff1f3",
+                            "on-secondary-container": "#fefcff",
+                            "primary-fixed": "#dae2fd",
+                            "secondary-container": "#316bf3",
+                            "on-secondary-fixed": "#00174b",
+                            "on-background": "#191c1e",
+                            "surface-variant": "#e0e3e5",
+                            "on-primary-fixed-variant": "#3f465c",
+                            "on-secondary-fixed-variant": "#003ea8",
+                            "surface-audit": "#F1F5F9",
+                            "pass": "#10B981",
+                            "on-tertiary-fixed-variant": "#574425",
+                            "tertiary-container": "#271901",
+                            "on-tertiary-container": "#98805d",
+                            "surface-container-highest": "#e0e3e5",
+                            "inverse-primary": "#bec6e0",
+                            "primary-fixed-dim": "#bec6e0",
+                            "on-surface": "#191c1e",
+                            "on-tertiary-fixed": "#271901",
+                            "error": "#ba1a1a",
+                            "surface-dim": "#d8dadc",
+                            "surface-container-low": "#f2f4f6",
+                            "surface-container": "#eceef0",
+                            "outline": "#76777d",
+                            "surface-tint": "#565e74",
+                            "error-container": "#ffdad6",
+                            "background": "#f7f9fb"
+                        },
+                        "borderRadius": {
+                            "DEFAULT": "0.125rem",
+                            "lg": "0.25rem",
+                            "xl": "0.5rem",
+                            "full": "0.75rem"
+                        },
+                        "spacing": {
+                            "margin-page": "24px",
+                            "container-padding": "12px",
+                            "base": "4px",
+                            "gutter": "16px"
+                        },
+                        "fontFamily": {
+                            "data-mono": ["JetBrains Mono"],
+                            "headline-lg": ["Inter"],
+                            "body-sm": ["Inter"],
+                            "label-caps": ["Inter"],
+                            "headline-md": ["Inter"],
+                            "body-md": ["Inter"]
+                        },
+                        "fontSize": {
+                            "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                            "headline-lg": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                            "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                            "label-caps": ["11px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                            "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                            "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+                        }
+                    },
+                },
+            }
+        </script>
+    </head>
+    <body class="bg-background text-on-surface overflow-hidden">
+    <!-- TopNavBar -->
+    <nav class="flex justify-between items-center w-full px-margin-page py-3 bg-surface-container-lowest sticky top-0 border-b border-border-subtle z-50 h-14">
+    <div class="flex items-center gap-4">
+    <span class="material-symbols-outlined text-primary cursor-pointer">menu</span>
+    <span class="text-headline-md font-black text-primary tracking-tight">DonorTrust</span>
+    </div>
+    <div class="flex items-center gap-6">
+    <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container rounded-full border border-border-subtle">
+    <span class="material-symbols-outlined text-slate-gray text-body-md">search</span>
+    <span class="text-body-sm text-slate-gray">Search records...</span>
+    </div>
+    <div class="flex items-center gap-3">
+    <span class="material-symbols-outlined text-slate-gray">notifications</span>
+    <div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden border border-border-subtle">
+    <img alt="Operator Profile" class="" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXHtIZacrHCeldCx7QERt35qkS5MgMP9Tjc-ztm2YQAH_ho1MFNofUwpdKyjUBx8nto_DaTVvSJ0aDvh-ijlB1cHnf6t-_S28sQPzqgmDbhc5NSuL6rUMJoA73wlBKST9AT2gYmnxyed2l9JOiHGnRbew8xIVQKCzjmFfGqdVEG2qDIAqn0XOFk0CyM8AQ8Op3TqbFoMyCzqDvy7Vhr_LA2PFU6JawmdA2Svt-7RPv1MYi6XtUF2c_-0JwIoKtNDP-T4Ds4Zes-Qw">
+    </div>
+    </div>
+    </div>
+    </nav>
+    <div class="flex h-[calc(100vh-56px)] overflow-hidden">
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto p-margin-page custom-scrollbar">
+    <!-- 1. Page Title & Headline -->
+    <header class="mb-6">
+    <div class="flex items-center gap-2 text-label-caps text-slate-gray uppercase font-bold mb-2">
+    <span class="material-symbols-outlined text-[16px]">group_add</span>
+                        Data Import Matching
+                    </div>
+    <h1 class="text-headline-lg text-primary">Possible Duplicate in This Import</h1>
+    <p class="text-headline-md font-semibold text-secondary mt-1">Jane A. Smith may be the same person as Jane Smith</p>
+    <p class="text-body-sm text-slate-gray mt-1">
+                        Both records are from <span class="font-data-mono text-primary font-medium">MAY_CAMPAIGN.CSV</span> · 
+                        Duplicate candidate ID: <span class="font-data-mono text-primary font-medium">DUP_8829</span> · 
+                        Confidence: <span class="text-secondary font-bold">95%</span>
+    </p>
+    </header>
+    <!-- 2. Match Summary Strip -->
+    <div class="bg-white border border-border-subtle rounded-lg p-4 mb-6 grid grid-cols-4 gap-gutter shadow-sm">
+    <div class="border-r border-border-subtle pr-4">
+    <p class="text-label-caps text-slate-gray uppercase mb-1">Contact A</p>
+    <p class="text-body-sm font-bold text-primary">Jane A. Smith</p>
+    <p class="text-[11px] text-slate-gray font-data-mono">IMPORT_7721 | MAY_CAMPAIGN.CSV</p>
+    </div>
+    <div class="border-r border-border-subtle px-4">
+    <p class="text-label-caps text-slate-gray uppercase mb-1">Contact B</p>
+    <p class="text-body-sm font-bold text-primary">Jane Smith</p>
+    <p class="text-[11px] text-slate-gray font-data-mono">IMPORT_8829 | MAY_CAMPAIGN.CSV</p>
+    </div>
+    <div class="border-r border-border-subtle px-4">
+    <p class="text-label-caps text-slate-gray uppercase mb-1">Suggested because</p>
+    <div class="flex flex-wrap gap-1 mt-1">
+    <span class="bg-secondary/5 text-secondary text-[10px] px-1.5 py-0.5 rounded border border-secondary/10">Exact email</span>
+    <span class="bg-secondary/5 text-secondary text-[10px] px-1.5 py-0.5 rounded border border-secondary/10">Exact phone</span>
+    <span class="bg-secondary/5 text-secondary text-[10px] px-1.5 py-0.5 rounded border border-secondary/10">Similar name</span>
+    </div>
+    </div>
+    <div class="pl-4">
+    <p class="text-label-caps text-slate-gray uppercase mb-1">Review concern</p>
+    <div class="flex items-center gap-1.5 text-fail bg-fail/10 px-2 py-1 rounded inline-flex">
+    <span class="material-symbols-outlined text-[16px]">warning</span>
+    <span class="text-body-sm font-bold">Address differs</span>
+    </div>
+    </div>
+    </div>
+    <!-- 3. Comparison Cards -->
+    <div class="grid grid-cols-2 gap-gutter mb-6">
+    <!-- Left Card (Contact A) -->
+    <div class="bg-white border border-border-subtle rounded-lg shadow-sm flex flex-col">
+    <div class="bg-surface-container-low px-4 py-2 border-b border-border-subtle flex justify-between items-center">
+    <span class="text-label-caps font-bold text-slate-gray uppercase">Contact A: Jane A. Smith</span>
+    <span class="text-[10px] bg-slate-gray text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Current Import</span>
+    </div>
+    <div class="p-5 flex-1 space-y-4">
+    <div>
+    <h3 class="text-headline-md font-bold text-primary">Jane A. Smith</h3>
+    <p class="font-data-mono text-body-sm text-slate-gray">Contact ID: IMPORT_7721 | Source: MAY_CAMPAIGN.CSV</p>
+    </div>
+    <div class="grid grid-cols-1 gap-3">
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">mail</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Email</p>
+    <p class="text-body-sm font-medium">jane.smith@example.com</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">phone</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Phone</p>
+    <p class="text-body-sm font-medium">(555) 019-2234</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">location_on</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Address</p>
+    <p class="text-body-sm">123 Maple St, Northwood, WA</p>
+    </div>
+    </div>
+    </div>
+    <div class="pt-4 border-t border-border-subtle space-y-3">
+    <p class="text-label-caps font-bold text-slate-gray uppercase">Donation in this import</p>
+    <div class="grid grid-cols-1 gap-3">
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">payments</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Amount</p>
+    <p class="text-body-sm font-bold text-primary">$250.00</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">calendar_today</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Date</p>
+    <p class="text-body-sm font-medium">May 24, 2024</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">campaign</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Campaign</p>
+    <p class="text-body-sm">MAY_CAMPAIGN.CSV / Spring Gala 2024</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">receipt_long</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Transaction ID</p>
+    <p class="text-body-sm font-data-mono">TXN-99281-GB</p>
+    </div>
+    </div>
+    </div>
+    </div></div>
+    </div>
+    <!-- Right Card (Contact B) -->
+    <div class="bg-white border-2 border-secondary/20 rounded-lg shadow-sm flex flex-col ring-4 ring-secondary/5">
+    <div class="bg-secondary/5 px-4 py-2 border-b border-secondary/20 flex justify-between items-center">
+    <span class="text-label-caps font-bold text-secondary uppercase">Contact B: Jane Smith</span>
+    <span class="text-[10px] bg-secondary text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Current Import</span>
+    </div>
+    <div class="p-5 flex-1 space-y-4">
+    <div>
+    <h3 class="text-headline-md font-bold text-primary">Jane Smith</h3>
+    <p class="font-data-mono text-body-sm text-slate-gray">Contact ID: IMPORT_8829 | Source: MAY_CAMPAIGN.CSV</p>
+    </div>
+    <div class="grid grid-cols-1 gap-3">
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-secondary/10 rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-secondary text-[18px]">mail</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-secondary uppercase text-[10px]">Email</p>
+    <p class="text-body-sm font-medium">jane.smith@example.com</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-secondary/10 rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-secondary text-[18px]">phone</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-secondary uppercase text-[10px]">Phone</p>
+    <p class="text-body-sm font-medium">(555) 019-2234</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-secondary/10 rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-secondary text-[18px]">location_on</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-secondary uppercase text-[10px]">Address</p>
+    <p class="text-body-sm">742 Evergreen Terrace, Springfield, IL</p>
+    </div>
+    </div>
+    </div>
+    <div class="pt-4 border-t border-border-subtle space-y-3">
+    <p class="text-label-caps font-bold text-slate-gray uppercase">Donation in this import</p>
+    <div class="grid grid-cols-1 gap-3">
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">payments</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Amount</p>
+    <p class="text-body-sm font-bold text-primary">$250.00</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">calendar_today</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Date</p>
+    <p class="text-body-sm font-medium">May 24, 2024</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">campaign</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Campaign</p>
+    <p class="text-body-sm">MAY_CAMPAIGN.CSV / Spring Gala 2024</p>
+    </div>
+    </div>
+    <div class="flex gap-3 items-start">
+    <div class="w-8 h-8 bg-surface-container rounded flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-slate-gray text-[18px]">receipt_long</span>
+    </div>
+    <div>
+    <p class="text-label-caps text-slate-gray uppercase text-[10px]">Transaction ID</p>
+    <p class="text-body-sm font-data-mono">TXN-99282-GB</p>
+    </div>
+    </div>
+    </div>
+    </div></div>
+    </div>
+    </div>
+    <!-- Address Conflict Warning -->
+    <div class="bg-warning/10 border border-warning/30 p-4 rounded-lg flex gap-3 items-start mb-8">
+    <span class="material-symbols-outlined text-warning" style="font-variation-settings: &quot;FILL&quot; 1;">warning</span>
+    <div class="flex-1">
+    <p class="text-body-sm text-on-surface font-semibold leading-tight mb-1">Potential Address Conflict</p>
+    <p class="text-body-sm text-on-surface leading-snug">Address differs. This may be normal if the donor moved or if one record has an outdated address, but review before marking as same person.</p>
+    </div>
+    </div>
+    <!-- Evidence Panel -->
+    <div class="grid grid-cols-2 gap-gutter mb-8">
+    <div class="bg-pass/5 border border-pass/20 p-5 rounded-lg">
+    <h4 class="text-label-caps text-pass font-bold uppercase mb-4 flex items-center gap-2">
+    <span class="material-symbols-outlined text-body-md" style="font-size: 20px;">check_circle</span>
+                            Supporting Evidence
+                        </h4>
+    <ul class="space-y-3">
+    <li class="text-body-sm flex items-center gap-3"><span class="w-1.5 h-1.5 rounded-full bg-pass"></span><span class="">Exact email match <span class="text-slate-gray text-[11px] font-data-mono ml-2">(jane.smith@example.com)</span></span></li>
+    <li class="text-body-sm flex items-center gap-3"><span class="w-1.5 h-1.5 rounded-full bg-pass"></span><span class="">Exact phone match <span class="text-slate-gray text-[11px] font-data-mono ml-2">((555) 019-2234)</span></span></li>
+    <li class="text-body-sm flex items-center gap-3">
+    <span class="w-1.5 h-1.5 rounded-full bg-pass"></span>
+    <span class="">Similar name <span class="text-slate-gray text-[11px] ml-2">(Jane A. Smith vs Jane Smith)</span></span>
+    </li>
+    </ul>
+    </div>
+    <div class="bg-error/5 border border-error/20 p-5 rounded-lg">
+    <h4 class="text-label-caps text-error font-bold uppercase mb-4 flex items-center gap-2">
+    <span class="material-symbols-outlined text-body-md" style="font-size: 20px;">cancel</span>
+                            Conflicting Evidence
+                        </h4>
+    <ul class="space-y-3">
+    <li class="text-body-sm flex items-center gap-3"><span class="w-1.5 h-1.5 rounded-full bg-error"></span><span class="">Address differs <span class="text-slate-gray text-[11px] ml-2">(Northwood, WA vs Springfield, IL)</span></span></li>
+    </ul>
+    </div>
+    </div>
+    <!-- Reviewer Notes Section -->
+    <div class="bg-white border border-border-subtle rounded-lg p-5 mb-10 shadow-sm">
+    <div class="flex justify-between items-center mb-3">
+    <label class="text-label-caps font-bold text-slate-gray uppercase text-error">Required: Explain why these contacts represent the same person despite the address difference</label>
+    <span class="text-[11px] text-slate-gray/60" id="char-count">0 / 500</span>
+    </div>
+    <textarea class="w-full h-32 border-border-subtle rounded-lg text-body-md focus:ring-secondary focus:border-secondary p-4 transition-all placeholder:text-slate-gray/30 resize-none bg-surface-container-lowest" id="reviewer-notes" maxlength="500" placeholder="Required: Explain why these contacts represent the same person despite the address difference."></textarea>
+    <div class="mt-3 flex gap-2 items-center text-slate-gray" id="notes-warning">
+    <span class="material-symbols-outlined text-[16px]">info</span>
+    <p class="text-body-sm italic">Recommended: Explain why you believe these contacts represent the same person despite address differences.</p>
+    </div>
+    </div>
+    <!-- Footer Action Bar -->
+    <div class="mt-auto pt-8 border-t border-border-subtle flex flex-col gap-4"><div class="flex items-center gap-2 text-slate-gray bg-surface-container-low p-3 rounded-lg mb-2"><span class="material-symbols-outlined text-[18px]">info</span><p class="text-body-sm italic">Duplicate review records whether these contact records appear to represent the same person. It does not merge donation transactions.</p></div>
+    <div class="flex items-center justify-between">
+    <div class="flex gap-3 flex-wrap"><button class="bg-slate-gray text-white px-6 py-3 rounded-lg font-bold text-body-md opacity-50 cursor-not-allowed transition-all" id="btn-link" disabled="true">Mark as Same Person</button><button class="bg-secondary text-white px-6 py-3 rounded-lg font-bold text-body-md hover:bg-secondary-container transition-all active:scale-[0.98] shadow-md" id="btn-different">Mark as Different</button><button class="bg-slate-gray text-white px-6 py-3 rounded-lg font-bold text-body-md hover:bg-surface-container-high transition-all active:scale-[0.98] flex items-center gap-2" id="btn-defer"><span class="material-symbols-outlined text-[20px]">schedule</span> Defer</button></div>
+    
+    </div>
+    <p class="text-[11px] text-slate-gray italic leading-relaxed max-w-2xl">
+                        Marking as Same Person records the reviewer’s decision only. It does not merge contacts, overwrite raw data, or change the original CSV rows.
+                    </p>
+    </div>
+    </main>
+    <!-- Right-side Drawer -->
+    <aside class="w-96 bg-white border-l border-border-subtle flex flex-col shrink-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.02)]">
+    <header class="p-5 border-b border-border-subtle bg-surface-container-low">
+    <h2 class="text-headline-md font-bold text-primary mb-1">Duplicate Candidate Details</h2>
+    <div class="flex flex-col gap-1">
+    <span class="text-label-caps text-secondary font-bold uppercase tracking-widest text-[10px]">Duplicate Candidate ID: DUP_8829</span>
+    <span class="text-body-sm text-slate-gray">Both records are from the current import. No contacts are merged in v1.</span><span class="text-body-sm text-slate-gray">No contact fields or raw CSV rows are changed in v1.</span><span class="text-body-sm text-slate-gray">No contact fields or raw CSV rows are changed in v1.</span>
+    </div>
+    </header>
+    <div class="flex-1 overflow-y-auto p-5 space-y-8 custom-scrollbar"><section class="mb-8"><h5 class="text-label-caps font-bold text-primary mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">summarize</span>Duplicate Candidate Summary</h5><div class="space-y-2 bg-secondary/5 p-3 rounded-lg border border-secondary/20"><div class="flex justify-between text-body-sm"><span class="text-slate-gray">Contact A</span><span class="font-semibold">Jane A. Smith / IMPORT_7721</span></div><div class="flex justify-between text-body-sm"><span class="text-slate-gray">Contact B</span><span class="font-semibold">Jane Smith / IMPORT_8829</span></div><div class="flex justify-between text-body-sm"><span class="text-slate-gray">Candidate ID</span><span class="font-data-mono font-semibold">DUP_8829</span></div><div class="flex justify-between text-body-sm"><span class="text-slate-gray">Decision Status</span><span class="text-warning font-bold">Pending Review</span></div></div></section>
+    <!-- Contact B Summary -->
+    <section>
+    <h5 class="text-label-caps font-bold text-primary mb-3 flex items-center gap-2">
+    <span class="material-symbols-outlined text-[18px]">account_circle</span>
+                            Contact B Summary
+                        </h5>
+    <div class="space-y-2 bg-surface-audit p-3 rounded-lg border border-border-subtle/50">
+    <div class="flex justify-between text-body-sm">
+    <span class="text-slate-gray">Full Name</span>
+    <span class="font-semibold">Jane Smith</span>
+    </div>
+    <div class="flex justify-between text-body-sm">
+    <span class="text-slate-gray">Email</span>
+    <span class="font-semibold">jane.smith@example.com</span>
+    </div>
+    <div class="flex justify-between text-body-sm">
+    <span class="text-slate-gray">Phone</span>
+    <span class="font-semibold">(555) 019-2234</span>
+    </div>
+    <div class="flex justify-between text-body-sm">
+    <span class="text-slate-gray text-right shrink-0">Address</span>
+    <span class="font-semibold text-right">742 Evergreen Terrace, Springfield, IL</span>
+    </div>
+    </div>
+    </section>
+    <!-- Duplicate Evidence -->
+    <section>
+    <h5 class="text-label-caps font-bold text-primary mb-3 flex items-center gap-2">
+    <span class="material-symbols-outlined text-[18px]">fact_check</span>
+                            Duplicate Evidence
+                        </h5>
+    <div class="space-y-2"><div class="bg-white border border-border-subtle px-3 py-2.5 rounded-lg flex items-center justify-between shadow-sm"><div class="flex flex-col"><span class="text-body-sm text-primary">Exact email match</span><span class="text-[10px] text-slate-gray font-data-mono">jane.smith@example.com</span></div><span class="material-symbols-outlined text-pass text-[18px]">check_circle</span></div><div class="bg-white border border-border-subtle px-3 py-2.5 rounded-lg flex items-center justify-between shadow-sm"><div class="flex flex-col"><span class="text-body-sm text-primary">Exact phone match</span><span class="text-[10px] text-slate-gray font-data-mono">(555) 019-2234</span></div><span class="material-symbols-outlined text-pass text-[18px]">check_circle</span></div><div class="bg-white border border-border-subtle px-3 py-2.5 rounded-lg flex items-center justify-between shadow-sm"><div class="flex flex-col"><span class="text-body-sm text-primary">Similar name match</span><span class="text-[10px] text-slate-gray">Jane A. Smith vs Jane Smith</span></div><span class="material-symbols-outlined text-pass text-[18px]">check_circle</span></div><div class="bg-white border border-border-subtle px-3 py-2.5 rounded-lg flex items-center justify-between shadow-sm"><div class="flex flex-col"><span class="text-body-sm text-primary">Address differs</span><span class="text-[10px] text-slate-gray">Northwood, WA vs Springfield, IL</span></div><span class="material-symbols-outlined text-warning text-[18px]">warning</span></div></div>
+    </section>
+    <!-- Current Import Context -->
+    <section>
+    <h5 class="text-label-caps font-bold text-primary mb-3 flex items-center gap-2">
+    <span class="material-symbols-outlined text-[18px]">inventory_2</span>
+                            Current Import Context
+                        </h5>
+    <div class="bg-surface-audit/80 border border-border-subtle p-3.5 rounded-lg space-y-3">
+    <div class="text-body-sm">
+    <p class="font-bold text-primary">Source File</p>
+    <p class="text-[11px] text-slate-gray mt-1 font-data-mono">MAY_CAMPAIGN.CSV</p>
+    </div>
+    <div class="text-body-sm">
+    <p class="font-bold text-primary">Candidate Group</p>
+    <p class="text-[11px] text-slate-gray mt-1">Found 2 potential matches in this upload for Jane A. Smith.</p>
+    </div>
+    </div>
+    </section>
+    </div>
+    </aside>
+    </div>
+    <!-- Confirmation Modal -->
+    <div class="fixed inset-0 z-[100] hidden items-center justify-center p-4 modal-backdrop" id="link-confirm-modal">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-border-subtle">
+    <div class="p-6 border-b border-border-subtle bg-surface-container-low flex items-center gap-4">
+    <div class="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center shrink-0">
+    <span class="material-symbols-outlined text-secondary text-[28px]" style="font-variation-settings: &quot;FILL&quot; 1;">handshake</span>
+    </div>
+    <div>
+    <h3 class="text-headline-md font-bold text-primary">Confirm Same Person Decision</h3>
+    <p class="text-[11px] text-slate-gray font-bold uppercase tracking-wider">Duplicate Review</p>
+    </div>
+    </div>
+    <div class="p-6">
+    <p class="text-body-md text-on-surface leading-relaxed mb-4">
+                        You are marking <span class="font-bold">Contact A</span> and <span class="font-bold">Contact B</span> as the same person.
+                    </p>
+    <div class="bg-surface-audit p-3 rounded-lg text-body-sm text-slate-gray border border-border-subtle/50">
+    <p class="">This action is non-destructive and records the reviewer's decision for audit purposes. It does not merge the original CSV records or modify raw data.</p>
+    </div>
+    </div>
+    <div class="p-4 bg-surface-container-low flex justify-end gap-3 px-6">
+    <button class="px-6 py-2 rounded-lg font-bold text-body-sm text-slate-gray hover:bg-surface-container-high transition-colors" id="modal-cancel">Cancel</button>
+    <button class="px-8 py-2 rounded-lg bg-secondary text-white font-bold text-body-sm hover:bg-secondary-container transition-all shadow-md" id="modal-confirm">Confirm Decision</button>
+    </div>
+    </div>
+    </div>
+    <!-- Toast Notification -->
+    <div class="fixed top-6 left-1/2 -translate-x-1/2 z-[110] flex flex-col gap-2 pointer-events-none" id="toast-container"></div>
+    <script>
+            const textarea = document.getElementById('reviewer-notes');
+            const charCount = document.getElementById('char-count');
+            const btnLink = document.getElementById('btn-link');
+            const modal = document.getElementById('link-confirm-modal');
+            const modalCancel = document.getElementById('modal-cancel');
+            const modalConfirm = document.getElementById('modal-confirm');
+    
+            textarea.addEventListener('input', () => {
+                const count = textarea.value.length;
+                charCount.textContent = `${count} / 500`;
+                if (count > 450) {
+                    charCount.classList.replace('text-slate-gray/60', 'text-error');
+                } else {
+                    charCount.classList.replace('text-error', 'text-slate-gray/60');
+                }
+            });
+    
+            function showToast(message, type = 'success') {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                const bgColor = type === 'success' ? 'bg-secondary' : 'bg-on-background';
+                const icon = type === 'success' ? 'check_circle' : 'info';
+    
+                toast.className = `${bgColor} text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-300 ease-out translate-y-[-20px] opacity-0 pointer-events-auto border border-white/20`;
+                toast.innerHTML = `
+                    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1; font-size: 20px;">${icon}</span>
+                    <span class="font-bold text-body-sm">${message}</span>
+                `;
+    
+                container.appendChild(toast);
+                setTimeout(() => {
+                    toast.classList.remove('translate-y-[-20px]', 'opacity-0');
+                }, 10);
+    
+                setTimeout(() => {
+                    toast.classList.add('translate-y-[-20px]', 'opacity-0');
+                    setTimeout(() => toast.remove(), 300);
+                }, 3000);
+            }
+    
+            btnLink.addEventListener('click', () => {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            });
+    
+            modalCancel.addEventListener('click', () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            });
+    
+            modalConfirm.addEventListener('click', () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                showToast('Decision recorded: Contacts marked as same person');
+                textarea.value = '';
+                charCount.textContent = '0 / 500';
+            });
+    
+            document.getElementById('btn-different').addEventListener('click', () => showToast('Marked as distinct persons', 'info'));
+            document.getElementById('btn-defer').addEventListener('click', () => showToast('Duplicate review deferred', 'info'));
+        </script>
+    
+    
+    
+    
+    </body></html>
