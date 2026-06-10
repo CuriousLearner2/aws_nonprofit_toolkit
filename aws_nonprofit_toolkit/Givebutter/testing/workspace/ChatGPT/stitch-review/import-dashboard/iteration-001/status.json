@@ -1,0 +1,21 @@
+{
+  "status": "ready_for_gpt_review",
+  "screen": "import-dashboard",
+  "iteration": "001",
+  "stitchProjectId": "9371274764538076058",
+  "stitchPreviewUrl": "https://stitch.withgoogle.com/preview/9371274764538076058?node-id=4d9abeed14714f3aa2202140280c81cb&raw=1",
+  "viewport": {
+    "width": 1440,
+    "height": 1024
+  },
+  "artifactsPath": "testing/workspace/ChatGPT/stitch-review/import-dashboard/iteration-001/",
+  "createdBy": "claude-code",
+  "timestamp": "2026-06-10T00:00:00Z",
+  "captureMetrics": {
+    "consoleMessages": 2,
+    "networkFailures": 4,
+    "screenshotsBytesSizeAfterFold": 182052,
+    "screenshotBytesFullPage": 182051,
+    "htmlByteSize": 53344
+  }
+}
