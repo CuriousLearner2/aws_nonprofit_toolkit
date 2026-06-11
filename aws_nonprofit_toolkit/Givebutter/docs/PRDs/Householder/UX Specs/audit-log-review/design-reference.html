@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DonorTrust v1 — Audit Log Screen</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #F5F5F5;
+            color: #333;
+            line-height: 1.5;
+        }
+
+        /* ===== NAVIGATION BAR ===== */
+        .navbar {
+            background-color: #FFFFFF;
+            border-bottom: 1px solid #E0E0E0;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            height: 64px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .navbar-brand {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1F2937;
+            margin-right: 40px;
+        }
+
+        .navbar-tabs {
+            display: flex;
+            gap: 32px;
+            flex: 1;
+        }
+
+        .navbar-tab {
+            font-size: 14px;
+            padding: 20px 0;
+            cursor: pointer;
+            color: #6B7280;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .navbar-tab:hover {
+            color: #1F2937;
+        }
+
+        .navbar-tab.active {
+            color: #1F2937;
+            border-bottom-color: #2563EB;
+            font-weight: 500;
+        }
+
+        /* ===== MAIN LAYOUT ===== */
+        .container {
+            display: flex;
+            height: calc(100vh - 64px);
+        }
+
+        /* ===== LEFT SIDEBAR ===== */
+        .sidebar-left {
+            width: 280px;
+            background-color: #FFFFFF;
+            border-right: 1px solid #E0E0E0;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            margin-bottom: 28px;
+        }
+
+        .sidebar-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #6B7280;
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-group {
+            margin-bottom: 16px;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .filter-input,
+        .filter-select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #D1D5DB;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #374151;
+            background-color: #FFFFFF;
+        }
+
+        .filter-input:focus,
+        .filter-select:focus {
+            outline: none;
+            border-color: #2563EB;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .content-header {
+            background-color: #FFFFFF;
+            border-bottom: 1px solid #E0E0E0;
+            padding: 24px;
+        }
+
+        .content-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1F2937;
+            margin-bottom: 8px;
+        }
+
+        .content-description {
+            font-size: 14px;
+            color: #6B7280;
+            margin-bottom: 16px;
+        }
+
+        .content-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .export-button {
+            background-color: #2563EB;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .export-button:hover {
+            background-color: #1D4ED8;
+        }
+
+        /* ===== SAFETY STRIP ===== */
+        .safety-strip {
+            background-color: #F3F4F6;
+            border: 1px solid #E5E7EB;
+            padding: 12px 16px;
+            margin: 12px 24px 0 24px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #374151;
+            line-height: 1.5;
+        }
+
+        /* ===== CONTENT SCROLL ===== */
+        .content-scroll {
+            flex: 1;
+            overflow-y: auto;
+            background-color: #FFFFFF;
+        }
+
+        .content-body {
+            padding: 24px;
+        }
+
+        /* ===== AUDIT LOG TABLE ===== */
+        .audit-table-wrapper {
+            overflow-x: auto;
+        }
+
+        .audit-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .audit-table thead {
+            background-color: #F9FAFB;
+            border-bottom: 2px solid #E5E7EB;
+        }
+
+        .audit-table th {
+            padding: 12px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .audit-table tbody tr {
+            border-bottom: 1px solid #E5E7EB;
+            transition: background-color 0.1s;
+        }
+
+        .audit-table tbody tr:hover {
+            background-color: #F9FAFB;
+        }
+
+        .audit-table td {
+            padding: 14px;
+            color: #374151;
+        }
+
+        .audit-table td.timestamp {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            color: #6B7280;
+            white-space: nowrap;
+        }
+
+        .audit-table td.reviewer {
+            font-weight: 500;
+            color: #1F2937;
+        }
+
+        .audit-table td.action-text {
+            color: #6B7280;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .audit-table td.target {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            color: #2563EB;
+        }
+
+        .audit-table td.notes {
+            color: #6B7280;
+            font-style: italic;
+            max-width: 200px;
+            word-wrap: break-word;
+        }
+
+        .audit-table td.status {
+            text-align: center;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .status-conflict-flagged {
+            background-color: #FEE2E2;
+            color: #991B1B;
+        }
+
+        .status-needs-review {
+            background-color: #FEF3C7;
+            color: #92400E;
+        }
+
+        .status-validation-passed {
+            background-color: #DCFCE7;
+            color: #166534;
+        }
+
+        .status-system-logged {
+            background-color: #E0E7FF;
+            color: #3730A3;
+        }
+
+        .audit-table td.action {
+            text-align: right;
+        }
+
+        .action-link {
+            color: #2563EB;
+            text-decoration: none;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 3px;
+            transition: background-color 0.1s;
+        }
+
+        .action-link:hover {
+            background-color: #EFF6FF;
+            text-decoration: underline;
+        }
+
+        /* ===== PAGINATION ===== */
+        .pagination-wrapper {
+            padding: 16px 24px;
+            border-top: 1px solid #E5E7EB;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: #6B7280;
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .pagination-button {
+            padding: 6px 10px;
+            border: 1px solid #D1D5DB;
+            background-color: #FFFFFF;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.1s;
+        }
+
+        .pagination-button:hover:not(:disabled) {
+            border-color: #2563EB;
+            color: #2563EB;
+        }
+
+        .pagination-button:disabled {
+            color: #D1D5DB;
+            cursor: not-allowed;
+        }
+
+        /* ===== FOOTER MESSAGE ===== */
+        .footer-message {
+            background-color: #F3F4F6;
+            border-top: 1px solid #E5E7EB;
+            padding: 14px 24px;
+            font-size: 12px;
+            color: #6B7280;
+            line-height: 1.5;
+        }
+
+        /* ===== RIGHT SIDEBAR (OPTIONAL) ===== */
+        .sidebar-right {
+            width: 280px;
+            background-color: #FFFFFF;
+            border-left: 1px solid #E0E0E0;
+            padding: 24px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .sidebar-right.visible {
+            display: block;
+        }
+
+        .sidebar-right-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1F2937;
+            margin-bottom: 16px;
+        }
+
+        .donor-history-item {
+            background-color: #F9FAFB;
+            border: 1px solid #E5E7EB;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+        }
+
+        .donor-history-label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 4px;
+        }
+
+        .donor-history-value {
+            color: #6B7280;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        /* ===== SYSTEM HEALTH INDICATORS ===== */
+        .health-indicators {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 0 24px;
+        }
+
+        .health-card {
+            background-color: #F9FAFB;
+            border: 1px solid #E5E7EB;
+            border-radius: 6px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .health-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #6B7280;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            margin-bottom: 6px;
+        }
+
+        .health-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1F2937;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1440px) {
+            .sidebar-left {
+                width: 240px;
+            }
+            .sidebar-right {
+                width: 240px;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .sidebar-right {
+                display: none !important;
+            }
+        }
+
+        /* ===== ACCESSIBILITY ===== */
+        a:focus,
+        button:focus,
+        input:focus,
+        select:focus {
+            outline: 2px solid #2563EB;
+            outline-offset: 2px;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        /* ===== PRINT ===== */
+        @media print {
+            .navbar,
+            .sidebar-left,
+            .sidebar-right,
+            .export-button {
+                display: none;
+            }
+            .container {
+                height: auto;
+            }
+            .content-scroll {
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- ===== NAVIGATION ===== -->
+    <nav class="navbar">
+        <div class="navbar-brand">DonorTrust</div>
+        <div class="navbar-tabs">
+            <a href="#" class="navbar-tab">Upload</a>
+            <a href="#" class="navbar-tab">Imports</a>
+            <a href="#" class="navbar-tab">Review</a>
+            <a href="#" class="navbar-tab">Matches</a>
+            <a href="#" class="navbar-tab">People</a>
+            <a href="#" class="navbar-tab">Households</a>
+            <a href="#" class="navbar-tab">Exports</a>
+            <a href="#" class="navbar-tab active">Audit</a>
+        </div>
+    </nav>
+
+    <!-- ===== MAIN LAYOUT ===== -->
+    <div class="container">
+        <!-- ===== LEFT SIDEBAR ===== -->
+        <aside class="sidebar-left">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Data Controls</div>
+                <div class="sidebar-section-title" style="font-size: 11px; font-weight: 400; text-transform: none; color: #9CA3AF; margin-top: -4px; margin-bottom: 16px;">Audit-Safe Filtering</div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="filter-group">
+                    <label class="filter-label">Action Type</label>
+                    <select class="filter-select">
+                        <option>All Actions</option>
+                        <option>Marked Same Person</option>
+                        <option>Marked Different Person</option>
+                        <option>Marked Deferred</option>
+                        <option>Validation Pass</option>
+                        <option>Household Confirmed</option>
+                        <option>Household Rejected</option>
+                        <option>Flagged</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Reviewer</label>
+                    <select class="filter-select">
+                        <option>All Staff Members</option>
+                        <option>Alex Rivers</option>
+                        <option>Morgan Lee</option>
+                        <option>Jordan Smith</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Date Range</label>
+                    <select class="filter-select">
+                        <option>Last 30 Days</option>
+                        <option>Last 7 Days</option>
+                        <option>Today</option>
+                        <option>Custom Range</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Target Search</label>
+                    <input type="text" class="filter-input" placeholder="e.g., #P-99281">
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Audit Status</label>
+                    <select class="filter-select">
+                        <option>All Statuses</option>
+                        <option>Conflict Flagged</option>
+                        <option>Needs Review</option>
+                        <option>Validation Passed</option>
+                        <option>System Logged</option>
+                    </select>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+            <!-- Header -->
+            <div class="content-header">
+                <div class="content-title">Audit Log (v1 Final)</div>
+                <div class="content-description">Comprehensive activity tracking for the current import batch. Maintain institutional donor integrity through verified human-in-the-loop actions for DonorTrust v1.</div>
+                <div class="content-controls">
+                    <div></div>
+                    <button class="export-button">📥 Export PDF</button>
+                </div>
+            </div>
+
+            <!-- Safety Strip -->
+            <div class="safety-strip">
+                <strong>Suggested changes only.</strong> Raw import rows are never changed.
+            </div>
+
+            <!-- Scrollable Content -->
+            <div class="content-scroll">
+                <div class="content-body">
+                    <!-- Audit Log Table -->
+                    <div class="audit-table-wrapper">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Date/Timestamp</th>
+                                    <th>Reviewer & Action</th>
+                                    <th>Target</th>
+                                    <th>Notes</th>
+                                    <th style="text-align: center;">Audit Status</th>
+                                    <th style="text-align: right;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Entry 1: Duplicate Candidate Review -->
+                                <tr>
+                                    <td class="timestamp">Oct 24, 2023 14:22:15 GMT</td>
+                                    <td class="reviewer">Alex Rivers<br><span class="action-text">marked as Same Person</span></td>
+                                    <td class="target">#P-99281-X</td>
+                                    <td class="notes">"Matching email and phone verified via internal database."</td>
+                                    <td class="status"><span class="status-badge status-conflict-flagged">Conflict Flagged (42%)</span></td>
+                                    <td class="action"><a href="#" class="action-link">View</a></td>
+                                </tr>
+
+                                <!-- Entry 2: Household Link Rejection -->
+                                <tr>
+                                    <td class="timestamp">Oct 24, 2023 13:05:44 GMT</td>
+                                    <td class="reviewer">Morgan Lee<br><span class="action-text">rejected Household Link for record</span></td>
+                                    <td class="target">#H-44102-B</td>
+                                    <td class="notes">"Data collision on address field. Significant mismatch."</td>
+                                    <td class="status"><span class="status-badge status-conflict-flagged">Conflict Flagged (42%)</span></td>
+                                    <td class="action"><a href="#" class="action-link">View</a></td>
+                                </tr>
+
+                                <!-- Entry 3: Record Validation Pass -->
+                                <tr>
+                                    <td class="timestamp">Oct 23, 2023 16:48:02 GMT</td>
+                                    <td class="reviewer">Jordan Smith<br><span class="action-text">marked validation pass for row</span></td>
+                                    <td class="target">#P-77611-M</td>
+                                    <td class="notes">"Duplicate identified from CSV import. Validated manually."</td>
+                                    <td class="status"><span class="status-badge status-validation-passed">Validation Passed (81%)</span></td>
+                                    <td class="action"><a href="#" class="action-link">View</a></td>
+                                </tr>
+
+                                <!-- Entry 4: Batch Ingestion (System) -->
+                                <tr>
+                                    <td class="timestamp">Oct 23, 2023 15:16:33 GMT</td>
+                                    <td class="reviewer">System<br><span class="action-text">ingested batch donors_q3.csv</span></td>
+                                    <td class="target">#B-88122-A</td>
+                                    <td class="notes">"Initial ingestion of 4,200 records successful."</td>
+                                    <td class="status"><span class="status-badge status-system-logged">System Logged (100%)</span></td>
+                                    <td class="action"><a href="#" class="action-link">View</a></td>
+                                </tr>
+
+                                <!-- Entry 5: Field Validation Failure -->
+                                <tr>
+                                    <td class="timestamp">Oct 22, 2023 10:32:18 GMT</td>
+                                    <td class="reviewer">Casey Jackson<br><span class="action-text">marked needs review for row</span></td>
+                                    <td class="target">#P-65443-D</td>
+                                    <td class="notes">"Invalid email format detected during validation pass."</td>
+                                    <td class="status"><span class="status-badge status-needs-review">Needs Review (64%)</span></td>
+                                    <td class="action"><a href="#" class="action-link">View</a></td>
+                                </tr>
+
+                                <!-- Entry 6: Mark as Deferred -->
+                                <tr>
+                                    <td class="timestamp">Oct 21, 2023 14:15:42 GMT</td>
+                                    <td class="reviewer">Sam Kumar<br><span class="action-text">marked as Deferred</span></td>
+                                    <td class="target">#P-51298-K</td>
+                                    <td class="notes">"Awaiting additional contact verification. Flagged for follow-up."</td>
+                                    <td class="status"><span class="status-badge status-needs-review">Needs Review (55%)</span></td>
+                                    <td class="action"><a href="#" class="action-link">View</a></td>
+                                </tr>
+
+                                <!-- Entry 7: Household Confirmation -->
+                                <tr>
+                                    <td class="timestamp">Oct 20, 2023 09:28:56 GMT</td>
+                                    <td class="reviewer">Taylor North<br><span class="action-text">confirmed Household Link for record</span></td>
+                                    <td class="target">#H-29876-Q</td>
+                                    <td class="notes">"Shared address and phone verified. Strong match confidence."</td>
+                                    <td class="status"><span class="status-badge status-validation-passed">Validation Passed (97%)</span></td>
+                                    <td class="action"><a href="#" class="action-link">View</a></td>
+                                </tr>
+
+                                <!-- Entry 8: Flagged for Review -->
+                                <tr>
+                                    <td class="timestamp">Oct 19, 2023 11:47:30 GMT</td>
+                                    <td class="reviewer">Morgan Lee<br><span class="action-text">flagged for anomaly detection</span></td>
+                                    <td class="target">#P-88234-R</td>
+                                    <td class="notes">"System detected unusual donation pattern. Requires manual review."</td>
+                                    <td class="status"><span class="status-badge status-conflict-flagged">Conflict Flagged (35%)</span></td>
+                                    <td class="action"><a href="#" class="action-link">View</a></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="pagination-wrapper">
+                        <div>Showing <strong>1-8 of 1,248</strong> audit log entries</div>
+                        <div class="pagination-controls">
+                            <button class="pagination-button">← Previous</button>
+                            <span style="margin: 0 8px; color: #6B7280;">Page 1 of 156</span>
+                            <button class="pagination-button">Next →</button>
+                        </div>
+                    </div>
+
+                    <!-- System Health Indicators -->
+                    <div style="padding: 24px 24px 0;">
+                        <div style="font-size: 14px; font-weight: 600; color: #1F2937; margin-bottom: 12px;">System Health Indicators</div>
+                    </div>
+                    <div class="health-indicators">
+                        <div class="health-card">
+                            <div class="health-label">Integrity Score</div>
+                            <div class="health-value">98.4%</div>
+                            <div style="font-size: 11px; color: #6B7280; margin-top: 4px;">Import batch quality</div>
+                        </div>
+                        <div class="health-card">
+                            <div class="health-label">Review Velocity</div>
+                            <div class="health-value">142/hr</div>
+                            <div style="font-size: 11px; color: #6B7280; margin-top: 4px;">Audits per hour</div>
+                        </div>
+                        <div class="health-card">
+                            <div class="health-label">Pending Conflicts</div>
+                            <div class="health-value">38</div>
+                            <div style="font-size: 11px; color: #6B7280; margin-top: 4px;">Batches requiring review</div>
+                        </div>
+                        <div class="health-card">
+                            <div class="health-label">Anomalies Detected</div>
+                            <div class="health-value">0</div>
+                            <div style="font-size: 11px; color: #6B7280; margin-top: 4px;">Data quality</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer Message -->
+                <div class="footer-message">
+                    <strong>All actions are logged to the audit trail.</strong> Suggested changes affect export staging only. Raw import rows are never changed from this screen.
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== RIGHT SIDEBAR (OPTIONAL) ===== -->
+        <aside class="sidebar-right visible">
+            <div class="sidebar-right-title">Row Audit History (Optional)</div>
+            <div style="font-size: 12px; color: #6B7280; margin-bottom: 16px;">Select a row to view detailed audit history</div>
+
+            <div class="donor-history-item">
+                <div class="donor-history-label">Reference ID</div>
+                <div class="donor-history-value">#P-99281-X</div>
+            </div>
+
+            <div class="donor-history-item">
+                <div class="donor-history-label">Last Action</div>
+                <div class="donor-history-value">Oct 24, 14:22:15</div>
+            </div>
+
+            <div class="donor-history-item">
+                <div class="donor-history-label">Total Actions</div>
+                <div class="donor-history-value">3 decisions</div>
+            </div>
+
+            <div class="donor-history-item">
+                <div class="donor-history-label">Current Status</div>
+                <div class="donor-history-value">Conflict Flagged (42%)</div>
+            </div>
+
+            <div style="margin-top: 20px; border-top: 1px solid #E5E7EB; padding-top: 16px;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #6B7280; font-weight: 600; margin-bottom: 12px; letter-spacing: 0.3px;">Decision Timeline</div>
+                <div style="font-size: 12px; color: #6B7280; line-height: 1.6;">
+                    <div style="margin-bottom: 8px;">
+                        <strong style="color: #374151;">Oct 24, 14:22</strong><br>
+                        Alex Rivers marked as Same Person
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong style="color: #374151;">Oct 23, 16:48</strong><br>
+                        Jordan Smith marked validation pass
+                    </div>
+                    <div>
+                        <strong style="color: #374151;">Oct 23, 15:16</strong><br>
+                        System ingested batch
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+</body>
+</html>

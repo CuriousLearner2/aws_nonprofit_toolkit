@@ -1,0 +1,89 @@
+{
+  "design_type": "implementation-reference-mock",
+  "screen_name": "Households Review (Audit-Safe Household Suggestion Review)",
+  "not_stitch_update": true,
+  "status": "all_checks_pass",
+
+  "critical_changes": {
+    "three_decision_buttons": true,
+    "buttons_balanced_not_dominant": true,
+    "confirmation_modal_present": true,
+    "modal_correct_copy": true,
+    "safety_strip_updated": true,
+    "scope_copy_present": true
+  },
+
+  "visual_verification": {
+    "donortrust_navigation": true,
+    "households_tab_active": true,
+    "left_sidebar_present": true,
+    "batch_status_card": true,
+    "page_title_correct": true,
+    "batch_metadata_present": true,
+    "safety_strip_visible": true,
+    "household_cards_displayed": true,
+    "suggested_household_names": true,
+    "confidence_labels_numeric": true,
+    "proposed_members_section": true,
+    "evidence_section_with_conflicts": true
+  },
+
+  "safety_verification": {
+    "no_approve_all_language": true,
+    "no_auto_household": true,
+    "no_auto_merge": true,
+    "no_merge_language": true,
+    "no_writeback": true,
+    "no_sync_to_crm": true,
+    "no_apply_all": true,
+    "raw_rows_immutable_stated": true,
+    "export_staging_only_stated": true,
+    "decision_logged_stated": true
+  },
+
+  "evidence_verification": {
+    "matching_signals_shown": true,
+    "conflicting_signals_transparent": true,
+    "confidence_calculation_explained": true,
+    "address_matching": true,
+    "name_matching": true,
+    "phone_matching": true,
+    "source_file_indicated": true,
+    "conflicting_email_domains_noted": true,
+    "conflicting_last_names_noted": true
+  },
+
+  "modal_verification": {
+    "confirm_modal_title": "Confirm suggested household?",
+    "modal_body_explains_staging": true,
+    "modal_states_no_raw_mutation": true,
+    "modal_states_audit_logged": true,
+    "modal_buttons_cancel_confirm": true,
+    "modal_non_dismissible": true
+  },
+
+  "structure_verification": {
+    "card_based_layout": true,
+    "header_with_name_confidence": true,
+    "proposed_members_clear": true,
+    "evidence_display_strong": true,
+    "decision_buttons_visible": true,
+    "scope_copy_below_buttons": true
+  },
+
+  "desktop_web_verification": {
+    "top_navigation_bar": true,
+    "left_sidebar_data_controls": true,
+    "main_content_area": true,
+    "responsive_layout": true,
+    "viewport_1440px": true
+  },
+
+  "summary": {
+    "total_checks": 40,
+    "passes": 40,
+    "failures": 0,
+    "percentage": 100.0,
+    "status": "ALL PASS"
+  }
+}

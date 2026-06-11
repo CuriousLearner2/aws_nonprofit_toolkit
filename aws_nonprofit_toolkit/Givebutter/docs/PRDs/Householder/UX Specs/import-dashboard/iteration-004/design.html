@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>DonorTrust | Import Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&amp;family=JetBrains+Mono&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error": "#ba1a1a",
+                        "surface-dim": "#d8dadc",
+                        "border-subtle": "#E2E8F0",
+                        "tertiary-fixed": "#fcdeb5",
+                        "secondary": "#0051d5",
+                        "primary": "#000000",
+                        "tertiary": "#000000",
+                        "inverse-primary": "#bec6e0",
+                        "on-tertiary-fixed": "#271901",
+                        "warning": "#F59E0B",
+                        "surface-variant": "#e0e3e5",
+                        "surface-container-highest": "#e0e3e5",
+                        "tertiary-fixed-dim": "#dec29a",
+                        "on-tertiary-container": "#98805d",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-container": "#7c839b",
+                        "background": "#f7f9fb",
+                        "surface-tint": "#565e74",
+                        "inverse-on-surface": "#eff1f3",
+                        "pass": "#10B981",
+                        "outline-variant": "#c6c6cd",
+                        "on-background": "#191c1e",
+                        "surface-container-high": "#e6e8ea",
+                        "on-surface-variant": "#45464d",
+                        "outline": "#76777d",
+                        "inverse-surface": "#2d3133",
+                        "surface-container": "#eceef0",
+                        "slate-gray": "#64748B",
+                        "primary-fixed": "#dae2fd",
+                        "on-primary": "#ffffff",
+                        "fail": "#EF4444",
+                        "primary-container": "#0f172a",
+                        "on-surface": "#191c1e",
+                        "primary-fixed-dim": "#bec6e0",
+                        "on-tertiary-fixed-variant": "#574425",
+                        "on-secondary": "#ffffff",
+                        "surface-bright": "#f7f9fb",
+                        "surface-container-low": "#f2f4f6",
+                        "on-secondary-fixed-variant": "#003ea8",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "secondary-container": "#316bf3",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#b4c5ff",
+                        "surface-audit": "#F1F5F9",
+                        "surface": "#f7f9fb",
+                        "on-error": "#ffffff",
+                        "on-primary-fixed": "#131b2e",
+                        "tertiary-container": "#271901",
+                        "on-secondary-fixed": "#00174b",
+                        "secondary-fixed": "#dbe1ff",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#fefcff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "container-padding": "12px",
+                        "base": "4px",
+                        "margin-page": "24px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "data-mono": ["JetBrains Mono"],
+                        "body-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "label-caps": ["11px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "headline-lg": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 1);
+            border: 1px solid #E2E8F0;
+        }
+        .badge-safety {
+            background-color: #f0f4f8;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            font-size: 10px;
+            color: #475569;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body class="text-on-surface">
+<!-- Top Navigation Bar -->
+<header class="bg-surface-container-lowest flex justify-between items-center w-full px-margin-page py-base border-b border-border-subtle sticky top-0 z-40">
+<div class="flex items-center gap-8">
+<span class="text-headline-md font-headline-md font-black text-primary">DonorTrust</span>
+<nav class="hidden md:flex gap-6 items-center">
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Upload</a>
+<a class="text-secondary border-b-2 border-secondary font-semibold pb-1 font-body-md text-body-md" href="#">Imports</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Review</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Matches</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">People</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Households</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Exports</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Audit</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden border border-border-subtle">
+<img alt="Operator Profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCqSSlDg_bwNiqmHNbXABhd9_sN-oJHj5ve_wGP_5MBTqdZMrAMuha6jFCWhutMYNcIsHRagjNk-TNlPcNqNvqY_cp9SacHgPaG61Mt3N00mJLgKbIzkHByT8jfR5UkajPkJ16b0HltPQkhRUuMlMuZA-jPqf29cLWuF9KICLwcld-74QTpQD3cWYNvAbxBFmjDOkVZ9v6OeaOcZy4cZGns-ZfcOlfF-0eaN76xB77JG3CJ0WO3zQzLzswjyi47Y1NwkQYzxzlrO8I"/>
+</div>
+</div>
+</header>
+<main class="max-w-[1440px] mx-auto px-margin-page py-8">
+<!-- Header Section -->
+<div class="mb-8 flex flex-col md:flex-row md:items-start justify-between gap-4">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-primary mb-1">Import Dashboard</h1>
+<div class="flex flex-wrap items-center gap-2 text-body-sm font-body-sm text-slate-gray">
+<span class="font-semibold text-on-surface">givebutter_donors_june.csv</span>
+<span>·</span>
+<span>IMP-2026-006</span>
+<span>·</span>
+<span>Uploaded Jun 8, 2026</span>
+<span class="ml-2 badge-safety">Human-in-loop · No auto-apply</span>
+</div>
+</div>
+<div class="flex gap-3">
+<button class="px-4 py-2 bg-surface-container-lowest border border-border-subtle text-on-surface font-semibold rounded-lg hover:bg-surface-container transition-all flex items-center gap-2">
+                    Back to Imports
+                </button>
+</div>
+</div>
+<!-- Top Level Stats -->
+<div class="bg-surface-container-lowest border border-border-subtle p-6 rounded-xl mb-8 flex flex-col md:flex-row gap-8 items-center justify-between">
+<div class="flex gap-12">
+<div>
+<p class="font-label-caps text-label-caps text-slate-gray uppercase mb-2">Total Contacts</p>
+<span class="text-[32px] font-bold text-primary">50</span>
+</div>
+<div>
+<p class="font-label-caps text-label-caps text-slate-gray uppercase mb-2">Raw Rows Preserved</p>
+<span class="text-[32px] font-bold text-secondary">50</span>
+</div>
+</div>
+<div class="flex-1 max-w-xl border-l border-border-subtle pl-8">
+<p class="font-label-caps text-label-caps text-slate-gray uppercase mb-4">Validation Tier Breakdown</p>
+<div class="flex gap-10">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-pass"></div>
+<span class="text-headline-md font-bold text-primary">45</span>
+<span class="text-[10px] font-bold text-slate-gray uppercase tracking-wider">Pass</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-warning"></div>
+<span class="text-headline-md font-bold text-primary">5</span>
+<span class="text-[10px] font-bold text-slate-gray uppercase tracking-wider">Warning</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-slate-300"></div>
+<span class="text-headline-md font-bold text-slate-400">0</span>
+<span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fail</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Queue Navigation Hub -->
+<div class="mb-8">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter mb-3">
+<!-- Pending Normalizations -->
+<div class="col-span-1 glass-card p-6 rounded-xl flex flex-col justify-between">
+<div>
+<div class="w-10 h-10 bg-surface-container rounded-lg flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-slate-gray">spellcheck</span>
+</div>
+<div class="flex items-baseline gap-2 mb-1">
+<span class="text-2xl font-bold text-primary">12</span>
+<h3 class="font-headline-md text-headline-md text-primary">Pending Normalizations</h3>
+</div>
+<p class="text-body-sm text-slate-gray mb-6">Proposed field-format suggestions only.</p>
+</div>
+<button class="w-full py-2 bg-surface-container-lowest border border-border-subtle text-on-surface rounded-lg font-semibold text-body-md hover:bg-surface-container transition-all">Review Normalizations</button>
+</div>
+<!-- Pending Households -->
+<div class="col-span-1 glass-card p-6 rounded-xl flex flex-col justify-between">
+<div>
+<div class="w-10 h-10 bg-surface-container rounded-lg flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-slate-gray" style="font-variation-settings: 'FILL' 1;">group</span>
+</div>
+<div class="flex items-baseline gap-2 mb-1">
+<span class="text-2xl font-bold text-primary">5</span>
+<h3 class="font-headline-md text-headline-md text-primary">Pending Households</h3>
+</div>
+<p class="text-body-sm text-slate-gray mb-6">Proposed household groupings awaiting approval.</p>
+</div>
+<button class="w-full py-2 bg-surface-container-lowest border border-border-subtle text-on-surface rounded-lg font-semibold text-body-md hover:bg-surface-container transition-all">Review Households</button>
+</div>
+<!-- Pending Duplicates -->
+<div class="col-span-1 glass-card p-6 rounded-xl flex flex-col justify-between">
+<div>
+<div class="w-10 h-10 bg-surface-container rounded-lg flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-slate-gray">content_copy</span>
+</div>
+<div class="flex items-baseline gap-2 mb-1">
+<span class="text-2xl font-bold text-primary">3</span>
+<h3 class="font-headline-md text-headline-md text-primary">Duplicate Candidates</h3>
+</div>
+<p class="text-body-sm text-slate-gray mb-6">Same-person candidate pairs, record-only in v1.</p>
+</div>
+<button class="w-full py-2 bg-surface-container-lowest border border-border-subtle text-on-surface rounded-lg font-semibold text-body-md hover:bg-surface-container transition-all">Review Duplicate Candidates</button>
+</div>
+</div>
+<p class="text-[12px] text-[#6b7280] italic ml-1">Dashboard is read-only. Decisions happen in review screens.</p>
+</div>
+<!-- Bottom Layout -->
+<div class="flex flex-col lg:flex-row gap-gutter">
+<!-- Audit Trail (Recent Actions) -->
+<div class="w-full lg:w-[70%] bg-surface-container-lowest border border-border-subtle rounded-xl overflow-hidden flex flex-col">
+<div class="px-6 py-4 border-b border-border-subtle flex justify-between items-center bg-surface-bright">
+<h2 class="font-headline-md text-headline-md text-primary">Audit Trail</h2>
+</div>
+<div class="divide-y divide-border-subtle flex-1">
+<div class="px-6 py-3 hover:bg-surface-audit transition-colors">
+<p class="text-body-sm text-on-surface">Review decision: <span class="font-semibold">Approved Normalization</span> · John Smith · operator@example.com · 2m ago</p>
+</div>
+<div class="px-6 py-3 hover:bg-surface-audit transition-colors">
+<p class="text-body-sm text-on-surface">Review decision: <span class="font-semibold text-fail">Rejected Household</span> · Household #402 · operator@example.com · 8m ago</p>
+</div>
+<div class="px-6 py-3 hover:bg-surface-audit transition-colors">
+<p class="text-body-sm text-on-surface">Review decision: <span class="font-semibold text-slate-gray">Deferred Duplicate</span> · Doe/Doe Pair · operator@example.com · 12m ago</p>
+</div>
+<div class="px-6 py-3 hover:bg-surface-audit transition-colors">
+<p class="text-body-sm text-on-surface">Review decision: <span class="font-semibold">Marked Different</span> · Jane Doe / Janet Doe · operator@example.com · 15m ago</p>
+</div>
+<div class="px-6 py-3 hover:bg-surface-audit transition-colors">
+<p class="text-body-sm text-on-surface">Review decision: <span class="font-semibold">Bulk Approval</span> · 5 normalizations · operator@example.com · 20m ago</p>
+</div>
+</div>
+</div>
+<!-- Guardrails & Export -->
+<div class="w-full lg:w-[30%] space-y-gutter flex flex-col">
+<div class="bg-primary-container p-6 rounded-xl text-on-primary border border-border-subtle">
+<h3 class="font-headline-md text-headline-md mb-4 text-white">v1 Guardrails</h3>
+<ul class="text-body-sm text-slate-300 space-y-3">
+<li class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-pass">check_circle</span>
+                            Raw rows preserved unchanged
+                        </li>
+<li class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-pass">check_circle</span>
+                            No auto-apply formatting
+                        </li>
+<li class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-pass">check_circle</span>
+                            No database writeback in v1
+                        </li>
+<li class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-pass">check_circle</span>
+                            Reviewer decides every change
+                        </li>
+</ul>
+</div>
+<div class="bg-surface-container-lowest border border-border-subtle p-6 rounded-xl">
+<h4 class="font-headline-md text-headline-md text-primary mb-2">Export Access</h4>
+<p class="text-body-sm text-slate-gray mb-4">Exports reflect the current state of completed reviews. Access raw, cleaned, or householded files.</p>
+<button class="w-full py-2 bg-surface-container-highest text-on-surface font-semibold rounded-lg text-body-sm hover:bg-surface-dim transition-all flex justify-center items-center gap-2">
+                        Open Export Console
+                        <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

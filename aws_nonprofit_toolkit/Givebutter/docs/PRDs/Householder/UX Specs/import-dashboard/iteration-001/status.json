@@ -1,0 +1,25 @@
+{
+  "status": "capture_failed_wrong_screen",
+  "screen": "import-dashboard",
+  "iteration": "001",
+  "stitchProjectId": "9371274764538076058",
+  "stitchPreviewUrl": "https://stitch.withgoogle.com/preview/9371274764538076058?node-id=4d9abeed14714f3aa2202140280c81cb&raw=1",
+  "actualScreenCaptured": "Q3 Donor Update_Final_v3.csv",
+  "viewport": {
+    "width": 1440,
+    "height": 1024
+  },
+  "artifactsPath": "testing/workspace/ChatGPT/stitch-review/import-dashboard/iteration-001/",
+  "createdBy": "claude-code",
+  "timestamp": "2026-06-10T00:00:00Z",
+  "captureMetrics": {
+    "consoleMessages": 2,
+    "networkFailures": 4,
+    "screenshotsBytesSizeAfterFold": 182052,
+    "screenshotBytesFullPage": 182051,
+    "htmlByteSize": 53344
+  },
+  "reviewStatus": "capture_failed_wrong_screen",
+  "reviewNotes": "The Stitch preview node-id renders 'Q3 Donor Update_Final_v3.csv', not the Import Dashboard. Recapture with correct screen ID required.",
+  "nextAction": "Provide correct Stitch Import Dashboard screen ID and recapture"
+}

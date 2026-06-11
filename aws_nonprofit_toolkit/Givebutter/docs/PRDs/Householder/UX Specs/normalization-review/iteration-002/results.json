@@ -1,0 +1,115 @@
+{
+  "status": "complete",
+  "timestamp": "2026-06-10T18:00:00Z",
+  "iteration": "002",
+  "screenName": "Normalization Review",
+  "originalScreenId": "38d90e6c683441ee9298ef9ebf48eb1d",
+  "editedScreenId": "082fdd7a1e3540e08b8f99880fea906b",
+  "method": "Stitch SDK screen.edit()",
+  "parameters": {
+    "viewport": "DESKTOP",
+    "model": "GEMINI_3_FLASH"
+  },
+  "artifacts": {
+    "html": {
+      "file": "design.html",
+      "size_kb": 27.5,
+      "status": "downloaded"
+    },
+    "screenshot_sdk": {
+      "file": "screenshot.png",
+      "size_kb": 52,
+      "status": "downloaded"
+    },
+    "screenshot_2x_above_fold": {
+      "file": "screenshot-2x-above-fold.png",
+      "size_kb": 276,
+      "resolution": "2880×2048px",
+      "status": "captured"
+    },
+    "screenshot_2x_full": {
+      "file": "screenshot-2x-full.png",
+      "size_kb": 276,
+      "status": "captured"
+    }
+  },
+  "editStatusVerification": {
+    "screenEditReturned": true,
+    "returnedValidScreenId": true,
+    "screenIdChanged": true,
+    "htmlUrlReturned": true,
+    "imageUrlReturned": true,
+    "htmlDownloaded": true,
+    "imageDownloaded": true
+  },
+  "contentVerification": {
+    "containsNormalizationReview": true,
+    "containsDonorTrustNav": true,
+    "containsDataControlsSidebar": true,
+    "containsSuggestionsTable": true,
+    "containsPagination": true
+  },
+  "changesVerified": {
+    "approveSelectedButton": {
+      "status": true,
+      "evidence": "Found 'Approve Selected' button text in HTML"
+    },
+    "safetyStrip": {
+      "status": true,
+      "text": "Human-in-loop · Raw rows preserved · Approved normalizations affect export staging only",
+      "evidence": "Safety strip present below title"
+    },
+    "modalCopy": {
+      "status": true,
+      "primaryText": "Approve selected normalization suggestions for export staging?",
+      "secondaryText": "Raw import rows remain unchanged. These decisions are logged to the audit trail.",
+      "evidence": "Modal dialog with correct language present"
+    },
+    "toastLanguage": {
+      "status": true,
+      "text": "Normalization decisions recorded",
+      "evidence": "Toast message updated in HTML"
+    },
+    "auditTrailLanguage": {
+      "status": true,
+      "text": "These decisions are logged to the audit trail",
+      "evidence": "Audit trail reference present in modal"
+    },
+    "statusIndicators": {
+      "status": true,
+      "badges": ["Pending", "Approved", "Rejected", "Deferred"],
+      "evidence": "Status badges found in HTML"
+    }
+  },
+  "constraintsMaintained": {
+    "noRawDataMutation": true,
+    "noGivebutterWriteback": true,
+    "noAutomaticCleaning": true,
+    "noApprovAllShortcut": true,
+    "noScopeCrossPollination": true
+  },
+  "designAssessment": {
+    "desktopFirst": true,
+    "highDensityReadable": true,
+    "technicalTrustworthy": true,
+    "auditSafe": true,
+    "consistentWithImportDashboard": true
+  },
+  "allRequirementsMet": true,
+  "readyForImplementation": true,
+  "readyForStakeholderReview": true,
+  "nextSteps": [
+    "Stakeholder review of safety-first design",
+    "Feedback collection on usability",
+    "Implementation using design.html",
+    "Consider iteration-003 if additional refinements needed"
+  ],
+  "notes": [
+    "All 8 required changes successfully applied",
+    "All hard constraints preserved",
+    "Safety language reinforced throughout",
+    "Audit trail references consistent",
+    "Status indicators provide transparency",
+    "No regressions detected"
+  ]
+}
