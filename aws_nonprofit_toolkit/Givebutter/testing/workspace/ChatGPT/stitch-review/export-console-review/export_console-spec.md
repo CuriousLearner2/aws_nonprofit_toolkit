@@ -14,7 +14,7 @@
 
 > The system prepares export files. The reviewer chooses what to download. Raw import rows remain unchanged. No data is written back to Givebutter or any CRM.
 
-**Core guarantee:** Every export action is logged with timestamp, actor, what was exported, and destination. Raw import rows remain unchanged. Exports affect downloadable files only. All reviewer decisions are preserved in export staging.
+**Core guarantee:** Every export action is logged with timestamp, actor, export type, filename, and generated file metadata. Raw import rows remain unchanged. Exports affect downloadable files only. All reviewer decisions are preserved in export staging.
 
 ---
 
@@ -112,7 +112,7 @@ Raw import rows remain unchanged. No data is written back to Givebutter or any C
 
 #### 1. Reviewed Export
 **Purpose:** Contacts with finalized reviewer decisions applied to export staging.  
-**Description:** CSV export with all reviewer-confirmed duplicates, household links, and validation decisions applied. Ready for downstream import.  
+**Description:** CSV export with all reviewer-confirmed duplicates, household links, and validation decisions applied. Ready for manual downstream import or review.  
 **Badge:** Generated  
 **Action:** Download Reviewed CSV
 
@@ -124,7 +124,7 @@ Raw import rows remain unchanged. No data is written back to Givebutter or any C
 
 #### 3. Backlog Export
 **Purpose:** Records with unresolved suggestions or pending decisions.  
-**Description:** Contacts where reviewers deferred decisions or conflicts remain. Requires additional review before downstream import.  
+**Description:** Contacts where reviewers deferred decisions or conflicts remain. Requires additional review before manual downstream import or review.  
 **Caution Copy:** "For internal review only. Contains unresolved suggestions or pending reviewer decisions."  
 **Badge:** Pending Review  
 **Action:** Download Backlog CSV
