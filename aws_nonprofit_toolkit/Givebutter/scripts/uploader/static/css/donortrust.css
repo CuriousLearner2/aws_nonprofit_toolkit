@@ -92,25 +92,25 @@ body {
 /* =========================================================================== */
 
 .donortrust-container {
-    max-width: 1440px;
+    max-width: 1280px;
     margin: 0 auto;
     display: grid;
-    grid-template-columns: 250px 1fr 300px;
+    grid-template-columns: 1fr;
     gap: 20px;
     padding: 20px;
 }
 
 .donortrust-container.no-sidebar {
     grid-template-columns: 1fr;
-    max-width: 1200px;
+    max-width: 1280px;
 }
 
 .donortrust-container.left-only {
-    grid-template-columns: 250px 1fr;
+    grid-template-columns: 1fr;
 }
 
 .donortrust-container.no-right {
-    grid-template-columns: 250px 1fr;
+    grid-template-columns: 1fr;
 }
 
 .donortrust-main {
@@ -118,6 +118,7 @@ body {
     border: 1px solid #e0e0e0;
     border-radius: 4px;
     padding: 30px;
+    width: 100%;
 }
 
 /* =========================================================================== */
@@ -618,6 +619,13 @@ body.has-sticky-bar {
 /* RESPONSIVE                                                                  */
 /* =========================================================================== */
 
+/* Grid layout for queue cards and other multi-column layouts */
+.queue-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
 @media (max-width: 1024px) {
     .donortrust-container {
         grid-template-columns: 1fr;
@@ -626,6 +634,10 @@ body.has-sticky-bar {
     .donortrust-sidebar-left,
     .donortrust-sidebar-right {
         position: static;
+    }
+
+    .queue-cards-grid {
+        grid-template-columns: 1fr;
     }
 }
 

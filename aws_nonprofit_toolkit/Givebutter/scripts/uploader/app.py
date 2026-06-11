@@ -29,17 +29,31 @@ from processor import (
 )
 
 # Import fixtures for DonorTrust v1 prototype
-from .fixtures import (
-    IMPORT_BATCH,
-    CONTACTS,
-    DUPLICATE_CANDIDATES,
-    NORMALIZATION_SUGGESTIONS,
-    HOUSEHOLD_SUGGESTIONS,
-    AUDIT_LOG_ENTRIES,
-    EXPORT_CARDS,
-    IMPORTS_LIST,
-    QUEUE_STATUS
-)
+try:
+    from .fixtures import (
+        IMPORT_BATCH,
+        CONTACTS,
+        DUPLICATE_CANDIDATES,
+        NORMALIZATION_SUGGESTIONS,
+        HOUSEHOLD_SUGGESTIONS,
+        AUDIT_LOG_ENTRIES,
+        EXPORT_CARDS,
+        IMPORTS_LIST,
+        QUEUE_STATUS
+    )
+except ImportError:
+    # Fallback for direct script execution
+    from fixtures import (
+        IMPORT_BATCH,
+        CONTACTS,
+        DUPLICATE_CANDIDATES,
+        NORMALIZATION_SUGGESTIONS,
+        HOUSEHOLD_SUGGESTIONS,
+        AUDIT_LOG_ENTRIES,
+        EXPORT_CARDS,
+        IMPORTS_LIST,
+        QUEUE_STATUS
+    )
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)

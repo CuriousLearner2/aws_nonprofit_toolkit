@@ -21,31 +21,41 @@
 
 <!-- Records Table -->
 <div class="table-container">
-    <table>
+    <table style="font-size: 13px;">
         <thead>
             <tr>
                 <th style="width: 40px;"><input type="checkbox" id="select-all"></th>
-                <th>Name</th>
-                <th>Issue Type</th>
-                <th>Issue Details</th>
-                <th style="width: 100px;">Action</th>
+                <th style="width: 80px;">Transaction ID</th>
+                <th style="width: 80px;">Date</th>
+                <th style="width: 120px;">Name</th>
+                <th style="width: 140px;">Email</th>
+                <th style="width: 100px;">Phone</th>
+                <th style="width: 80px;">Amount</th>
+                <th style="width: 140px;">Address</th>
+                <th style="width: 100px;">Validation Status</th>
+                <th style="width: 80px;">Action</th>
             </tr>
         </thead>
         <tbody>
             {% for record in validation_issues %}
             <tr>
                 <td><input type="checkbox" class="row-selector" data-record-id="{{ record.id }}"></td>
+                <td>{{ record.id }}</td>
+                <td style="color: #666;">{{ record.date }}</td>
                 <td style="font-weight: 500;">{{ record.name }}</td>
+                <td style="color: #666;">{{ record.email }}</td>
+                <td style="color: #666;">{{ record.phone }}</td>
+                <td style="text-align: right;">{{ record.amount }}</td>
+                <td style="color: #666; font-size: 12px;">{{ record.address }}</td>
                 <td>
                     {% if record.issue_type == 'missing-required' %}
-                    <span style="color: #ef4444; font-weight: 600;">Missing Required Field</span>
+                    <span style="background-color: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Missing Required</span>
                     {% elif record.issue_type == 'format-invalid' %}
-                    <span style="color: #f59e0b; font-weight: 600;">Invalid Format</span>
+                    <span style="background-color: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Invalid Format</span>
                     {% elif record.issue_type == 'length-exceeded' %}
-                    <span style="color: #0ea5e9; font-weight: 600;">Length Exceeded</span>
+                    <span style="background-color: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Length Exceeded</span>
                     {% endif %}
                 </td>
-                <td style="font-size: 13px; color: #666;">{{ record.issue_description }}</td>
                 <td>
                     <a href="#" class="table-action" data-action="inspect-record" data-record-id="{{ record.id }}">Inspect</a>
                 </td>

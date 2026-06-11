@@ -106,14 +106,32 @@ function handleAction(action, itemId) {
         case 'reject':
             message = `✗ Rejected: #${itemId}`;
             break;
+        case 'different':
+            message = `✗ Marked Different: #${itemId}`;
+            break;
         case 'defer':
             message = `⏱ Deferred: #${itemId}`;
             break;
         case 'mark-same-person':
             message = `✓ Marked as Same Person: #${itemId}`;
             break;
+        case 'confirm-normalization':
+            message = `✓ Normalization Confirmed: #${itemId}`;
+            break;
+        case 'reject-normalization':
+            message = `✗ Normalization Rejected: #${itemId}`;
+            break;
+        case 'defer-normalization':
+            message = `⏱ Normalization Deferred: #${itemId}`;
+            break;
         case 'confirm-household':
             message = `✓ Household Confirmed: #${itemId}`;
+            break;
+        case 'reject-household':
+            message = `✗ Household Rejected: #${itemId}`;
+            break;
+        case 'defer-household':
+            message = `⏱ Household Deferred: #${itemId}`;
             break;
         default:
             message = `Action: ${action}`;

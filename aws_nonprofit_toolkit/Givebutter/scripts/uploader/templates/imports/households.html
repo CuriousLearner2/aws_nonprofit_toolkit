@@ -12,38 +12,69 @@
 {% if current_household %}
 <div class="card" style="margin-bottom: 30px;">
     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-        <h3 style="margin-top: 0;">{{ current_household.address }}</h3>
-        <span class="badge badge-green">{{ current_household.members|length }} members</span>
+        <div>
+            <h3 style="margin-top: 0; margin-bottom: 4px;">{{ current_household.suggested_name }}</h3>
+            <p style="font-size: 13px; color: #666; margin: 0;">Address: {{ current_household.address }}</p>
+        </div>
+        <span class="badge badge-green">{{ current_household.proposed_members|length }} members</span>
     </div>
+
+    <!-- Confidence -->
+    {% if current_household.confidence %}
+    <div style="margin-bottom: 20px; padding: 12px; background-color: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 3px;">
+        <p style="font-size: 13px; color: #0369a1; margin: 0; font-weight: 600;">Confidence: {{ current_household.confidence }}</p>
+    </div>
+    {% endif %}
 
     <!-- Household Members -->
     <div style="background-color: #f8f8f8; padding: 16px; border-radius: 4px; margin-bottom: 20px;">
-        <h4 style="font-size: 13px; font-weight: 600; color: #666; margin-bottom: 12px;">Suggested Members</h4>
+        <h4 style="font-size: 13px; font-weight: 600; color: #666; margin-bottom: 12px;">Proposed Members</h4>
         <ul style="list-style: none; margin: 0; padding: 0;">
-            {% for member in current_household.members %}
+            {% for member in current_household.proposed_members %}
             <li style="padding: 8px 0; border-bottom: 1px solid #e0e0e0; font-size: 13px;">
-                <strong>{{ member.name }}</strong>
-                <span style="color: #999; margin-left: 8px;">({{ member.relationship }})</span>
-                {% if member.email %}<br/><span style="color: #666; font-size: 12px;">{{ member.email }}</span>{% endif %}
+                <strong>{{ member }}</strong>
             </li>
             {% endfor %}
         </ul>
     </div>
 
-    <!-- Household Reasoning -->
-    <div style="background-color: #f0fdf4; padding: 12px 16px; border-left: 3px solid #10b981; margin-bottom: 20px;">
-        <p style="font-size: 13px; color: #065f46; margin: 0;">
-            <strong>Reasoning:</strong> {{ current_household.reasoning }}
-        </p>
+    <!-- Supporting Evidence -->
+    <div style="background-color: #f0fdf4; padding: 12px 16px; border-left: 3px solid #10b981; margin-bottom: 20px; border-radius: 3px;">
+        <h4 style="font-size: 13px; font-weight: 600; color: #065f46; margin-bottom: 8px; margin-top: 0;">Supporting Evidence</h4>
+        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #065f46;">
+            {% for ev in current_household.evidence %}
+            <li style="margin-bottom: 4px;">{{ ev }}</li>
+            {% endfor %}
+        </ul>
     </div>
 
-    <!-- Confirmation Form -->
+    <!-- Conflicting Evidence -->
+    {% if current_household.conflicts %}
+    <div style="background-color: #fef8e7; padding: 12px 16px; border-left: 3px solid #f59e0b; margin-bottom: 20px; border-radius: 3px;">
+        <h4 style="font-size: 13px; font-weight: 600; color: #92400e; margin-bottom: 8px; margin-top: 0;">Conflicting Evidence</h4>
+        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #92400e;">
+            {% for conflict in current_household.conflicts %}
+            <li style="margin-bottom: 4px;">{{ conflict }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Decision Form -->
     <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #e0e0e0;">
         <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Your Decision</h4>
         <div class="btn-group">
             <button type="button" class="btn btn-primary" onclick="confirmHousehold('{{ current_household.id }}')">Confirm Household</button>
+            <button type="button" class="btn btn-secondary" data-action="reject-household" data-household-id="{{ current_household.id }}">Reject</button>
             <button type="button" class="btn btn-secondary" data-action="defer-household" data-household-id="{{ current_household.id }}">Defer</button>
         </div>
+    </div>
+
+    <!-- Safety Copy -->
+    <div style="margin-top: 20px; padding: 12px 16px; background-color: #f8f8f8; border-left: 3px solid #0ea5e9; border-radius: 3px;">
+        <p style="font-size: 12px; color: #666; margin: 0; line-height: 1.5;">
+            <strong>Confirmed households affect export staging only.</strong> Raw import rows remain unchanged. Your decisions are logged in the audit trail.
+        </p>
     </div>
 </div>
 {% endif %}
