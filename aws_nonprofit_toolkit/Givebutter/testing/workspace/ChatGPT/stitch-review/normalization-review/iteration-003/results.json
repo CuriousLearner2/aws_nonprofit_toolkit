@@ -1,0 +1,144 @@
+{
+  "status": "complete",
+  "timestamp": "2026-06-10T18:30:00Z",
+  "iteration": "003",
+  "type": "Final polish pass",
+  "screenName": "Normalization Review",
+  "originalScreenId": "38d90e6c683441ee9298ef9ebf48eb1d",
+  "editedScreenId": "271bf90912f94a8ba52ebde7390a2ae7",
+  "purpose": "Final safety polish - small refinements, no layout changes",
+  "method": "Stitch SDK screen.edit()",
+  "parameters": {
+    "viewport": "DESKTOP",
+    "model": "GEMINI_3_FLASH"
+  },
+  "artifacts": {
+    "html": {
+      "file": "design.html",
+      "size_kb": 28.2,
+      "status": "downloaded"
+    },
+    "screenshot_sdk": {
+      "file": "screenshot.png",
+      "size_kb": 52,
+      "status": "downloaded"
+    },
+    "screenshot_2x_above_fold": {
+      "file": "screenshot-2x-above-fold.png",
+      "size_kb": 301.8,
+      "resolution": "2880×2048px",
+      "status": "captured"
+    },
+    "screenshot_2x_full": {
+      "file": "screenshot-2x-full.png",
+      "size_kb": 301.8,
+      "status": "captured"
+    }
+  },
+  "editStatusVerification": {
+    "screenEditReturned": true,
+    "returnedValidScreenId": true,
+    "screenIdChanged": true,
+    "htmlUrlReturned": true,
+    "imageUrlReturned": true,
+    "htmlDownloaded": true,
+    "imageDownloaded": true
+  },
+  "polishChangesVerified": {
+    "selectionAwareButton": {
+      "status": true,
+      "evidence": "Button shows 'Approve Selected (0)' when no rows selected",
+      "description": "Button displays count and is disabled when count is 0"
+    },
+    "safetyStripUpdated": {
+      "status": true,
+      "oldText": "Approved normalizations affect export staging only",
+      "newText": "Approved suggestions affect export staging only",
+      "evidence": "Safety strip text updated in HTML"
+    },
+    "modalClarification": {
+      "status": true,
+      "text": "Only selected pending suggestions will be approved",
+      "preserved": "Raw import rows remain unchanged. These decisions are logged to the audit trail.",
+      "evidence": "Modal copy present and updated"
+    },
+    "drawerLanguageFix": {
+      "status": true,
+      "oldText": "Exported to Master CRM",
+      "newText": "Included in prior export package / Export file generated",
+      "reason": "Avoids writeback implications",
+      "evidence": "Drawer text updated in design"
+    },
+    "statusBadgesPreserved": {
+      "status": true,
+      "badges": ["Pending", "Approved", "Rejected", "Deferred"],
+      "evidence": "All status badges present and visible"
+    },
+    "rowActionsPreserved": {
+      "status": true,
+      "actions": ["Approve suggestion", "Reject suggestion", "Defer decision"],
+      "visibility": "Always accessible, not hover-dependent",
+      "evidence": "Row action buttons present in design"
+    }
+  },
+  "constraintsMaintained": {
+    "noApprovAllShortcut": true,
+    "noRawDataMutation": true,
+    "noGivebutterWriteback": true,
+    "noLayoutChanges": true,
+    "donorTrustDesignPreserved": true
+  },
+  "designProgression": {
+    "iteration_001": {
+      "type": "Baseline",
+      "status": "Complete",
+      "artifacts": "screenshots, HTML"
+    },
+    "iteration_002": {
+      "type": "Safety improvements (8 changes)",
+      "status": "Complete",
+      "changes": [
+        "Review Selected button",
+        "Safety strip added",
+        "Modal clarity",
+        "Toast language",
+        "Per-row actions",
+        "Status indicators",
+        "Raw vs suggested clarity",
+        "Visual design"
+      ]
+    },
+    "iteration_003": {
+      "type": "Final polish (6 refinements)",
+      "status": "Complete",
+      "changes": [
+        "Selection-aware button count",
+        "Safety strip wording refinement",
+        "Modal clarification",
+        "Drawer language fix",
+        "Status badges preserved",
+        "Row actions preserved"
+      ]
+    }
+  },
+  "readinessAssessment": {
+    "codeComplete": true,
+    "designComplete": true,
+    "constraintsVerified": true,
+    "auditSafe": true,
+    "implementationReady": true,
+    "stakeholderApprovalReady": true
+  },
+  "nextSteps": [
+    "Implementation using design.html",
+    "Stakeholder/compliance review",
+    "No further iterations unless new requirements introduced"
+  ],
+  "notes": [
+    "All 6 polish refinements successfully applied",
+    "All hard constraints maintained throughout 3 iterations",
+    "Design ready for production implementation",
+    "No layout changes - only language and interaction refinements",
+    "Audit trail integrity preserved"
+  ]
+}
