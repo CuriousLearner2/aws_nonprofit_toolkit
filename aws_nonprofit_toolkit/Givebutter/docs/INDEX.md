@@ -20,7 +20,7 @@ Welcome! This page helps you find exactly what you need. Choose a section below 
 
 DonorTrust v1 is a Flask-based import review system that helps organizations identify duplicate donors, normalize data inconsistencies, and group donors into households before export.
 
-**Current Status:** Phase 0 (Clickable Prototype) ✓ ACCEPTED | Phase 1A-Step 1 (Service Boundary) ✓ ACCEPTED
+**Current Status:** Phase 0 ✓ ACCEPTED | Phase 1A-Step 1 ✓ ACCEPTED | Phase 1A-Step 2 ✓ ACCEPTED | Phase 1A-Step 3 ✓ ACCEPTED | Phase 1A-Step 4 ✓ ACCEPTED
 
 ### For Product & Design
 
@@ -33,8 +33,12 @@ DonorTrust v1 is a Flask-based import review system that helps organizations ide
 
 **Start here:**
 1. **[IMPLEMENTATION_GUIDE.md](implementation/IMPLEMENTATION_GUIDE.md)** — Overview of all phases, architecture constraints, how to run Phase 0
-2. **[Phase 1A Service Boundary Plan](implementation/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md)** — Architecture for service-layer abstraction
-3. **[Phase 1A-Step 1 Completion Record](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md)** — Service boundary implementation details and QA results
+2. **[Phase 1A Service Boundary Plan](implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md)** — Architecture for service-layer abstraction
+3. **Phase 1A Progress:**
+   - [Step 1: /imports](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md) ✓
+   - [Step 2: /dashboard](implementation/PHASE1A_STEP2_COMPLETION_RECORD.md) ✓
+   - [Step 3: /validation](implementation/PHASE1A_STEP3_COMPLETION_RECORD.md) ✓
+   - [Step 4: /normalizations](implementation/PHASE1A_STEP4_COMPLETION_RECORD.md) ✓
 
 ### Key Docs
 
@@ -42,15 +46,24 @@ DonorTrust v1 is a Flask-based import review system that helps organizations ide
 |---|---|---|
 | [IMPLEMENTATION_GUIDE.md](implementation/IMPLEMENTATION_GUIDE.md) | Phase overview, architecture, how to run | Current |
 | [Phase 0 Acceptance Record](completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md) | Complete specification of 8 screens | ✓ Accepted |
-| [Phase 1A Service Boundary Plan](implementation/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md) | Service-layer architecture plan | ✓ Accepted |
-| [Phase 1A-Step 1 Completion Record](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md) | Service boundary implementation & QA | ✓ Accepted |
+| [Phase 1A Service Boundary Plan](implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md) | Service-layer architecture plan | ✓ Accepted |
+| [Phase 1A-Step 1 Completion Record](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md) | /imports route migration to service boundary | ✓ Accepted |
+| [Phase 1A-Step 2 Completion Record](implementation/PHASE1A_STEP2_COMPLETION_RECORD.md) | /imports/.../dashboard route migration | ✓ Accepted |
+| [Phase 1A-Step 3 Completion Record](implementation/PHASE1A_STEP3_COMPLETION_RECORD.md) | /imports/.../validation route migration | ✓ Accepted |
+| [Phase 1A-Step 4 Completion Record](implementation/PHASE1A_STEP4_COMPLETION_RECORD.md) | /imports/.../normalizations route migration | ✓ Accepted |
 | [Householder PRD v2.6](PRDs/Householder/Householder_PRD-v2.6-UX-aligned.md) | Product specification | Reference |
 | [UX Summary](ux/UX_SUMMARY.md) | 8-screen workflow | Reference |
 
 ### QA Artifacts
 
-- **Phase 0:** `testing/qa-artifacts/phase0/` — Screenshots and acceptance report
-- **Phase 1A-Step 1:** `testing/qa-artifacts/phase1a-step1/` — QA verification and test results
+**Canonical Baseline (Reference for Regression Testing)**
+- `testing/qa-artifacts/phase0/` — Phase 0 acceptance screenshots and report (UI baseline)
+- `testing/qa-artifacts/phase1a/step1/` — Phase 1A-Step 1 reference baseline
+
+**Working Verification Outputs (Recent Steps)**
+- `testing/artifacts/phase1a-step2-verification/` — Step 2 QA reports and screenshots
+- `testing/artifacts/phase1a-step3-verification/` — Step 3 QA reports and screenshots
+- `testing/artifacts/phase1a-step4-verification/` — Step 4 QA reports and screenshots (pending QA review)
 
 ### Source Templates (Phase 0 Implementation)
 
@@ -470,7 +483,7 @@ Documentation Index (INDEX.md)
 │  │  ├─ Key: Accepted 8-screen prototype spec
 │  │  └─ Use: Reference for Phase 0 scope
 │  │
-│  ├─ implementation/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md
+│  ├─ implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md
 │  │  ├─ For: Architects, developers
 │  │  ├─ Key: Service-layer architecture (canonical plan)
 │  │  └─ Use: Understanding service boundary
