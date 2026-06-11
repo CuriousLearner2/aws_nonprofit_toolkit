@@ -18,6 +18,7 @@ try:
         QUEUE_STATUS,
         CONTACTS,
         NORMALIZATION_SUGGESTIONS,
+        HOUSEHOLD_SUGGESTIONS,
     )
 except ImportError:
     # Fallback for direct script execution
@@ -27,6 +28,7 @@ except ImportError:
         QUEUE_STATUS,
         CONTACTS,
         NORMALIZATION_SUGGESTIONS,
+        HOUSEHOLD_SUGGESTIONS,
     )
 
 from .service_contracts import (
@@ -37,6 +39,8 @@ from .service_contracts import (
     ValidationPageViewModel,
     NormalizationRow,
     NormalizationPageViewModel,
+    HouseholdRow,
+    HouseholdPageViewModel,
 )
 
 
@@ -228,6 +232,58 @@ class FixtureImportRepository:
             current_suggestion=current_suggestion,
             current_suggestion_index=1,
             total_suggestions=len(NORMALIZATION_SUGGESTIONS),
+        )
+
+    @staticmethod
+    def get_households(import_id: str) -> HouseholdPageViewModel:
+        """
+        Return households review page data as HouseholdPageViewModel.
+
+        Adapts IMPORT_BATCH and HOUSEHOLD_SUGGESTIONS fixtures into
+        household page view model. Returns current household with batch info.
+
+        Args:
+            import_id: Import ID (unused for fixture data, preserved for API consistency)
+
+        Returns:
+            HouseholdPageViewModel with batch, current household, and navigation state.
+        """
+        # Get first household or create empty one if none available
+        current_household_data = (
+            HOUSEHOLD_SUGGESTIONS[0] if HOUSEHOLD_SUGGESTIONS else None
+        )
+
+        if not current_household_data:
+            # Handle empty households list gracefully
+            current_household = HouseholdRow(
+                id="",
+                suggested_name="",
+                address="",
+                confidence="",
+                proposed_members=(),
+                evidence=(),
+                conflicts=(),
+                status="Pending",
+            )
+        else:
+            current_household = HouseholdRow(
+                id=current_household_data['id'],
+                suggested_name=current_household_data['suggested_name'],
+                address=current_household_data['address'],
+                confidence=current_household_data['confidence'],
+                proposed_members=tuple(current_household_data['proposed_members']),
+                evidence=tuple(current_household_data['evidence']),
+                conflicts=tuple(current_household_data.get('conflicts', [])),
+                status=current_household_data.get('status', 'Pending'),
+            )
+
+        return HouseholdPageViewModel(
+            batch_id=IMPORT_BATCH['id'],
+            filename=IMPORT_BATCH['filename'],
+            progress=IMPORT_BATCH['progress'],
+            current_household=current_household,
+            current_household_index=1,
+            total_households=len(HOUSEHOLD_SUGGESTIONS),
         )
 
     @staticmethod

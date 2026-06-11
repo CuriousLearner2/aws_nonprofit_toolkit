@@ -62,6 +62,7 @@ try:
         dashboard_service,
         validation_service,
         normalizations_service,
+        households_service,
     )
 except ImportError:
     # Fallback for direct script execution
@@ -73,6 +74,7 @@ except ImportError:
         dashboard_service,
         validation_service,
         normalizations_service,
+        households_service,
     )
 
 app = Flask(__name__)
@@ -839,12 +841,8 @@ def import_normalizations(import_id):
 @app.route('/imports/<import_id>/households')
 def import_households(import_id):
     """Household grouping confirmation."""
-    current = HOUSEHOLD_SUGGESTIONS[0] if HOUSEHOLD_SUGGESTIONS else None
-    return render_template('imports/households.html',
-                         batch=IMPORT_BATCH,
-                         current_household=current,
-                         current_household_index=1,
-                         total_households=len(HOUSEHOLD_SUGGESTIONS))
+    data = households_service.get_households_review(import_id)
+    return render_template('imports/households.html', **data)
 
 @app.route('/imports/<import_id>/audit')
 def import_audit(import_id):

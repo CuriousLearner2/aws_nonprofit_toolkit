@@ -206,3 +206,63 @@ class NormalizationPageViewModel:
             "current_suggestion_index": self.current_suggestion_index,
             "total_suggestions": self.total_suggestions,
         }
+
+
+@dataclass(frozen=True)
+class HouseholdRow:
+    """
+    Single household suggestion for /imports/<import_id>/households.
+
+    Represents one household grouping with proposed members and supporting/conflicting evidence.
+    Frozen dataclass ensures immutability.
+    """
+    id: str
+    suggested_name: str
+    address: str
+    confidence: str
+    proposed_members: tuple  # Tuple of member names
+    evidence: tuple  # Tuple of evidence strings
+    conflicts: tuple  # Tuple of conflict strings
+    status: str = "Pending"
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "id": self.id,
+            "suggested_name": self.suggested_name,
+            "address": self.address,
+            "confidence": self.confidence,
+            "proposed_members": self.proposed_members,
+            "evidence": self.evidence,
+            "conflicts": self.conflicts,
+            "status": self.status,
+        }
+
+
+@dataclass(frozen=True)
+class HouseholdPageViewModel:
+    """
+    Complete household review page view model for /imports/<import_id>/households.
+
+    Contains batch metadata and the current household suggestion with navigation state.
+    Frozen dataclass ensures immutability.
+    """
+    batch_id: str
+    filename: str
+    progress: int
+    current_household: HouseholdRow
+    current_household_index: int
+    total_households: int
+
+    def to_template_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "batch": {
+                "id": self.batch_id,
+                "filename": self.filename,
+                "progress": self.progress,
+            },
+            "current_household": self.current_household.to_dict(),
+            "current_household_index": self.current_household_index,
+            "total_households": self.total_households,
+        }
