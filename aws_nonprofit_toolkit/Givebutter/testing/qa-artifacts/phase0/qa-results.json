@@ -1,0 +1,105 @@
+{
+  "routes": {
+    "/imports": {
+      "status": 200,
+      "has_error": false,
+      "screenshot": "imports.png",
+      "title_contains": true
+    },
+    "/imports/IMP-2025-0101-A/dashboard": {
+      "status": 200,
+      "has_error": false,
+      "screenshot": "dashboard.png",
+      "title_contains": true
+    },
+    "/imports/IMP-2025-0101-A/duplicates": {
+      "status": 200,
+      "has_error": false,
+      "screenshot": "duplicates.png",
+      "title_contains": true
+    },
+    "/imports/IMP-2025-0101-A/validation": {
+      "status": 200,
+      "has_error": false,
+      "screenshot": "validation.png",
+      "title_contains": true
+    },
+    "/imports/IMP-2025-0101-A/normalizations": {
+      "status": 200,
+      "has_error": false,
+      "screenshot": "normalizations.png",
+      "title_contains": true
+    },
+    "/imports/IMP-2025-0101-A/households": {
+      "status": 200,
+      "has_error": false,
+      "screenshot": "households.png",
+      "title_contains": true
+    },
+    "/imports/IMP-2025-0101-A/audit": {
+      "status": 200,
+      "has_error": false,
+      "screenshot": "audit.png",
+      "title_contains": true
+    },
+    "/imports/IMP-2025-0101-A/exports": {
+      "status": 200,
+      "has_error": false,
+      "screenshot": "exports.png",
+      "title_contains": false
+    }
+  },
+  "static_ui": {
+    "validation_table": {
+      "exists": true,
+      "column_count": 10,
+      "headers": [
+        "",
+        "Transaction ID",
+        "Date",
+        "Name",
+        "Email",
+        "Phone",
+        "Amount",
+        "Address",
+        "Validation Status",
+        "Action"
+      ]
+    }
+  },
+  "interactions": {
+    "row_selection": {
+      "initial_text": "Review Selected (0)",
+      "initial_disabled": true,
+      "after_select_text": "Review Selected (5)",
+      "after_select_disabled": false
+    },
+    "duplicates_actions": {
+      "mark_same_exists": true,
+      "different_exists": true,
+      "defer_exists": true
+    },
+    "normalizations_actions": {
+      "confirm_exists": true,
+      "reject_exists": true,
+      "defer_exists": true
+    },
+    "households_modal": {
+      "confirm_exists": true
+    },
+    "exports_modal": {
+      "generate_exists": true
+    }
+  },
+  "forbidden_vocabulary": [],
+  "screenshots": [
+    "imports.png",
+    "dashboard.png",
+    "duplicates.png",
+    "validation.png",
+    "normalizations.png",
+    "households.png",
+    "audit.png",
+    "exports.png"
+  ]
+}
