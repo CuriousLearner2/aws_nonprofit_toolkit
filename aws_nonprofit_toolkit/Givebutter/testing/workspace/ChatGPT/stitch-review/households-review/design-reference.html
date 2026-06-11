@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = {
+    darkMode: "class",
+    theme: {
+        extend: {
+            "colors": {
+                "error": "#ba1a1a",
+                "surface-dim": "#d8dadc",
+                "border-subtle": "#E2E8F0",
+                "secondary": "#0051d5",
+                "primary": "#000000",
+                "warning": "#F59E0B",
+                "surface-variant": "#e0e3e5",
+                "surface-container-highest": "#e0e3e5",
+                "on-background": "#191c1e",
+                "surface-container-high": "#e6e8ea",
+                "on-surface-variant": "#45464d",
+                "outline": "#76777d",
+                "surface-container": "#eceef0",
+                "slate-gray": "#64748B",
+                "on-primary": "#ffffff",
+                "fail": "#EF4444",
+                "background": "#f7f9fb",
+                "on-surface": "#191c1e",
+                "surface": "#f7f9fb",
+                "surface-audit": "#F1F5F9",
+                "pass": "#10B981",
+                "surface-container-lowest": "#ffffff"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+            },
+            "spacing": {
+                "gutter": "16px",
+                "container-padding": "12px",
+                "base": "4px",
+                "margin-page": "24px"
+            },
+            "fontFamily": {
+                "headline-md": ["Inter"],
+                "body-md": ["Inter"],
+                "label-caps": ["Inter"],
+                "headline-lg": ["Inter"],
+                "data-mono": ["JetBrains Mono"],
+                "body-sm": ["Inter"]
+            },
+            "fontSize": {
+                "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                "label-caps": ["11px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                "headline-lg": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}]
+            }
+        },
+    },
+}
+</script>
+<style>
+body { font-family: 'Inter', sans-serif; }
+.material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+.modal-backdrop.active {
+    display: flex;
+}
+.modal-box {
+    background: white;
+    border-radius: 8px;
+    padding: 24px;
+    max-width: 500px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+</style>
+</head>
+<body class="bg-background text-on-background h-screen flex flex-col overflow-hidden">
+
+<!-- Top Navigation Bar -->
+<header class="bg-surface-container-lowest border-b border-border-subtle flex justify-between items-center w-full px-margin-page py-base z-30">
+<div class="flex items-center gap-8">
+<span class="text-headline-md font-headline-md font-black text-primary">DonorTrust</span>
+<nav class="hidden md:flex gap-6 items-center">
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Upload</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Imports</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Review</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">Matches</a>
+<a class="text-slate-gray hover:text-primary transition-colors font-body-md text-body-md" href="#">People</a>
+<a class="text-secondary border-b-2 border-secondary font-semibold pb-1 font-body-md text-body-md" href="#">Households</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-slate-gray cursor-pointer hover:text-primary transition-all">notifications</span>
+<span class="material-symbols-outlined text-slate-gray cursor-pointer hover:text-primary transition-all">settings</span>
+</div>
+</header>
+
+<div class="flex flex-1 overflow-hidden">
+<!-- Left Sidebar -->
+<aside class="bg-surface-audit border-r border-border-subtle flex flex-col h-full py-6 px-4 gap-gutter w-64 flex-shrink-0">
+<div class="mb-4">
+<h2 class="font-headline-md text-headline-md text-primary mb-1">Data Controls</h2>
+<p class="text-slate-gray text-body-sm font-body-sm">Audit-Safe Filtering</p>
+</div>
+<div class="space-y-1">
+<button class="w-full flex items-center gap-3 px-3 py-2 bg-secondary text-white rounded-lg font-bold transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[20px]">filter_list</span>
+<span class="font-label-caps text-label-caps uppercase">Filters</span>
+</button>
+<button class="w-full flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors active:scale-95">
+<span class="material-symbols-outlined text-[20px]">analytics</span>
+<span class="font-label-caps text-label-caps uppercase">Confidence</span>
+</button>
+<button class="w-full flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors active:scale-95">
+<span class="material-symbols-outlined text-[20px]">label</span>
+<span class="font-label-caps text-label-caps uppercase">Status</span>
+</button>
+</div>
+<div class="mt-auto pt-6 border-t border-border-subtle">
+<div class="bg-surface-container-highest p-3 rounded-lg border border-border-subtle">
+<div class="text-label-caps text-label-caps uppercase text-slate-gray mb-2">Batch Status</div>
+<div class="space-y-1 text-body-sm">
+<div class="flex justify-between">
+<span class="text-on-surface-variant">Pending</span>
+<span class="font-bold text-primary">47</span>
+</div>
+<div class="flex justify-between">
+<span class="text-on-surface-variant">Confirmed</span>
+<span class="font-bold text-pass">23</span>
+</div>
+<div class="flex justify-between">
+<span class="text-on-surface-variant">Deferred</span>
+<span class="font-bold text-warning">8</span>
+</div>
+<div class="flex justify-between">
+<span class="text-on-surface-variant">Rejected</span>
+<span class="font-bold text-fail">2</span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+
+<!-- Main Content -->
+<main class="flex-1 flex flex-col min-w-0 bg-background overflow-hidden">
+
+<!-- Header -->
+<div class="px-margin-page py-4 border-b border-border-subtle flex-shrink-0">
+<h1 class="font-headline-lg text-headline-lg text-primary">Households Review</h1>
+<p class="text-slate-gray text-body-sm font-body-sm mt-1">Batch ID: #IMP-2023-0914-A | Source: Main_Donations_Q3.csv | Confidence: 95%+</p>
+<!-- Safety Strip -->
+<div class="mt-3 px-3 py-2 bg-surface-audit border border-border-subtle rounded text-slate-gray text-body-sm">
+Suggested changes only. Confirmed households affect export staging only. Raw import rows are never changed.
+</div>
+</div>
+
+<!-- Content Area -->
+<div class="flex-1 overflow-auto px-margin-page py-6">
+<div class="space-y-4 max-w-4xl">
+
+<!-- Household Card 1: Pending -->
+<div class="bg-surface-container-lowest border border-border-subtle rounded-xl p-6 shadow-sm">
+<!-- Header -->
+<div class="flex items-start justify-between mb-4">
+<div>
+<h3 class="font-headline-md text-headline-md text-primary">Smith Family Household</h3>
+<p class="text-body-sm text-slate-gray mt-1">98% match</p>
+</div>
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-audit border border-border-subtle text-body-sm font-semibold text-on-surface">
+Suggested Household
+</span>
+</div>
+
+<!-- Proposed Members -->
+<div class="mb-4">
+<h4 class="font-semibold text-on-surface mb-2">Proposed Members:</h4>
+<div class="space-y-1 text-body-sm">
+<p class="flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">person</span> John Smith (john.smith@example.com)</p>
+<p class="flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">person</span> Jane Smith (jane.smith@example.com)</p>
+<p class="flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">person</span> Michael Smith (555-987-6543)</p>
+</div>
+</div>
+
+<!-- Evidence -->
+<div class="mb-4 p-3 bg-surface-audit rounded border border-border-subtle">
+<h4 class="font-semibold text-on-surface mb-2 text-body-sm">Evidence:</h4>
+<div class="space-y-1 text-body-sm text-on-surface-variant">
+<p class="flex items-start gap-2">
+<span class="text-pass mt-0.5">✓</span>
+<span><strong>Shared address:</strong> 123 Maple St, Seattle, WA (exact match)</span>
+</p>
+<p class="flex items-start gap-2">
+<span class="text-pass mt-0.5">✓</span>
+<span><strong>Same last name:</strong> Smith</span>
+</p>
+<p class="flex items-start gap-2">
+<span class="text-pass mt-0.5">✓</span>
+<span><strong>Shared phone:</strong> (555) 987-6543</span>
+</p>
+<p class="flex items-start gap-2">
+<span class="text-warning mt-0.5">⚠</span>
+<span><strong>Email domain varies:</strong> personal (@example.com) vs work (@company.com)</span>
+</p>
+<p class="text-body-sm text-slate-gray mt-2 italic">Confidence: 98% match (4 of 5 signals align)</p>
+</div>
+</div>
+
+<!-- Decision Row -->
+<div class="flex gap-3 mb-3">
+<button onclick="openModal('confirm-modal-1')" class="px-4 py-2 bg-secondary text-white font-bold rounded-lg hover:brightness-110 transition-all text-body-sm">
+Confirm Household
+</button>
+<button class="px-4 py-2 border border-slate-300 text-on-surface font-bold rounded-lg hover:bg-surface-container-high transition-all text-body-sm">
+Defer
+</button>
+<button class="px-4 py-2 border border-slate-300 text-on-surface font-bold rounded-lg hover:bg-surface-container-high transition-all text-body-sm">
+Reject
+</button>
+</div>
+
+<!-- Scope Copy -->
+<p class="text-body-sm text-slate-gray italic">Confirmed households affect export staging only. Raw import rows will not be changed. This decision is logged.</p>
+</div>
+
+<!-- Household Card 2: Different Household -->
+<div class="bg-surface-container-lowest border border-border-subtle rounded-xl p-6 shadow-sm">
+<!-- Header -->
+<div class="flex items-start justify-between mb-4">
+<div>
+<h3 class="font-headline-md text-headline-md text-primary">Johnson-Wilson Household</h3>
+<p class="text-body-sm text-slate-gray mt-1">87% match</p>
+</div>
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-audit border border-border-subtle text-body-sm font-semibold text-on-surface">
+Suggested Household
+</span>
+</div>
+
+<!-- Proposed Members -->
+<div class="mb-4">
+<h4 class="font-semibold text-on-surface mb-2">Proposed Members:</h4>
+<div class="space-y-1 text-body-sm">
+<p class="flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">person</span> Robert Johnson (robert.j@email.com)</p>
+<p class="flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">person</span> Sarah Wilson (s.wilson@email.com)</p>
+</div>
+</div>
+
+<!-- Evidence -->
+<div class="mb-4 p-3 bg-surface-audit rounded border border-border-subtle">
+<h4 class="font-semibold text-on-surface mb-2 text-body-sm">Evidence:</h4>
+<div class="space-y-1 text-body-sm text-on-surface-variant">
+<p class="flex items-start gap-2">
+<span class="text-pass mt-0.5">✓</span>
+<span><strong>Shared address:</strong> 456 Oak Ave, Portland, OR</span>
+</p>
+<p class="flex items-start gap-2">
+<span class="text-warning mt-0.5">⚠</span>
+<span><strong>Different last names:</strong> Johnson vs Wilson (likely married/partnership)</span>
+</p>
+<p class="flex items-start gap-2">
+<span class="text-fail mt-0.5">✗</span>
+<span><strong>No shared phone:</strong> Contact methods are distinct</span>
+</p>
+<p class="text-body-sm text-slate-gray mt-2 italic">Confidence: 87% match (2 of 3 signals align; name difference noted)</p>
+</div>
+</div>
+
+<!-- Decision Row -->
+<div class="flex gap-3 mb-3">
+<button onclick="openModal('confirm-modal-2')" class="px-4 py-2 bg-secondary text-white font-bold rounded-lg hover:brightness-110 transition-all text-body-sm">
+Confirm Household
+</button>
+<button class="px-4 py-2 border border-slate-300 text-on-surface font-bold rounded-lg hover:bg-surface-container-high transition-all text-body-sm">
+Defer
+</button>
+<button class="px-4 py-2 border border-slate-300 text-on-surface font-bold rounded-lg hover:bg-surface-container-high transition-all text-body-sm">
+Reject
+</button>
+</div>
+
+<!-- Scope Copy -->
+<p class="text-body-sm text-slate-gray italic">Confirmed households affect export staging only. Raw import rows will not be changed. This decision is logged.</p>
+</div>
+
+</div>
+</div>
+
+</main>
+</div>
+
+<!-- Confirmation Modal 1 -->
+<div id="confirm-modal-1" class="modal-backdrop">
+<div class="modal-box">
+<h2 class="font-headline-md text-headline-md text-primary mb-3">Confirm suggested household?</h2>
+<p class="text-body-sm text-on-surface-variant mb-6">
+These contacts will be marked as belonging to the suggested household for this import's export staging.
+Raw import rows will not be changed.
+This decision will be logged to the audit trail.
+</p>
+<div class="flex gap-3 justify-end">
+<button onclick="closeModal('confirm-modal-1')" class="px-4 py-2 border border-slate-300 text-on-surface font-bold rounded-lg hover:bg-surface-container-high transition-all text-body-sm">
+Cancel
+</button>
+<button onclick="closeModal('confirm-modal-1')" class="px-4 py-2 bg-secondary text-white font-bold rounded-lg hover:brightness-110 transition-all text-body-sm">
+Confirm Household
+</button>
+</div>
+</div>
+</div>
+
+<!-- Confirmation Modal 2 -->
+<div id="confirm-modal-2" class="modal-backdrop">
+<div class="modal-box">
+<h2 class="font-headline-md text-headline-md text-primary mb-3">Confirm suggested household?</h2>
+<p class="text-body-sm text-on-surface-variant mb-6">
+These contacts will be marked as belonging to the suggested household for this import's export staging.
+Raw import rows will not be changed.
+This decision will be logged to the audit trail.
+</p>
+<div class="flex gap-3 justify-end">
+<button onclick="closeModal('confirm-modal-2')" class="px-4 py-2 border border-slate-300 text-on-surface font-bold rounded-lg hover:bg-surface-container-high transition-all text-body-sm">
+Cancel
+</button>
+<button onclick="closeModal('confirm-modal-2')" class="px-4 py-2 bg-secondary text-white font-bold rounded-lg hover:brightness-110 transition-all text-body-sm">
+Confirm Household
+</button>
+</div>
+</div>
+</div>
+
+<script>
+function openModal(modalId) {
+  document.getElementById(modalId).classList.add('active');
+}
+
+function closeModal(modalId) {
+  document.getElementById(modalId).classList.remove('active');
+}
+
+// Close modal on background click
+document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      closeModal(backdrop.id);
+    }
+  });
+});
+</script>
+</body>
+</html>
