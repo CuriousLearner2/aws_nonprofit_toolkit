@@ -12,12 +12,12 @@ from typing import List
 from datetime import datetime
 
 try:
-    from scripts.uploader.fixtures import IMPORTS_LIST
+    from scripts.uploader.fixtures import IMPORTS_LIST, IMPORT_BATCH, QUEUE_STATUS
 except ImportError:
     # Fallback for direct script execution
-    from uploader.fixtures import IMPORTS_LIST
+    from uploader.fixtures import IMPORTS_LIST, IMPORT_BATCH, QUEUE_STATUS
 
-from .service_contracts import ImportSummary
+from .service_contracts import ImportSummary, DashboardQueueCard, ImportDashboardViewModel
 
 
 class FixtureImportRepository:
@@ -61,6 +61,66 @@ class FixtureImportRepository:
             summaries.append(summary)
 
         return summaries
+
+    @staticmethod
+    def get_dashboard(import_id: str) -> ImportDashboardViewModel:
+        """
+        Return import dashboard data as ImportDashboardViewModel.
+
+        Adapts IMPORT_BATCH and QUEUE_STATUS fixtures into dashboard
+        view model. Returns data ready for template rendering.
+
+        Args:
+            import_id: Import ID (unused for fixture data, preserved for API consistency)
+
+        Returns:
+            ImportDashboardViewModel with batch and queue status.
+        """
+        # Build queue cards in order: Duplicates, Validation, Normalizations, Households
+        queue_cards = (
+            DashboardQueueCard(
+                name="Possible Duplicates",
+                description="Side-by-side comparison: mark records as the same person",
+                pending_count=QUEUE_STATUS.get('duplicates_pending', 0),
+                badge_color="badge-amber",
+                action_label="Review Duplicates",
+                action_url=f"/imports/{IMPORT_BATCH['id']}/duplicates",
+            ),
+            DashboardQueueCard(
+                name="Validation Review",
+                description="Inspect all records, identify validation issues",
+                pending_count=QUEUE_STATUS.get('validation_issues', 0),
+                badge_color="badge-red",
+                action_label="Review Records",
+                action_url=f"/imports/{IMPORT_BATCH['id']}/validation",
+            ),
+            DashboardQueueCard(
+                name="Normalizations",
+                description="Review field cleanup suggestions",
+                pending_count=QUEUE_STATUS.get('normalizations_pending', 0),
+                badge_color="badge-blue",
+                action_label="Review Normalizations",
+                action_url=f"/imports/{IMPORT_BATCH['id']}/normalizations",
+            ),
+            DashboardQueueCard(
+                name="Households",
+                description="Confirm/defer household groupings",
+                pending_count=QUEUE_STATUS.get('households_pending', 0),
+                badge_color="badge-green",
+                action_label="Review Households",
+                action_url=f"/imports/{IMPORT_BATCH['id']}/households",
+            ),
+        )
+
+        return ImportDashboardViewModel(
+            batch_id=IMPORT_BATCH['id'],
+            filename=IMPORT_BATCH['filename'],
+            progress=IMPORT_BATCH['progress'],
+            queues=queue_cards,
+            audit_log_url=f"/imports/{IMPORT_BATCH['id']}/audit",
+            export_console_url=f"/imports/{IMPORT_BATCH['id']}/exports",
+            back_to_imports_url="/imports",
+        )
 
     @staticmethod
     def _format_relative_time(dt: datetime) -> str:

@@ -57,13 +57,13 @@ except ImportError:
 
 # Import DonorTrust v1 service layer
 try:
-    from ..householder import import_service
+    from ..householder import import_service, dashboard_service
 except ImportError:
     # Fallback for direct script execution
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from householder import import_service
+    from householder import import_service, dashboard_service
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -801,9 +801,10 @@ def imports_list():
 @app.route('/imports/<import_id>/dashboard')
 def import_dashboard(import_id):
     """Import dashboard with queue navigation."""
+    dashboard_data = dashboard_service.get_import_dashboard(import_id)
     return render_template('imports/dashboard.html',
-                         batch=IMPORT_BATCH,
-                         queue_status=QUEUE_STATUS)
+                         batch=dashboard_data['batch'],
+                         queue_status=dashboard_data['queue_status'])
 
 @app.route('/imports/<import_id>/duplicates')
 def import_duplicates(import_id):

@@ -27,7 +27,7 @@ Phase 0 delivered a **fixture-backed clickable prototype** with all 8 DonorTrust
 
 Phase 1A is **planning-only**. It defines incremental backend architecture without implementing persistence.
 
-**Documentation:** See `docs/completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md`
+**Documentation:** See `docs/implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md`
 
 **Status:** Phase 1A-Step 1 completed and accepted. Phase 1A-Step 2 awaiting approval.
 
@@ -102,7 +102,7 @@ After Phase 1A planning is approved, implement:
 ### Documentation
 - `docs/ux/UX_SUMMARY.md` — canonical workflow
 - `docs/completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md` — Phase 0 final spec
-- `docs/completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md` — Phase 1A direction
+- `docs/implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md` — Phase 1A direction
 - `docs/completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md` — Phase 1A-Step 1 sign-off
 - `docs/PRDs/Householder/Householder_PRD-v2.6-UX-aligned.md` — product spec
 - `docs/PRDs/Implementation/HOUSEHOLDER_IMPLEMENTATION_PLAN-v2.6-UX-aligned.md` — sequencing

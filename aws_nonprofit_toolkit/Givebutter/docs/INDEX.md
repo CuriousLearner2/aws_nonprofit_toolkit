@@ -32,17 +32,17 @@ DonorTrust v1 is a Flask-based import review system that helps organizations ide
 ### For Developers
 
 **Start here:**
-1. **[IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)** — Overview of all phases, architecture constraints, how to run Phase 0
-2. **[Phase 1A Service Boundary Plan](completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md)** — Architecture for service-layer abstraction
+1. **[IMPLEMENTATION_GUIDE.md](implementation/IMPLEMENTATION_GUIDE.md)** — Overview of all phases, architecture constraints, how to run Phase 0
+2. **[Phase 1A Service Boundary Plan](implementation/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md)** — Architecture for service-layer abstraction
 3. **[Phase 1A-Step 1 Completion Record](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md)** — Service boundary implementation details and QA results
 
 ### Key Docs
 
 | Document | Purpose | Status |
 |---|---|---|
-| [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) | Phase overview, architecture, how to run | Current |
+| [IMPLEMENTATION_GUIDE.md](implementation/IMPLEMENTATION_GUIDE.md) | Phase overview, architecture, how to run | Current |
 | [Phase 0 Acceptance Record](completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md) | Complete specification of 8 screens | ✓ Accepted |
-| [Phase 1A Service Boundary Plan](completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md) | Service-layer architecture plan | ✓ Accepted |
+| [Phase 1A Service Boundary Plan](implementation/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md) | Service-layer architecture plan | ✓ Accepted |
 | [Phase 1A-Step 1 Completion Record](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md) | Service boundary implementation & QA | ✓ Accepted |
 | [Householder PRD v2.6](PRDs/Householder/Householder_PRD-v2.6-UX-aligned.md) | Product specification | Reference |
 | [UX Summary](ux/UX_SUMMARY.md) | 8-screen workflow | Reference |
@@ -460,7 +460,7 @@ Documentation Index (INDEX.md)
 │     └─ testing/workspace/ — Design workspace & reference mocks
 │
 ├─ DonorTrust v1 / Householder
-│  ├─ IMPLEMENTATION_GUIDE.md
+│  ├─ implementation/IMPLEMENTATION_GUIDE.md
 │  │  ├─ For: Developers, product leads
 │  │  ├─ Key: Phase overview, how to run
 │  │  └─ Use: Starting point for DonorTrust
@@ -470,9 +470,9 @@ Documentation Index (INDEX.md)
 │  │  ├─ Key: Accepted 8-screen prototype spec
 │  │  └─ Use: Reference for Phase 0 scope
 │  │
-│  ├─ completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md
+│  ├─ implementation/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md
 │  │  ├─ For: Architects, developers
-│  │  ├─ Key: Service-layer architecture
+│  │  ├─ Key: Service-layer architecture (canonical plan)
 │  │  └─ Use: Understanding service boundary
 │  │
 │  ├─ completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md

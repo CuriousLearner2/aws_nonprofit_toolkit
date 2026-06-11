@@ -86,9 +86,9 @@ The Documentation Index covers both systems:
 - 🔌 [API.md](docs/API.md) - Full API documentation
 
 **For DonorTrust / Householder:**
-- 📖 [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) - Phase overview and architecture
+- 📖 [IMPLEMENTATION_GUIDE.md](docs/implementation/IMPLEMENTATION_GUIDE.md) - Phase overview and architecture
 - 📋 [Phase 0 Acceptance Record](docs/completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md) - Design specification
-- 🏗️ [Phase 1A Service Boundary Plan](docs/completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md) - Architecture
+- 🏗️ [Phase 1A Service Boundary Plan](docs/implementation/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md) - Architecture
 
 ## Quick Start
 

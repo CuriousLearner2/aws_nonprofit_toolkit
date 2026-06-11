@@ -35,3 +35,52 @@ class ImportSummary:
             "progress": self.progress,
             "uploaded_timestamp": self.uploaded_timestamp,
         }
+
+
+@dataclass(frozen=True)
+class DashboardQueueCard:
+    """
+    Single queue card for import dashboard.
+
+    Represents a review queue (duplicates, validation, etc.)
+    with count and action link.
+    """
+    name: str
+    description: str
+    pending_count: int
+    badge_color: str
+    action_label: str
+    action_url: str
+
+
+@dataclass(frozen=True)
+class ImportDashboardViewModel:
+    """
+    Complete dashboard view model for /imports/<import_id>/dashboard.
+
+    Contains batch metadata and queue status for all four review queues.
+    Frozen dataclass ensures immutability.
+    """
+    batch_id: str
+    filename: str
+    progress: int
+    queues: tuple  # Tuple of DashboardQueueCard
+    audit_log_url: str
+    export_console_url: str
+    back_to_imports_url: str
+
+    def to_template_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "batch": {
+                "id": self.batch_id,
+                "filename": self.filename,
+                "progress": self.progress,
+            },
+            "queue_status": {
+                "duplicates_pending": self.queues[0].pending_count if len(self.queues) > 0 else 0,
+                "validation_issues": self.queues[1].pending_count if len(self.queues) > 1 else 0,
+                "normalizations_pending": self.queues[2].pending_count if len(self.queues) > 2 else 0,
+                "households_pending": self.queues[3].pending_count if len(self.queues) > 3 else 0,
+            },
+        }

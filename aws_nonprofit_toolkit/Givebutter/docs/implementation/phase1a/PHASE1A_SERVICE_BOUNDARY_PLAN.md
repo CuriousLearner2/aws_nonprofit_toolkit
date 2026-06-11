@@ -1,6 +1,6 @@
 # Phase 1A Service-Boundary Plan — DonorTrust v1
 
-**Status:** Planning Document (Not Yet Approved for Implementation)
+**Status:** Phase 1A-Step 1 complete; remaining Phase 1A route migrations require separate approval
 
 **Purpose:** Define incremental backend architecture path from fixture-backed prototype to service-backed screens.
 
