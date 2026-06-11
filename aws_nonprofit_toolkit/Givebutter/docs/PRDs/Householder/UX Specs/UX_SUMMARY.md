@@ -23,22 +23,20 @@ DonorTrust v1 is a **human-in-the-loop data review system** that allows nonprofi
 
 ## Workflow Overview
 
-The DonorTrust v1 experience follows this complete 8-screen sequence:
+The DonorTrust v1 experience follows this sequence:
 
 ```
 [1. Upload Givebutter CSV] — Upload CSV file, enter batch metadata
     ↓
 [2. Import Dashboard] — View batch status, queue of work, review progress
     ↓
-[3. Possible Duplicates] — Side-by-side comparison: mark records as same person
+[3–6. Review Queues] — Enter as needed:
+    • [3. Possible Duplicates] — Side-by-side comparison: mark records as same person
+    • [4. All Records / Validation Review] — Inspect records, identify validation issues
+    • [5. Normalization Review] — Review field cleanup suggestions
+    • [6. Households Review] — Confirm/defer household groupings
     ↓
-[4. All Records / Validation Review] — Inspect all records, identify validation issues, select rows for review
-    ↓
-[5. Normalization Review] — Approve field cleanups (optional path)
-    ↓
-[6. Households Review] — Confirm/defer household groupings
-    ↓
-[7. Audit Log] — Review all decisions made
+[7. Audit Log] — Review all decisions made (available throughout)
     ↓
 [8. Export Console] — Download prepared CSV files
 ```
@@ -195,7 +193,7 @@ Each screen:
 - ✅ Raw import rows never change from this screen
 - ✅ Validation status is informational only
 - ✅ No automatic fixes applied
-- ✅ Every selection and filter change logged
+- ✅ Reviewer decisions and row-level review actions are logged
 - ✅ No CRM or Givebutter writeback
 
 ---
@@ -215,10 +213,11 @@ Each screen:
 
 **User Actions:**
 - Review suggested normalizations (one at a time or bulk)
-- Approve: Apply suggestion to export staging
+- Confirm: Reflect suggestion in export staging
 - Reject: Discard suggestion (raw data unchanged)
 - Defer: Skip for now; may re-review later
 - Filter by confidence, status, field type
+- Selected decision actions: Confirm/reject/defer selected suggestions
 
 **Safety Principles:**
 - ✅ Suggestions affect **export staging only**, not raw import rows
@@ -518,7 +517,7 @@ She reviews suggestions:
 - "555-1234" → "(555) 123-4567" (phone formatting)
 - "" (empty email) → "(no email provided)" (standardization)
 
-She approves 6 suggestions and defers 2 for later review. The system logs each decision.
+She confirms 6 suggestions for export staging and defers 2 for later review. The system logs each decision.
 
 ### Step 6: Households Review
 The system suggests 12 household groupings based on matching logic. Sarah clicks "Review Households" from the dashboard.
@@ -536,7 +535,7 @@ Before exporting, Sarah checks the audit log to ensure all decisions are recorde
 She sees entries like:
 - "Oct 25, 2023 14:22 — Sarah Lee marked as Same Person — #P-99281-X"
 - "Oct 25, 2023 14:45 — Sarah Lee confirmed Household #HH-2847 — 3 members"
-- "Oct 25, 2023 15:10 — System Logged normalization batch approval — 6 suggestions applied"
+- "Oct 25, 2023 15:10 — System Logged selected normalization decisions — 6 suggestions confirmed for export staging"
 
 All decisions are properly logged. She exports the audit trail as a PDF for compliance.
 
@@ -544,7 +543,7 @@ All decisions are properly logged. She exports the audit trail as a PDF for comp
 Sarah is ready to export the cleaned data. She clicks the Exports tab and sees:
 
 **Reviewed Export** (Generated)
-- CSV with all decisions applied (deduplicated, householded, normalized)
+- CSV with reviewer-confirmed duplicate decisions, household groupings, and normalization decisions reflected in export staging
 - Ready to download
 - "Ready for manual downstream import or review"
 
