@@ -13,9 +13,9 @@ DonorTrust v1 is a **human-in-the-loop data review system** that allows nonprofi
 
 1. **Inspect** all imported records for validation issues
 2. **Review** suggested matches, households, and normalizations
-3. **Confirm** decisions with explicit human approval (no auto-apply)
+3. **Confirm** decisions with explicit reviewer input (no auto-apply)
 4. **Audit** every action taken for compliance and transparency
-5. **Export** clean, reviewed data files for downstream use
+5. **Export** prepared data files for downstream use
 
 **Core Design Philosophy:** Raw import rows are **never mutated**. All reviewer decisions affect **export staging only**. Every action is **logged and auditable**. External systems (Givebutter, CRM) are **never updated directly**.
 
@@ -44,7 +44,7 @@ The DonorTrust v1 experience follows this sequence:
 Each screen:
 - Operates on the **current import batch only** (import-scoped)
 - Shows **system suggestions** (matches, households, cleanups) for human review
-- Requires **explicit approval** (no automatic apply)
+- Requires **explicit reviewer decision** (no automatic apply)
 - **Logs all decisions** to the audit trail
 - **Preserves raw import rows** unchanged
 
@@ -204,11 +204,11 @@ Each screen:
 **Purpose:** Human review of suggested field normalization changes (e.g., "John Smith" → "John Q. Smith")
 
 **Key Features:**
-- **Suggestion-based interface**: System suggests cleanups; reviewer approves, rejects, or defers each one
+- **Suggestion-based interface**: System suggests cleanups; reviewer confirms, rejects, or defers each one
 - **Confidence scores**: Shows system's confidence in each suggestion (%, color-coded)
 - **Card or table view** showing before/after for each normalization
 - **Batch status sidebar**: Pending / Confirmed / Deferred / Rejected counts
-- **Bulk actions**: Apply/reject selected suggestions
+- **Selected decision actions**: Confirm/reject/defer selected suggestions
 - **Audit logging**: Every decision logged with timestamp, reviewer, decision type
 
 **User Actions:**
@@ -224,7 +224,7 @@ Each screen:
 - ✅ Raw rows immutable
 - ✅ No automatic cleanup
 - ✅ No Givebutter writeback
-- ✅ Explicit approval required for each decision
+- ✅ Explicit reviewer decision required for each suggestion (confirm/reject/defer)
 
 ---
 
@@ -241,7 +241,7 @@ Each screen:
   - Suggested members with match confidence
 - **Left sidebar**: Batch status, confidence threshold filter, status filter (Pending/Confirmed/Deferred/Rejected)
 - **Action buttons per card**:
-  - Confirm: Apply to export staging
+  - Confirm: Reflect household grouping in export staging
   - Defer: Skip for later review
   - Reject: Don't group these members
 - **Audit logging**: Every confirm/defer/reject decision logged
@@ -317,7 +317,7 @@ Each screen:
 
 **Key Features:**
 - **4 canonical export cards**:
-  1. **Reviewed Export** (Generated): CSV with reviewer-confirmed duplicates & household links applied
+  1. **Reviewed Export** (Generated): CSV reflecting reviewer-confirmed duplicate decisions and household groupings in export staging
   2. **Household Export** (Ready): Confirmed household groupings with member composition
   3. **Backlog Export** (Pending Review): Records with unresolved suggestions (⚠️ includes caution copy)
   4. **Raw Export** (Ready): Original data unchanged; no reviewer modifications (⚠️ includes caution copy)
@@ -540,7 +540,7 @@ She sees entries like:
 All decisions are properly logged. She exports the audit trail as a PDF for compliance.
 
 ### Step 8: Export Console
-Sarah is ready to export the cleaned data. She clicks the Exports tab and sees:
+Sarah is ready to download the export files with her reviewer decisions reflected. She clicks the Exports tab and sees:
 
 **Reviewed Export** (Generated)
 - CSV with reviewer-confirmed duplicate decisions, household groupings, and normalization decisions reflected in export staging
@@ -579,7 +579,7 @@ This action will be logged to the audit trail.
 
 Sarah clicks "Generate Export Package". The system logs the action. Files are prepared.
 
-She downloads the Reviewed Export (500 clean records with all decisions applied) and the Household Export. She then uploads these files to her downstream system (CRM, database, etc.). **The audit trail clearly shows that DonorTrust only prepared files; it never wrote back to any external system.**
+She downloads the Reviewed Export, which reflects reviewer-confirmed decisions in export staging, and the Household Export. She then uploads these files to her downstream system (CRM, database, etc.). **The audit trail clearly shows that DonorTrust only prepared files; it never wrote back to any external system.**
 
 ---
 
