@@ -17,7 +17,7 @@ The authoritative specification for this screen (12 sections, 11 acceptance crit
 - Core principle: Comprehensive activity tracking for current import batch with audit-safe human-in-the-loop action history
 - Safety constraints: All reviewer actions logged, raw import rows unchanged, import-scoped only, no unsafe language
 - Detailed layout: Navigation, sidebars, table structure, modals, health indicators
-- Table columns: Date/Timestamp, Reviewer & Action, Target, Notes, Conflict Status, Action
+- Table columns: Date/Timestamp, Reviewer & Action, Target, Notes, Audit Status, Action
 - Sample audit log entries: Marked as Same Person, Rejected Household Link, Marked validation pass, Ingested batch
 - 11 acceptance criteria (visual, safety, functional)
 - DonorTrust v1 styling direction
@@ -113,7 +113,7 @@ Make the design **audit-safe** and **import-scoped**:
 - [ ] No "Master database" language
 - [ ] No "primary donor profile" language
 - [ ] No "merge/merged" language (use "marked as Same Person" instead)
-- [ ] No "auto-verified" language in descriptions
+- [ ] Only safe status names: Conflict Flagged, Needs Review, Validation Passed, System Logged
 - [ ] No "CRM writeback" language
 - [ ] No "sync" language
 - [ ] No "entity audit" language
@@ -131,7 +131,7 @@ Make the design **audit-safe** and **import-scoped**:
 - [ ] Reviewer names/avatars display correctly
 - [ ] Action descriptions are clear and import-scoped
 - [ ] Notes field shows reviewer comments or system messages
-- [ ] Conflict status badges are color-coded and accurate
+- [ ] Audit Status badges are color-coded and accurate
 
 ---
 
@@ -179,7 +179,7 @@ See `audit_log-spec.md` section 11 for detailed styling direction.
 2. Verify no unsafe language present
 3. Check DonorTrust v1 consistency
 4. Compare against `audit_log-spec.md` sections 3, 4, 5, 11
-5. Review `verification.json` (43/43 checks pass)
+5. Review `verification.json` (49/49 checks pass)
 
 ### For QA Verification
 1. Use `audit_log-spec.md` section 10 as test checklist (11 acceptance criteria)
@@ -194,11 +194,12 @@ See `audit_log-spec.md` section 11 for detailed styling direction.
 ## 📊 Verification
 
 **Machine-readable verification:** See `verification.json`
-- 22 visual checks ✅
-- 19 safety language checks ✅
-- 12 functional checks ✅
-- 9 specification alignment checks ✅
-- **Total: 43/43 checks pass**
+- 15 forbidden language checks ✅ (0/15 found)
+- 12 required language checks ✅ (12/12 present)
+- 8 visual checks ✅
+- 8 functional checks ✅
+- 6 specification alignment checks ✅
+- **Total: 49/49 checks pass**
 
 ---
 

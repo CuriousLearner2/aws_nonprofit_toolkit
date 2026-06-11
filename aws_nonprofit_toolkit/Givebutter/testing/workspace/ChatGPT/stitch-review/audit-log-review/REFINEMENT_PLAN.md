@@ -140,7 +140,7 @@ Raw import rows are never changed from this screen.
 2. Reviewer & Action (name/avatar + verb phrase, import-scoped)
 3. Target (import row ID, e.g., #P-99281-X)
 4. Notes (reviewer comment or system note)
-5. Conflict Status (badge: CONFLICTED/VERIFICATION NEEDED/AUTO VERIFIED)
+5. Audit Status (badge: Conflict Flagged / Needs Review / Validation Passed / System Logged)
 6. Action (link to view record detail)
 
 ---
@@ -214,7 +214,7 @@ Raw import rows are never changed from this screen.
 - [ ] Export PDF button visible
 - [ ] Audit log table with all 6 columns visible at 1440px
 - [ ] Pagination controls present
-- [ ] Right sidebar (Donor History) present if in design
+- [ ] Right sidebar (Row Audit History) present if in design
 - [ ] System Health indicators displayed
 - [ ] Safety strip visible below title
 
@@ -223,7 +223,7 @@ Raw import rows are never changed from this screen.
 - [ ] No "Master database" language
 - [ ] No "primary donor profile" language
 - [ ] No "merged" language (use "marked as Same Person" or "rejected Household Link")
-- [ ] No "auto-verified" language
+- [ ] Only safe status names: Conflict Flagged, Needs Review, Validation Passed, System Logged
 - [ ] No "CRM writeback" language
 - [ ] No "sync" language
 - [ ] No "entity audit" language

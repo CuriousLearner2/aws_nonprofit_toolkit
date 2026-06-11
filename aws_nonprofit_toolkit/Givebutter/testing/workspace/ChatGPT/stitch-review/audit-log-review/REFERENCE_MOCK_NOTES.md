@@ -31,7 +31,7 @@ The authoritative specification for this screen (12 sections, 11 acceptance crit
 - Core principle: Comprehensive activity tracking for import batch with audit-safe human-in-the-loop actions
 - Safety constraints: No Master ID, Master database, primary donor profile, merge/merged, auto-verified, entity audit, CRM writeback, sync, apply all, approve all
 - Detailed layout: Top navigation, left sidebar (Data Controls), main content (table + controls), right sidebar (optional), system health
-- Table columns: Date/Timestamp, Reviewer & Action, Target, Notes, Conflict Status, Action
+- Table columns: Date/Timestamp, Reviewer & Action, Target, Notes, Audit Status, Action
 - Sample entries showing safe language (marked as Same Person, rejected Household Link, marked validation pass, ingested batch)
 - 11 acceptance criteria (visual, safety, functional)
 - DonorTrust v1 styling direction
@@ -61,7 +61,7 @@ Corrected local HTML reference with audit-safe design applied.
 - Page title: "Audit Log (v1 Final)"
 - Page description and Export PDF button
 - Safety strip: "Suggested changes only. Raw import rows are never changed."
-- Audit log table with 6 columns (Date/Timestamp, Reviewer & Action, Target, Notes, Conflict Status, Action)
+- Audit log table with 6 columns (Date/Timestamp, Reviewer & Action, Target, Notes, Audit Status, Action)
 - 8 sample entries using safe language:
   - Alex Rivers marked as Same Person
   - Morgan Lee rejected Household Link for record
@@ -71,7 +71,7 @@ Corrected local HTML reference with audit-safe design applied.
   - Sam Kumar marked as Deferred
   - Taylor North confirmed Household Link for record
   - Morgan Lee flagged for anomaly detection
-- Status badges: CONFLICTED (red), VERIFICATION NEEDED (amber), AUTO VERIFIED (green)
+- Status badges: Conflict Flagged (red), Needs Review (amber), Validation Passed (green), System Logged (blue)
 - Pagination controls (Previous/Next, page indicator)
 - System Health Indicators: Integrity Score, Review Velocity, Pending Conflicts, Anomalies Detected
 - Right sidebar: Row Audit History (optional, reference ID + decision timeline)
@@ -136,7 +136,7 @@ Documentation explaining what this is and how to use it.
 - ✅ Table-based audit log with 6 columns
 - ✅ Pagination controls
 - ✅ Status badges (color-coded)
-- ✅ Right sidebar (optional Donor History)
+- ✅ Right sidebar (Row Audit History, optional)
 - ✅ System health indicators
 - ✅ Footer safety messaging
 

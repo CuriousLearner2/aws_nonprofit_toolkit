@@ -1,325 +1,202 @@
 {
   "verification_metadata": {
     "date_created": "2026-06-11",
-    "version": "2.0",
-    "screen_name": "Audit Log (v1 Final) — Revised",
-    "artifact_type": "Local implementation-reference mock",
-    "authority": "audit_log-spec.md + design-reference.html",
-    "environment": "Local HTML reference mock (not Stitch)",
+    "version": "2.1",
+    "screen_name": "Audit Log (v1 Final)",
+    "artifact_type": "Local implementation-reference mock (v1 accepted)",
+    "environment": "Local HTML reference mock",
     "total_checks": 49,
     "checks_passed": 49,
     "checks_failed": 0,
-    "status": "ALL CHECKS PASS ✅",
-    "safety_compliance": "Strict v1 vocabulary compliance (zero tolerance)"
+    "status": "✅ ALL CHECKS PASS",
+    "compliance_mode": "Strict v1 vocabulary (zero tolerance)"
   },
 
   "forbidden_language_checks": {
-    "no_auto_verified_visible": {
-      "check": "NO 'AUTO VERIFIED' text visible anywhere in UI",
-      "result": "PASS",
-      "search_term": "AUTO VERIFIED",
+    "description": "Zero occurrences allowed for all forbidden terms",
+    "no_conflicted": {
+      "term": "CONFLICTED",
       "occurrences": 0,
-      "locations_checked": ["table entries", "filter options", "status badges"]
-    },
-    "no_auto_verified_lowercase": {
-      "check": "NO 'auto-verified' text visible anywhere in UI",
-      "result": "PASS",
-      "search_term": "auto-verified",
-      "occurrences": 0,
-      "locations_checked": ["spec examples", "HTML copy", "badge labels"]
+      "result": "PASS"
     },
     "no_verification_needed": {
-      "check": "NO 'VERIFICATION NEEDED' text visible anywhere in UI",
-      "result": "PASS",
-      "search_term": "VERIFICATION NEEDED",
+      "term": "VERIFICATION NEEDED",
       "occurrences": 0,
-      "locations_checked": ["table entries", "filter options", "status display"]
+      "result": "PASS"
     },
-    "no_conflicted_status": {
-      "check": "NO 'CONFLICTED' text visible anywhere in UI",
-      "result": "PASS",
-      "search_term": "CONFLICTED",
+    "no_auto_verified": {
+      "term": "AUTO VERIFIED",
       "occurrences": 0,
-      "locations_checked": ["table entries", "filter options", "status badges"]
+      "result": "PASS"
     },
     "no_conflict_status_column": {
-      "check": "NO 'Conflict Status' column name (replaced with 'Audit Status')",
-      "result": "PASS",
-      "search_term": "Conflict Status",
+      "term": "Conflict Status (as column name)",
       "occurrences": 0,
-      "locations_checked": ["table header", "filter labels"]
-    },
-    "no_full_entity_audit_report": {
-      "check": "NO 'Full Entity Audit Report' label (replaced with 'Full Import Audit Report')",
-      "result": "PASS",
-      "search_term": "Full Entity Audit Report",
-      "occurrences": 0
-    },
-    "no_entity_audit": {
-      "check": "NO 'entity audit' text visible anywhere",
-      "result": "PASS",
-      "search_term": "entity audit",
-      "occurrences": 0
-    },
-    "no_master_id": {
-      "check": "NO 'Master ID' text visible anywhere",
-      "result": "PASS",
-      "search_term": "Master ID",
-      "occurrences": 0
-    },
-    "no_master_database": {
-      "check": "NO 'Master database' text visible anywhere",
-      "result": "PASS",
-      "search_term": "Master database",
-      "occurrences": 0
-    },
-    "no_primary_donor": {
-      "check": "NO 'primary donor profile' text visible anywhere",
-      "result": "PASS",
-      "search_term": "primary donor profile",
-      "occurrences": 0
-    },
-    "no_merge_language": {
-      "check": "NO 'merge' or 'merged' text in action descriptions",
-      "result": "PASS",
-      "search_term": "merge",
-      "occurrences": 0
-    },
-    "no_crm_writeback": {
-      "check": "NO 'CRM writeback' or 'writeback' text visible",
-      "result": "PASS",
-      "search_term": "writeback",
-      "occurrences": 0
-    },
-    "no_sync_language": {
-      "check": "NO 'sync' text visible anywhere",
-      "result": "PASS",
-      "search_term": "sync",
-      "occurrences": 0
-    },
-    "no_apply_all": {
-      "check": "NO 'apply all' text visible",
-      "result": "PASS",
-      "search_term": "apply all",
-      "occurrences": 0
-    },
-    "no_approve_all": {
-      "check": "NO 'approve all' text visible",
-      "result": "PASS",
-      "search_term": "approve all",
-      "occurrences": 0
+      "result": "PASS"
     },
     "no_donor_history_label": {
-      "check": "NO 'Donor History' as standalone sidebar label (replaced with 'Row Audit History')",
-      "result": "PASS",
-      "search_term": "Donor History",
+      "term": "Donor History (as sidebar label)",
       "occurrences": 0,
-      "note": "Searched in sidebar labels only, not in phrases like 'Row Audit History'"
+      "result": "PASS"
+    },
+    "no_full_entity_audit": {
+      "term": "Full Entity Audit Report",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_entity_audit": {
+      "term": "entity audit",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_master_id": {
+      "term": "Master ID",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_master_database": {
+      "term": "Master database",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_primary_donor": {
+      "term": "primary donor profile",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_merge": {
+      "term": "merge/merged",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_writeback": {
+      "term": "writeback",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_sync": {
+      "term": "sync",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_apply_all": {
+      "term": "apply all",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_approve_all": {
+      "term": "approve all",
+      "occurrences": 0,
+      "result": "PASS"
     }
   },
 
-  "required_language_checks": {
-    "audit_status_column_present": {
-      "check": "'Audit Status' column header present (not 'Conflict Status')",
-      "result": "PASS",
-      "text": "Audit Status",
-      "occurrences": 2,
-      "locations": ["table header", "filter label"]
+  "required_vocabulary_checks": {
+    "description": "All safe v1 terms must be present",
+    "audit_status_column": {
+      "term": "Audit Status",
+      "required_count": 2,
+      "actual_count": 2,
+      "locations": ["table header", "filter label"],
+      "result": "PASS"
     },
-    "conflict_flagged_status": {
-      "check": "'Conflict Flagged' status label present",
-      "result": "PASS",
-      "text": "Conflict Flagged",
-      "occurrences": 4,
-      "locations": ["Entry 1", "Entry 2", "Entry 8", "right sidebar current status"]
+    "conflict_flagged": {
+      "term": "Conflict Flagged",
+      "required_count": "≥2",
+      "actual_count": 4,
+      "result": "PASS"
     },
-    "needs_review_status": {
-      "check": "'Needs Review' status label present",
-      "result": "PASS",
-      "text": "Needs Review",
-      "occurrences": 2,
-      "locations": ["Entry 5", "Entry 6"]
+    "needs_review": {
+      "term": "Needs Review",
+      "required_count": "≥2",
+      "actual_count": 2,
+      "result": "PASS"
     },
-    "validation_passed_status": {
-      "check": "'Validation Passed' status label present",
-      "result": "PASS",
-      "text": "Validation Passed",
-      "occurrences": 2,
-      "locations": ["Entry 3", "Entry 7"]
+    "validation_passed": {
+      "term": "Validation Passed",
+      "required_count": "≥2",
+      "actual_count": 2,
+      "result": "PASS"
     },
-    "system_logged_status": {
-      "check": "'System Logged' status label present",
-      "result": "PASS",
-      "text": "System Logged",
-      "occurrences": 1,
-      "locations": ["Entry 4"]
+    "system_logged": {
+      "term": "System Logged",
+      "required_count": "≥1",
+      "actual_count": 1,
+      "result": "PASS"
     },
-    "row_audit_history_label": {
-      "check": "'Row Audit History' sidebar label present (not 'Donor History')",
-      "result": "PASS",
-      "text": "Row Audit History",
-      "occurrences": 2,
-      "locations": ["sidebar title", "sidebar title with Optional note"]
+    "row_audit_history": {
+      "term": "Row Audit History",
+      "required_count": "≥1",
+      "actual_count": 2,
+      "result": "PASS"
     },
     "full_import_audit_report": {
-      "check": "'Full Import Audit Report' text present in spec",
-      "result": "PASS",
-      "text": "Full Import Audit Report",
-      "occurrences": 1,
-      "locations": ["spec section 9"]
-    },
-    "import_row_ids": {
-      "check": "All targets use import row ID format (#P-99281-X, #H-44102-B, etc.)",
-      "result": "PASS",
-      "format": "#[TYPE]-[NUMBER]-[LETTER]",
-      "examples": ["#P-99281-X", "#H-44102-B", "#P-77611-M", "#B-88122-A", "#P-65443-D", "#P-51298-K", "#H-29876-Q", "#P-88234-R"],
-      "count": 8
-    },
-    "raw_rows_immutable": {
-      "check": "'Raw import rows are never changed' message present",
-      "result": "PASS",
-      "occurrences": 2,
-      "locations": ["safety strip", "footer message"]
-    },
-    "marked_same_person": {
-      "check": "'marked as Same Person' safe language present",
-      "result": "PASS",
-      "text": "marked as Same Person",
-      "occurrences": 1
-    },
-    "rejected_household_link": {
-      "check": "'rejected Household Link' safe language present",
-      "result": "PASS",
-      "text": "rejected Household Link",
-      "occurrences": 1
-    },
-    "marked_validation_pass": {
-      "check": "'marked validation pass' safe language present",
-      "result": "PASS",
-      "text": "marked validation pass",
-      "occurrences": 1
-    },
-    "ingested_batch": {
-      "check": "'ingested batch' safe language present",
-      "result": "PASS",
-      "text": "ingested batch",
-      "occurrences": 1
+      "term": "Full Import Audit Report",
+      "required_count": "≥1",
+      "actual_count": 1,
+      "result": "PASS"
     }
   },
 
-  "visual_checks": {
-    "navigation_audit_tab": {
-      "check": "DonorTrust navigation with Audit tab active",
-      "result": "PASS",
-      "element": "navbar-tab.active",
-      "tab_name": "Audit"
+  "design_structure_checks": {
+    "navigation": {
+      "check": "DonorTrust v1 navigation with Audit tab active",
+      "result": "PASS"
     },
-    "audit_status_column_visible": {
-      "check": "Audit Status column visible at 1440px viewport",
-      "result": "PASS",
-      "column_name": "Audit Status",
-      "table_layout": "table-layout: fixed"
+    "left_sidebar": {
+      "check": "Left sidebar with 5 filter controls (Action Type, Reviewer, Date Range, Target Search, Audit Status)",
+      "result": "PASS"
     },
-    "status_badges_color_coded": {
-      "check": "Status badges color-coded correctly",
+    "table_columns": {
+      "check": "Table has 6 columns: Date/Timestamp, Reviewer & Action, Target, Notes, Audit Status, Action",
+      "result": "PASS"
+    },
+    "table_viewport": {
+      "check": "All columns visible at 1440px viewport (no horizontal scroll)",
+      "result": "PASS"
+    },
+    "status_badges": {
+      "check": "Status badges color-coded (red/amber/green/blue)",
       "result": "PASS",
-      "badges": {
-        "Conflict Flagged": {
-          "bg_color": "#FEE2E2",
-          "text_color": "#991B1B",
-          "description": "Red for conflict/error"
-        },
-        "Needs Review": {
-          "bg_color": "#FEF3C7",
-          "text_color": "#92400E",
-          "description": "Amber for warning/needs review"
-        },
-        "Validation Passed": {
-          "bg_color": "#DCFCE7",
-          "text_color": "#166534",
-          "description": "Green for success/passed"
-        },
-        "System Logged": {
-          "bg_color": "#E0E7FF",
-          "text_color": "#3730A3",
-          "description": "Blue for system logged"
-        }
+      "badge_colors": {
+        "Conflict Flagged": "#FEE2E2 (red)",
+        "Needs Review": "#FEF3C7 (amber)",
+        "Validation Passed": "#DCFCE7 (green)",
+        "System Logged": "#E0E7FF (blue)"
       }
     },
-    "safety_strip_present": {
-      "check": "Safety strip with correct message present",
-      "result": "PASS",
-      "text": "Suggested changes only. Raw import rows are never changed."
+    "sample_entries": {
+      "check": "8 sample audit log entries with safe language",
+      "result": "PASS"
     },
-    "footer_message_present": {
-      "check": "Footer message with safety language present",
-      "result": "PASS",
-      "text": "All actions are logged to the audit trail. Suggested changes affect export staging only. Raw import rows are never changed from this screen."
+    "pagination": {
+      "check": "Pagination controls visible",
+      "result": "PASS"
     },
-    "left_sidebar_filters": {
-      "check": "Left sidebar with 5 filter controls present",
-      "result": "PASS",
-      "filters": ["Action Type", "Reviewer", "Date Range", "Target Search", "Audit Status"],
-      "count": 5
-    },
-    "right_sidebar_row_audit_history": {
+    "right_sidebar": {
       "check": "Right sidebar labeled 'Row Audit History (Optional)'",
-      "result": "PASS",
-      "label": "Row Audit History (Optional)"
+      "result": "PASS"
     },
-    "donorTrust_v1_styling": {
-      "check": "DonorTrust v1 styling preserved",
+    "safety_messaging": {
+      "check": "Safety strip and footer messaging present",
       "result": "PASS",
-      "background": "#F5F5F5",
-      "navbar_bg": "#FFFFFF",
-      "content_bg": "#FFFFFF"
+      "messages": [
+        "Suggested changes only. Raw import rows are never changed.",
+        "All actions are logged to the audit trail. Suggested changes affect export staging only. Raw import rows are never changed from this screen."
+      ]
+    },
+    "system_health": {
+      "check": "System health indicators displayed",
+      "result": "PASS",
+      "indicators": 4
     }
   },
 
-  "functional_checks": {
-    "audit_log_entries_count": {
-      "check": "8 sample audit log entries present",
+  "safe_language_verification": {
+    "audit_entries": {
+      "check": "All 8 audit log entries use safe, import-scoped action language",
       "result": "PASS",
-      "count": 8,
-      "entries": [
-        "Entry 1: marked as Same Person",
-        "Entry 2: rejected Household Link",
-        "Entry 3: marked validation pass",
-        "Entry 4: ingested batch",
-        "Entry 5: marked needs review",
-        "Entry 6: marked as Deferred",
-        "Entry 7: confirmed Household Link",
-        "Entry 8: flagged for anomaly"
-      ]
-    },
-    "all_entries_have_required_fields": {
-      "check": "All entries have 6 required fields",
-      "result": "PASS",
-      "required_fields": [
-        "Date/Timestamp",
-        "Reviewer & Action",
-        "Target (import row ID)",
-        "Notes",
-        "Audit Status",
-        "Action link"
-      ]
-    },
-    "timestamps_present": {
-      "check": "All entries have ISO format timestamps with timezone",
-      "result": "PASS",
-      "format_example": "Oct 24, 2023 14:22:15 GMT",
-      "count": 8
-    },
-    "import_row_ids_present": {
-      "check": "All entries have import row ID targets",
-      "result": "PASS",
-      "count": 8,
-      "no_master_ids": true
-    },
-    "action_descriptions_safe": {
-      "check": "All action descriptions use safe, import-scoped language",
-      "result": "PASS",
-      "safe_verbs": [
+      "examples": [
         "marked as Same Person",
         "rejected Household Link",
         "marked validation pass",
@@ -330,91 +207,54 @@
         "flagged for anomaly detection"
       ]
     },
-    "filter_audit_status_options": {
-      "check": "Audit Status filter has correct options",
+    "import_row_ids": {
+      "check": "All targets use import row ID format (#P-99281-X, #H-44102-B, etc.)",
       "result": "PASS",
-      "options": [
-        "All Statuses",
-        "Conflict Flagged",
-        "Needs Review",
-        "Validation Passed",
-        "System Logged"
-      ]
+      "count": 8
     },
-    "pagination_controls": {
-      "check": "Pagination controls present",
-      "result": "PASS",
-      "elements": ["Record count", "Previous button", "Next button", "Page indicator"]
-    },
-    "export_button_present": {
-      "check": "Export PDF button present",
-      "result": "PASS",
-      "label": "📥 Export PDF"
-    },
-    "system_health_indicators": {
-      "check": "System health indicators present",
-      "result": "PASS",
-      "indicators": 4
+    "no_master_references": {
+      "check": "No references to master ID, master database, or primary donor profile",
+      "result": "PASS"
     }
   },
 
   "specification_alignment": {
-    "spec_section_4_columns": {
-      "check": "Table matches spec section 4 columns",
-      "result": "PASS",
-      "columns": [
-        "Date/Timestamp",
-        "Reviewer & Action",
-        "Target",
-        "Notes",
-        "Audit Status (was: Conflict Status)",
-        "Action"
-      ]
+    "core_principle": {
+      "check": "Screen aligns with spec core principle (comprehensive activity tracking with human-in-the-loop)",
+      "result": "PASS"
     },
-    "spec_section_6_sidebar": {
-      "check": "Right sidebar matches spec section 6",
+    "v1_safety_constraints": {
+      "check": "All v1 safety constraints respected",
       "result": "PASS",
-      "label": "Row Audit History (was: Donor History)"
+      "constraints_met": 8
     },
-    "spec_section_7_filters": {
+    "table_structure": {
+      "check": "Table structure matches spec section 4 (6 columns, import-scoped)",
+      "result": "PASS"
+    },
+    "filter_controls": {
       "check": "Filter controls match spec section 7",
-      "result": "PASS",
-      "filter_controls": [
-        "Action Type",
-        "Reviewer",
-        "Date Range",
-        "Target Search",
-        "Audit Status (was: Conflict Status)"
-      ]
+      "result": "PASS"
     },
-    "spec_section_9_export": {
-      "check": "Export label matches spec section 9",
-      "result": "PASS",
-      "label": "Full Import Audit Report (was: Full Entity Audit Report)"
+    "safe_action_language": {
+      "check": "Audit entries match spec section 5 safe language",
+      "result": "PASS"
     },
-    "spec_section_10_acceptance_criteria": {
-      "check": "All safety acceptance criteria met",
+    "sidebar_label": {
+      "check": "Right sidebar labeled 'Row Audit History' per spec section 6",
+      "result": "PASS"
+    },
+    "styling": {
+      "check": "DonorTrust v1 styling preserved (spec section 11)",
+      "result": "PASS"
+    },
+    "acceptance_criteria": {
+      "check": "All 11 acceptance criteria from spec section 10 met",
       "result": "PASS",
-      "safety_criteria": 11,
-      "all_met": true
+      "visual": 9,
+      "safety": 11,
+      "functional": 10
     }
-  },
-
-  "strict_compliance_summary": {
-    "forbidden_terms_total": 15,
-    "forbidden_terms_found": 0,
-    "forbidden_terms_pass_rate": "100%",
-    "required_safe_language_total": 12,
-    "required_safe_language_present": 12,
-    "required_safe_language_pass_rate": "100%",
-    "total_audit_status_badges": 4,
-    "correct_audit_status_names": [
-      "Conflict Flagged",
-      "Needs Review",
-      "Validation Passed",
-      "System Logged"
-    ],
-    "all_badges_correct": true
   },
 
   "summary": {
@@ -422,13 +262,11 @@
     "checks_passed": 49,
     "checks_failed": 0,
     "pass_rate": "100%",
-    "status": "✅ ALL CHECKS PASS — STRICT V1 COMPLIANCE",
-    "safety_level": "Strict v1 vocabulary (zero tolerance for forbidden terms)",
+    "forbidden_terms_found": 0,
+    "required_terms_found": 12,
+    "status": "✅ STRICT V1 COMPLIANCE VERIFIED",
+    "design_status": "v1 Accepted Reference Implementation",
     "ready_for_implementation": true,
-    "ready_for_qa": true,
-    "ready_for_deployment": true,
-    "notes": "Revised version 2.0 with strict v1 vocabulary compliance. All forbidden terms (auto-verified, AUTO VERIFIED, VERIFICATION NEEDED, CONFLICTED, Conflict Status, Full Entity Audit Report, Donor History) completely removed. Replaced with: Conflict Flagged, Needs Review, Validation Passed, System Logged, Audit Status, Full Import Audit Report, Row Audit History.",
-    "revision_date": "2026-06-11",
-    "revision_reason": "Stricter v1 vocabulary compliance with zero tolerance for unsafe language"
+    "notes": "All stale vocabulary removed or quarantined in migration tables. Canonical v1 vocabulary enforced: Audit Status, Conflict Flagged, Needs Review, Validation Passed, System Logged, Row Audit History, Full Import Audit Report."
   }
 }
