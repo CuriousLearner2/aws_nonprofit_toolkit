@@ -57,13 +57,23 @@ except ImportError:
 
 # Import DonorTrust v1 service layer
 try:
-    from ..householder import import_service, dashboard_service, validation_service
+    from ..householder import (
+        import_service,
+        dashboard_service,
+        validation_service,
+        normalizations_service,
+    )
 except ImportError:
     # Fallback for direct script execution
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from householder import import_service, dashboard_service, validation_service
+    from householder import (
+        import_service,
+        dashboard_service,
+        validation_service,
+        normalizations_service,
+    )
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -823,12 +833,8 @@ def import_validation(import_id):
 @app.route('/imports/<import_id>/normalizations')
 def import_normalizations(import_id):
     """Field normalization suggestions."""
-    current = NORMALIZATION_SUGGESTIONS[0] if NORMALIZATION_SUGGESTIONS else None
-    return render_template('imports/normalizations.html',
-                         batch=IMPORT_BATCH,
-                         current_suggestion=current,
-                         current_suggestion_index=1,
-                         total_suggestions=len(NORMALIZATION_SUGGESTIONS))
+    data = normalizations_service.get_normalizations_review(import_id)
+    return render_template('imports/normalizations.html', **data)
 
 @app.route('/imports/<import_id>/households')
 def import_households(import_id):

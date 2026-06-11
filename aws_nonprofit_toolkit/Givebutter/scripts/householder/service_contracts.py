@@ -148,3 +148,61 @@ class ValidationPageViewModel:
             },
             "total_records": self.total_records,
         }
+
+
+@dataclass(frozen=True)
+class NormalizationRow:
+    """
+    Single normalization suggestion for /imports/<import_id>/normalizations.
+
+    Represents one field cleanup suggestion with original and suggested values.
+    Frozen dataclass ensures immutability.
+    """
+    id: str
+    contact_name: str
+    field_name: str
+    original_value: str
+    suggested_value: str
+    normalization_type: str
+    status: str = "Pending"
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "id": self.id,
+            "contact_name": self.contact_name,
+            "field_name": self.field_name,
+            "original_value": self.original_value,
+            "suggested_value": self.suggested_value,
+            "normalization_type": self.normalization_type,
+            "status": self.status,
+        }
+
+
+@dataclass(frozen=True)
+class NormalizationPageViewModel:
+    """
+    Complete normalization review page view model for /imports/<import_id>/normalizations.
+
+    Contains batch metadata and the current suggestion with navigation state.
+    Frozen dataclass ensures immutability.
+    """
+    batch_id: str
+    filename: str
+    progress: int
+    current_suggestion: NormalizationRow
+    current_suggestion_index: int
+    total_suggestions: int
+
+    def to_template_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "batch": {
+                "id": self.batch_id,
+                "filename": self.filename,
+                "progress": self.progress,
+            },
+            "current_suggestion": self.current_suggestion.to_dict(),
+            "current_suggestion_index": self.current_suggestion_index,
+            "total_suggestions": self.total_suggestions,
+        }
