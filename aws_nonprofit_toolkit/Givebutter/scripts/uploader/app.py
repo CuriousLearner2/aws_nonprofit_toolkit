@@ -63,6 +63,8 @@ try:
         validation_service,
         normalizations_service,
         households_service,
+        duplicates_service,
+        audit_service,
     )
 except ImportError:
     # Fallback for direct script execution
@@ -75,6 +77,8 @@ except ImportError:
         validation_service,
         normalizations_service,
         households_service,
+        duplicates_service,
+        audit_service,
     )
 
 app = Flask(__name__)
@@ -821,10 +825,8 @@ def import_dashboard(import_id):
 @app.route('/imports/<import_id>/duplicates')
 def import_duplicates(import_id):
     """Possible duplicates review."""
-    candidate = DUPLICATE_CANDIDATES[0] if DUPLICATE_CANDIDATES else None
-    return render_template('imports/duplicates.html',
-                         batch=IMPORT_BATCH,
-                         candidate=candidate)
+    data = duplicates_service.get_duplicates_review(import_id)
+    return render_template('imports/duplicates.html', **data)
 
 @app.route('/imports/<import_id>/validation')
 def import_validation(import_id):
@@ -847,9 +849,8 @@ def import_households(import_id):
 @app.route('/imports/<import_id>/audit')
 def import_audit(import_id):
     """Audit log for all reviewer decisions."""
-    return render_template('imports/audit.html',
-                         batch=IMPORT_BATCH,
-                         audit_log=AUDIT_LOG_ENTRIES)
+    data = audit_service.get_audit_log(import_id)
+    return render_template('imports/audit.html', **data)
 
 @app.route('/imports/<import_id>/exports')
 def import_exports(import_id):

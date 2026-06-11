@@ -266,3 +266,130 @@ class HouseholdPageViewModel:
             "current_household_index": self.current_household_index,
             "total_households": self.total_households,
         }
+
+
+@dataclass(frozen=True)
+class DuplicateContact:
+    """
+    Contact information for duplicate comparison.
+
+    Represents one side of a duplicate pair comparison.
+    Frozen dataclass ensures immutability.
+    """
+    id: str
+    name: str
+    email: str
+    phone: str
+    address: str
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "phone": self.phone,
+            "address": self.address,
+        }
+
+
+@dataclass(frozen=True)
+class DuplicateCandidate:
+    """
+    Single duplicate candidate pair for /imports/<import_id>/duplicates.
+
+    Represents two potentially duplicate contacts with supporting/conflicting evidence.
+    Frozen dataclass ensures immutability.
+    """
+    id: str
+    contact_a: DuplicateContact
+    contact_b: DuplicateContact
+    supporting_evidence: tuple  # Tuple of evidence strings
+    conflicting_evidence: tuple  # Tuple of conflict strings
+    status: str = "Pending"
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "id": self.id,
+            "contact_a": self.contact_a.to_dict(),
+            "contact_b": self.contact_b.to_dict(),
+            "supporting_evidence": self.supporting_evidence,
+            "conflicting_evidence": self.conflicting_evidence,
+            "status": self.status,
+        }
+
+
+@dataclass(frozen=True)
+class DuplicatePageViewModel:
+    """
+    Complete duplicates review page view model for /imports/<import_id>/duplicates.
+
+    Contains batch metadata and the current duplicate candidate with navigation state.
+    Frozen dataclass ensures immutability.
+    """
+    batch_id: str
+    filename: str
+    progress: int
+    current_candidate: DuplicateCandidate
+    current_candidate_index: int
+    total_candidates: int
+
+    def to_template_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "batch": {
+                "id": self.batch_id,
+                "filename": self.filename,
+                "progress": self.progress,
+            },
+            "candidate": self.current_candidate.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class AuditLogEntry:
+    """
+    Single audit log entry for /imports/<import_id>/audit.
+
+    Represents one reviewer action or system event with timestamp and details.
+    Frozen dataclass ensures immutability.
+    """
+    timestamp: str
+    reviewer: str
+    action: str
+    details: str
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "timestamp": self.timestamp,
+            "reviewer": self.reviewer,
+            "action": self.action,
+            "details": self.details,
+        }
+
+
+@dataclass(frozen=True)
+class AuditPageViewModel:
+    """
+    Complete audit log view model for /imports/<import_id>/audit.
+
+    Contains batch metadata and all audit entries for immutable compliance record.
+    Frozen dataclass ensures immutability.
+    """
+    batch_id: str
+    filename: str
+    progress: int
+    audit_entries: tuple  # Tuple of AuditLogEntry
+
+    def to_template_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "batch": {
+                "id": self.batch_id,
+                "filename": self.filename,
+                "progress": self.progress,
+            },
+            "audit_log": [entry.to_dict() for entry in self.audit_entries],
+        }

@@ -19,6 +19,8 @@ try:
         CONTACTS,
         NORMALIZATION_SUGGESTIONS,
         HOUSEHOLD_SUGGESTIONS,
+        DUPLICATE_CANDIDATES,
+        AUDIT_LOG_ENTRIES,
     )
 except ImportError:
     # Fallback for direct script execution
@@ -29,6 +31,8 @@ except ImportError:
         CONTACTS,
         NORMALIZATION_SUGGESTIONS,
         HOUSEHOLD_SUGGESTIONS,
+        DUPLICATE_CANDIDATES,
+        AUDIT_LOG_ENTRIES,
     )
 
 from .service_contracts import (
@@ -41,6 +45,11 @@ from .service_contracts import (
     NormalizationPageViewModel,
     HouseholdRow,
     HouseholdPageViewModel,
+    DuplicateContact,
+    DuplicateCandidate,
+    DuplicatePageViewModel,
+    AuditLogEntry,
+    AuditPageViewModel,
 )
 
 
@@ -284,6 +293,99 @@ class FixtureImportRepository:
             current_household=current_household,
             current_household_index=1,
             total_households=len(HOUSEHOLD_SUGGESTIONS),
+        )
+
+    @staticmethod
+    def get_duplicates(import_id: str) -> DuplicatePageViewModel:
+        """
+        Return duplicates review page data as DuplicatePageViewModel.
+
+        Adapts IMPORT_BATCH and DUPLICATE_CANDIDATES fixtures into
+        duplicate page view model. Returns current candidate with batch info.
+
+        Args:
+            import_id: Import ID (unused for fixture data, preserved for API consistency)
+
+        Returns:
+            DuplicatePageViewModel with batch, current candidate, and navigation state.
+        """
+        # Get first candidate or create empty one if none available
+        current_candidate_data = (
+            DUPLICATE_CANDIDATES[0] if DUPLICATE_CANDIDATES else None
+        )
+
+        if not current_candidate_data:
+            # Handle empty candidates list gracefully
+            current_candidate = DuplicateCandidate(
+                id="",
+                contact_a=DuplicateContact("", "", "", "", ""),
+                contact_b=DuplicateContact("", "", "", "", ""),
+                supporting_evidence=(),
+                conflicting_evidence=(),
+                status="Pending",
+            )
+        else:
+            contact_a_data = current_candidate_data['contact_a']
+            contact_b_data = current_candidate_data['contact_b']
+            current_candidate = DuplicateCandidate(
+                id=current_candidate_data['id'],
+                contact_a=DuplicateContact(
+                    id=contact_a_data['id'],
+                    name=contact_a_data['name'],
+                    email=contact_a_data['email'],
+                    phone=contact_a_data['phone'],
+                    address=contact_a_data['address'],
+                ),
+                contact_b=DuplicateContact(
+                    id=contact_b_data['id'],
+                    name=contact_b_data['name'],
+                    email=contact_b_data['email'],
+                    phone=contact_b_data['phone'],
+                    address=contact_b_data['address'],
+                ),
+                supporting_evidence=tuple(current_candidate_data['supporting_evidence']),
+                conflicting_evidence=tuple(current_candidate_data.get('conflicting_evidence', [])),
+                status=current_candidate_data.get('status', 'Pending'),
+            )
+
+        return DuplicatePageViewModel(
+            batch_id=IMPORT_BATCH['id'],
+            filename=IMPORT_BATCH['filename'],
+            progress=IMPORT_BATCH['progress'],
+            current_candidate=current_candidate,
+            current_candidate_index=1,
+            total_candidates=len(DUPLICATE_CANDIDATES),
+        )
+
+    @staticmethod
+    def get_audit(import_id: str) -> AuditPageViewModel:
+        """
+        Return audit log page data as AuditPageViewModel.
+
+        Adapts IMPORT_BATCH and AUDIT_LOG_ENTRIES fixtures into audit
+        page view model. Returns all entries for immutable compliance record.
+
+        Args:
+            import_id: Import ID (unused for fixture data, preserved for API consistency)
+
+        Returns:
+            AuditPageViewModel with batch and all audit entries.
+        """
+        audit_entries = tuple(
+            AuditLogEntry(
+                timestamp=str(entry['timestamp']),
+                reviewer=entry['reviewer'],
+                action=entry['action'],
+                details=entry.get('notes', ''),
+            )
+            for entry in AUDIT_LOG_ENTRIES
+        )
+
+        return AuditPageViewModel(
+            batch_id=IMPORT_BATCH['id'],
+            filename=IMPORT_BATCH['filename'],
+            progress=IMPORT_BATCH['progress'],
+            audit_entries=audit_entries,
         )
 
     @staticmethod
