@@ -1,8 +1,8 @@
-# Givebutter Data Hygiene & Householding — v2.4 PRD for Claude Code (Human-in-Loop Only)
+# DonorTrust / Householder v1 — PRD v2.6 for Claude Code (UX-Aligned, Human-in-Loop Only)
 
-**Last updated:** 2026-06-08  
+**Last updated:** 2026-06-11  
 **Owner:** Gautam Biswas  
-**Status:** v2.5 final candidate (v1 scope clarified; reconciled with implementation plan)
+**Status:** v2.6 UX-aligned final candidate (aligned with 8-screen UX summary and accepted Audit Log / Export Console specs)
 
 ---
 
@@ -34,7 +34,7 @@ These guardrails must be enforced in code and covered by tests:
 4. **Suggestion engines return suggestions only; they do not write to approval targets.** No auto-apply behavior.
 5. **Upload processing may create pending suggestions, but may not approve anything.** All approvals require explicit operator action.
 6. **Duplicate decisions in v1 are record-only and never merge contacts.** same_person decision records judgment; v2 may use it for merge.
-7. **Export Clean reads from approved_contacts; it does not update contacts.** Read-only query of derived view.
+7. **Reviewed Export reads from approved_contacts; it does not update contacts.** Read-only query of derived view.
 8. **Givebutter API writeback is out of scope for v1.** No external writes, no background sync jobs.
 
 ---
@@ -86,7 +86,7 @@ Givebutter CSV Upload
         ↓
 [Householder App] — deduplicates, groups into households, normalizes contact info
         ↓
-Export Clean (approved suggestions) OR Export by Household
+Reviewed Export (approved suggestions) OR Household Export
 ```
 
 **Key Differences:**
@@ -103,26 +103,28 @@ Export Clean (approved suggestions) OR Export by Household
 ## 4. v1 Scope — Build Only
 
 ### Core Features
-- CSV upload with raw preservation in raw_import_rows
+- CSV upload with raw preservation in `raw_import_rows`
 - Contact extraction and normalization suggestions (email case, phone format, address)
 - Household matching engine using household-level evidence: shared address+zip, shared phone+last name, different first names at same address, related name/address patterns
 - Duplicate candidate detection (pairs likely to be same person, including exact email matches)
-- Householder dashboard (PASS/WARNING/FAIL counts, suggestion queue status)
-- Three review queues:
-  - **Normalizations**: Email/phone/address format fixes
-  - **Households**: Suggested groupings (confirm or defer)
-  - **Duplicates**: Likely duplicate pairs (same person / different / defer)
-- Inline approval UI (Approve / Reject / Defer buttons)
-- Bulk approval with confirmation dialogs
-- Export options:
-  - **Export Clean**: Contacts with approved normalizations + household_id
-  - **Export by Household**: One row per household (primary contact info, member count, full member list)
-  - **Export Backlog**: Pending suggestions not yet approved
+- Import Dashboard with PASS/WARNING/FAIL counts, review queue status, recent decisions, guardrails, and navigation
+- Four review queues / review surfaces:
+  - **Possible Duplicates**: Likely duplicate pairs; reviewer marks Same Person / Different Person / Defer
+  - **All Records / Validation Review**: Full-batch inspection, validation issues, warning export, row-detail navigation
+  - **Normalizations**: Field cleanup suggestions; reviewer confirms/rejects/defers
+  - **Households**: Suggested groupings; reviewer confirms/rejects/defers
+- Audit Log screen for import-scoped decision history and compliance export
+- Selection-based decision UI with confirmation dialogs; visible UI uses “Confirm Selected,” not “Approve All” / “Apply All”
+- Export Console with download-only export cards:
+  - **Reviewed Export**: Contacts with reviewer-confirmed normalizations and derived household assignment reflected in export staging
+  - **Household Export**: One row per confirmed household (primary contact info, member count, full member list)
+  - **Backlog Export**: Pending or deferred suggestions not yet confirmed/rejected
+  - **Raw Export**: Original import exactly as uploaded
 
 ### Testing
 - Unit tests: suggestion engines don't auto-apply
 - Integration tests: raw data preservation, approval workflow
-- E2E tests (Playwright): upload → review → approve → export workflow
+- E2E tests (Playwright): upload → review → confirm decisions → export workflow
 - Critical test: verify zero auto-writes, all changes require clicks
 
 ### v2 Deferred
@@ -215,6 +217,77 @@ try:
 except (AttributeError, AssertionError) as e:
     raise RuntimeError(f"Processor version incompatible: {e}")
 ```
+
+### 2.2 UX Alignment Addendum — 2026-06-11
+
+This PRD is now aligned with the canonical DonorTrust v1 UX Summary and accepted screen specifications. Use the following source-of-truth hierarchy:
+
+1. **This PRD** = product contract, backend guardrails, data model, and safety requirements.
+2. **UX_SUMMARY.md** = canonical 8-screen user workflow and screen-level onboarding map.
+3. **Accepted screen specs** = authority for visible UI copy and layout where available.
+4. **Implementation plan** = execution sequence only; if it conflicts with this PRD or accepted UX specs, follow the safer/current PRD and UX specs.
+5. **Repository adaptation document** = actual repository constraints and integration details.
+
+#### Canonical v1 Screen Set and Routes
+
+Visible v1 UX consists of these 8 screens:
+
+| # | Screen | Route | Status / UX Authority |
+|---|--------|-------|-----------------------|
+| 1 | Upload Givebutter CSV | `/imports/upload` or `/imports/new` | Implemented / existing upload flow |
+| 2 | Import Dashboard | `/imports/<import_id>/dashboard` | Stitch Design Final; pending local vocabulary cleanup before full v1 acceptance |
+| 3 | Possible Duplicates | `/imports/<import_id>/duplicates` | Design finalized; needs packaging |
+| 4 | All Records / Validation Review | `/imports/<import_id>/validation` | In progress |
+| 5 | Normalization Review | `/imports/<import_id>/normalizations` | In progress |
+| 6 | Households Review | `/imports/<import_id>/households` | In progress |
+| 7 | Audit Log | `/imports/<import_id>/audit` | Accepted; 49/49 verification passing |
+| 8 | Export Console | `/imports/<import_id>/exports` | Accepted; 52/52 verification passing |
+
+The Import Dashboard is the navigation hub. Review queues may be entered in the order the reviewer chooses. Audit Log is available throughout. Export Console is the download-only final step.
+
+#### Visible UI Vocabulary vs. Backend State Names
+
+Backend tables may continue to use stable state names such as `approved`, `rejected`, and `deferred` where they are already specified. **Visible UI copy should use safer reviewer-language unless a screen spec explicitly says otherwise.**
+
+| Older / backend-oriented wording | Preferred visible v1 wording | Notes |
+|----------------------------------|-------------------------------|-------|
+| Approve suggestion | Confirm suggestion | Visible UI should emphasize reviewer decision. |
+| Approve All / Apply All | Confirm Selected | Only explicit selection-based actions allowed. |
+| Apply suggestion | Reflect suggestion in export staging | Avoid implying raw-data mutation. |
+| Approve Household | Confirm Household | Household grouping affects export staging / derived assignment only. |
+| Reviewed Export | Reviewed Export | Accepted Export Console vocabulary. |
+| Household Export | Household Export | Accepted Export Console vocabulary. |
+| Backlog Export | Backlog Export | Accepted Export Console vocabulary. |
+| Finalize Export | Generate Export Package | Accepted Export Console vocabulary. |
+| Merge / merged | Marked as Same Person | Duplicate decisions are record-only in v1. |
+| Donor History / Entity Audit | Row Audit History / Audit Log | Accepted Audit Log vocabulary. |
+| Auto-verified | System Logged / Validation Passed | No auto-verification in visible UX. |
+
+#### Bulk / Selected Decision Rule
+
+Bulk-like actions are allowed only when the reviewer has explicitly selected the items or filtered the queue and then confirms a preview. Visible UI must not use “Approve All” or “Apply All.” Use:
+
+- **Confirm Selected**
+- **Confirm Selected Suggestions**
+- **Confirm Selected Households**
+
+Every selected decision action must show a confirmation preview and must be audit-logged with actor, timestamp, action type, count, affected IDs, and filter/selection criteria.
+
+#### Household Assignment Clarification
+
+Raw rows and baseline contact fields remain immutable. `contacts.household_id` is a derived, import-scoped approval field and may be set only by `approve_household()` after explicit reviewer confirmation. This is not a raw data mutation and must be represented in the UX as a reviewer-confirmed household grouping reflected in export staging / derived views.
+
+#### Export Vocabulary Clarification
+
+Visible Export Console labels are canonical:
+
+- **Reviewed Export**
+- **Household Export**
+- **Backlog Export**
+- **Raw Export**
+- **Generate Export Package**
+
+Exports prepare downloadable files only. No data is written back to Givebutter or any CRM.
 
 **Processor Adapter Pattern:**
 
@@ -448,7 +521,7 @@ FROM contacts c
 **Implementation Notes:**
 - The view is computed at query time (no redundant storage)
 - For each field, if there's an approved suggestion, use suggested_value; otherwise use the raw value from contacts
-- "Export Clean" queries this view to generate the CSV (one row per contact with approved values + household_id)
+- "Reviewed Export" queries this view to generate the CSV (one row per contact with approved values + household_id)
 - Household assignment only appears if the contact is in an approved household_suggestion
 - The view automatically reflects current state: if an approval is withdrawn, the view reverts to raw value
 
@@ -458,7 +531,7 @@ FROM contacts c
 - Household ID generation uses approved address_line_1 suggestion if present; otherwise uses raw contacts.address_line_1
 - Field name standardization: all address suggestions use field_name = 'address_line_1' (not 'address')
 
-**households_summary** — One row per household (for "Export by Household" report)
+**households_summary** — One row per household (for "Household Export" report)
 ```sql
 SELECT 
   h.household_id,
@@ -478,10 +551,10 @@ GROUP BY h.household_id
 **Data Flow on Approval:**
 1. Operator clicks "Approve" on a contact_suggestion → `contact_suggestions.status = 'approved'`
 2. `approved_contacts` view automatically reflects approved values (recomputed at query time)
-3. "Export Clean" CSV includes these approved values
+3. "Reviewed Export" CSV includes these approved values
 4. Operator clicks "Approve" on a household_suggestion → `households` record created
 5. `households_summary` view includes household with member info
-6. "Export by Household" CSV includes household groupings
+6. "Household Export" CSV includes household groupings
 
 ### Database Constraints and Enums
 
@@ -632,115 +705,160 @@ Store as `duplicate_candidates` with decision = `'unreviewed'`. Operator decides
 
 ## 8. UI Requirements
 
-### 8.1 Upload & Dashboard
+### 8.1 Upload Givebutter CSV
 
-**GET /imports/new** — File upload form
+**GET /imports/upload** or **GET /imports/new** — File upload form and import entry point.
+
 - Drag-and-drop or file picker
-- Show import summary: "Processed 50 contacts, 12 pending normalizations, 5 household suggestions, 3 duplicates"
+- Preserve original CSV rows in `raw_import_rows`
+- Show import summary after processing: total records, PASS/WARNING/FAIL counts, pending normalizations, household suggestions, duplicate candidates
+- Show active import batches and navigation into the Import Dashboard
+- Visible safety copy: raw rows unchanged, current import only, no Givebutter writeback
 
-**GET /imports/{id}** — Dashboard
-- Card 1: Total contacts, validation tier breakdown (PASS / WARNING / FAIL)
-- Card 2: Suggestion queue status (# pending normalizations, households, duplicates)
-- Card 3: Action buttons: Review Normalizations, Review Households, Review Duplicates, Export
-- Card 4: Recent approvals (last 5 actions by current user)
+### 8.2 Import Dashboard
 
-### 8.2 Normalizations Review Queue
+**GET /imports/{id}/dashboard** — Read-only status and navigation hub.
 
-**GET /imports/{id}/normalizations** — Paginated table
-- Columns: Contact Name, Field, Current Value, Suggested Value, Reason, Confidence, Actions
-- Row actions: Approve / Reject (buttons)
-- Bulk actions: "Approve All" (with confirmation preview)
-- Filters: Field (email / phone / full_name / address_line_1), Confidence (high / medium / low)
+- Top summary: total contacts, raw rows preserved, validation tier breakdown
+- Queue cards / navigation:
+  - Review Possible Duplicates
+  - Review Validation Issues / All Records
+  - Review Normalizations
+  - Review Households
+  - View Audit Log
+  - Open Export Console
+- Recent decisions / audit trail preview (read-only)
+- v1 guardrails panel
+- No direct approve / confirm / reject / export execution actions from dashboard
+- All decisions happen in specialized review screens
 
-### 8.3 Households Review Queue
+### 8.3 Possible Duplicates Review Queue
 
-**GET /imports/{id}/households** — Household grouping suggestions
-- Card layout: Side-by-side contacts with match reasons
-- Show primary contact waterfall logic: "Primary: Jane (highest donation: $1000)"
-- Buttons: Approve Household / Reject / Defer
-- Bulk: "Approve All Households" (with confirmation: "X households will be created, Y members grouped")
+**GET /imports/{id}/duplicates** — Duplicate candidate review.
 
-### 8.4 Duplicates Review Queue
-
-**GET /imports/{id}/duplicates** — Duplicate candidate review
 - Two-column layout: Contact A | Contact B
-- Match score and reasons
-- Buttons: "Same Person" / "Different" / "Defer"
-- Bulk: "Mark All As Same Person" (with confirmation)
+- Match score and supporting/conflicting evidence
+- Buttons / decisions:
+  - Mark as Same Person
+  - Different Person
+  - Defer
+- If conflicting evidence exists, require reviewer notes before allowing “Mark as Same Person”
+- Duplicate decisions are record-only in v1 and never merge contacts
+- Bulk “Same Person” is disabled in v1; higher-risk same-person decisions are made one pair at a time
 
-### 8.5 Bulk Approval Safety
+### 8.4 All Records / Validation Review
 
-When operator clicks bulk action (e.g., "Approve All Normalizations"):
-1. Show modal: "Preview Changes"
-   - "50 email fields will be normalized"
-   - "3 phone fields will be reformatted"
-   - "These changes will affect approved exports. Raw data will remain unchanged. You can reverse the approval by changing the suggestion status later."
-2. Require confirmation: [Cancel] [Approve]
-3. Log action: timestamp, operator, # approved, change details
+**GET /imports/{id}/validation** — Full-batch inspection table.
 
-**Bulk Approval Safety Rules:**
+- Fixed 10-column table: Selection, Transaction ID, Date, Name, Email, Phone, Amount, Address, Validation Status, Action
+- Validation Status labels: Validation Passed, Needs Review, Conflict Flagged
+- Row actions: View Row / Review Issues
+- Export Warnings action for validation issue reporting
+- “Review Selected (N)” enabled only when rows are explicitly selected
+- Validation status is informational; no raw data changes occur from this screen
 
-- Bulk approval may only apply to currently filtered pending suggestions
-  - Never include deferred, rejected, or already-approved items
-  - Verify filter state matches expectations before confirming
+### 8.5 Normalizations Review Queue
 
-- Bulk normalizations must show counts by field/type before confirmation
-  - Example: "50 emails, 3 phones, 2 addresses"
+**GET /imports/{id}/normalizations** — Suggested field cleanup review.
 
-- Bulk household approval must show:
-  - Number of households to be created
-  - Total unique contacts affected
-  - Primary contact waterfall logic explanation
+- Columns or cards: Contact Name, Field, Current Value, Suggested Value, Reason, Confidence, Actions
+- Row actions: Confirm / Reject / Defer
+- Selected decision action: “Confirm Selected” with confirmation preview
+- Filters: Field (email / phone / full_name / address_line_1), Confidence (high / medium / low), Status
+- Confirmed suggestions are reflected in export staging / `approved_contacts` view; raw rows and baseline contact fields remain unchanged
 
-- Bulk duplicate decisions:
-  - "Different" decisions can use bulk approval safely (no system action)
-  - "Same Person" decisions are higher-risk due to v2 merge potential and must be disabled for bulk approval in v1
-  - Individual "Same Person" decisions must be approved one-at-a-time, never bulk
-  - v2 merge workflow will require individual approval anyway
+### 8.6 Households Review Queue
 
-- All bulk operations must be audit-logged with:
-  - Timestamp
-  - Operator username and IP address
-  - Action type (approve normalizations / households / duplicates)
-  - Count of items affected
-  - Filter criteria applied
+**GET /imports/{id}/households** — Household grouping suggestion review.
+
+- Card layout: suggested household, proposed members, match reasons, confidence, conflicting signals if any
+- Show primary contact waterfall logic when relevant: highest donation, most recent donation, oldest record
+- Buttons: Confirm Household / Reject / Defer
+- Confirmation modal before confirming a household
+- Confirmation copy must state that raw rows remain unchanged and the decision is audit logged
+- Confirmed household groupings are reflected in derived household assignment / export staging only
+
+### 8.6a Selected Decision Safety
+
+When the reviewer confirms selected suggestions or households:
+
+1. Show modal: “Preview Selected Decisions”
+   - Count by item type / field type
+   - Examples of affected records
+   - Explicit copy: “Raw import rows remain unchanged. Confirmed decisions affect export staging only.”
+2. Require confirmation: [Cancel] [Confirm Selected]
+3. Log action: timestamp, operator, affected IDs, count, filter/selection criteria, and action details
+
+**Selected Decision Safety Rules:**
+
+- Selected decision actions may only include currently selected pending/deferred items
+- Never include rejected or already-confirmed items
+- Normalization confirmation preview shows counts by field/type
+- Household confirmation preview shows number of households and total unique contacts affected
+- Duplicate “Same Person” decisions are individual-only in v1; do not offer “Confirm Selected Same Person”
+- Bulk/selected “Different Person” decisions may be allowed because they do not imply future merge risk
 
 **Backend Optimization for Preview Metrics:**
 
-To prevent performance degradation from parsing thousands of raw JSON objects, use optimized aggregation:
+Use optimized aggregation instead of parsing raw JSON rows:
 
 ```sql
--- Fast COUNT + GROUP BY on pending suggestions (no JSON parsing)
 SELECT field_name, COUNT(*) as suggestion_count
 FROM contact_suggestions
 WHERE import_id = ? AND status = 'pending'
 GROUP BY field_name
-ORDER BY suggestion_count DESC
+ORDER BY suggestion_count DESC;
 
--- Fast COUNT of pending households
 SELECT COUNT(*) as household_count
 FROM household_suggestions
-WHERE import_id = ? AND status = 'pending'
+WHERE import_id = ? AND status = 'pending';
 
--- Fast COUNT of unreviewed duplicates
 SELECT COUNT(*) as duplicate_count
 FROM duplicate_candidates
-WHERE import_id = ? AND decision = 'unreviewed'
+WHERE import_id = ? AND decision = 'unreviewed';
 ```
 
-**Implementation:**
-- Create dedicated API endpoint: `GET /api/processing/{import_id}/bulk-preview-metrics`
-- Returns lightweight JSON: `{ "email": 50, "phone": 3, "households": 12, "duplicates": 5 }`
-- No row-level iteration, no JSON parsing, O(1) query time
-- UI populates modal from aggregation response (not raw data)
+Dedicated API endpoint:
 
-### 8.6 Export
+`GET /api/processing/{import_id}/bulk-preview-metrics`
 
-**GET /imports/{id}/export** — Export options
-- Button 1: "Export Clean" — Download CSV with approved normalizations + household_id
-- Button 2: "Export by Household" — Download CSV, one row per household (primary contact info, member count, members list)
-- Button 3: "Export Backlog" — Download CSV of pending suggestions not yet approved
-- Button 4: "Export Raw" — Download original import (unchanged)
+Returns lightweight JSON such as:
+
+```json
+{ "email": 50, "phone": 3, "households": 12, "duplicates": 5 }
+```
+
+### 8.6b Audit Log
+
+**GET /imports/{id}/audit** — Import-scoped decision history and compliance screen.
+
+- Six columns: Date/Timestamp, Reviewer & Action, Target, Notes, Audit Status, Action
+- Canonical Audit Status labels: Conflict Flagged, Needs Review, Validation Passed, System Logged
+- Right-side panel label: Row Audit History
+- Export label: Full Import Audit Report or Export PDF
+- Audit log records decisions only; it does not mutate raw rows or baseline records
+
+### 8.6c Export Console
+
+**GET /imports/{id}/exports** — Download-only export console.
+
+Canonical export cards:
+
+1. **Reviewed Export** — CSV reflecting reviewer-confirmed duplicate decisions, normalizations, and household groupings in export staging
+2. **Household Export** — confirmed household groupings with member composition
+3. **Backlog Export** — unresolved suggestions or pending decisions; internal review only
+4. **Raw Export** — original CSV exactly as uploaded
+
+Primary action:
+
+- **Generate Export Package** — opens confirmation modal
+
+Required export safety copy:
+
+- Raw import rows are never changed by exports
+- Exports prepare files for download only
+- No data is written back to Givebutter or any CRM
+- All export actions are logged to the audit trail
 
 ### 8.7 Defer State Implementation
 
@@ -1425,7 +1543,7 @@ def test_resolve_duplicate_same_person_record_only():
     )  # Not merged into same household
 
 def test_exports_contain_approved_values():
-    """Export Clean CSV contains approved normalization values."""
+    """Reviewed Export CSV contains approved normalization values."""
     import_id = upload_csv(sample_csv)
     
     # Approve all normalizations
@@ -1592,7 +1710,7 @@ def test_review_duplicates_workflow():
     page.wait_for_selector('text=Recorded', timeout=5000)
 
 def test_export_clean_workflow():
-    """Export Clean downloads CSV with approved values."""
+    """Reviewed Export downloads CSV with approved values."""
     page.goto(f"/imports/{import_id}/export")
     
     # Click export clean
@@ -1695,9 +1813,9 @@ Add these `data-testid` attributes to HTML elements for reliable element selecti
 
 ### 12.6 Export Page
 ```html
-<button data-testid="export-clean">Export Clean</button>
-<button data-testid="export-household">Export by Household</button>
-<button data-testid="export-backlog">Export Backlog</button>
+<button data-testid="export-clean">Reviewed Export</button>
+<button data-testid="export-household">Household Export</button>
+<button data-testid="export-backlog">Backlog Export</button>
 <button data-testid="export-raw">Export Raw</button>
 ```
 
@@ -1710,8 +1828,8 @@ Add these `data-testid` attributes to HTML elements for reliable element selecti
 - ✅ 100% of household groupings require explicit Approve click
 - ✅ 100% of duplicate decisions require operator review
 - ✅ Dashboard shows suggestion counts, not auto-fixed counts
-- ✅ Export Clean contains only human-approved values
-- ✅ Export by Household groups related contacts with primary contact info
+- ✅ Reviewed Export contains only human-approved values
+- ✅ Household Export groups related contacts with primary contact info
 - ✅ Bulk approvals show confirmation modal with change preview
 - ✅ All tests pass without any auto-write logic
 - ✅ Forbidden function name prefixes: `auto_*`, `merge_*`
@@ -1745,9 +1863,9 @@ Add these `data-testid` attributes to HTML elements for reliable element selecti
 **Views & Exports:**
 - ✅ approved_contacts view: derives clean contact data from contact baseline + approved contact_suggestions (COALESCE pattern)
 - ✅ households_summary view: one row per approved household (primary contact info, member count, total donation amount)
-- ✅ Export Clean: CSV with approved values (queries approved_contacts view) + household_id if member of approved household
-- ✅ Export by Household: CSV grouped by household (one row per primary contact, member list, total donation)
-- ✅ Export Backlog: CSV of pending suggestions (not yet approved)
+- ✅ Reviewed Export: CSV with approved values (queries approved_contacts view) + household_id if member of approved household
+- ✅ Household Export: CSV grouped by household (one row per primary contact, member list, total donation)
+- ✅ Backlog Export: CSV of pending suggestions (not yet approved)
 - ✅ Export Raw: original imported CSV (unchanged)
 
 **Audit Trail:**
@@ -1864,9 +1982,9 @@ Claude Code should follow this 16-step sequence for safe, incremental developmen
     - Test: queues load, elements clickable, filters work
 
 13. **Implement exports (GET /imports/{id}/export)**
-    - Export Clean: query approved_contacts view, output CSV
-    - Export by Household: query households_summary view, output CSV
-    - Export Backlog: query pending suggestions, output CSV
+    - Reviewed Export: query approved_contacts view, output CSV
+    - Household Export: query households_summary view, output CSV
+    - Backlog Export: query pending suggestions, output CSV
     - Export Raw: output original raw_import_rows as CSV
     - Test: exported values match expectations, files downloadable
 
@@ -1927,3 +2045,17 @@ Claude Code should follow this 16-step sequence for safe, incremental developmen
 ---
 
 **Next Step:** Begin implementation following the 16-step sequence in section 14.
+
+
+## Appendix A. PRD v2.6 UX Alignment Change Log
+
+This version was updated to align with the canonical 8-screen UX Summary and accepted Audit Log / Export Console specs. Key changes:
+
+- Added UX Alignment Addendum with source-of-truth hierarchy.
+- Added canonical 8-screen route map.
+- Updated v1 scope to include All Records / Validation Review, Audit Log, and Export Console as first-class screens.
+- Replaced visible “Export Clean” terminology with “Reviewed Export.”
+- Replaced visible “Approve All / Apply All” patterns with “Confirm Selected” / selected decision actions.
+- Clarified that `contacts.household_id` is a derived, import-scoped assignment field set only by `approve_household()`.
+- Rewrote UI Requirements section 8.1–8.6c to match current UX Summary and accepted screen vocabulary.
+- Preserved backend-approved status names and function names where they are part of the data model, while requiring safer visible UI copy.

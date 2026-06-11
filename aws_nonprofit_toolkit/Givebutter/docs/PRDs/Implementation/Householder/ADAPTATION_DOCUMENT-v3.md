@@ -6,6 +6,21 @@
 
 ---
 
+## UX Alignment Note (2026-06-11)
+
+This repository adaptation document remains valid after the PRD v2.6 UX alignment. The repository facts have not changed: the existing Givebutter Processor is still file-based, the validation functions still require an adapter wrapper, and Householder still introduces SQLite as the new persistence layer.
+
+Use this document for **repository reality** only. Use the following hierarchy for product and implementation decisions:
+
+1. **Householder PRD v2.6 UX-aligned** — product contract and backend guardrails.
+2. **UX_SUMMARY.md** — canonical 8-screen workflow and visible UI vocabulary.
+3. **Accepted screen specs** — source of truth for screen-level copy/layout.
+4. **HOUSEHOLDER_IMPLEMENTATION_PLAN v2.6 UX-aligned** — execution sequence.
+5. **This adaptation document** — actual repository paths, existing processor functions, and integration constraints.
+
+If an implementation detail in this document appears to conflict with PRD v2.6 or accepted screen specs, preserve the repository fact but follow the newer PRD/screen spec for route names, visible UI copy, and product behavior.
+
+
 ## Executive Summary
 
 Inspection of the Givebutter Processor repository is complete. **All required validation functions exist and can be directly imported.** No missing dependencies. The current Flask app uses file-based CSV storage (no database). **Householder will introduce SQLite as the first new dependency.** See section 10 for blockers and recommendations.

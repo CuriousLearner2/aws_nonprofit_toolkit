@@ -1,13 +1,51 @@
 # HOUSEHOLDER V1 IMPLEMENTATION PLAN
 
-**Last Updated:** 2026-06-08  
-**Status:** Final (Quality-first, PRD-consistent)
+**Last Updated:** 2026-06-11  
+**Status:** UX-aligned final candidate (quality-first, PRD v2.6 consistent)
 
 ---
 
 ## READ FIRST
 
 **Read the PRD first. Then read this implementation plan. Treat the PRD as the contract and this plan as the sequence. Stop after Phase 1 with the repository adaptation document before writing schema or route code.**
+
+
+## UX ALIGNMENT UPDATE — 2026-06-11
+
+This plan has been reconciled with **Householder PRD v2.6 UX-aligned** and the canonical **UX_SUMMARY.md**.
+
+Source-of-truth hierarchy:
+
+1. **PRD v2.6 UX-aligned** is the product contract and backend guardrail authority.
+2. **UX_SUMMARY.md** is the canonical 8-screen workflow and visible UI vocabulary map.
+3. **Accepted screen specs** are the authority for individual screen copy/layout.
+4. **This implementation plan** is the execution sequence and safety checklist.
+5. **ADAPTATION_DOCUMENT.md** is the repository-reality check.
+
+If this plan conflicts with PRD v2.6, UX_SUMMARY.md, or an accepted screen spec, follow the newer PRD/screen spec unless this plan is explicitly stricter for safety.
+
+Canonical v1 user-facing route family:
+
+```text
+/imports/upload
+/imports
+/imports/<import_id>/dashboard
+/imports/<import_id>/duplicates
+/imports/<import_id>/validation
+/imports/<import_id>/normalizations
+/imports/<import_id>/households
+/imports/<import_id>/audit
+/imports/<import_id>/exports
+```
+
+Canonical visible UX vocabulary:
+
+- Use **Confirm** / **Confirm Selected** for reviewer decisions in the UI.
+- Use **Reviewed Export**, **Household Export**, **Backlog Export**, and **Raw Export** for export cards.
+- Use **Generate Export Package** for export package creation.
+- Avoid visible **Approve All**, **Apply All**, **Export Clean**, **sync**, **writeback**, **finalized**, **merge**, and **master** language except in explicitly labeled old-to-new migration tables or backend implementation notes.
+
+Implementation note: database fields/functions may retain established backend names such as `approved_contacts`, `approve_household()`, or `contact_suggestions.status = 'approved'` where they are implementation concepts. UI copy should still use the safer vocabulary above.
 
 ---
 
@@ -17,7 +55,7 @@
 
 ### ⚠️ PRD IS CONTRACT, PLAN IS SEQUENCE
 
-Use the PRD as the contract and this plan as the execution sequence. **If this plan and the Householder PRD conflict, follow the PRD unless this plan is explicitly safer. Stop at phase boundaries with a test report before continuing.**
+Use PRD v2.6 UX-aligned as the contract and this plan as the execution sequence. **If this plan and the Householder PRD conflict, follow the PRD unless this plan is explicitly safer. Stop at phase boundaries with a test report before continuing.**
 
 ### ⚠️ NO SILENT FALLBACKS ON MISSING DEPENDENCIES
 
@@ -28,6 +66,9 @@ Example:
 - ❌ WRONG: Processor has no email validation → Do NOT reimplement; stop and report
 - ✅ OK: PRD says "Or use equivalent validation if Processor's exact function unavailable" → OK to adapt
 
+### ⚠️ DATABASE FRAMEWORK APPROVAL GATE
+
+Because the existing Processor has no database layer, SQLite is approved for Householder v1. SQLAlchemy and Flask-Migrate may be used only if they remain the simplest maintainable approach; otherwise use lightweight raw SQL with parameterized queries. Do not introduce a heavier persistence stack without explicit approval.
 
 ### ⚠️ V1 MATCHING IS CURRENT-IMPORT ONLY
 
@@ -290,7 +331,7 @@ This plan details the step-by-step implementation of Householder v1, a human-in-
 **Key Design Principles:**
 - Raw data immutability (append-only audit trail)
 - Suggestion-only engines (no auto-writes)
-- Explicit approval workflows (every change requires a click)
+- Explicit confirmation workflows (every change requires a click)
 - Deterministic household ID generation
 - View-based exports (read-only queries)
 
@@ -399,9 +440,10 @@ Do not proceed to the next phase until this report is reviewed and confirmed saf
 - `/scripts/uploader/templates/householder_upload.html` (or existing template folder)
 
 **Routes:**
-- `POST /householder/imports` — Accept CSV upload
-- `GET /householder/imports` — List imports
-- `GET /householder/imports/<id>` — View import details
+- `GET /imports/upload` — Show upload form
+- `POST /imports/upload` — Accept CSV upload
+- `GET /imports` — List imports
+- `GET /imports/<import_id>/dashboard` — View import dashboard
 
 **Key Requirement:**
 - Store raw CSV rows as-is in `raw_import_rows.raw_json` field (no transformations)
@@ -557,6 +599,10 @@ def suggest_normalizations(contact: dict) -> list[dict]:
 
 **Proposed File Location:** `/scripts/householder/approvals.py`
 
+
+
+**Backend naming note:** Existing backend terms such as `approve_normalization()`, `approve_household()`, and `status = 'approved'` are allowed as implementation/state names because they map to database transitions. Visible UI copy should use **Confirm**, **Confirm Selected**, and **Reflect in export staging**.
+
 **Functions:**
 - `approve_normalization(suggestion_id, reviewed_by, ip_address, user_agent)` — UPDATE suggestion, never contacts
 - `reject_normalization(suggestion_id, reviewed_by, ip_address, user_agent)` — UPDATE status='rejected'
@@ -580,10 +626,12 @@ def suggest_normalizations(contact: dict) -> list[dict]:
 This prevents drift between API parameter names and database schema fields.
 
 **Flask Routes:**
-- `GET /householder/imports/<id>/normalizations` — review queue
-- `POST /householder/normalizations/<id>/approve`, `reject`, `defer`
-- `POST /householder/imports/<id>/normalizations/approve-bulk`
-- Similar for households and duplicates
+- `GET /imports/<import_id>/normalizations` — normalizations review queue
+- `POST /imports/<import_id>/normalizations/<suggestion_id>/confirm` — visible UI action; backend may call `approve_normalization()`
+- `POST /imports/<import_id>/normalizations/<suggestion_id>/reject`
+- `POST /imports/<import_id>/normalizations/<suggestion_id>/defer`
+- `POST /imports/<import_id>/normalizations/confirm-selected` — selected pending suggestions only, with confirmation preview
+- Similar `/imports/<import_id>/households/...` and `/imports/<import_id>/duplicates/...` routes for Households and Possible Duplicates
 
 ---
 
@@ -591,7 +639,18 @@ This prevents drift between API parameter names and database schema fields.
 
 ### Step 10-13: Derived Views, Dashboard, Review Queues, Exports
 
-**Objective:** Create query-time views, dashboard, and four export types.
+**Objective:** Create query-time views, the canonical 8-screen workflow, and four export types.
+
+
+**Canonical 8-screen implementation target:**
+1. Upload Givebutter CSV — `/imports/upload`
+2. Import Dashboard — `/imports/<import_id>/dashboard`
+3. Possible Duplicates — `/imports/<import_id>/duplicates`
+4. All Records / Validation Review — `/imports/<import_id>/validation`
+5. Normalization Review — `/imports/<import_id>/normalizations`
+6. Households Review — `/imports/<import_id>/households`
+7. Audit Log — `/imports/<import_id>/audit`
+8. Export Console — `/imports/<import_id>/exports`
 
 **Proposed File Locations:**
 - `/scripts/householder/views.py` — view definitions (SQL or ORM)
@@ -599,19 +658,19 @@ This prevents drift between API parameter names and database schema fields.
 - `/scripts/uploader/templates/householder_*.html` — HTML templates
 
 **Views:**
-- `approved_contacts` — COALESCE approved suggestions with baseline contacts
+- `approved_contacts` — backend view name; COALESCE confirmed/approved suggestion rows with baseline contacts for Reviewed Export
 - `households_summary` — one row per household with member info
 
-**Dashboard:**
+**Import Dashboard:**
 - Total contacts + validation tier breakdown
 - Pending suggestion counts
-- Action buttons
+- Navigation buttons only; no direct mutation actions
 
 **Exports:**
-1. **Export Clean** — approved_contacts view → CSV
-2. **Export by Household** — households_summary view → CSV
-3. **Export Backlog** — pending/deferred suggestions → CSV
-4. **Export Raw** — raw_import_rows → original CSV (value-for-value equivalent)
+1. **Reviewed Export** — `approved_contacts` view → CSV; visible replacement for old `Export Clean`
+2. **Household Export** — `households_summary` view → CSV; visible replacement for old `Export by Household`
+3. **Backlog Export** — pending/deferred suggestions → CSV
+4. **Raw Export** — raw_import_rows → original CSV (value-for-value equivalent)
    - **Note:** Since raw rows are stored as JSON, byte-for-byte reconstruction may not be possible due to column order, quoting, line endings, and whitespace variations. Export should be value-for-value equivalent to the uploaded CSV. Byte-for-byte equivalence is only achievable if the original uploaded file bytes are stored separately.
 
 ---
@@ -620,7 +679,7 @@ This prevents drift between API parameter names and database schema fields.
 
 ### Step 15: Unit, Integration, E2E Tests
 
-**Objective:** Verify all 8 guardrails, approve workflows, immutability, etc.
+**Objective:** Verify all 8 guardrails, confirmation workflows, immutability, etc.
 
 **Critical Tests (Must Have):**
 
@@ -641,11 +700,11 @@ This prevents drift between API parameter names and database schema fields.
 4. **Guardrail Tests:**
    - `test_no_auto_approval()` — All suggestions pending after upload
    - `test_no_contact_field_mutation()` — No update path for baseline fields
-   - `test_bulk_same_person_disabled()` — Can't bulk-approve "Same Person"
+   - `test_bulk_same_person_disabled()` — Can't bulk-confirm "Same Person"
    - `test_export_readonly()` — Exports never mutate DB
 
 5. **E2E Test:**
-   - `test_e2e_upload_review_approve_export()` — Full workflow
+   - `test_e2e_upload_review_confirm_export()` — Full workflow
 
 ---
 
@@ -667,7 +726,7 @@ This prevents drift between API parameter names and database schema fields.
 **Documentation:**
 - API endpoints reference
 - Database schema diagram
-- User workflow guide (upload → review → approve → export)
+- User workflow guide (upload → review → confirm → export)
 - Testing guide (how to run tests, coverage)
 
 ---
