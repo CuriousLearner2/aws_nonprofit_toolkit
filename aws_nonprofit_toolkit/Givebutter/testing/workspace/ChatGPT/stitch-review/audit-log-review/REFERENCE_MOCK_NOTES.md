@@ -149,7 +149,7 @@ Documentation explaining what this is and how to use it.
 | `audit_log-spec.md` | Authoritative specification (12 sections, 11 acceptance criteria) | ⭐ Specification |
 | `REFINEMENT_PLAN.md` | Summary of 10 critical changes needed | Derived from spec |
 | `design-reference.html` | Corrected implementation reference with safe language | Implements spec |
-| `verification.json` | Machine-readable checks (43/43 pass) | Validates ref mock |
+| `verification.json` | Machine-readable checks (49/49 pass) | Validates ref mock |
 | `REFERENCE_MOCK_NOTES.md` | This file; explains local mock purpose | Documentation |
 | `screenshot-2x-above-fold.png` | 2880×1800px above-fold verification (generated from HTML) | Visual reference |
 | `screenshot-2x-full.png` | 2880×full-height page verification (generated from HTML) | Visual reference |
@@ -181,7 +181,7 @@ Documentation explaining what this is and how to use it.
    - Status badges color-coded correctly (red/amber/green)
    - Safe language used throughout (no "Master ID", "merge", "auto-verified", etc.)
    - Safety strip and footer present
-2. Use `verification.json` to confirm 43/43 checks pass
+2. Use `verification.json` to confirm 49/49 checks pass
 3. Compare against `audit_log-spec.md` section 11 (Visual Design Direction)
 
 ### For QA Verification
@@ -248,7 +248,7 @@ See spec section 11 for detailed styling direction.
 **For implementation:**
 1. ✅ Specification created (`audit_log-spec.md`)
 2. ✅ Reference mock created (`design-reference.html`)
-3. ✅ All 43 checks passing (`verification.json`)
+3. ✅ All 49 checks passing (`verification.json`)
 4. → **Build from the spec**, not by copying this HTML
 5. → Use this reference mock for visual/structural guidance
 6. → Follow all safety constraints from spec section 2
@@ -256,7 +256,7 @@ See spec section 11 for detailed styling direction.
 
 **Timeline:**
 1. ✅ Specification created
-2. ✅ Reference mock created & verified (43/43 checks pass)
+2. ✅ Reference mock created & verified (49/49 checks pass)
 3. → Implementation in app code
 4. → QA verification against spec
 5. → Deployment
@@ -308,4 +308,4 @@ This reference mock is NOT based on a Stitch screen update because:
 **Authority:** Specification + Reference mock  
 **Status:** Ready for implementation  
 **Safety Level:** Audit-safe, import-scoped, human-verified  
-**Checks Passing:** 43/43 ✅
+**Checks Passing:** 49/49 ✅
