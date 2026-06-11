@@ -279,19 +279,24 @@
             letter-spacing: 0.3px;
         }
 
-        .status-conflicted {
+        .status-conflict-flagged {
             background-color: #FEE2E2;
             color: #991B1B;
         }
 
-        .status-verification-needed {
+        .status-needs-review {
             background-color: #FEF3C7;
             color: #92400E;
         }
 
-        .status-auto-verified {
+        .status-validation-passed {
             background-color: #DCFCE7;
             color: #166534;
+        }
+
+        .status-system-logged {
+            background-color: #E0E7FF;
+            color: #3730A3;
         }
 
         .audit-table td.action {
@@ -551,12 +556,13 @@
                 </div>
 
                 <div class="filter-group">
-                    <label class="filter-label">Conflict Status</label>
+                    <label class="filter-label">Audit Status</label>
                     <select class="filter-select">
                         <option>All Statuses</option>
-                        <option>CONFLICTED</option>
-                        <option>VERIFICATION NEEDED</option>
-                        <option>AUTO VERIFIED</option>
+                        <option>Conflict Flagged</option>
+                        <option>Needs Review</option>
+                        <option>Validation Passed</option>
+                        <option>System Logged</option>
                     </select>
                 </div>
             </div>
@@ -591,7 +597,7 @@
                                     <th>Reviewer & Action</th>
                                     <th>Target</th>
                                     <th>Notes</th>
-                                    <th style="text-align: center;">Conflict Status</th>
+                                    <th style="text-align: center;">Audit Status</th>
                                     <th style="text-align: right;">Action</th>
                                 </tr>
                             </thead>
@@ -602,7 +608,7 @@
                                     <td class="reviewer">Alex Rivers<br><span class="action-text">marked as Same Person</span></td>
                                     <td class="target">#P-99281-X</td>
                                     <td class="notes">"Matching email and phone verified via internal database."</td>
-                                    <td class="status"><span class="status-badge status-conflicted">CONFLICTED (42%)</span></td>
+                                    <td class="status"><span class="status-badge status-conflict-flagged">Conflict Flagged (42%)</span></td>
                                     <td class="action"><a href="#" class="action-link">View</a></td>
                                 </tr>
 
@@ -612,7 +618,7 @@
                                     <td class="reviewer">Morgan Lee<br><span class="action-text">rejected Household Link for record</span></td>
                                     <td class="target">#H-44102-B</td>
                                     <td class="notes">"Data collision on address field. Significant mismatch."</td>
-                                    <td class="status"><span class="status-badge status-conflicted">CONFLICTED (42%)</span></td>
+                                    <td class="status"><span class="status-badge status-conflict-flagged">Conflict Flagged (42%)</span></td>
                                     <td class="action"><a href="#" class="action-link">View</a></td>
                                 </tr>
 
@@ -622,7 +628,7 @@
                                     <td class="reviewer">Jordan Smith<br><span class="action-text">marked validation pass for row</span></td>
                                     <td class="target">#P-77611-M</td>
                                     <td class="notes">"Duplicate identified from CSV import. Validated manually."</td>
-                                    <td class="status"><span class="status-badge status-verification-needed">VERIFICATION NEEDED (81%)</span></td>
+                                    <td class="status"><span class="status-badge status-validation-passed">Validation Passed (81%)</span></td>
                                     <td class="action"><a href="#" class="action-link">View</a></td>
                                 </tr>
 
@@ -632,7 +638,7 @@
                                     <td class="reviewer">System<br><span class="action-text">ingested batch donors_q3.csv</span></td>
                                     <td class="target">#B-88122-A</td>
                                     <td class="notes">"Initial ingestion of 4,200 records successful."</td>
-                                    <td class="status"><span class="status-badge status-auto-verified">AUTO VERIFIED (100%)</span></td>
+                                    <td class="status"><span class="status-badge status-system-logged">System Logged (100%)</span></td>
                                     <td class="action"><a href="#" class="action-link">View</a></td>
                                 </tr>
 
@@ -642,7 +648,7 @@
                                     <td class="reviewer">Casey Jackson<br><span class="action-text">marked needs review for row</span></td>
                                     <td class="target">#P-65443-D</td>
                                     <td class="notes">"Invalid email format detected during validation pass."</td>
-                                    <td class="status"><span class="status-badge status-verification-needed">VERIFICATION NEEDED (64%)</span></td>
+                                    <td class="status"><span class="status-badge status-needs-review">Needs Review (64%)</span></td>
                                     <td class="action"><a href="#" class="action-link">View</a></td>
                                 </tr>
 
@@ -652,7 +658,7 @@
                                     <td class="reviewer">Sam Kumar<br><span class="action-text">marked as Deferred</span></td>
                                     <td class="target">#P-51298-K</td>
                                     <td class="notes">"Awaiting additional contact verification. Flagged for follow-up."</td>
-                                    <td class="status"><span class="status-badge status-verification-needed">VERIFICATION NEEDED (55%)</span></td>
+                                    <td class="status"><span class="status-badge status-needs-review">Needs Review (55%)</span></td>
                                     <td class="action"><a href="#" class="action-link">View</a></td>
                                 </tr>
 
@@ -662,7 +668,7 @@
                                     <td class="reviewer">Taylor North<br><span class="action-text">confirmed Household Link for record</span></td>
                                     <td class="target">#H-29876-Q</td>
                                     <td class="notes">"Shared address and phone verified. Strong match confidence."</td>
-                                    <td class="status"><span class="status-badge status-auto-verified">AUTO VERIFIED (97%)</span></td>
+                                    <td class="status"><span class="status-badge status-validation-passed">Validation Passed (97%)</span></td>
                                     <td class="action"><a href="#" class="action-link">View</a></td>
                                 </tr>
 
@@ -672,7 +678,7 @@
                                     <td class="reviewer">Morgan Lee<br><span class="action-text">flagged for anomaly detection</span></td>
                                     <td class="target">#P-88234-R</td>
                                     <td class="notes">"System detected unusual donation pattern. Requires manual review."</td>
-                                    <td class="status"><span class="status-badge status-conflicted">CONFLICTED (35%)</span></td>
+                                    <td class="status"><span class="status-badge status-conflict-flagged">Conflict Flagged (35%)</span></td>
                                     <td class="action"><a href="#" class="action-link">View</a></td>
                                 </tr>
                             </tbody>
@@ -726,7 +732,7 @@
 
         <!-- ===== RIGHT SIDEBAR (OPTIONAL) ===== -->
         <aside class="sidebar-right visible">
-            <div class="sidebar-right-title">Row Audit History</div>
+            <div class="sidebar-right-title">Row Audit History (Optional)</div>
             <div style="font-size: 12px; color: #6B7280; margin-bottom: 16px;">Select a row to view detailed audit history</div>
 
             <div class="donor-history-item">
@@ -746,7 +752,7 @@
 
             <div class="donor-history-item">
                 <div class="donor-history-label">Current Status</div>
-                <div class="donor-history-value">CONFLICTED (42%)</div>
+                <div class="donor-history-value">Conflict Flagged (42%)</div>
             </div>
 
             <div style="margin-top: 20px; border-top: 1px solid #E5E7EB; padding-top: 16px;">

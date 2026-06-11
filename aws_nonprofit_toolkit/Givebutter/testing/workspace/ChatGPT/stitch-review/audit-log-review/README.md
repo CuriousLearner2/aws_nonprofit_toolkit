@@ -1,9 +1,10 @@
 # Audit Log Review — Design Refinement
 
-**Status:** Specification complete | Reference mock created | Ready for implementation  
-**Screen:** Audit Log (v1 Final)  
+**Status:** Specification complete (v2 Revised) | Reference mock created | Ready for implementation  
+**Screen:** Audit Log (v1 Final) — Strict Vocabulary Compliance  
 **Type:** Local implementation-reference mock (not a Stitch update)  
-**Authority:** audit_log-spec.md + design-reference.html
+**Authority:** audit_log-spec.md (revised) + design-reference.html (revised)  
+**Revision:** Stricter v1 vocabulary with status name and column name updates
 
 ---
 
@@ -82,13 +83,14 @@ Make the design **audit-safe** and **import-scoped**:
 
 ## 📋 Critical Changes Summary
 
-| Item | Current Issue | Required Change |
-|------|---------------|-----------------|
-| **Language** | Unsafe terms possible (Master ID, merge, auto-verified, etc.) | Import-scoped safe language only |
-| **Messaging** | Unclear scope | "Raw import rows are never changed" + "Export staging only" |
-| **Audit entries** | May reference master entities | Reference import row IDs only (#P-99281-X) |
-| **Decision logging** | Unclear human verification | Log all decisions: marked as, rejected, flagged, validated |
-| **Status safety** | May imply auto-application | Emphasize audit trail, human-verified, staged for export |
+| Item | Before (Unsafe) | After (Safe v1) |
+|------|-----------------|-----------------|
+| **Status Labels** | CONFLICTED, VERIFICATION NEEDED, AUTO VERIFIED | Conflict Flagged, Needs Review, Validation Passed, System Logged |
+| **Column Name** | Conflict Status | Audit Status |
+| **Sidebar Label** | Donor History | Row Audit History |
+| **Export Label** | Full Entity Audit Report | Full Import Audit Report |
+| **Unsafe Language** | Master ID, merge, auto-verified, entity audit, CRM writeback, sync, apply all, approve all | Removed entirely (zero occurrences) |
+| **Safe Language** | (variable) | marked as Same Person, rejected Household Link, marked validation pass, ingested batch |
 
 ---
 

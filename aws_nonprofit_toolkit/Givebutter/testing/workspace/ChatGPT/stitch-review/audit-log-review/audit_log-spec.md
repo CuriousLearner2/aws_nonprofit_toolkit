@@ -83,7 +83,7 @@ Maintain institutional donor integrity through verified human-in-the-loop action
 | **Reviewer & Action** | Who and what they did | Name/avatar + verb phrase (import-scoped) |
 | **Target** | What was affected | Import row ID (not master ID) |
 | **Notes** | Why/context | Reviewer comment or system note |
-| **Conflict Status** | Current state indicator | Color-coded badge (green/amber/red) |
+| **Audit Status** | Current review state indicator | Color-coded badge (green/amber/red) |
 | **Action** | Access to details | Link to view full record |
 
 ### Sample Audit Log Entries
@@ -94,7 +94,7 @@ Date/Timestamp: Oct 24, 2023 14:22:15 GMT
 Reviewer & Action: Alex Rivers marked as Same Person
 Target: #P-99281-X
 Notes: "Matching email and phone verified via internal database."
-Status: CONFLICTED (42%)
+Status: Conflict Flagged (42%)
 Action: [View]
 ```
 
@@ -106,7 +106,7 @@ Date/Timestamp: Oct 24, 2023 13:05:44 GMT
 Reviewer & Action: Morgan Lee rejected Household Link for record
 Target: #H-44102-B
 Notes: "Data collision on address field. Significant mismatch."
-Status: CONFLICTED (42%)
+Status: Conflict Flagged (42%)
 Action: [View]
 ```
 
@@ -116,7 +116,7 @@ Date/Timestamp: Oct 23, 2023 16:48:02 GMT
 Reviewer & Action: Jordan Smith marked validation pass for row
 Target: #P-77611-M
 Notes: "Duplicate identified from CSV import. Validated manually."
-Status: VERIFICATION NEEDED (81%)
+Status: Validation Passed (81%)
 Action: [View]
 ```
 
@@ -128,7 +128,7 @@ Date/Timestamp: Oct 23, 2023 15:16:33 GMT
 Reviewer & Action: System ingested batch donors_q3.csv
 Target: #B-88122-A
 Notes: "Initial ingestion of 4,200 records successful."
-Status: AUTO VERIFIED (100%)
+Status: System Logged (100%)
 Action: [View]
 ```
 
@@ -163,7 +163,7 @@ Action: [View]
 
 ---
 
-## 6. Right Sidebar: Donor History (Optional)
+## 6. Right Sidebar: Row Audit History (Optional)
 
 If present, display:
 - Reference ID (import row ID)
@@ -183,7 +183,7 @@ If present, display:
 - **Reviewer** (dropdown): All Staff Members, [names]
 - **Date Range** (date picker): Last 30 Days, custom range
 - **Target Search** (text): e.g., #P-99281 (import row ID)
-- **Conflict Status** (multi-select): CONFLICTED, VERIFICATION NEEDED, AUTO VERIFIED
+- **Audit Status** (multi-select): Conflict Flagged, Needs Review, Validation Passed, System Logged
 
 ### Search Behavior
 
@@ -208,7 +208,7 @@ Display if relevant:
 
 ## 9. Full Audit Report Export
 
-**Button:** "Full Entity Audit Report" or "Export PDF"
+**Button:** "Full Import Audit Report" or "Export PDF"
 
 **Content:** Downloadable audit trail for the current import batch including:
 - All actions taken by all reviewers
@@ -230,7 +230,7 @@ The screen is ready when:
 - [ ] Export PDF button visible
 - [ ] Audit log table with all columns visible
 - [ ] Pagination controls present
-- [ ] Right sidebar (Donor History) present if in design
+- [ ] Right sidebar (Row Audit History) present if in design
 - [ ] System Health indicators displayed
 
 ### Safety ✅
@@ -238,10 +238,11 @@ The screen is ready when:
 - [ ] No "Master database" language
 - [ ] No "primary donor profile" language
 - [ ] No "merged" language (use "marked Same Person" instead)
-- [ ] No "auto-verified" language
+- [ ] No "auto-verified" language (use "System Logged" or "Validation Passed")
 - [ ] No "CRM writeback" language
 - [ ] No "sync" language
 - [ ] No "apply all" or "approve all" language
+- [ ] No "entity audit" language
 - [ ] All targets use import row IDs (not master IDs)
 - [ ] All actions reference import batch scope
 
@@ -255,7 +256,7 @@ The screen is ready when:
 - [ ] Reviewer names/avatars display correctly
 - [ ] Action descriptions are clear and import-scoped
 - [ ] Notes field shows reviewer comments or system messages
-- [ ] Conflict status badges are color-coded and accurate
+- [ ] Audit Status badges are color-coded and accurate (Conflict Flagged, Needs Review, Validation Passed, System Logged)
 
 ---
 

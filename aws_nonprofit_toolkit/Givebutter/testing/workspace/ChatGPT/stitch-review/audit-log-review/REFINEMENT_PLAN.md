@@ -145,33 +145,51 @@ Raw import rows are never changed from this screen.
 
 ---
 
+## Status Taxonomy (Updated)
+
+**Old v1-Unsafe Names → New v1-Safe Names**
+
+| Old Name | New Name | Color | Use Case |
+|----------|----------|-------|----------|
+| CONFLICTED | Conflict Flagged | Red (#FEE2E2) | Row has data conflicts requiring reviewer resolution |
+| VERIFICATION NEEDED | Needs Review | Amber (#FEF3C7) | Row requires human reviewer verification |
+| AUTO VERIFIED | System Logged | Blue (#E0E7FF) | System operation logged (not human decision) |
+| (New) | Validation Passed | Green (#DCFCE7) | Reviewer confirmed row is valid |
+
+**Column Name Change:**
+- OLD: "Conflict Status" 
+- NEW: "Audit Status"
+
+---
+
 ## 📊 Design Reference to Create
 
 **File:** `design-reference.html`
 
 **Sections:**
-- [ ] DonorTrust v1 top navigation (Audit tab active)
-- [ ] Left sidebar: Data Controls (Filters, Sources, Confidence, Date Range, Tags, Assignment)
-- [ ] Page title: "Audit Log (v1 Final)"
-- [ ] Page description (from spec)
-- [ ] Export PDF button
-- [ ] Safety strip: "Suggested changes only. Raw import rows are never changed."
-- [ ] Audit log table with 6 columns
-- [ ] 4 sample entries (Duplicate Candidate Review, Household Link Rejection, Validation Pass, Batch Ingestion)
-- [ ] Pagination controls
-- [ ] Right sidebar: Donor History (optional) with import row reference
-- [ ] System Health indicators (Integrity Score, Review Velocity, Pending Conflicts, Anomalies Detected)
-- [ ] Footer message
-- [ ] DonorTrust v1 styling (white/light gray background, subtle borders, color-coded status badges)
+- [x] DonorTrust v1 top navigation (Audit tab active)
+- [x] Left sidebar: Data Controls (Filters: Action Type, Reviewer, Date Range, Target Search, Audit Status)
+- [x] Page title: "Audit Log (v1 Final)"
+- [x] Page description (from spec)
+- [x] Export PDF button
+- [x] Safety strip: "Suggested changes only. Raw import rows are never changed."
+- [x] Audit log table with 6 columns (Date/Timestamp, Reviewer & Action, Target, Notes, Audit Status, Action)
+- [x] 8 sample entries using safe, import-scoped language
+- [x] Pagination controls
+- [x] Right sidebar: Row Audit History (optional, not "Donor History") with import row reference
+- [x] System Health indicators (Integrity Score, Review Velocity, Pending Conflicts, Anomalies Detected)
+- [x] Footer message
+- [x] DonorTrust v1 styling (white/light gray background, subtle borders, color-coded status badges)
 
-**Verification Checklist:**
-- [ ] No "Master ID", "Master database", "primary donor profile" language
-- [ ] No "merge/merged", "auto-verified", "entity audit", "CRM writeback", "sync", "apply all", "approve all"
-- [ ] All audit entries use safe language (marked as Same Person, rejected Household Link, marked validation pass, etc.)
-- [ ] Table columns correct and visible at 1440px
-- [ ] DonorTrust v1 pattern preserved
-- [ ] Safety strip and footer present
-- [ ] All color-coded status badges present (green/amber/red)
+**V1 Vocabulary Changes Applied:**
+- [x] Removed: "Master ID", "Master database", "primary donor profile" 
+- [x] Removed: "merge/merged", "auto-verified", "entity audit", "CRM writeback", "sync", "apply all", "approve all"
+- [x] Removed: "Donor History" (replaced with "Row Audit History")
+- [x] Removed: "Conflict Status" column (replaced with "Audit Status")
+- [x] Removed: Status values "CONFLICTED", "VERIFICATION NEEDED", "AUTO VERIFIED"
+- [x] Added: Safe status labels "Conflict Flagged", "Needs Review", "Validation Passed", "System Logged"
+- [x] All audit entries use safe language (marked as Same Person, rejected Household Link, marked validation pass, etc.)
+- [x] All color-coded status badges with new safe names (red, amber, green, blue)
 
 ---
 
