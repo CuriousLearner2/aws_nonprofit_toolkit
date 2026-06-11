@@ -1,6 +1,6 @@
 # DonorTrust v1 Implementation Guide
 
-**Current Status:** Phase 0 FULLY ACCEPTED ✓ | Phase 1A Planning COMPLETE
+**Current Status:** Phase 0 ✓ ACCEPTED | Phase 1A-Step 1-4 ✓ ACCEPTED (Service-Boundary Migration In Progress)
 
 ---
 
@@ -23,13 +23,23 @@ Phase 0 delivered a **fixture-backed clickable prototype** with all 8 DonorTrust
 
 **QA Artifacts:** `testing/qa-artifacts/phase0/`
 
-### Phase 1A: Service-Boundary Planning (CURRENT)
+### Phase 1A: Service-Boundary Migration (IN PROGRESS)
 
-Phase 1A is **planning-only**. It defines incremental backend architecture without implementing persistence.
+Phase 1A implements **incremental service-layer abstraction** without persistence, maintaining Phase 0 UI exactly while establishing clean architecture boundaries.
 
-**Documentation:** See `docs/implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md`
+**Architecture:** See `docs/implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md`
 
-**Status:** Phase 1A-Step 1 completed and accepted. Phase 1A-Step 2 awaiting approval.
+**Completed Steps:**
+- ✓ [Step 1: `/imports` route](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md)
+- ✓ [Step 2: `/imports/<id>/dashboard` route](PHASE1A_STEP2_COMPLETION_RECORD.md)
+- ✓ [Step 3: `/imports/<id>/validation` route](PHASE1A_STEP3_COMPLETION_RECORD.md)
+- ✓ [Step 4: `/imports/<id>/normalizations` route](PHASE1A_STEP4_COMPLETION_RECORD.md)
+
+**Pending Steps:**
+- Step 5: `/imports/<id>/households` route
+- Step 6: `/imports/<id>/duplicates` route
+- Step 7: `/imports/<id>/audit` route
+- Step 8: `/imports/<id>/exports` route
 
 ---
 
