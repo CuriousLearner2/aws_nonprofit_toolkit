@@ -55,6 +55,16 @@ except ImportError:
         QUEUE_STATUS
     )
 
+# Import DonorTrust v1 service layer
+try:
+    from ..householder import import_service
+except ImportError:
+    # Fallback for direct script execution
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from householder import import_service
+
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -784,8 +794,9 @@ def test_override_dialog():
 
 @app.route('/imports')
 def imports_list():
-    """List all imports with status."""
-    return render_template('imports/list.html', imports=IMPORTS_LIST)
+    """List all imports with status through service boundary."""
+    imports = import_service.get_imports()
+    return render_template('imports/list.html', imports=imports)
 
 @app.route('/imports/<import_id>/dashboard')
 def import_dashboard(import_id):
