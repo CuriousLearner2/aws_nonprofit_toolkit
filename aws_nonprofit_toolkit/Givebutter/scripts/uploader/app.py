@@ -28,6 +28,19 @@ from processor import (
     load_reference_list
 )
 
+# Import fixtures for DonorTrust v1 prototype
+from .fixtures import (
+    IMPORT_BATCH,
+    CONTACTS,
+    DUPLICATE_CANDIDATES,
+    NORMALIZATION_SUGGESTIONS,
+    HOUSEHOLD_SUGGESTIONS,
+    AUDIT_LOG_ENTRIES,
+    EXPORT_CARDS,
+    IMPORTS_LIST,
+    QUEUE_STATUS
+)
+
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -750,6 +763,77 @@ def test_override_dialog():
         logger.error(f"Error in test override dialog: {e}")
         return jsonify({'error': str(e)}), 500
 
+
+# ============================================================================
+# DonorTrust v1 Phase 0 Prototype Routes — Fixture-backed, no persistence
+# ============================================================================
+
+@app.route('/imports')
+def imports_list():
+    """List all imports with status."""
+    return render_template('imports/list.html', imports=IMPORTS_LIST)
+
+@app.route('/imports/<import_id>/dashboard')
+def import_dashboard(import_id):
+    """Import dashboard with queue navigation."""
+    return render_template('imports/dashboard.html',
+                         batch=IMPORT_BATCH,
+                         queue_status=QUEUE_STATUS)
+
+@app.route('/imports/<import_id>/duplicates')
+def import_duplicates(import_id):
+    """Possible duplicates review."""
+    candidate = DUPLICATE_CANDIDATES[0] if DUPLICATE_CANDIDATES else None
+    return render_template('imports/duplicates.html',
+                         batch=IMPORT_BATCH,
+                         candidate=candidate)
+
+@app.route('/imports/<import_id>/validation')
+def import_validation(import_id):
+    """Validation review for records with issues."""
+    return render_template('imports/validation.html',
+                         batch=IMPORT_BATCH,
+                         validation_issues=CONTACTS,
+                         queue_status=QUEUE_STATUS,
+                         total_records=len(CONTACTS))
+
+@app.route('/imports/<import_id>/normalizations')
+def import_normalizations(import_id):
+    """Field normalization suggestions."""
+    current = NORMALIZATION_SUGGESTIONS[0] if NORMALIZATION_SUGGESTIONS else None
+    return render_template('imports/normalizations.html',
+                         batch=IMPORT_BATCH,
+                         current_suggestion=current,
+                         current_suggestion_index=1,
+                         total_suggestions=len(NORMALIZATION_SUGGESTIONS))
+
+@app.route('/imports/<import_id>/households')
+def import_households(import_id):
+    """Household grouping confirmation."""
+    current = HOUSEHOLD_SUGGESTIONS[0] if HOUSEHOLD_SUGGESTIONS else None
+    return render_template('imports/households.html',
+                         batch=IMPORT_BATCH,
+                         current_household=current,
+                         current_household_index=1,
+                         total_households=len(HOUSEHOLD_SUGGESTIONS))
+
+@app.route('/imports/<import_id>/audit')
+def import_audit(import_id):
+    """Audit log for all reviewer decisions."""
+    return render_template('imports/audit.html',
+                         batch=IMPORT_BATCH,
+                         audit_log=AUDIT_LOG_ENTRIES)
+
+@app.route('/imports/<import_id>/exports')
+def import_exports(import_id):
+    """Export console for generating and downloading exports."""
+    return render_template('imports/exports.html',
+                         batch=IMPORT_BATCH,
+                         export_options=EXPORT_CARDS,
+                         staged_record_count=len(CONTACTS),
+                         total_decisions=sum(len(dc.get('supporting_evidence', [])) for dc in DUPLICATE_CANDIDATES),
+                         household_count=len(HOUSEHOLD_SUGGESTIONS),
+                         recent_exports=[])
 
 @app.route('/health')
 def health():

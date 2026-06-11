@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Validation Review — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Validation Review</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Total Records:</strong> {{ total_records }} | <strong>Issues Found:</strong> {{ queue_status.validation_issues }}</p>
+
+<div class="safety-strip">All records with validation issues flagged below. Inspect details, mark as reviewed, or defer for later.</div>
+
+<!-- Filter & Controls -->
+<div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">
+    <input type="text" id="search-records" placeholder="Search by name, email, phone..." style="flex: 1; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+    <select id="issue-filter" style="padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+        <option value="">All Issues</option>
+        <option value="missing-required">Missing Required Field</option>
+        <option value="format-invalid">Invalid Format</option>
+        <option value="length-exceeded">Length Exceeded</option>
+    </select>
+</div>
+
+<!-- Records Table -->
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 40px;"><input type="checkbox" id="select-all"></th>
+                <th>Name</th>
+                <th>Issue Type</th>
+                <th>Issue Details</th>
+                <th style="width: 100px;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in validation_issues %}
+            <tr>
+                <td><input type="checkbox" class="row-selector" data-record-id="{{ record.id }}"></td>
+                <td style="font-weight: 500;">{{ record.name }}</td>
+                <td>
+                    {% if record.issue_type == 'missing-required' %}
+                    <span style="color: #ef4444; font-weight: 600;">Missing Required Field</span>
+                    {% elif record.issue_type == 'format-invalid' %}
+                    <span style="color: #f59e0b; font-weight: 600;">Invalid Format</span>
+                    {% elif record.issue_type == 'length-exceeded' %}
+                    <span style="color: #0ea5e9; font-weight: 600;">Length Exceeded</span>
+                    {% endif %}
+                </td>
+                <td style="font-size: 13px; color: #666;">{{ record.issue_description }}</td>
+                <td>
+                    <a href="#" class="table-action" data-action="inspect-record" data-record-id="{{ record.id }}">Inspect</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Sticky Action Bar -->
+<div class="sticky-action-bar">
+    <div class="sticky-action-bar-status">
+        <input type="checkbox" id="select-all-bar" style="margin-right: 8px;">
+        <span id="selection-count">0 records selected</span>
+    </div>
+    <div class="sticky-action-bar-actions">
+        <button class="btn btn-secondary" id="review-selected-btn" disabled>Review Selected (0)</button>
+        <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
+    </div>
+</div>
+
+<!-- Record Inspection Modal -->
+<div id="record-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Record Details</h2>
+        </div>
+        <div class="modal-body" id="modal-record-content">
+            <!-- Populated by JavaScript -->
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('record-modal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('select-all').addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('input[type="checkbox"].row-selector');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+    updateSelectionCount();
+});
+
+function updateSelectionCount() {
+    const checked = document.querySelectorAll('input[type="checkbox"].row-selector:checked').length;
+    document.getElementById('selection-count').textContent = `${checked} record${checked !== 1 ? 's' : ''} selected`;
+    document.getElementById('review-selected-btn').textContent = `Review Selected (${checked})`;
+    document.getElementById('review-selected-btn').disabled = checked === 0;
+}
+
+document.querySelectorAll('input[type="checkbox"].row-selector').forEach(cb => {
+    cb.addEventListener('change', updateSelectionCount);
+});
+
+document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
+    link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const recordId = this.getAttribute('data-record-id');
+        showToast(`Inspecting record #${recordId}`);
+        openModal('record-modal');
+    });
+});
+</script>
+{% endblock %}

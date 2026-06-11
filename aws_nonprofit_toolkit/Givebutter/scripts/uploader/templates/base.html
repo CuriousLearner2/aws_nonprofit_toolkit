@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}DonorTrust v1{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/donortrust.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Top Navigation Bar -->
+    <nav class="donortrust-nav">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <a href="/" class="nav-logo">DonorTrust</a>
+            </div>
+            <ul class="nav-tabs">
+                <li><a href="/" class="nav-tab">Upload</a></li>
+                <li><a href="/imports" class="nav-tab">Imports</a></li>
+                <li>
+                    <a href="#" class="nav-tab {% if request.path.startswith('/imports') and 'dashboard' in request.path %}active{% endif %}">
+                        Review
+                    </a>
+                </li>
+                <li><a href="#" class="nav-tab">Matches</a></li>
+                <li><a href="#" class="nav-tab">People</a></li>
+                <li><a href="#" class="nav-tab">Households</a></li>
+                <li>
+                    <a href="#" class="nav-tab {% if 'exports' in request.path %}active{% endif %}">
+                        Exports
+                    </a>
+                </li>
+                <li>
+                    <a href="#" class="nav-tab {% if 'audit' in request.path %}active{% endif %}">
+                        Audit
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Safety Banner (if applicable) -->
+    {% block safety_banner %}{% endblock %}
+
+    <div class="donortrust-container">
+        <!-- Left Sidebar (if applicable) -->
+        {% block left_sidebar %}{% endblock %}
+
+        <!-- Main Content -->
+        <main class="donortrust-main">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Right Sidebar (if applicable) -->
+        {% block right_sidebar %}{% endblock %}
+    </div>
+
+    <!-- Sticky Action Bar (if applicable) -->
+    {% block sticky_action_bar %}{% endblock %}
+
+    <!-- Modals (if applicable) -->
+    {% block modals %}{% endblock %}
+
+    <script src="{{ url_for('static', filename='js/donortrust-interactions.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

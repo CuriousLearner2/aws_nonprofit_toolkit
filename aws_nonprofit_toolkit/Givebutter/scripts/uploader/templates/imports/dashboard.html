@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Import Dashboard — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Import Dashboard</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Source:</strong> {{ batch.filename }} | <strong>Progress:</strong> {{ batch.progress }}% complete</p>
+
+<div class="safety-strip">Review queues by action type. All decisions are logged to the audit trail.</div>
+
+<!-- Queue Status Cards -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px;">
+
+    <!-- Possible Duplicates -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h3>Possible Duplicates</h3>
+                <p class="card-description">Side-by-side comparison: mark records as the same person</p>
+            </div>
+            <span class="badge badge-amber">{{ queue_status.duplicates_pending }}</span>
+        </div>
+        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">{{ queue_status.duplicates_pending }} candidate pairs awaiting reviewer decision</p>
+        <a href="/imports/{{ batch.id }}/duplicates" class="btn btn-primary" style="width: 100%; text-align: center; text-decoration: none;">Review Duplicates</a>
+    </div>
+
+    <!-- All Records / Validation Review -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h3>Validation Review</h3>
+                <p class="card-description">Inspect all records, identify validation issues</p>
+            </div>
+            <span class="badge badge-red">{{ queue_status.validation_issues }}</span>
+        </div>
+        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">{{ queue_status.validation_issues }} records with validation issues flagged</p>
+        <a href="/imports/{{ batch.id }}/validation" class="btn btn-primary" style="width: 100%; text-align: center; text-decoration: none;">Review Records</a>
+    </div>
+
+    <!-- Normalization Review -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h3>Normalizations</h3>
+                <p class="card-description">Review field cleanup suggestions</p>
+            </div>
+            <span class="badge badge-blue">{{ queue_status.normalizations_pending }}</span>
+        </div>
+        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">{{ queue_status.normalizations_pending }} normalization suggestions pending</p>
+        <a href="/imports/{{ batch.id }}/normalizations" class="btn btn-primary" style="width: 100%; text-align: center; text-decoration: none;">Review Normalizations</a>
+    </div>
+
+    <!-- Households Review -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h3>Households</h3>
+                <p class="card-description">Confirm/defer household groupings</p>
+            </div>
+            <span class="badge badge-green">{{ queue_status.households_pending }}</span>
+        </div>
+        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">{{ queue_status.households_pending }} household suggestions awaiting confirmation</p>
+        <a href="/imports/{{ batch.id }}/households" class="btn btn-primary" style="width: 100%; text-align: center; text-decoration: none;">Review Households</a>
+    </div>
+
+</div>
+
+<!-- Bottom Navigation -->
+<hr style="margin: 40px 0;">
+
+<div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+    <a href="/imports/{{ batch.id }}/audit" class="btn btn-secondary">View Audit Log</a>
+    <a href="/imports/{{ batch.id }}/exports" class="btn btn-secondary">Open Export Console</a>
+    <a href="/imports" class="btn btn-secondary">Back to Imports</a>
+</div>
+{% endblock %}

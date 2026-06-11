@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Imports — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Imports</h1>
+<p class="page-description">Review and manage incoming donor data imports. Each import is isolated and processed independently.</p>
+
+<!-- Upload Button -->
+<div style="margin-bottom: 24px;">
+    <a href="/" class="btn btn-primary" style="text-decoration: none;">Upload New Import</a>
+</div>
+
+<!-- Imports Table -->
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Batch ID</th>
+                <th>Filename</th>
+                <th>Records</th>
+                <th>Status</th>
+                <th style="width: 120px;">Progress</th>
+                <th>Uploaded</th>
+                <th style="width: 80px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for import_item in imports %}
+            <tr>
+                <td style="font-weight: 600; color: #2563eb;">{{ import_item.id }}</td>
+                <td style="font-size: 13px;">{{ import_item.filename }}</td>
+                <td style="text-align: center;">{{ import_item.record_count }}</td>
+                <td>
+                    {% if import_item.status == 'in-review' %}
+                    <span style="background-color: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">In Review</span>
+                    {% elif import_item.status == 'pending-export' %}
+                    <span style="background-color: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">Pending Export</span>
+                    {% elif import_item.status == 'exported' %}
+                    <span style="background-color: #d1fae5; color: #065f46; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">Exported</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div style="width: 100px; height: 6px; background-color: #e0e0e0; border-radius: 3px; overflow: hidden;">
+                        <div style="height: 100%; background-color: #2563eb; width: {{ import_item.progress }}%;"></div>
+                    </div>
+                    <p style="font-size: 11px; color: #999; margin-top: 4px; text-align: center;">{{ import_item.progress }}%</p>
+                </td>
+                <td style="font-size: 13px; color: #666;">{{ import_item.uploaded_timestamp }}</td>
+                <td style="text-align: center;">
+                    <a href="/imports/{{ import_item.id }}/dashboard" class="table-action">Review</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if not imports %}
+<div style="background-color: #f8f8f8; padding: 40px; border-radius: 4px; text-align: center;">
+    <p style="color: #999; font-size: 14px; margin: 0;">No imports yet. Upload your first CSV to get started.</p>
+</div>
+{% endif %}
+{% endblock %}

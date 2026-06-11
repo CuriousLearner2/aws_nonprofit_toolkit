@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Normalizations — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Normalizations</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Suggestion {{ current_suggestion_index }} of {{ total_suggestions }}</strong></p>
+
+<div class="safety-strip">Review field cleanup suggestions. Accept, reject, or defer each normalization recommendation.</div>
+
+<!-- Normalization Card -->
+{% if current_suggestion %}
+<div class="card" style="margin-bottom: 30px;">
+    <h3 style="margin-top: 0;">{{ current_suggestion.field_name }}</h3>
+    <p style="font-size: 13px; color: #666; margin-bottom: 16px;">Contact: <strong>{{ current_suggestion.contact_name }}</strong></p>
+
+    <!-- Original vs. Suggested -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+        <div>
+            <h4 style="font-size: 13px; font-weight: 600; color: #666; margin-bottom: 8px;">Original</h4>
+            <div style="background-color: #f8f8f8; padding: 12px; border-radius: 3px; font-size: 13px; font-family: monospace; color: #333;">
+                {{ current_suggestion.original_value }}
+            </div>
+        </div>
+        <div>
+            <h4 style="font-size: 13px; font-weight: 600; color: #666; margin-bottom: 8px;">Suggested</h4>
+            <div style="background-color: #f0fdf4; padding: 12px; border-radius: 3px; font-size: 13px; font-family: monospace; color: #10b981; border-left: 3px solid #10b981;">
+                {{ current_suggestion.suggested_value }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Normalization Type -->
+    <div style="margin-bottom: 16px;">
+        <span style="display: inline-block; background-color: #dbeafe; color: #1e40af; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">{{ current_suggestion.normalization_type }}</span>
+    </div>
+
+    <!-- Decision Form -->
+    <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #e0e0e0;">
+        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Your Decision</h4>
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" data-action="accept-normalization" data-suggestion-id="{{ current_suggestion.id }}">Accept Suggestion</button>
+            <button type="button" class="btn btn-secondary" data-action="reject-normalization" data-suggestion-id="{{ current_suggestion.id }}">Keep Original</button>
+            <button type="button" class="btn btn-secondary" data-action="defer-normalization" data-suggestion-id="{{ current_suggestion.id }}">Defer</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Navigation -->
+<div style="margin-top: 24px; display: flex; gap: 12px;">
+    <button class="btn btn-secondary" {% if current_suggestion_index <= 1 %}disabled{% endif %}>← Previous Suggestion</button>
+    <button class="btn btn-secondary" {% if current_suggestion_index >= total_suggestions %}disabled{% endif %}>Next Suggestion →</button>
+    <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
+</div>
+
+<!-- Progress Bar -->
+<div style="margin-top: 32px; padding: 20px; background-color: #f8f8f8; border-radius: 4px;">
+    <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Progress: <strong>{{ current_suggestion_index }} of {{ total_suggestions }}</strong></p>
+    <div style="width: 100%; height: 8px; background-color: #e0e0e0; border-radius: 4px; overflow: hidden;">
+        <div style="height: 100%; background-color: #2563eb; width: {{ (current_suggestion_index / total_suggestions * 100)|round }}%;"></div>
+    </div>
+</div>
+{% endblock %}

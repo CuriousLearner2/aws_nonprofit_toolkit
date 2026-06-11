@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Possible Duplicates — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Possible Duplicates</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Pair 1 of 3</strong></p>
+
+<div class="safety-strip">Side-by-side comparison. "Mark as Same Person" records a reviewer decision only. Raw import rows remain unchanged.</div>
+
+<!-- Duplicate Comparison -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+    <!-- Contact A -->
+    <div class="card">
+        <h3 style="margin-top: 0;">{{ candidate.contact_a.name }}</h3>
+        <dl style="font-size: 13px;">
+            <dt style="font-weight: 600; color: #666; margin-top: 12px;">Email</dt>
+            <dd>{{ candidate.contact_a.email }}</dd>
+            <dt style="font-weight: 600; color: #666; margin-top: 12px;">Phone</dt>
+            <dd>{{ candidate.contact_a.phone }}</dd>
+            <dt style="font-weight: 600; color: #666; margin-top: 12px;">Address</dt>
+            <dd>{{ candidate.contact_a.address }}</dd>
+        </dl>
+    </div>
+
+    <!-- Contact B -->
+    <div class="card">
+        <h3 style="margin-top: 0;">{{ candidate.contact_b.name }}</h3>
+        <dl style="font-size: 13px;">
+            <dt style="font-weight: 600; color: #666; margin-top: 12px;">Email</dt>
+            <dd>{{ candidate.contact_b.email }}</dd>
+            <dt style="font-weight: 600; color: #666; margin-top: 12px;">Phone</dt>
+            <dd>{{ candidate.contact_b.phone }}</dd>
+            <dt style="font-weight: 600; color: #666; margin-top: 12px;">Address</dt>
+            <dd>{{ candidate.contact_b.address }}</dd>
+        </dl>
+    </div>
+</div>
+
+<!-- Evidence -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+    <div>
+        <h3>Supporting Evidence</h3>
+        <ul class="supporting-evidence-list" style="margin-left: 20px; font-size: 13px; color: #10b981;">
+            {% for ev in candidate.supporting_evidence %}
+            <li>✓ {{ ev }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div>
+        <h3>Conflicting Evidence</h3>
+        <ul class="conflicting-evidence-list" style="margin-left: 20px; font-size: 13px; color: #ef4444;">
+            {% for ev in candidate.conflicting_evidence %}
+            <li>✗ {{ ev }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<!-- Reviewer Form -->
+<div class="card">
+    <form id="duplicate-form">
+        <h3>Your Decision</h3>
+
+        {% if candidate.conflicting_evidence|length > 0 %}
+        <div class="form-group">
+            <label class="form-label">Notes (required due to conflicting evidence)</label>
+            <textarea id="reviewer-notes" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-family: inherit; font-size: 13px; height: 80px;" placeholder="Explain your decision..."></textarea>
+        </div>
+        {% endif %}
+
+        <div class="btn-group" style="margin-top: 16px;">
+            <button type="button" id="mark-same-person-btn" class="btn btn-primary" data-action="mark-same-person" data-item-id="{{ candidate.id }}">Mark as Same Person</button>
+            <button type="button" class="btn btn-secondary" data-action="different" data-item-id="{{ candidate.id }}">Different Person</button>
+            <button type="button" class="btn btn-secondary" data-action="defer" data-item-id="{{ candidate.id }}">Defer</button>
+        </div>
+    </form>
+</div>
+
+<!-- Navigation -->
+<div style="margin-top: 24px; display: flex; gap: 12px;">
+    <button class="btn btn-secondary">← Previous Pair</button>
+    <button class="btn btn-secondary">Next Pair →</button>
+    <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
+</div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Households — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Households</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Suggestion {{ current_household_index }} of {{ total_households }}</strong></p>
+
+<div class="safety-strip">Confirm or defer household groupings. Households link individuals by shared address and family relationship patterns.</div>
+
+<!-- Household Grouping Card -->
+{% if current_household %}
+<div class="card" style="margin-bottom: 30px;">
+    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+        <h3 style="margin-top: 0;">{{ current_household.address }}</h3>
+        <span class="badge badge-green">{{ current_household.members|length }} members</span>
+    </div>
+
+    <!-- Household Members -->
+    <div style="background-color: #f8f8f8; padding: 16px; border-radius: 4px; margin-bottom: 20px;">
+        <h4 style="font-size: 13px; font-weight: 600; color: #666; margin-bottom: 12px;">Suggested Members</h4>
+        <ul style="list-style: none; margin: 0; padding: 0;">
+            {% for member in current_household.members %}
+            <li style="padding: 8px 0; border-bottom: 1px solid #e0e0e0; font-size: 13px;">
+                <strong>{{ member.name }}</strong>
+                <span style="color: #999; margin-left: 8px;">({{ member.relationship }})</span>
+                {% if member.email %}<br/><span style="color: #666; font-size: 12px;">{{ member.email }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <!-- Household Reasoning -->
+    <div style="background-color: #f0fdf4; padding: 12px 16px; border-left: 3px solid #10b981; margin-bottom: 20px;">
+        <p style="font-size: 13px; color: #065f46; margin: 0;">
+            <strong>Reasoning:</strong> {{ current_household.reasoning }}
+        </p>
+    </div>
+
+    <!-- Confirmation Form -->
+    <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #e0e0e0;">
+        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Your Decision</h4>
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" onclick="confirmHousehold('{{ current_household.id }}')">Confirm Household</button>
+            <button type="button" class="btn btn-secondary" data-action="defer-household" data-household-id="{{ current_household.id }}">Defer</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Navigation -->
+<div style="margin-top: 24px; display: flex; gap: 12px;">
+    <button class="btn btn-secondary" {% if current_household_index <= 1 %}disabled{% endif %}>← Previous Household</button>
+    <button class="btn btn-secondary" {% if current_household_index >= total_households %}disabled{% endif %}>Next Household →</button>
+    <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
+</div>
+
+<!-- Progress Bar -->
+<div style="margin-top: 32px; padding: 20px; background-color: #f8f8f8; border-radius: 4px;">
+    <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Progress: <strong>{{ current_household_index }} of {{ total_households }}</strong></p>
+    <div style="width: 100%; height: 8px; background-color: #e0e0e0; border-radius: 4px; overflow: hidden;">
+        <div style="height: 100%; background-color: #2563eb; width: {{ (current_household_index / total_households * 100)|round }}%;"></div>
+    </div>
+</div>
+
+<!-- Household Confirmation Modal -->
+<div id="household-confirm-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Confirm Household</h2>
+        </div>
+        <div class="modal-body">
+            <p>You are about to record a reviewer decision confirming this household grouping. This action will appear in the audit trail.</p>
+            <p style="color: #999; font-size: 12px; margin-top: 12px;">This decision only affects what records are exported together. Raw import data is not modified.</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('household-confirm-modal')">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="submitHouseholdConfirmation()">Confirm</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

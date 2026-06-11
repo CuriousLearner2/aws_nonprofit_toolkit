@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Export Console — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Export Console</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Staged for Export:</strong> {{ staged_record_count }} records</p>
+
+<div class="safety-strip">Generate and download exports. All reviewer decisions are reflected in staging. Raw import records remain unchanged in the system.</div>
+
+<!-- Export Status Summary -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
+    <div style="background-color: #f8f8f8; padding: 16px; border-radius: 4px; border-left: 3px solid #10b981;">
+        <p style="font-size: 12px; color: #666; margin: 0 0 8px 0; font-weight: 600;">Staged Records</p>
+        <p style="font-size: 24px; font-weight: 700; color: #10b981; margin: 0;">{{ staged_record_count }}</p>
+    </div>
+    <div style="background-color: #f8f8f8; padding: 16px; border-radius: 4px; border-left: 3px solid #2563eb;">
+        <p style="font-size: 12px; color: #666; margin: 0 0 8px 0; font-weight: 600;">Reviewer Decisions</p>
+        <p style="font-size: 24px; font-weight: 700; color: #2563eb; margin: 0;">{{ total_decisions }}</p>
+    </div>
+    <div style="background-color: #f8f8f8; padding: 16px; border-radius: 4px; border-left: 3px solid #0ea5e9;">
+        <p style="font-size: 12px; color: #666; margin: 0 0 8px 0; font-weight: 600;">Households Created</p>
+        <p style="font-size: 24px; font-weight: 700; color: #0ea5e9; margin: 0;">{{ household_count }}</p>
+    </div>
+</div>
+
+<!-- Export Options -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px;">
+    {% for export_type in export_options %}
+    <div class="card">
+        <h3 style="margin-top: 0;">{{ export_type.title }}</h3>
+        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">{{ export_type.description }}</p>
+
+        {% if export_type.format_options %}
+        <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 8px;">Format</label>
+            <select style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+                {% for option in export_type.format_options %}
+                <option value="{{ option }}">{{ option|upper }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <button type="button" class="btn btn-primary" style="width: 100%;" data-action="generate-export" data-export-type="{{ export_type.key }}" onclick="generateExportPackage()">Generate {{ export_type.title }}</button>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Export History -->
+<div style="margin-bottom: 30px;">
+    <h3>Recent Exports</h3>
+    <p style="font-size: 13px; color: #666; margin-bottom: 16px;">Generated exports from this batch (available for 7 days)</p>
+
+    {% if recent_exports %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th style="width: 120px;">Type</th>
+                    <th style="width: 120px;">Generated</th>
+                    <th style="width: 100px;">Size</th>
+                    <th style="width: 80px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for export in recent_exports %}
+                <tr>
+                    <td style="font-weight: 500; color: #2563eb;">{{ export.filename }}</td>
+                    <td style="font-size: 13px;">{{ export.export_type }}</td>
+                    <td style="font-size: 13px; color: #666;">{{ export.generated_timestamp }}</td>
+                    <td style="font-size: 13px; color: #666;">{{ export.file_size }}</td>
+                    <td style="text-align: center;">
+                        <a href="#" class="table-action" data-action="download-export" data-export-id="{{ export.id }}">Download</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="background-color: #f8f8f8; padding: 20px; border-radius: 4px; text-align: center;">
+        <p style="color: #999; font-size: 13px; margin: 0;">No exports generated yet. Create your first export using the options above.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Bottom Navigation -->
+<div style="margin-top: 24px; display: flex; gap: 12px;">
+    <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
+    <a href="/imports" class="btn btn-secondary" style="text-decoration: none;">Back to Imports</a>
+</div>
+
+<!-- Export Generation Modal -->
+<div id="generate-export-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Generate Export Package</h2>
+        </div>
+        <div class="modal-body">
+            <p>Generating your export package with all reviewer decisions applied to staging...</p>
+            <div style="margin-top: 16px; padding: 12px; background-color: #f0fdf4; border-left: 3px solid #10b981; border-radius: 3px;">
+                <p style="font-size: 13px; color: #065f46; margin: 0;">✓ Raw import records remain unchanged in the system.</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-primary" onclick="submitExportGeneration()">Complete</button>
+        </div>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('[data-action="download-export"]').forEach(link => {
+    link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const exportId = this.getAttribute('data-export-id');
+        showToast(`↓ Downloading export #${exportId}`);
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Audit Log</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Total Entries:</strong> {{ audit_log|length }}</p>
+
+<div class="safety-strip">Complete record of all reviewer decisions and system actions for this import. Immutable reference for compliance.</div>
+
+<!-- Filter & Export -->
+<div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">
+    <select id="action-filter" style="padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+        <option value="">All Actions</option>
+        <option value="marked-duplicate">Marked as Duplicate</option>
+        <option value="marked-different">Marked as Different</option>
+        <option value="normalization-accepted">Normalization Accepted</option>
+        <option value="normalization-rejected">Normalization Rejected</option>
+        <option value="household-confirmed">Household Confirmed</option>
+        <option value="record-deferred">Record Deferred</option>
+    </select>
+    <button class="btn btn-secondary" style="margin-left: auto;">Export Audit Log</button>
+</div>
+
+<!-- Audit Log Table -->
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 150px;">Timestamp</th>
+                <th>Action</th>
+                <th>Details</th>
+                <th style="width: 120px;">Reviewer</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in audit_log %}
+            <tr>
+                <td style="font-size: 12px; color: #999;">{{ entry.timestamp }}</td>
+                <td>
+                    {% if entry.action == 'marked-duplicate' %}
+                    <span style="background-color: #d1fae5; color: #065f46; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">Marked Same Person</span>
+                    {% elif entry.action == 'marked-different' %}
+                    <span style="background-color: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">Marked Different</span>
+                    {% elif entry.action == 'normalization-accepted' %}
+                    <span style="background-color: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">Normalization Accepted</span>
+                    {% elif entry.action == 'normalization-rejected' %}
+                    <span style="background-color: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">Normalization Rejected</span>
+                    {% elif entry.action == 'household-confirmed' %}
+                    <span style="background-color: #d1fae5; color: #065f46; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">Household Confirmed</span>
+                    {% elif entry.action == 'record-deferred' %}
+                    <span style="background-color: #f3e8ff; color: #6b21a8; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">Record Deferred</span>
+                    {% else %}
+                    <span style="background-color: #f0f0f0; color: #666; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">{{ entry.action }}</span>
+                    {% endif %}
+                </td>
+                <td style="font-size: 13px; color: #333;">{{ entry.details }}</td>
+                <td style="font-size: 13px; color: #666;">{{ entry.reviewer }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Bottom Navigation -->
+<div style="margin-top: 24px; display: flex; gap: 12px;">
+    <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
+    <a href="/imports" class="btn btn-secondary" style="text-decoration: none;">Back to Imports</a>
+</div>
+{% endblock %}
