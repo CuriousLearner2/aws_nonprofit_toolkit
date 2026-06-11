@@ -219,9 +219,10 @@ This screen follows DonorTrust v1 patterns:
 | `export_console-spec.md` | Authoritative specification (14 sections, 11 acceptance criteria) |
 | `REFINEMENT_PLAN.md` | Summary of 10 vocabulary changes + implementation guide |
 | `design-reference.html` | Corrected implementation reference with safe vocabulary |
-| `verification.json` | Machine-readable checks (pending generation) |
+| `verification.json` | Machine-readable checks (52/52 checks passing) |
 | `REFERENCE_MOCK_NOTES.md` | This file; explains local mock purpose and usage |
-| `README.md` | Orientation document (pending) |
+| `README.md` | Orientation document |
+| `ACCEPTANCE_RECORD.md` | Formal acceptance record (v1 Design Reference Accepted) |
 
 ---
 
