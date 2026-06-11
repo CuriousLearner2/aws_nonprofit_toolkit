@@ -21,6 +21,7 @@ try:
         HOUSEHOLD_SUGGESTIONS,
         DUPLICATE_CANDIDATES,
         AUDIT_LOG_ENTRIES,
+        EXPORT_CARDS,
     )
 except ImportError:
     # Fallback for direct script execution
@@ -33,6 +34,7 @@ except ImportError:
         HOUSEHOLD_SUGGESTIONS,
         DUPLICATE_CANDIDATES,
         AUDIT_LOG_ENTRIES,
+        EXPORT_CARDS,
     )
 
 from .service_contracts import (
@@ -50,6 +52,8 @@ from .service_contracts import (
     DuplicatePageViewModel,
     AuditLogEntry,
     AuditPageViewModel,
+    ExportCard,
+    ExportConsoleViewModel,
 )
 
 
@@ -386,6 +390,49 @@ class FixtureImportRepository:
             filename=IMPORT_BATCH['filename'],
             progress=IMPORT_BATCH['progress'],
             audit_entries=audit_entries,
+        )
+
+    @staticmethod
+    def get_exports(import_id: str) -> ExportConsoleViewModel:
+        """
+        Return export console page data as ExportConsoleViewModel.
+
+        Adapts IMPORT_BATCH and EXPORT_CARDS fixtures into export console
+        view model with staging statistics. Returns all export options.
+
+        Args:
+            import_id: Import ID (unused for fixture data, preserved for API consistency)
+
+        Returns:
+            ExportConsoleViewModel with batch, export cards, and staging statistics.
+        """
+        export_cards = tuple(
+            ExportCard(
+                id=card['id'],
+                title=card['name'],
+                description=card['description'],
+                status=card['status'],
+                files_ready=card['files_ready'],
+            )
+            for card in EXPORT_CARDS
+        )
+
+        # Calculate staging statistics from fixtures
+        staged_record_count = len(CONTACTS)
+        total_decisions = sum(
+            len(dc.get('supporting_evidence', [])) for dc in DUPLICATE_CANDIDATES
+        )
+        household_count = len(HOUSEHOLD_SUGGESTIONS)
+
+        return ExportConsoleViewModel(
+            batch_id=IMPORT_BATCH['id'],
+            filename=IMPORT_BATCH['filename'],
+            progress=IMPORT_BATCH['progress'],
+            export_cards=export_cards,
+            staged_record_count=staged_record_count,
+            total_decisions=total_decisions,
+            household_count=household_count,
+            recent_exports=(),
         )
 
     @staticmethod

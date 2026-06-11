@@ -393,3 +393,61 @@ class AuditPageViewModel:
             },
             "audit_log": [entry.to_dict() for entry in self.audit_entries],
         }
+
+
+@dataclass(frozen=True)
+class ExportCard:
+    """
+    Single export card for /imports/<import_id>/exports.
+
+    Represents one export format option with metadata.
+    Frozen dataclass ensures immutability.
+    """
+    id: str
+    title: str
+    description: str
+    status: str
+    files_ready: int
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "status": self.status,
+            "files_ready": self.files_ready,
+        }
+
+
+@dataclass(frozen=True)
+class ExportConsoleViewModel:
+    """
+    Complete export console view model for /imports/<import_id>/exports.
+
+    Contains batch metadata, export cards, and staging statistics.
+    Frozen dataclass ensures immutability.
+    """
+    batch_id: str
+    filename: str
+    progress: int
+    export_cards: tuple  # Tuple of ExportCard
+    staged_record_count: int
+    total_decisions: int
+    household_count: int
+    recent_exports: tuple  # Tuple of recent export records (empty for Phase 1A)
+
+    def to_template_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "batch": {
+                "id": self.batch_id,
+                "filename": self.filename,
+                "progress": self.progress,
+            },
+            "export_options": [card.to_dict() for card in self.export_cards],
+            "staged_record_count": self.staged_record_count,
+            "total_decisions": self.total_decisions,
+            "household_count": self.household_count,
+            "recent_exports": list(self.recent_exports),
+        }

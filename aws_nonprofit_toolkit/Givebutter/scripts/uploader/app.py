@@ -65,6 +65,7 @@ try:
         households_service,
         duplicates_service,
         audit_service,
+        exports_service,
     )
 except ImportError:
     # Fallback for direct script execution
@@ -79,6 +80,7 @@ except ImportError:
         households_service,
         duplicates_service,
         audit_service,
+        exports_service,
     )
 
 app = Flask(__name__)
@@ -855,13 +857,8 @@ def import_audit(import_id):
 @app.route('/imports/<import_id>/exports')
 def import_exports(import_id):
     """Export console for generating and downloading exports."""
-    return render_template('imports/exports.html',
-                         batch=IMPORT_BATCH,
-                         export_options=EXPORT_CARDS,
-                         staged_record_count=len(CONTACTS),
-                         total_decisions=sum(len(dc.get('supporting_evidence', [])) for dc in DUPLICATE_CANDIDATES),
-                         household_count=len(HOUSEHOLD_SUGGESTIONS),
-                         recent_exports=[])
+    data = exports_service.get_export_console(import_id)
+    return render_template('imports/exports.html', **data)
 
 @app.route('/health')
 def health():
