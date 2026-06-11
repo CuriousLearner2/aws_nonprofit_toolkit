@@ -1,8 +1,34 @@
-# Iteration-004: DonorTrust Import Dashboard Design Review
+# Import Dashboard — Quick-Access Final Reference Package
 
-**Status:** ✅ Complete and Ready for Review  
+**Folder Role:** Canonical quick-access Stitch design reference  
+**Design Status:** ✅ Stitch Design Final  
+**Acceptance Status:** ⏳ Pending Local Reference Cleanup  
 **Date:** 2026-06-10  
 **Design Changes:** 13/13 Applied (8 major + 5 polish)
+
+---
+
+## ⚠️ Important Notes
+
+### This Folder Is:
+✅ **Quick-access final design reference**  
+✅ **Mirrors final iteration-004 design**  
+✅ **Stitch-exported HTML and screenshots**  
+✅ **Use for fast visual review**
+
+### This Folder Is NOT:
+❌ **Not yet v1 Design Reference Accepted**  
+❌ **Not the authority for implementation**  
+❌ **Not safe to ship raw HTML directly**
+
+### Before Final Acceptance:
+- Vocabulary cleanup needed:
+  - "Bulk Approval" → safer language
+  - "Approved Normalization" → safer language
+  - "cleaned files" → import-scoped language
+  - "householded files" → export-staging language
+- Local implementation-reference mock/spec will become authority
+- Stitch HTML is visual/structural reference only
 
 ---
 
@@ -74,9 +100,21 @@ Full details in `stitch-prompt.md` and `results.json`
 
 ## Next Steps
 
-- **For Design Review:** Share `screenshot.png` and `design.html` with stakeholders
-- **For Implementation:** Use `design.html` as basis for development
-- **For Archive:** All metadata in `results.json` for audit trail
+### For Design Review
+Share `screenshot.png` and `design.html` with stakeholders for visual feedback.
+
+### For Implementation
+1. **Do not ship raw Stitch HTML directly**
+2. **Wait for local implementation-reference mock/spec cleanup**
+3. Use eventual local spec (not Stitch HTML) as implementation authority
+4. Stitch HTML serves as visual/structural reference during implementation
+5. Ensure all vocabulary terms are import-scoped/export-staging-safe
+
+### For Archive
+All metadata in `results.json` and historical iterations in `import-dashboard/` for audit trail.
+
+### For Vocabulary Cleanup
+See `SOURCE_OF_TRUTH.md` for list of terms requiring local cleanup before v1 Design Reference Accepted.
 
 ---
 

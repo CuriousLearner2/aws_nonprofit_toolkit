@@ -13,6 +13,7 @@
 |--------|--------|------|-----------|--------------|--------------------------|
 | **Audit Log** | ✅ v1 Accepted | audit_log-spec.md | design-reference.html | 49/49 PASS | ✅ Yes |
 | **Export Console** | ✅ v1 Accepted | export_console-spec.md | design-reference.html | 52/52 PASS | ✅ Yes |
+| **Import Dashboard** | ⏳ Stitch Final / Pending Cleanup | (Stitch design) | Import Dashboard/ | (visual approved) | ⏳ Pending vocab cleanup |
 | All Records / Validation Review | (See directory) | (in progress) | (in progress) | (pending) | (pending) |
 | Households Review | (See directory) | (in progress) | (in progress) | (pending) | (pending) |
 | Normalization Review | (See directory) | (in progress) | (in progress) | (pending) | (pending) |
@@ -187,13 +188,85 @@ Next: Implementation in app code per spec requirements
 
 ---
 
-## (Other Screens)
+## ⏳ IMPORT DASHBOARD — STITCH FINAL / PENDING LOCAL REFERENCE CLEANUP
 
-See respective folders in `/testing/workspace/ChatGPT/stitch-review/`:
-- `all-records-validation-review/`
-- `households-review/`
-- `normalization-review/`
-- `import-dashboard/`
+### Screen Metadata
+- **Screen Name:** Import Dashboard
+- **Route:** `/imports/<import_id>/dashboard`
+- **Purpose:** Status dashboard showing batch progress, review queue, and navigation to all review screens
+- **Version:** v1 Final (Stitch iteration-004)
+- **Status:** Stitch Design Final / Pending Local Reference Cleanup
+
+### Folder Organization
+- **Canonical Quick-Access Reference:** `Import Dashboard/`
+  - Final artifacts (design.html, screenshots, FINAL_STATUS.md, README.md)
+  - Use for fast visual review
+  - 52KB screenshot, 16KB HTML export
+  
+- **Historical Design Archive:** `import-dashboard/`
+  - Full iteration history (001, 002, 003, 004)
+  - Preserve for audit trail
+  - `iteration-004/` mirrors `Import Dashboard/`
+
+### Authority Reference
+- **Final Stitch Screen ID:** `76ae1ecb02ec4c559bea438ad0012d0f`
+- **Final Iteration Folder:** `import-dashboard/iteration-004/`
+- **Quick-Access Folder:** `Import Dashboard/`
+- **Design Method:** Stitch SDK `screen.edit()` with GEMINI_3_FLASH
+
+### Design Status
+```
+Design Changes Applied: 13/13 ✅
+  - 8 major improvements (hierarchy, validation, queue cards, audit trail, guardrails, export button, visual polish)
+  - 5 polish refinements (button text, note visibility, language format, safety badge)
+
+Design Constraints Maintained:
+  ✅ Read-only dashboard (navigation only)
+  ✅ Human-in-the-loop reinforced
+  ✅ Audit-safe design
+  ✅ Safe navigation language (Review, Open, View)
+  ✅ No data mutations
+  ✅ DonorTrust v1 consistent
+
+Status: Stitch Design Final ✅
+```
+
+### Pending Local Reference Cleanup
+**Why Not Yet Accepted as v1 Design Reference:**
+- Stitch HTML contains vocabulary that needs import-scoped/export-staging refinement
+- Terms requiring cleanup:
+  - "Bulk Approval" → safer language
+  - "Approved Normalization" → safer language
+  - "cleaned files" → "reviewed data" or "files with decisions reflected"
+  - "householded files" → safer import-scoped language
+
+**Next Steps:**
+1. Create local implementation-reference mock/spec
+2. Vocabulary cleanup and verification
+3. Once complete → v1 Design Reference Accepted
+
+### Implementation Notes
+- ✅ This is a **Stitch-generated design** (not a local reference mock)
+- ⏳ **Do not ship raw HTML directly** — wait for local spec cleanup
+- **Visual/structural reference** for implementation use
+- Stitch HTML serves as visual baseline, not implementation authority
+- Local implementation-reference mock will become authority when created
+
+### Key Principle
+**Current State:** Visual design approved and complete  
+**Pending:** Local vocabulary cleanup and specification creation  
+**Goal:** v1 Design Reference Accepted with safe import-scoped language
+
+---
+
+## Screens in Progress
+
+See respective folders in current directory (`/docs/PRDs/Householder/UX Specs/`):
+- `all-records-validation-review/` — In progress
+- `households-review/` — In progress
+- `normalization-review/` — In progress
+
+**Note:** Earlier versions were in `/testing/workspace/ChatGPT/stitch-review/` (archived). Current canonical location is `/docs/PRDs/Householder/UX Specs/`.
 
 (Status updates pending completion of those screens)
 
