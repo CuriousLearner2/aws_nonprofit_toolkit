@@ -377,7 +377,7 @@ All screens follow the **DonorTrust v1 layout**:
 Every screen includes a compact **safety strip** below the title:
 - All Records: "Suggested changes only. Raw import rows are never changed."
 - Households: "Suggested changes only. Confirmed households affect export staging only. Raw import rows are never changed."
-- Normalization: "Human-in-loop · Raw rows preserved · Approved suggestions affect export staging only"
+- Normalization: "Human-in-loop · Raw rows preserved · Confirmed suggestions affect export staging only"
 - Audit Log: (implicit in design)
 - Export Console: "Review decisions logged | Raw import rows unchanged | Exports ready to download"
 
