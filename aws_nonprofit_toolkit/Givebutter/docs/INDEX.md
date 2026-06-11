@@ -1,9 +1,98 @@
 # Documentation Index
-## Your Guide to All Givebutter Processor Docs
+## Your Guide to All Givebutter Project Docs
 
-Welcome! This page helps you find exactly what you need. Pick your role or question below.
+Welcome! This page helps you find exactly what you need. Choose a section below or pick your role.
 
 ---
+
+## 📋 Documentation Sections
+
+1. **[DonorTrust v1 / Householder](#donortrust-v1--householder)** — Import review system for identifying duplicates, normalizing data, grouping into households
+2. **[Givebutter Processor System](#givebutter-processor-system)** — Donation processing, validation, flagging
+3. **[Testing & QA](#testing--qa)** — Test design, QA artifacts, reliability guidelines
+4. **[General Givebutter Project](#general-givebutter-project)** — Architecture, setup, and project-wide information
+
+---
+
+## DonorTrust v1 / Householder
+
+### Overview
+
+DonorTrust v1 is a Flask-based import review system that helps organizations identify duplicate donors, normalize data inconsistencies, and group donors into households before export.
+
+**Current Status:** Phase 0 (Clickable Prototype) ✓ ACCEPTED | Phase 1A-Step 1 (Service Boundary) ✓ ACCEPTED
+
+### For Product & Design
+
+**Start here:**
+1. **[Householder PRD v2.6](PRDs/Householder/Householder_PRD-v2.6-UX-aligned.md)** — Product specification with UX requirements
+2. **[UX Summary](ux/UX_SUMMARY.md)** — 8-screen canonical workflow
+3. **[Phase 0 Acceptance Record](completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md)** — Final spec of accepted prototype
+
+### For Developers
+
+**Start here:**
+1. **[IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)** — Overview of all phases, architecture constraints, how to run Phase 0
+2. **[Phase 1A Service Boundary Plan](completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md)** — Architecture for service-layer abstraction
+3. **[Phase 1A-Step 1 Completion Record](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md)** — Service boundary implementation details and QA results
+
+### Key Docs
+
+| Document | Purpose | Status |
+|---|---|---|
+| [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) | Phase overview, architecture, how to run | Current |
+| [Phase 0 Acceptance Record](completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md) | Complete specification of 8 screens | ✓ Accepted |
+| [Phase 1A Service Boundary Plan](completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md) | Service-layer architecture plan | ✓ Accepted |
+| [Phase 1A-Step 1 Completion Record](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md) | Service boundary implementation & QA | ✓ Accepted |
+| [Householder PRD v2.6](PRDs/Householder/Householder_PRD-v2.6-UX-aligned.md) | Product specification | Reference |
+| [UX Summary](ux/UX_SUMMARY.md) | 8-screen workflow | Reference |
+
+### QA Artifacts
+
+- **Phase 0:** `testing/qa-artifacts/phase0/` — Screenshots and acceptance report
+- **Phase 1A-Step 1:** `testing/qa-artifacts/phase1a-step1/` — QA verification and test results
+
+### Source Templates (Phase 0 Implementation)
+
+**Shared Layout:**
+- `scripts/uploader/templates/base.html` — Navigation, layout, responsive grid
+
+**Screen Templates (8 screens):**
+| Screen | Template File |
+|---|---|
+| Imports List | `scripts/uploader/templates/imports/list.html` |
+| Import Dashboard | `scripts/uploader/templates/imports/dashboard.html` |
+| Possible Duplicates | `scripts/uploader/templates/imports/duplicates.html` |
+| Validation Review | `scripts/uploader/templates/imports/validation.html` |
+| Normalizations | `scripts/uploader/templates/imports/normalizations.html` |
+| Households | `scripts/uploader/templates/imports/households.html` |
+| Audit Log | `scripts/uploader/templates/imports/audit.html` |
+| Export Console | `scripts/uploader/templates/imports/exports.html` |
+
+**Styling & Interactions:**
+- `scripts/uploader/static/css/donortrust.css` — Shared CSS (~650 lines)
+- `scripts/uploader/static/js/donortrust-interactions.js` — Vanilla JavaScript (modals, selection, validation)
+
+### How to Run Phase 0
+
+```bash
+cd scripts/uploader
+python3 app.py
+```
+
+Then visit: http://127.0.0.1:8000/imports
+
+---
+
+## Givebutter Processor System
+
+### Overview
+
+The Givebutter Processor is a donation processing system that validates, flags, and categorizes donor records using configurable validation rules.
+
+### For Operators
+
+**Current Status:** Active (V2 dual-validation architecture)
 
 ## 🎯 Quick Navigation by Role
 
@@ -209,9 +298,66 @@ Welcome! This page helps you find exactly what you need. Pick your role or quest
 
 ---
 
+## Testing & QA
+
+### For QA & Test Engineers
+
+**Start here:**
+1. **[SKILL_RESILIENT_TEST_DESIGN.md](../SKILL_RESILIENT_TEST_DESIGN.md)** — Comprehensive guide for writing resilient E2E tests
+2. **[E2E_TEST_RELIABILITY.md](E2E_TEST_RELIABILITY.md)** — Project-specific reliability guidelines and monitoring
+
+### QA Artifacts by Phase
+
+**Phase 0:** `testing/qa-artifacts/phase0/`
+- QA Reports: PHASE0_QA_REPORT_FINAL.md, PHASE0_QA_REPORT.md
+- Screenshots (8): imports.png, dashboard.png, duplicates.png, validation.png, normalizations.png, households.png, audit.png, exports.png
+- Structured results: qa-results.json
+
+**Phase 1A-Step 1:** `testing/qa-artifacts/phase1a/step1/`
+- QA Report: PHASE1A_STEP1_QA_REPORT.md
+- Screenshot: imports-phase1a.png
+
+**Source Code (not testing artifacts):**
+- Phase 0 HTML templates: `scripts/uploader/templates/imports/*.html` (8 screen templates)
+- Shared layout: `scripts/uploader/templates/base.html`
+- Styling: `scripts/uploader/static/css/donortrust.css`
+- Interactions: `scripts/uploader/static/js/donortrust-interactions.js`
+
+### Testing Framework
+
+- **Agent Testing:** `testing/agent/` — Test plans, feature overviews, agent prompts
+- **Design Workspace:** `testing/workspace/` — Reference mocks, acceptance records, design reviews
+
+### Key Documents for Developers
+
+- **[CLAUDE.md](../CLAUDE.md)** — Project constraints and testing requirements (CRITICAL: read before E2E testing)
+- **[SKILL_RESILIENT_TEST_DESIGN.md](../SKILL_RESILIENT_TEST_DESIGN.md)** — How to write tests that don't timeout
+- **[E2E_TEST_RELIABILITY.md](E2E_TEST_RELIABILITY.md)** — Monitoring and debugging test issues
+
+---
+
+## General Givebutter Project
+
+### Overview
+
+Project-wide documentation covering architecture, setup, and cross-system information.
+
+### For All Team Members
+
+- **[ROADMAP.md](ROADMAP.md)** — Project vision and planned phases
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** — Environment setup and configuration
+- **[API.md](API.md)** — API documentation and endpoints
+
+### For Architects & Technical Leads
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — System architecture (processor validation rules)
+- **[DEVELOPER.md](DEVELOPER.md)** — Development guide (processor system)
+
+---
+
 ## 📖 Read Order Recommendations
 
-### First Time (New Operator)
+### First Time (New Operator - Processor)
 1. **README.md** (5 min) — Understand what you're doing
 2. **QUICK_START.md** (2 min) — Know the key locations
 3. **OPERATOR_MANUAL.md, Quick Start section** (5 min) — Do your first upload
@@ -289,66 +435,131 @@ Welcome! This page helps you find exactly what you need. Pick your role or quest
 ## 🗺️ Document Map
 
 ```
-README.md
-├─ Everyone starts here
-├─ Quick overview (now mentions V2!)
-└─ Routes to other docs
-    │
-    ├──→ PRD.md (NEW)
-    │    ├─ For: Everyone (especially leads)
-    │    ├─ Length: 10 min to read
-    │    ├─ Key: V2 strategy, dual validation
-    │    └─ Use: Understand product direction
-    │
-    ├──→ OPERATOR_MANUAL.md
-    │    ├─ For: Daily operators
-    │    ├─ Length: 30 min first time
-    │    ├─ Key: Step-by-step workflow
-    │    └─ Contains: FAQ, troubleshooting
-    │
-    ├──→ ARCHITECTURE.md (UPDATED)
-    │    ├─ For: Technical leads
-    │    ├─ Length: 30 min to read
-    │    ├─ Key: Validation rules architecture
-    │    └─ Contains: Specifications, scenarios
-    │
-    ├──→ DEVELOPER.md (UPDATED)
-    │    ├─ For: Technical leads
-    │    ├─ Length: 20 min to read
-    │    ├─ Key: Rules, validation integration, Claude
-    │    └─ Contains: Testing, maintenance
-    │
-    ├──→ QUICK_START.md (UPDATED)
-    │    ├─ For: Everyone (print it!)
-    │    ├─ Length: 2 min to read
-    │    ├─ Key: Folders, commands, validation rules
-    │    └─ Use: Daily reference
-    │
-    ├──→ FAQ.md
-    │    ├─ For: Anyone with questions
-    │    ├─ Length: Browse as needed
-    │    ├─ Key: Organized by category
-    │    └─ Use: Find answers fast
-    │
-    └──→ CHANGELOG.md (UPDATED)
-         ├─ For: Technical leads
-         ├─ Length: Browse as needed
-         ├─ Key: V2 dual-validation, what's new
-         └─ Use: Track versions
+Documentation Index (INDEX.md)
+│
+├─ Testing & QA
+│  ├─ SKILL_RESILIENT_TEST_DESIGN.md
+│  │  ├─ For: Test engineers, developers
+│  │  ├─ Key: How to write resilient E2E tests
+│  │  └─ Use: Before writing any E2E tests
+│  │
+│  ├─ E2E_TEST_RELIABILITY.md
+│  │  ├─ For: Test engineers, QA
+│  │  ├─ Key: Project-specific reliability patterns
+│  │  └─ Use: Monitoring and debugging tests
+│  │
+│  ├─ QA Artifacts (by phase)
+│  │  ├─ testing/qa-artifacts/phase0/
+│  │  │  └─ Phase 0 acceptance QA reports
+│  │  │
+│  │  └─ testing/qa-artifacts/phase1a/step1/
+│  │     └─ Phase 1A-Step 1 QA reports
+│  │
+│  └─ Testing Framework
+│     ├─ testing/agent/ — Agent testing materials
+│     └─ testing/workspace/ — Design workspace & reference mocks
+│
+├─ DonorTrust v1 / Householder
+│  ├─ IMPLEMENTATION_GUIDE.md
+│  │  ├─ For: Developers, product leads
+│  │  ├─ Key: Phase overview, how to run
+│  │  └─ Use: Starting point for DonorTrust
+│  │
+│  ├─ completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md
+│  │  ├─ For: Product, developers, QA
+│  │  ├─ Key: Accepted 8-screen prototype spec
+│  │  └─ Use: Reference for Phase 0 scope
+│  │
+│  ├─ completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md
+│  │  ├─ For: Architects, developers
+│  │  ├─ Key: Service-layer architecture
+│  │  └─ Use: Understanding service boundary
+│  │
+│  ├─ completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md
+│  │  ├─ For: Developers, QA, product
+│  │  ├─ Key: Service implementation details
+│  │  └─ Use: Reference for Phase 1A-Step 1
+│  │
+│  ├─ PRDs/Householder/Householder_PRD-v2.6-UX-aligned.md
+│  │  ├─ For: Product, design, leadership
+│  │  ├─ Key: Product specification
+│  │  └─ Use: Requirements reference
+│  │
+│  └─ ux/UX_SUMMARY.md
+│     ├─ For: Everyone
+│     ├─ Key: 8-screen workflow
+│     └─ Use: Understand user journey
+│
+├─ Givebutter Processor System
+│  ├─ README.md
+│  │  ├─ For: Everyone (start here!)
+│  │  ├─ Key: System overview
+│  │  └─ Use: Quick introduction
+│  │
+│  ├─ PRD.md
+│  │  ├─ For: Everyone (especially leads)
+│  │  ├─ Key: V2 strategy, dual validation
+│  │  └─ Use: Understand product direction
+│  │
+│  ├─ OPERATOR_MANUAL.md
+│  │  ├─ For: Daily operators
+│  │  ├─ Key: Step-by-step workflow
+│  │  └─ Use: Daily reference, FAQ, troubleshooting
+│  │
+│  ├─ ARCHITECTURE.md
+│  │  ├─ For: Technical leads
+│  │  ├─ Key: Validation rules architecture
+│  │  └─ Use: Technical deep-dive
+│  │
+│  ├─ DEVELOPER.md
+│  │  ├─ For: Technical leads
+│  │  ├─ Key: Rules, validation, Claude integration
+│  │  └─ Use: Implementation reference
+│  │
+│  ├─ QUICK_START.md
+│  │  ├─ For: Everyone (print it!)
+│  │  ├─ Key: Folders, commands, definitions
+│  │  └─ Use: Quick reference
+│  │
+│  ├─ FAQ.md
+│  │  ├─ For: Anyone with questions
+│  │  ├─ Key: Q&A by category
+│  │  └─ Use: Find answers fast
+│  │
+│  └─ CHANGELOG.md
+│     ├─ For: Technical leads
+│     ├─ Key: Version history
+│     └─ Use: Track changes
+│
+└─ General Givebutter Project
+   ├─ ROADMAP.md
+   │  ├─ For: Leadership, architects
+   │  ├─ Key: Project vision and phases
+   │  └─ Use: Understanding direction
+   │
+   ├─ SETUP_GUIDE.md
+   │  ├─ For: Developers
+   │  ├─ Key: Environment configuration
+   │  └─ Use: Initial setup
+   │
+   └─ API.md
+      ├─ For: Developers
+      ├─ Key: API endpoints
+      └─ Use: Integration reference
 ```
 
 ---
 
 ## ✨ Pro Tips
 
-1. **Bookmark QUICK_START.md** — It's your daily reference
-2. **Print QUICK_START.md** — Keep it at your desk
-3. **When in doubt, check FAQ.md first** — Someone probably asked it
-4. **Read the full OPERATOR_MANUAL once** — On your first day, takes 30 min, saves hours later
-5. **Developer? Read DEVELOPER.md fully** — All the architecture is there
-6. **Share this INDEX.md with your team** — So everyone knows where to look
+1. **Use this INDEX.md as your hub** — Everything is organized by section
+2. **Processor users?** Start with OPERATOR_MANUAL.md, bookmark QUICK_START.md
+3. **DonorTrust developers?** Start with IMPLEMENTATION_GUIDE.md
+4. **When in doubt, check the relevant section** — FAQ.md for processor questions, completion records for DonorTrust
+5. **Share this INDEX.md with your team** — So everyone knows where to look
+6. **Bookmark the section you care about most** — processor, DonorTrust, or general project
 
 ---
 
-**Last updated:** May 26, 2026  
-**Current version:** 2.0 (Dual-Validation Architecture)
+**Last updated:** June 11, 2026  
+**Current version:** 2.0+ (Dual-Validation Architecture + DonorTrust v1)

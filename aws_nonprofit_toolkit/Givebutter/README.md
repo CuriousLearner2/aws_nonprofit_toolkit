@@ -1,8 +1,25 @@
-# Givebutter Donation Processor
+# Givebutter Project
 
-Complete donation data validation and operator review system for Givebutter exports.
+Complete donation data management and operator review system for Givebutter exports.
 
 **Status:** ✅ Production Ready | **Version:** 3.4 | **Last Updated:** 2026-06-05
+
+---
+
+## 📚 This Project Contains Two Systems
+
+This repository has two major components:
+
+1. **Givebutter Processor** (this page) — Donation validation, duplicate detection, operator review workflow
+2. **DonorTrust v1 / Householder** — Import review system for identifying duplicates, normalizing donor data, grouping into households
+
+**👉 [See the full Documentation Index](docs/INDEX.md) for both systems and all guides.**
+
+---
+
+## Givebutter Donation Processor
+
+Complete donation data validation and operator review system for Givebutter exports.
 
 ---
 
@@ -53,12 +70,25 @@ Processes Givebutter CSV exports to:
 
 ## Documentation
 
-**For Operators:**
+**👉 Start Here: [Documentation Index](docs/INDEX.md)**
+
+The Documentation Index covers both systems:
+- DonorTrust v1 / Householder (import review system)
+- Givebutter Processor (donation validation)
+- Testing & QA guidance
+- Project-wide information
+
+**For Processor Operators:**
 - 🚀 [QUICK_START.md](QUICK_START.md) - 3-minute setup and usage
 
-**For Developers:**
+**For Processor Developers:**
 - 📖 [PROCESSOR_GUIDE.md](docs/PROCESSOR_GUIDE.md) - Complete feature reference
 - 🔌 [API.md](docs/API.md) - Full API documentation
+
+**For DonorTrust / Householder:**
+- 📖 [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) - Phase overview and architecture
+- 📋 [Phase 0 Acceptance Record](docs/completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md) - Design specification
+- 🏗️ [Phase 1A Service Boundary Plan](docs/completion-records/phase1a/PHASE1A_SERVICE_BOUNDARY_PLAN.md) - Architecture
 
 ## Quick Start
 
