@@ -431,16 +431,16 @@
 <div class="w-16 h-16 bg-secondary-container/10 text-secondary rounded-full flex items-center justify-center mb-6">
 <span class="material-symbols-outlined text-[32px]">verified</span>
 </div>
-<h3 class="font-headline-lg text-headline-lg text-primary mb-2">Confirm Bulk Approval</h3>
+<h3 class="font-headline-lg text-headline-lg text-primary mb-2">Approve selected pending suggestions?</h3>
 <p class="text-body-md text-on-surface-variant leading-relaxed">
-                    These approvals affect approved exports only. Raw import rows and baseline contact fields remain unchanged.
+                    Only selected pending suggestions will be approved. Raw import rows remain unchanged. These decisions are logged to the audit trail.
                 </p>
 <div class="mt-8 flex gap-3 w-full">
 <button class="flex-1 px-4 py-3 border border-border-subtle rounded-lg font-bold text-on-surface hover:bg-surface-audit transition-colors" onclick="closeModal()">
                         Cancel
                     </button>
 <button class="flex-1 px-4 py-3 bg-secondary text-on-secondary rounded-lg font-bold shadow-md hover:opacity-90 transition-all" onclick="confirmBulk()">
-                        Approve All (328)
+                        Approve Selected
                     </button>
 </div>
 </div>
@@ -450,8 +450,8 @@
 <div class="fixed bottom-8 right-8 bg-primary-container text-on-primary-container px-6 py-4 rounded-lg shadow-2xl flex items-center gap-4 translate-y-24 transition-transform duration-500 z-[60]" id="toast">
 <span class="material-symbols-outlined text-pass">check_circle</span>
 <div>
-<p class="font-bold text-body-sm">Bulk Normalization Applied</p>
-<p class="text-[12px] opacity-80">328 records queued for next export.</p>
+<p class="font-bold text-body-sm">Normalization decisions recorded</p>
+<p class="text-[12px] opacity-80">Selected suggestions approved for export staging.</p>
 </div>
 </div>
 <script>
