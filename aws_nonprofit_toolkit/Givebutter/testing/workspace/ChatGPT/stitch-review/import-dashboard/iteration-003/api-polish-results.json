@@ -1,0 +1,45 @@
+{
+  "status": "completed",
+  "timestamp": "2026-06-10T15:29:38.515057Z",
+  "polish_changes": 5,
+  "successful": 0,
+  "failed": 5,
+  "results": [
+    {
+      "status": "failed",
+      "element_id": "queue-card-3-duplicates-button",
+      "description": "Polish 1: Duplicate Queue CTA",
+      "error": "HTTP 405",
+      "timestamp": "2026-06-10T15:29:37.625169Z"
+    },
+    {
+      "status": "failed",
+      "element_id": "export-button",
+      "description": "Polish 2: Export Button CTA",
+      "error": "HTTP 405",
+      "timestamp": "2026-06-10T15:29:37.824276Z"
+    },
+    {
+      "status": "failed",
+      "element_id": "readonly-note",
+      "description": "Polish 3: Read-Only Note",
+      "error": "HTTP 405",
+      "timestamp": "2026-06-10T15:29:38.048873Z"
+    },
+    {
+      "status": "failed",
+      "element_id": "recent-actions-entries",
+      "description": "Polish 4: Recent Actions Wording",
+      "error": "HTTP 405",
+      "timestamp": "2026-06-10T15:29:38.302350Z"
+    },
+    {
+      "status": "failed",
+      "element_id": "safety-badge",
+      "description": "Polish 5: Safety Badge",
+      "error": "HTTP 405",
+      "timestamp": "2026-06-10T15:29:38.514336Z"
+    }
+  ],
+  "next_step": "Recapture iteration-003 screenshots to verify changes"
+}

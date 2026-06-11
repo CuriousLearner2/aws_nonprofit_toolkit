@@ -1,10 +1,10 @@
 # Audit Log Review — Design Refinement
 
-**Status:** Specification complete (v2 Revised) | Reference mock created | Ready for implementation  
+**Status:** ✅ v1 Design Reference Accepted / Ready for Implementation  
 **Screen:** Audit Log (v1 Final) — Strict Vocabulary Compliance  
 **Type:** Local implementation-reference mock (not a Stitch update)  
-**Authority:** audit_log-spec.md (revised) + design-reference.html (revised)  
-**Revision:** Stricter v1 vocabulary with status name and column name updates
+**Authority:** audit_log-spec.md + design-reference.html  
+**Verification:** 49/49 checks passing (strict v1 vocabulary compliance)
 
 ---
 
@@ -218,6 +218,16 @@ See `audit_log-spec.md` section 11 for detailed styling direction.
 
 ---
 
+## ✅ Acceptance Note
+
+**Audit Log is accepted as a v1 implementation reference.** The screen is import-scoped, audit-safe, and human-in-the-loop. It records reviewer/system actions without mutating raw import rows. The accepted status taxonomy is **Audit Status** with **Conflict Flagged**, **Needs Review**, **Validation Passed**, and **System Logged**. The accepted right-side panel is **Row Audit History**. Verification passes **49/49 strict v1 vocabulary checks**.
+
+**Route:** `/imports/<import_id>/audit`  
+**Ready:** For implementation in production component system  
+**Do Not:** Ship the static HTML directly; use as visual/structural reference only  
+
+---
+
 ## 🔗 Related Screens
 
 - **All Records / Validation Review:** Similar 10-column table with safe language, field highlighting, status indicators
@@ -243,7 +253,8 @@ See `audit_log-spec.md` section 11 for detailed styling direction.
 ---
 
 **Created:** 2026-06-11  
-**Authority:** audit_log-spec.md + design-reference.html  
-**Status:** Specification complete, reference mock created, ready for implementation  
+**Accepted:** 2026-06-11  
+**Authority:** audit_log-spec.md (source of truth)  
+**Status:** ✅ v1 Design Reference Accepted / Ready for Implementation  
 **Safety Level:** Audit-safe, import-scoped, human-verified  
-**Verification:** 43/43 checks pass ✅
+**Verification:** 49/49 checks pass ✅ (strict v1 vocabulary compliance)

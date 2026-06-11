@@ -1,87 +1,72 @@
-# Iteration-003: Normalization Review — Final Safety Polish
+# Iteration-003: Normalization Review — Final Audit-Safe Design
 
 **Status:** ✅ Complete  
-**Date:** 2026-06-10  
-**Original Screen ID:** 38d90e6c683441ee9298ef9ebf48eb1d  
-**Edited Screen ID:** 271bf90912f94a8ba52ebde7390a2ae7  
-**Iteration Type:** Polish pass (small refinements, no layout changes)  
-**Method:** Stitch SDK `screen.edit()` + `getHtml()` + `getImage()`
+**Date:** 2026-06-11  
+**Final Variant Screen ID:** d349205f1a5a4c3687d4685e25b0958b  
+**Method:** Stitch SDK `screen.variants()` (REFINE variant)
 
 ---
 
 ## What's In This Folder
 
-| File | Purpose |
-|------|---------|
-| `design.html` | Final polished design (implementation ready) |
-| `screenshot.png` | SDK-generated screenshot (52KB) |
-| `screenshot-2x-above-fold.png` | High-res above-fold (302KB, 2880×2048px) |
-| `screenshot-2x-full.png` | High-res full-page (302KB) |
-| `results.json` | Edit metadata and verification |
-| `README.md` | This file |
+| File | Purpose | Status |
+|------|---------|--------|
+| `design.html` | Final audit-safe design (implementation ready) | ✅ Verified |
+| `screenshot.png` | SDK-generated screenshot | ✅ Verified |
+| `screenshot-2x-above-fold.png` | High-res above-fold (2880×1620px) | ✅ Verified |
+| `screenshot-2x-full.png` | High-res full-page (2880×1620px) | ✅ Verified |
+| `results.json` | Final metadata and verification | ✅ Updated |
+| `README.md` | This file | ✅ Final |
 
 ---
 
-## Polish Changes Applied — All 6 Refinements
+## Final Design Status
 
-### 1. ✅ Selection-Aware Button
-- **Display:** "Approve Selected (0)" when no rows selected
-- **Display:** "Approve Selected (N)" when N rows selected
-- **State:** Disabled when count is 0
-- **Effect:** Prevents accidental approvals; clarifies intent
+### ✅ Safe Patterns Present (7/7)
 
-### 2. ✅ Safety Strip Language Update
-- **Old:** "Approved normalizations affect export staging only"
-- **New:** "Approved suggestions affect export staging only"
-- **Rationale:** More precise terminology; "suggestions" is clearer
-- **Full text:** "Human-in-loop · Raw rows preserved · Approved suggestions affect export staging only"
+1. **Modal Title:** "Approve selected pending suggestions?"
+2. **Modal Body:** "Only selected pending suggestions will be approved. Raw import rows remain unchanged. These decisions are logged to the audit trail."
+3. **Modal Button:** "Approve Selected"
+4. **Toast Title:** "Normalization decisions recorded"
+5. **Toast Body:** "Selected suggestions approved for export staging."
+6. **Safety Strip:** "Human-in-loop · Raw rows preserved · Approved suggestions affect export staging only"
+7. **Row Actions:** Approve, Reject, Defer (always visible, audit-safe)
 
-### 3. ✅ Modal Clarification
-- **New text:** "Only selected pending suggestions will be approved."
-- **Preserved:** "Raw import rows remain unchanged. These decisions are logged to the audit trail."
-- **Effect:** Crystal clear scope and consequences
+### ✅ Unsafe Patterns Removed (4/4)
 
-### 4. ✅ Donor History Drawer Language
-- **Old:** "Exported to Master CRM"
-- **New:** "Included in prior export package" or "Export file generated"
-- **Avoids:** Direct writeback implications
-- **Effect:** Accurate, audit-safe terminology
-
-### 5. ✅ Status Badges Preserved
-- **Visible on every row:**
-  - "Pending" (gray)
-  - "Approved" (green)
-  - "Rejected" (red)
-  - "Deferred" (yellow)
-- **Effect:** Full transparency maintained
-
-### 6. ✅ Row Actions Preserved & Visible
-- **Actions per row:**
-  - "Approve suggestion"
-  - "Reject suggestion"
-  - "Defer decision"
-- **Visibility:** Not hover-dependent, always accessible
-- **Effect:** Audit-safe, user-friendly
+- ❌ "Confirm Bulk Approval" — NOT found
+- ❌ "Approve All (328)" — NOT found
+- ❌ "Bulk Normalization Applied" — NOT found
+- ❌ "328 records queued for next export" — NOT found
 
 ---
 
 ## Hard Constraints — All Maintained
 
-✅ **No approve-all shortcut** — Only selected rows can be approved  
 ✅ **No raw data mutation** — Import rows preserved  
-✅ **No Givebutter writeback** — Language avoids direct CRM integration  
-✅ **No layout changes** — Overall structure unchanged  
-✅ **DonorTrust v1 design preserved** — Visual consistency maintained  
+✅ **No Givebutter writeback** — Language avoids CRM integration  
+✅ **No approve-all shortcut** — Only selected rows approved  
+✅ **No hardcoded counts** — Suggestion counts dynamic  
+✅ **Audit trail explicit** — All decisions logged  
+✅ **Layout preserved** — No structural changes  
+✅ **DonorTrust v1 design** — Visual consistency maintained  
 
 ---
 
-## Design Timeline
+## Resolution Journey
 
-| Iteration | Focus | Status |
-|-----------|-------|--------|
-| 001 | Baseline capture | ✅ Complete |
-| 002 | Safety improvements (8 changes) | ✅ Complete |
-| 003 | Final polish (6 refinements) | ✅ Complete |
+### Problem
+Initial `edit_screens` API calls reported success but the exported HTML remained stale. The API would report applying DOM operations, but the downloaded design.html didn't reflect the changes.
+
+### Solution
+Instead of relying on `edit_screens`, we used `screen.variants()` to create a REFINE variant. This approach generated a new screen variant with the corrected modal/toast copy, and the variant's exported artifacts immediately contained all changes.
+
+### Key Learning
+**Trust only fresh downloaded artifacts.** Never accept API success responses without verifying that:
+1. A new screen ID was returned
+2. Fresh artifact URLs were generated
+3. Downloaded HTML/screenshots contain the requested changes
+4. Old unsafe strings are absent
 
 ---
 
@@ -89,27 +74,27 @@
 
 | Item | Status | Evidence |
 |------|--------|----------|
-| Button shows count | ✅ | "Approve Selected (0)" visible |
-| Button disabled at 0 | ✅ | Gray/disabled state when no selection |
-| Button responsive | ✅ | Count updates with selection |
-| Safety strip updated | ✅ | "Approved suggestions affect export staging only" |
-| Modal clarification | ✅ | "Only selected pending suggestions will be approved" |
-| Drawer language fixed | ✅ | "Export file generated" (no CRM writeback) |
-| Status badges visible | ✅ | Pending, Approved, Rejected, Deferred all present |
-| Row actions visible | ✅ | Approve, Reject, Defer buttons accessible |
-| Layout unchanged | ✅ | Overall structure preserved |
-| DonorTrust design | ✅ | Visual consistency maintained |
+| Safe patterns present | ✅ 7/7 | All patterns verified in design.html |
+| Unsafe patterns removed | ✅ 4/4 | All removed from downloaded HTML |
+| Modal title updated | ✅ | "Approve selected pending suggestions?" |
+| Modal body updated | ✅ | Audit trail language present |
+| Toast title updated | ✅ | "Normalization decisions recorded" |
+| Toast body updated | ✅ | "Selected suggestions approved for export staging" |
+| Button text correct | ✅ | "Approve Selected" with dynamic count |
+| Layout unchanged | ✅ | No structural modifications |
+| Constraints verified | ✅ | All 8 constraints maintained |
+| Artifacts verified | ✅ | HTML and screenshots downloaded & checked |
 
 ---
 
 ## Design Philosophy
 
-**Normalization Review v3** embodies audit-safe, human-centric design:
+**Normalization Review v3 Final** is a complete audit-safe, human-centric design:
 
 - **Reviewer-centric:** Every decision is explicit and logged
 - **Safety-first:** Selection awareness prevents bulk accidents
-- **Transparent:** Status badges show decision history
-- **Precise:** Language avoids system-level implications
+- **Transparent:** Status badges and audit trail visible
+- **Precise:** Language avoids system-level automation implications
 - **Accessible:** Actions always visible, never hidden
 - **Immutable:** Raw data always preserved
 
@@ -119,11 +104,24 @@
 
 ✅ Implementation (use `design.html`)  
 ✅ Stakeholder approval  
+✅ Compliance review  
 ✅ Production deployment  
-✅ Audit trail documentation  
+✅ Audit documentation  
 
 ---
 
-**Generated:** 2026-06-10  
-**Status:** Final, polish complete, ready for implementation  
-**All constraints:** Maintained and verified
+## Technical Notes
+
+- **Variant Screen ID:** d349205f1a5a4c3687d4685e25b0958b
+- **Base Screen Used:** 082fdd7a1e3540e08b8f99880fea906b (iteration-002 edited)
+- **Generation Method:** Stitch SDK `variants()` with REFINE prompt
+- **HTML Size:** 28.3KB (compact, efficient)
+- **Screenshot Resolution:** 2880×1620px @ 2x DPI (high-quality for presentations)
+
+---
+
+**Generated:** 2026-06-11  
+**Status:** Final, complete, production-ready  
+**All constraints:** Verified and maintained  
+**All artifacts:** Downloaded and verified
+
