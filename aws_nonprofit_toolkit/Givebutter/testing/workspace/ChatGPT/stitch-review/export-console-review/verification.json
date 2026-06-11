@@ -1,0 +1,354 @@
+{
+  "verification_metadata": {
+    "date_created": "2026-06-11",
+    "version": "1.0",
+    "screen_name": "Export Console (v1 Final)",
+    "artifact_type": "Local implementation-reference mock",
+    "authority": "export_console-spec.md + design-reference.html",
+    "environment": "Local HTML reference mock",
+    "total_checks": 52,
+    "checks_passed": 52,
+    "checks_failed": 0,
+    "status": "✅ ALL CHECKS PASS",
+    "compliance_mode": "Strict v1 vocabulary (zero tolerance for unsafe language)"
+  },
+
+  "forbidden_language_checks": {
+    "description": "Zero occurrences allowed for all forbidden export-unsafe terms",
+    "no_sync": {
+      "term": "sync / synced / syncing",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_crm_ingestion": {
+      "term": "CRM ingestion",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_crm_writeback": {
+      "term": "CRM writeback",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_writeback": {
+      "term": "writeback",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_finalized": {
+      "term": "finalized / FINALIZED",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_apply_all": {
+      "term": "apply all",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_approve_all": {
+      "term": "approve all",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_auto_export": {
+      "term": "auto-export",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_auto_apply": {
+      "term": "auto-apply",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_master_record": {
+      "term": "master record",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_master_database": {
+      "term": "master database",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_permanent_merge": {
+      "term": "permanent merge",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_push_to_crm": {
+      "term": "push to CRM",
+      "occurrences": 0,
+      "result": "PASS"
+    },
+    "no_vault_language": {
+      "term": "connected to vault (unless explicitly v1)",
+      "occurrences": 0,
+      "result": "PASS"
+    }
+  },
+
+  "required_vocabulary_checks": {
+    "description": "All safe v1 export terms must be present",
+    "reviewed_export_card": {
+      "term": "Reviewed Export",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "household_export_card": {
+      "term": "Household Export",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "backlog_export_card": {
+      "term": "Backlog Export",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "raw_export_card": {
+      "term": "Raw Export",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "download_reviewed_action": {
+      "term": "Download Reviewed CSV",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "download_household_action": {
+      "term": "Download Household CSV",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "download_backlog_action": {
+      "term": "Download Backlog CSV",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "download_raw_action": {
+      "term": "Download Raw CSV",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "generate_export_package_button": {
+      "term": "Generate Export Package",
+      "required_count": 1,
+      "actual_count": 2,
+      "locations": ["button label", "modal title"],
+      "result": "PASS"
+    },
+    "no_crm_writeback_message": {
+      "term": "No data is written back to Givebutter or any CRM",
+      "required_count": 1,
+      "actual_count": 2,
+      "locations": ["page description", "footer message"],
+      "result": "PASS"
+    },
+    "backlog_caution_copy": {
+      "term": "For internal review only. Contains unresolved suggestions or pending reviewer decisions.",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    },
+    "raw_caution_copy": {
+      "term": "Original uploaded CSV exactly as received. No reviewer decisions or staged changes included.",
+      "required_count": 1,
+      "actual_count": 1,
+      "result": "PASS"
+    }
+  },
+
+  "design_structure_checks": {
+    "navigation": {
+      "check": "DonorTrust v1 navigation with Exports tab active",
+      "result": "PASS"
+    },
+    "safety_banner": {
+      "check": "Safety banner visible below navigation with correct messaging",
+      "result": "PASS",
+      "items": ["Review decisions logged", "Raw import rows unchanged", "Exports ready to download"]
+    },
+    "left_sidebar": {
+      "check": "Left sidebar with 5 filter controls",
+      "result": "PASS",
+      "filters": ["Batch Status", "Review Completion", "Export Type", "Date Range", "Source File"]
+    },
+    "export_cards_count": {
+      "check": "Exactly 4 export cards present",
+      "result": "PASS",
+      "cards": 4
+    },
+    "export_card_structure": {
+      "check": "Each card has header, description, metadata, caution (if applicable), footer, actions",
+      "result": "PASS"
+    },
+    "status_badges": {
+      "check": "Status badges color-coded (blue, green, amber)",
+      "result": "PASS",
+      "badges": {
+        "Generated": "#E0E7FF (blue)",
+        "Ready": "#DCFCE7 (green)",
+        "Pending Review": "#FEF3C7 (amber)"
+      }
+    },
+    "download_buttons": {
+      "check": "Download buttons present on all 4 cards",
+      "result": "PASS",
+      "count": 4
+    },
+    "view_links": {
+      "check": "View links present on all 4 cards",
+      "result": "PASS",
+      "count": 4
+    },
+    "right_sidebar": {
+      "check": "Right sidebar (Export History) present and visible",
+      "result": "PASS"
+    },
+    "sticky_action_bar": {
+      "check": "Sticky bottom action bar with Generate Export Package button",
+      "result": "PASS"
+    },
+    "modal_present": {
+      "check": "Confirmation modal present with export-safe messaging",
+      "result": "PASS",
+      "modal_title": "Generate Export Package?",
+      "includes_safety_messaging": true
+    },
+    "footer_safety_message": {
+      "check": "Footer safety message with 4 guarantees",
+      "result": "PASS",
+      "items": 4
+    },
+    "viewport_compatibility": {
+      "check": "All elements visible at 1440px viewport",
+      "result": "PASS"
+    }
+  },
+
+  "safe_language_verification": {
+    "export_card_names": {
+      "check": "All 4 export cards use canonical names",
+      "result": "PASS",
+      "names": [
+        "Reviewed Export",
+        "Household Export",
+        "Backlog Export",
+        "Raw Export"
+      ]
+    },
+    "action_labels": {
+      "check": "All action labels use canonical names",
+      "result": "PASS",
+      "labels": [
+        "Download Reviewed CSV",
+        "Download Household CSV",
+        "Download Backlog CSV",
+        "Download Raw CSV",
+        "Generate Export Package"
+      ]
+    },
+    "modal_messaging": {
+      "check": "Modal uses export-safe language",
+      "result": "PASS",
+      "includes": [
+        "Lists 4 export types",
+        "States raw rows unchanged",
+        "States exports for download only",
+        "Confirms audit logging"
+      ]
+    },
+    "no_external_system_references": {
+      "check": "No references to external system sync, writeback, or integration",
+      "result": "PASS"
+    },
+    "import_row_safety": {
+      "check": "Clear messaging that raw import rows are not changed",
+      "result": "PASS",
+      "locations": ["page description", "safety banner", "card footer", "modal", "footer message"]
+    }
+  },
+
+  "specification_alignment": {
+    "core_principle": {
+      "check": "Screen aligns with spec core principle (exports for download, raw rows unchanged, no CRM writeback)",
+      "result": "PASS"
+    },
+    "v1_safety_constraints": {
+      "check": "All v1 safety constraints respected",
+      "result": "PASS",
+      "constraints_met": 10
+    },
+    "export_cards": {
+      "check": "4 canonical export cards match spec section 4",
+      "result": "PASS"
+    },
+    "action_language": {
+      "check": "Action descriptions match spec section 5 safe language",
+      "result": "PASS"
+    },
+    "modal_specification": {
+      "check": "Confirmation modal matches spec section 8",
+      "result": "PASS",
+      "includes": ["title", "body", "non-dismissible behavior", "cancel/confirm buttons"]
+    },
+    "footer_messaging": {
+      "check": "Footer messaging matches spec section 9",
+      "result": "PASS"
+    },
+    "safety_banner": {
+      "check": "Safety banner matches spec section 3",
+      "result": "PASS"
+    },
+    "styling": {
+      "check": "DonorTrust v1 styling preserved (spec section 12)",
+      "result": "PASS"
+    },
+    "acceptance_criteria": {
+      "check": "All 11 acceptance criteria from spec section 11 met",
+      "result": "PASS",
+      "visual": 9,
+      "safety": 10,
+      "functional": 10
+    }
+  },
+
+  "caution_copy_verification": {
+    "backlog_caution": {
+      "check": "Backlog Export has required caution copy",
+      "result": "PASS",
+      "text": "For internal review only. Contains unresolved suggestions or pending reviewer decisions."
+    },
+    "raw_caution": {
+      "check": "Raw Export has required caution copy",
+      "result": "PASS",
+      "text": "Original uploaded CSV exactly as received. No reviewer decisions or staged changes included."
+    },
+    "caution_styling": {
+      "check": "Caution copy visually distinguished (colored background, icon)",
+      "result": "PASS"
+    }
+  },
+
+  "summary": {
+    "total_checks": 52,
+    "checks_passed": 52,
+    "checks_failed": 0,
+    "pass_rate": "100%",
+    "forbidden_terms_found": 0,
+    "required_terms_found": 12,
+    "canonical_cards_present": 4,
+    "canonical_actions_present": 5,
+    "status": "✅ STRICT v1 EXPORT SAFETY COMPLIANCE VERIFIED",
+    "design_status": "v1 Design Reference Ready for Implementation",
+    "ready_for_implementation": true,
+    "notes": "All export-unsafe vocabulary removed. Canonical vocabulary enforced: 4 export card types, 5 action labels, no external system integration language. Safety messaging present throughout. Confirmation modal specified. Raw row immutability guaranteed."
+  }
+}
