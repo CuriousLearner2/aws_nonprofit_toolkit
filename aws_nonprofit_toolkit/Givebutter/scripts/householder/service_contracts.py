@@ -7,7 +7,7 @@ Service layer hides whether data comes from fixtures, database, or API.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 
 
 @dataclass(frozen=True)
@@ -83,4 +83,68 @@ class ImportDashboardViewModel:
                 "normalizations_pending": self.queues[2].pending_count if len(self.queues) > 2 else 0,
                 "households_pending": self.queues[3].pending_count if len(self.queues) > 3 else 0,
             },
+        }
+
+
+@dataclass(frozen=True)
+class ValidationRow:
+    """
+    Single validation record for /imports/<import_id>/validation.
+
+    Represents one donor record with validation issue details.
+    Frozen dataclass ensures immutability.
+    """
+    id: str
+    date: str
+    name: str
+    email: str
+    phone: str
+    amount: str
+    address: str
+    issue_type: Optional[str] = None
+    issue_description: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "id": self.id,
+            "date": self.date,
+            "name": self.name,
+            "email": self.email,
+            "phone": self.phone,
+            "amount": self.amount,
+            "address": self.address,
+            "issue_type": self.issue_type,
+            "issue_description": self.issue_description,
+        }
+
+
+@dataclass(frozen=True)
+class ValidationPageViewModel:
+    """
+    Complete validation review page view model for /imports/<import_id>/validation.
+
+    Contains batch metadata, validation records, and queue status.
+    Frozen dataclass ensures immutability.
+    """
+    batch_id: str
+    filename: str
+    progress: int
+    validation_rows: tuple  # Tuple of ValidationRow
+    validation_issues_count: int
+    total_records: int
+
+    def to_template_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        return {
+            "batch": {
+                "id": self.batch_id,
+                "filename": self.filename,
+                "progress": self.progress,
+            },
+            "validation_issues": [row.to_dict() for row in self.validation_rows],
+            "queue_status": {
+                "validation_issues": self.validation_issues_count,
+            },
+            "total_records": self.total_records,
         }

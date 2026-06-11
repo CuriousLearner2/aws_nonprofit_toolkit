@@ -57,13 +57,13 @@ except ImportError:
 
 # Import DonorTrust v1 service layer
 try:
-    from ..householder import import_service, dashboard_service
+    from ..householder import import_service, dashboard_service, validation_service
 except ImportError:
     # Fallback for direct script execution
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from householder import import_service, dashboard_service
+    from householder import import_service, dashboard_service, validation_service
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -817,11 +817,8 @@ def import_duplicates(import_id):
 @app.route('/imports/<import_id>/validation')
 def import_validation(import_id):
     """Validation review for records with issues."""
-    return render_template('imports/validation.html',
-                         batch=IMPORT_BATCH,
-                         validation_issues=CONTACTS,
-                         queue_status=QUEUE_STATUS,
-                         total_records=len(CONTACTS))
+    data = validation_service.get_validation_review(import_id)
+    return render_template('imports/validation.html', **data)
 
 @app.route('/imports/<import_id>/normalizations')
 def import_normalizations(import_id):

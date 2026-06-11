@@ -12,12 +12,18 @@ from typing import List
 from datetime import datetime
 
 try:
-    from scripts.uploader.fixtures import IMPORTS_LIST, IMPORT_BATCH, QUEUE_STATUS
+    from scripts.uploader.fixtures import IMPORTS_LIST, IMPORT_BATCH, QUEUE_STATUS, CONTACTS
 except ImportError:
     # Fallback for direct script execution
-    from uploader.fixtures import IMPORTS_LIST, IMPORT_BATCH, QUEUE_STATUS
+    from uploader.fixtures import IMPORTS_LIST, IMPORT_BATCH, QUEUE_STATUS, CONTACTS
 
-from .service_contracts import ImportSummary, DashboardQueueCard, ImportDashboardViewModel
+from .service_contracts import (
+    ImportSummary,
+    DashboardQueueCard,
+    ImportDashboardViewModel,
+    ValidationRow,
+    ValidationPageViewModel,
+)
 
 
 class FixtureImportRepository:
@@ -120,6 +126,44 @@ class FixtureImportRepository:
             audit_log_url=f"/imports/{IMPORT_BATCH['id']}/audit",
             export_console_url=f"/imports/{IMPORT_BATCH['id']}/exports",
             back_to_imports_url="/imports",
+        )
+
+    @staticmethod
+    def get_validation(import_id: str) -> ValidationPageViewModel:
+        """
+        Return validation review page data as ValidationPageViewModel.
+
+        Adapts IMPORT_BATCH and CONTACTS fixtures into validation page
+        view model. Returns data ready for template rendering.
+
+        Args:
+            import_id: Import ID (unused for fixture data, preserved for API consistency)
+
+        Returns:
+            ValidationPageViewModel with batch, validation records, and queue status.
+        """
+        validation_rows = tuple(
+            ValidationRow(
+                id=contact['id'],
+                date=contact['date'],
+                name=contact['name'],
+                email=contact['email'],
+                phone=contact['phone'],
+                amount=contact['amount'],
+                address=contact['address'],
+                issue_type=contact.get('issue_type'),
+                issue_description=contact.get('issue_description'),
+            )
+            for contact in CONTACTS
+        )
+
+        return ValidationPageViewModel(
+            batch_id=IMPORT_BATCH['id'],
+            filename=IMPORT_BATCH['filename'],
+            progress=IMPORT_BATCH['progress'],
+            validation_rows=validation_rows,
+            validation_issues_count=QUEUE_STATUS.get('validation_issues', 0),
+            total_records=IMPORT_BATCH['record_count'],
         )
 
     @staticmethod
