@@ -1,0 +1,69 @@
+{
+  "iteration": "001",
+  "date": "2026-06-10",
+  "status": "baseline_captured",
+  "projectId": "9371274764538076058",
+  "screenId": "38d90e6c683441ee9298ef9ebf48eb1d",
+  "screenName": "Normalization Review",
+  "purpose": "Baseline capture of existing design",
+  "method": "Stitch SDK getHtml() + Playwright 2x DPI capture",
+  "artifacts": {
+    "html": {
+      "file": "design.html",
+      "size_kb": 16.8,
+      "source": "Stitch getHtml()",
+      "status": "downloaded"
+    },
+    "screenshots": {
+      "2x_above_fold": {
+        "file": "screenshot-2x-above-fold.png",
+        "size_kb": 240.8,
+        "resolution": "2880×2048px",
+        "status": "captured"
+      },
+      "2x_full_page": {
+        "file": "screenshot-2x-full.png",
+        "size_kb": 240.8,
+        "resolution": "varies with content height",
+        "status": "captured"
+      }
+    }
+  },
+  "design_components": {
+    "left_sidebar": {
+      "status": "visible",
+      "items": ["FILTERS", "SOURCES", "CONFIDENCE", "DATE RANGE", "TAGS", "ASSIGNMENT"],
+      "review_progress": "80 / 840 normalized"
+    },
+    "main_content": {
+      "title": "Normalization Review",
+      "primary_action": "Bulk Approval button (blue, top right)",
+      "secondary_action": "Export Report link"
+    },
+    "table": {
+      "columns": ["CONTACT NAME", "FIELD", "CURRENT VALUE", "SUGGESTED VALUE", "REASON", "CONFIDENCE", "ACTIONS"],
+      "row_count_visible": 4,
+      "total_suggestions": 328,
+      "pagination": "active (page 1, 2, 3 visible)"
+    },
+    "confidence_indicators": {
+      "type": "colored bars",
+      "values_observed": [88, 100, 72, 95],
+      "status": "visible and color-coded"
+    }
+  },
+  "rendering_quality": {
+    "fonts_loaded": true,
+    "icons_loaded": true,
+    "network_errors": 0,
+    "console_errors": 0,
+    "overall_status": "perfect"
+  },
+  "next_steps": [
+    "Gather stakeholder feedback on current design",
+    "Define design requirements or improvements",
+    "Create iteration-002 if changes are needed",
+    "Use design.html as development basis"
+  ],
+  "design_notes": "Baseline design preserved. Current state shows functional normalization review interface with data controls, suggestions table, and bulk action capability. Ready for review and feedback cycle."
+}
