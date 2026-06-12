@@ -22,7 +22,9 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker, Session
 
 from .database_models import Base, ImportBatch, ImportContact, ReviewItem, ReviewDecision
-from .service_contracts import ImportSummary
+from .service_contracts import (
+    ImportSummary, ImportDashboardViewModel, DashboardQueueCard
+)
 
 
 def get_db_session(database_url: str = 'sqlite:///./givebutter.db') -> Session:
@@ -146,9 +148,124 @@ class DatabaseImportRepository:
             days = int(seconds // 86400)
             return f'{days}d ago'
 
-    def get_dashboard(self, import_id: str):
-        """Not implemented in Phase 1B-Step 5A."""
-        raise NotImplementedError("get_dashboard() not yet implemented in DatabaseImportRepository")
+    def get_dashboard(self, import_id: str) -> ImportDashboardViewModel:
+        """
+        Return import dashboard data as ImportDashboardViewModel.
+
+        Queries ImportBatch and ReviewItem records to compute dashboard
+        queue counts. Returns view model ready for template rendering.
+
+        Args:
+            import_id: Import batch ID to retrieve dashboard for.
+
+        Returns:
+            ImportDashboardViewModel with batch metadata and queue card data.
+
+        Raises:
+            Exception: If database connection fails or batch not found.
+        """
+        session = get_db_session(self.database_url)
+        try:
+            # Query the batch
+            batch = session.query(ImportBatch).filter_by(id=import_id).first()
+            if not batch:
+                # Return empty/default dashboard if batch not found
+                return ImportDashboardViewModel(
+                    batch_id=import_id,
+                    filename='',
+                    progress=0,
+                    queues=(),
+                    audit_log_url=f'/imports/{import_id}/audit',
+                    export_console_url=f'/imports/{import_id}/exports',
+                    back_to_imports_url='/imports',
+                )
+
+            # Compute progress
+            total_items = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id
+            ).scalar() or 0
+
+            if total_items > 0:
+                decided_items = session.query(func.count(ReviewDecision.id)).filter(
+                    ReviewDecision.batch_id == import_id
+                ).scalar() or 0
+                progress = int((decided_items / total_items) * 100)
+            else:
+                progress = 0
+
+            # Compute queue pending counts by review_item type and status
+            duplicates_pending = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'duplicate',
+                ReviewItem.status == 'pending'
+            ).scalar() or 0
+
+            validation_pending = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'validation',
+                ReviewItem.status == 'pending'
+            ).scalar() or 0
+
+            normalizations_pending = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'normalization',
+                ReviewItem.status == 'pending'
+            ).scalar() or 0
+
+            households_pending = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'household',
+                ReviewItem.status == 'pending'
+            ).scalar() or 0
+
+            # Build queue cards (frozen dataclasses)
+            queue_cards = (
+                DashboardQueueCard(
+                    name='Possible Duplicates',
+                    description='Side-by-side comparison: mark records as the same person',
+                    pending_count=duplicates_pending,
+                    badge_color='badge-amber',
+                    action_label='Review Duplicates',
+                    action_url=f'/imports/{import_id}/duplicates',
+                ),
+                DashboardQueueCard(
+                    name='Validation Review',
+                    description='Inspect all records, identify validation issues',
+                    pending_count=validation_pending,
+                    badge_color='badge-red',
+                    action_label='Review Records',
+                    action_url=f'/imports/{import_id}/validation',
+                ),
+                DashboardQueueCard(
+                    name='Normalizations',
+                    description='Review field cleanup suggestions',
+                    pending_count=normalizations_pending,
+                    badge_color='badge-blue',
+                    action_label='Review Normalizations',
+                    action_url=f'/imports/{import_id}/normalizations',
+                ),
+                DashboardQueueCard(
+                    name='Households',
+                    description='Confirm/defer household groupings',
+                    pending_count=households_pending,
+                    badge_color='badge-green',
+                    action_label='Review Households',
+                    action_url=f'/imports/{import_id}/households',
+                ),
+            )
+
+            return ImportDashboardViewModel(
+                batch_id=batch.id,
+                filename=batch.filename,
+                progress=progress,
+                queues=queue_cards,
+                audit_log_url=f'/imports/{import_id}/audit',
+                export_console_url=f'/imports/{import_id}/exports',
+                back_to_imports_url='/imports',
+            )
+
+        finally:
+            session.close()
 
     def get_validation(self, import_id: str):
         """Not implemented in Phase 1B-Step 5A."""

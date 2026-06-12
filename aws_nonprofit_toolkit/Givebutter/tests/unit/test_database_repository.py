@@ -232,18 +232,60 @@ class TestDatabaseListImportsParity:
                 session.add(raw_row)
                 session.add(contact)
 
-            # Create 50 review items for batch1
-            for i in range(50):
+            # Create review items for batch1 with pending status for dashboard queue counts
+            # Duplicates: 3 pending
+            for i in range(3):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='duplicate',
+                    status='pending',
+                    payload_json={'duplicate': f'pair {i}'}
+                )
+                session.add(item)
+
+            # Validation: 8 pending
+            for i in range(8):
                 item = ReviewItem(
                     batch_id='IMP-2025-0101-A',
                     item_type='validation',
                     status='pending',
-                    payload_json={'issue': f'validation {i}'}
+                    payload_json={'validation': f'issue {i}'}
                 )
                 session.add(item)
+
+            # Normalizations: 6 pending
+            for i in range(6):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='normalization',
+                    status='pending',
+                    payload_json={'normalization': f'suggestion {i}'}
+                )
+                session.add(item)
+
+            # Households: 5 pending
+            for i in range(5):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='household',
+                    status='pending',
+                    payload_json={'household': f'grouping {i}'}
+                )
+                session.add(item)
+
+            # Additional items (50 total): 28 resolved to achieve 42% progress (21/50)
+            for i in range(28):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='validation',
+                    status='resolved',
+                    payload_json={'validation': f'resolved {i}'}
+                )
+                session.add(item)
+
             session.flush()  # Ensure items get IDs
 
-            # Create 21 review decisions (42% of 50) for batch1
+            # Create 21 review decisions (42% of 50) for batch1 (only for some items)
             batch1_items = session.query(ReviewItem).filter_by(batch_id='IMP-2025-0101-A').all()
             for i in range(21):
                 decision = ReviewDecision(
@@ -442,15 +484,237 @@ class TestDatabaseListImportsParity:
             assert fixture_dict.keys() == database_dict.keys()
 
 
+class TestDatabaseGetDashboard:
+    """Verify DatabaseImportRepository.get_dashboard() implementation and parity."""
+
+    @pytest.fixture
+    def temp_db_with_dashboard_data(self):
+        """Create temp database with dashboard test data."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / 'dashboard_test.db'
+            db_url = f'sqlite:///{db_path}'
+
+            engine = create_engine(db_url)
+            Base.metadata.create_all(engine)
+            Session = sessionmaker(bind=engine)
+            session = Session()
+
+            batch = ImportBatch(
+                id='IMP-2025-0101-A',
+                filename='donors_q1_2025.csv',
+                upload_timestamp=datetime.now() - timedelta(days=2),
+                status='In Review',
+                raw_row_count=50
+            )
+
+            # Create review items with specific types and pending status
+            # to match fixture dashboard queue counts
+            for i in range(3):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='duplicate',
+                    status='pending',
+                    payload_json={'duplicate': f'pair {i}'}
+                )
+                session.add(item)
+
+            for i in range(8):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='validation',
+                    status='pending',
+                    payload_json={'validation': f'issue {i}'}
+                )
+                session.add(item)
+
+            for i in range(6):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='normalization',
+                    status='pending',
+                    payload_json={'normalization': f'suggestion {i}'}
+                )
+                session.add(item)
+
+            for i in range(5):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='household',
+                    status='pending',
+                    payload_json={'household': f'grouping {i}'}
+                )
+                session.add(item)
+
+            # Additional resolved items (28 total) to achieve 42% progress
+            for i in range(28):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='validation',
+                    status='resolved',
+                    payload_json={'validation': f'resolved {i}'}
+                )
+                session.add(item)
+
+            session.flush()
+
+            # Create 21 decisions (42% progress)
+            all_items = session.query(ReviewItem).filter_by(batch_id='IMP-2025-0101-A').all()
+            for i in range(21):
+                decision = ReviewDecision(
+                    batch_id='IMP-2025-0101-A',
+                    review_item_id=all_items[i].id,
+                    decision='accept'
+                )
+                session.add(decision)
+
+            session.add(batch)
+            session.commit()
+            session.close()
+
+            yield db_url
+
+    def test_get_dashboard_returns_view_model(self, temp_db_with_dashboard_data):
+        """Test that get_dashboard returns ImportDashboardViewModel."""
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        result = repo.get_dashboard('IMP-2025-0101-A')
+
+        from scripts.householder.service_contracts import ImportDashboardViewModel
+        assert isinstance(result, ImportDashboardViewModel)
+
+    def test_get_dashboard_returns_frozen_view_model_not_orm(self, temp_db_with_dashboard_data):
+        """Test that get_dashboard returns frozen dataclass, not ORM object."""
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        result = repo.get_dashboard('IMP-2025-0101-A')
+
+        # Verify it's not an ORM object
+        assert not hasattr(result, '__mapper__')
+        # Verify it's frozen
+        with pytest.raises((AttributeError, Exception)):
+            result.batch_id = 'modified'
+
+    def test_get_dashboard_has_required_fields(self, temp_db_with_dashboard_data):
+        """Test that returned dashboard has all required fields."""
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        result = repo.get_dashboard('IMP-2025-0101-A')
+
+        assert hasattr(result, 'batch_id')
+        assert hasattr(result, 'filename')
+        assert hasattr(result, 'progress')
+        assert hasattr(result, 'queues')
+        assert hasattr(result, 'audit_log_url')
+        assert hasattr(result, 'export_console_url')
+        assert hasattr(result, 'back_to_imports_url')
+
+    def test_get_dashboard_correct_batch_metadata(self, temp_db_with_dashboard_data):
+        """Test that dashboard returns correct batch metadata."""
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        result = repo.get_dashboard('IMP-2025-0101-A')
+
+        assert result.batch_id == 'IMP-2025-0101-A'
+        assert result.filename == 'donors_q1_2025.csv'
+
+    def test_get_dashboard_correct_progress(self, temp_db_with_dashboard_data):
+        """Test that dashboard returns correct progress (42%)."""
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        result = repo.get_dashboard('IMP-2025-0101-A')
+
+        assert result.progress == 42
+
+    def test_get_dashboard_correct_queue_names(self, temp_db_with_dashboard_data):
+        """Test that dashboard returns correct queue card names."""
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        result = repo.get_dashboard('IMP-2025-0101-A')
+
+        queue_names = [card.name for card in result.queues]
+        expected_names = [
+            'Possible Duplicates',
+            'Validation Review',
+            'Normalizations',
+            'Households'
+        ]
+
+        assert queue_names == expected_names
+
+    def test_get_dashboard_correct_queue_counts(self, temp_db_with_dashboard_data):
+        """Test that dashboard returns correct queue pending counts."""
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        result = repo.get_dashboard('IMP-2025-0101-A')
+
+        by_name = {card.name: card for card in result.queues}
+
+        assert by_name['Possible Duplicates'].pending_count == 3
+        assert by_name['Validation Review'].pending_count == 8
+        assert by_name['Normalizations'].pending_count == 6
+        assert by_name['Households'].pending_count == 5
+
+    def test_get_dashboard_parity_with_fixture(self, temp_db_with_dashboard_data):
+        """Test complete parity with FixtureImportRepository.get_dashboard()."""
+        fixture_result = FixtureImportRepository.get_dashboard('IMP-2025-0101-A')
+        db_repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        db_result = db_repo.get_dashboard('IMP-2025-0101-A')
+
+        # Verify key fields match
+        assert db_result.batch_id == fixture_result.batch_id
+        assert db_result.filename == fixture_result.filename
+        assert db_result.progress == fixture_result.progress
+
+        # Verify queue counts match
+        fixture_by_name = {card.name: card for card in fixture_result.queues}
+        db_by_name = {card.name: card for card in db_result.queues}
+
+        for name in ['Possible Duplicates', 'Validation Review', 'Normalizations', 'Households']:
+            assert db_by_name[name].pending_count == fixture_by_name[name].pending_count, \
+                f"Queue '{name}' counts don't match: db={db_by_name[name].pending_count}, fixture={fixture_by_name[name].pending_count}"
+
+    def test_get_dashboard_to_template_dict(self, temp_db_with_dashboard_data):
+        """Test that dashboard view model converts to template dict."""
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        result = repo.get_dashboard('IMP-2025-0101-A')
+
+        template_dict = result.to_template_dict()
+
+        assert isinstance(template_dict, dict)
+        assert 'batch' in template_dict
+        assert 'queue_status' in template_dict
+        assert template_dict['batch']['id'] == 'IMP-2025-0101-A'
+        assert template_dict['batch']['filename'] == 'donors_q1_2025.csv'
+        assert template_dict['batch']['progress'] == 42
+        assert template_dict['queue_status']['duplicates_pending'] == 3
+        assert template_dict['queue_status']['validation_issues'] == 8
+        assert template_dict['queue_status']['normalizations_pending'] == 6
+        assert template_dict['queue_status']['households_pending'] == 5
+
+    def test_get_dashboard_no_database_mutation(self, temp_db_with_dashboard_data):
+        """Test that calling get_dashboard does not mutate database state."""
+        engine = create_engine(temp_db_with_dashboard_data)
+        Session = sessionmaker(bind=engine)
+
+        # Get initial state
+        session = Session()
+        initial_batch_count = session.query(ImportBatch).count()
+        initial_item_count = session.query(ReviewItem).count()
+        session.close()
+
+        # Call get_dashboard
+        repo = DatabaseImportRepository(database_url=temp_db_with_dashboard_data)
+        repo.get_dashboard('IMP-2025-0101-A')
+
+        # Verify state unchanged
+        session = Session()
+        final_batch_count = session.query(ImportBatch).count()
+        final_item_count = session.query(ReviewItem).count()
+        session.close()
+
+        assert initial_batch_count == final_batch_count
+        assert initial_item_count == final_item_count
+
+
 class TestDatabaseRepositoryMethods:
     """Verify other repository methods are not implemented."""
 
     def test_unimplemented_methods_raise_not_implemented_error(self):
         """Test that unimplemented methods raise NotImplementedError."""
         repo = DatabaseImportRepository()
-
-        with pytest.raises(NotImplementedError):
-            repo.get_dashboard('IMP-2025-0101-A')
 
         with pytest.raises(NotImplementedError):
             repo.get_validation('IMP-2025-0101-A')
