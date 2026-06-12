@@ -1,0 +1,17 @@
+# CODEOWNERS for Givebutter Project
+
+# Default reviewer for all changes
+* @CuriousLearner2
+
+# Phase 1A/1B Implementation
+scripts/householder/ @CuriousLearner2
+tests/unit/test_*_service.py @CuriousLearner2
+tests/integration/test_*_route.py @CuriousLearner2
+
+# Documentation
+docs/implementation/ @CuriousLearner2
+docs/automation/ @CuriousLearner2
+README.md @CuriousLearner2
+
+# Workflows
+.github/workflows/ @CuriousLearner2
