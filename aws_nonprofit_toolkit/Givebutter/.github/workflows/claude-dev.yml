@@ -1,0 +1,101 @@
+name: Claude Code Developer Agent
+
+# Triggered by @claude mention in issue or PR comments
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue or PR number to work on'
+        required: true
+      task_description:
+        description: 'Task description for Claude Code'
+        required: true
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  # Claude Code Action will request write permissions if needed via GitHub app
+
+env:
+  # Claude Code uses ANTHROPIC_API_KEY from repository secrets
+  # See docs/automation/CLAUDE_GITHUB_WORKFLOW.md for setup
+
+jobs:
+  claude-dev:
+    # Only trigger on @claude mention in comments
+    if: |
+      contains(github.event.comment.body, '@claude') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Extract Claude Command
+        id: extract
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          ISSUE_NUM="${{ github.event.issue.number }}"
+
+          if [ -z "$ISSUE_NUM" ]; then
+            ISSUE_NUM="${{ github.event.inputs.issue_number }}"
+          fi
+
+          # Extract text after @claude mention
+          COMMAND=$(echo "$COMMENT" | sed 's/@claude[[:space:]]*//' | head -c 500)
+
+          echo "issue_number=$ISSUE_NUM" >> $GITHUB_OUTPUT
+          echo "command=$COMMAND" >> $GITHUB_OUTPUT
+          echo "comment_author=${{ github.event.comment.user.login }}" >> $GITHUB_OUTPUT
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Post Processing Started Comment
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🤖 **Claude Code Agent**: Processing request...\n\nThis workflow is currently **manual-only** and non-blocking. No changes will be pushed automatically.\n\nPlease run Claude Code locally or wait for human review.'
+            })
+
+      - name: Log Task Details
+        run: |
+          echo "=== Claude Code Developer Agent ==="
+          echo "Issue/PR: ${{ steps.extract.outputs.issue_number }}"
+          echo "Command: ${{ steps.extract.outputs.command }}"
+          echo "Author: ${{ steps.extract.outputs.comment_author }}"
+          echo "Repo: ${{ github.repository }}"
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+          echo "⚠️  This workflow is informational only."
+          echo "❌ No automatic changes or pushes."
+          echo "📋 Task: ${{ steps.extract.outputs.command }}"
+          echo ""
+          echo "Next steps:"
+          echo "1. Run Claude Code locally with the task description"
+          echo "2. Create a PR with your changes"
+          echo "3. Request review"
+
+      - name: Validate No App Code Changes Expected
+        run: |
+          echo "✅ Workflow Guard: No application code modifications allowed"
+          echo "   This workflow logs the task and waits for human action"
+          echo "   Developers should use Claude Code CLI locally"
+          echo "   Then push changes and create PR for review"
+
+  # Placeholder for future Anthropic Claude Code Action integration
+  # Once Anthropic releases Claude Code GitHub Action:
+  # - Replace task logging with actual Claude Code invocation
+  # - Require ANTHROPIC_API_KEY secret
+  # - Use least-privilege permissions
+  # - Output results to PR comment
+  # - Block automatic merge/push
