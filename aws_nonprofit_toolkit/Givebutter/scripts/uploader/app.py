@@ -28,6 +28,13 @@ from processor import (
     load_reference_list
 )
 
+# Import ingestion service for optional database mode
+try:
+    from householder.ingestion_service import ingest_processed_csv, IngestionValidationError, IngestionIOError, IngestionDatabaseError
+except ImportError:
+    # Fallback for direct script execution
+    from householder.ingestion_service import ingest_processed_csv, IngestionValidationError, IngestionIOError, IngestionDatabaseError
+
 # Import fixtures for DonorTrust v1 prototype
 try:
     from .fixtures import (
@@ -147,7 +154,7 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    """Upload CSV and run processor validation."""
+    """Upload CSV and run processor validation. Optionally ingest into database if configured."""
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
@@ -178,13 +185,69 @@ def upload():
 
         logger.info(f"Processed {record_count} records: {warning_count} warnings, {fail_count} failures")
 
-        return jsonify({
+        # Base response (always returned)
+        response_data = {
             'filename': safe_name,
             'record_count': record_count,
             'warning_count': warning_count,
             'fail_count': fail_count,
             'status': 'processed'
-        })
+        }
+
+        # Check if database ingestion is explicitly enabled
+        ingest_enabled = os.environ.get('HOUSEHOLDER_INGEST_ON_UPLOAD', '').lower() == 'true'
+        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
+
+        if ingest_enabled and database_url:
+            try:
+                # Perform database ingestion
+                ingestion_result = ingest_processed_csv(
+                    processed_csv_path=str(processed_path),
+                    original_filename=file.filename,
+                    database_url=database_url,
+                    uploader='system'
+                )
+
+                # Enhance response with ingestion data
+                response_data.update({
+                    'batch_id': ingestion_result.batch_id,
+                    'ingestion_status': 'success',
+                    'raw_row_count': ingestion_result.raw_row_count,
+                    'validation_items_created': ingestion_result.validation_items_created,
+                    'normalization_items_created': ingestion_result.normalization_items_created,
+                    'duplicate_items_created': ingestion_result.duplicate_items_created,
+                    'household_items_created': ingestion_result.household_items_created,
+                    'audit_log_id': ingestion_result.audit_log_id
+                })
+
+                logger.info(f"Ingested batch {ingestion_result.batch_id} with {ingestion_result.raw_row_count} rows")
+
+            except (IngestionValidationError, IngestionIOError) as e:
+                # Validation error from CSV processing or file I/O
+                logger.error(f"Ingestion validation error: {e}")
+                return jsonify({
+                    'error': f'Ingestion validation failed: {str(e)}',
+                    'status': 'validation_error'
+                }), 400
+
+            except IngestionDatabaseError as e:
+                # Database error during ingestion
+                logger.error(f"Ingestion database error: {e}")
+                return jsonify({
+                    'error': f'Ingestion database error: {str(e)}',
+                    'status': 'database_error'
+                }), 500
+
+            except Exception as e:
+                # Unexpected error during ingestion
+                logger.error(f"Unexpected ingestion error: {e}")
+                return jsonify({
+                    'error': f'Ingestion failed: {str(e)}',
+                    'status': 'ingestion_error'
+                }), 500
+
+        return jsonify(response_data)
+
     except Exception as e:
         logger.error(f"Upload error: {e}")
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
