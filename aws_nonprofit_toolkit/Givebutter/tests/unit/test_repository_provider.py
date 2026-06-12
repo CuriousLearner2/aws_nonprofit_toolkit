@@ -315,3 +315,70 @@ class TestRepositoryProviderDefaultProduction:
         config = {'HOUSEHOLDER_REPOSITORY': 'fixture'}
         repo = get_import_repository(config=config)
         assert isinstance(repo, FixtureImportRepository)
+
+
+class TestRepositoryProviderExplicitConfigPrecedence:
+    """Verify explicit config parameter takes highest priority.
+
+    Phase 1B2 requirement: explicit config > env vars > fixture default
+    """
+
+    @patch.dict(os.environ, {'HOUSEHOLDER_REPOSITORY': 'database', 'GIVEBUTTER_DATABASE_URL': 'sqlite:///env.db'})
+    def test_explicit_fixture_beats_env_database(self):
+        """Explicit fixture config must beat environment database mode."""
+        # Environment says database, config says fixture
+        config = {'HOUSEHOLDER_REPOSITORY': 'fixture'}
+        repo = get_import_repository(config=config)
+        # Must use fixture (explicit config), not database (environment)
+        assert isinstance(repo, FixtureImportRepository)
+
+    @patch.dict(os.environ, {'HOUSEHOLDER_REPOSITORY': 'fixture'})
+    def test_explicit_database_beats_env_fixture(self):
+        """Explicit database config must beat environment fixture mode."""
+        # Environment says fixture, config says database
+        config = {
+            'HOUSEHOLDER_REPOSITORY': 'database',
+            'GIVEBUTTER_DATABASE_URL': 'sqlite:///explicit.db'
+        }
+        repo = get_import_repository(config=config)
+        # Must use database (explicit config), not fixture (environment)
+        assert isinstance(repo, DatabaseImportRepository)
+        assert repo.database_url == 'sqlite:///explicit.db'
+
+    @patch.dict(os.environ, {'HOUSEHOLDER_REPOSITORY': 'database', 'GIVEBUTTER_DATABASE_URL': 'sqlite:///env.db'})
+    def test_explicit_database_url_beats_env_url(self):
+        """Explicit database URL must beat environment database URL."""
+        # Both say database, but different URLs
+        config = {
+            'HOUSEHOLDER_REPOSITORY': 'database',
+            'GIVEBUTTER_DATABASE_URL': 'sqlite:///explicit.db'
+        }
+        repo = get_import_repository(config=config)
+        # Must use explicit URL, not environment URL
+        assert isinstance(repo, DatabaseImportRepository)
+        assert repo.database_url == 'sqlite:///explicit.db'
+
+    @patch.dict(os.environ, {'HOUSEHOLDER_REPOSITORY': 'database', 'GIVEBUTTER_DATABASE_URL': 'sqlite:///env.db'})
+    def test_explicit_config_none_uses_environment(self):
+        """When config is None, environment variables should be used."""
+        # Environment says database with URL, config is None
+        repo = get_import_repository(config=None)
+        # Must use database from environment
+        assert isinstance(repo, DatabaseImportRepository)
+        assert repo.database_url == 'sqlite:///env.db'
+
+    @patch.dict(os.environ, {'HOUSEHOLDER_REPOSITORY': 'fixture'})
+    def test_explicit_empty_config_uses_fixture_default(self):
+        """When config is empty dict, fixture default should be used."""
+        # Environment says fixture, config is empty dict
+        repo = get_import_repository(config={})
+        # Must use fixture (default)
+        assert isinstance(repo, FixtureImportRepository)
+
+    @patch.dict(os.environ, clear=True)
+    def test_no_config_no_env_uses_fixture_default(self):
+        """When nothing configured, fixture default should be used."""
+        # No environment variables, no config
+        repo = get_import_repository(config=None)
+        # Must use fixture (default)
+        assert isinstance(repo, FixtureImportRepository)
