@@ -2,7 +2,7 @@
 
 This document describes the GitHub Actions workflows for integrating Claude Code into the development and QA processes.
 
-**Status:** Pilot/MVP - Manual-only, non-blocking workflows. No automatic code changes.
+**Status:** Automated Developer Workflow + Manual QA - Claude Code creates PRs automatically, humans review and merge.
 
 ---
 
@@ -12,8 +12,10 @@ Two GitHub Actions workflows enable Claude Code automation:
 
 1. **Developer Workflow** (`.github/workflows/claude-dev.yml`)
    - Triggered by `@claude` mention in issue/PR comments
-   - Logs task description and waits for human action
-   - Informs developers to use Claude Code locally
+   - Uses official **anthropics/claude-code-action**
+   - Claude Code creates/updates branches and opens PRs
+   - No automatic merges (human approval required)
+   - Comprehensive scope guardrails enforced
 
 2. **QA Workflow** (`.github/workflows/claude-qa.yml`)
    - Triggered by `needs-qa` label or manual trigger
@@ -26,6 +28,11 @@ Two GitHub Actions workflows enable Claude Code automation:
 
 ## Developer Workflow
 
+### Official GitHub Action
+
+**Name:** `anthropics/claude-code-action`
+**Source:** https://github.com/anthropics/claude-code-action
+
 ### How to Trigger
 
 **Method 1: Issue Comment (Recommended)**
@@ -34,7 +41,7 @@ Two GitHub Actions workflows enable Claude Code automation:
 @claude Update the PHASE1A_CLOSEOUT doc to include link to Phase 1B schema proposal
 ```
 
-**Method 2: PR Comment**
+**Method 2: PR Review Comment**
 
 ```
 @claude Add test for new export card field validation
@@ -44,35 +51,111 @@ Two GitHub Actions workflows enable Claude Code automation:
 
 Go to GitHub Actions → "Claude Code Developer Agent" → "Run workflow"
 - Enter issue/PR number
-- Enter task description
+- Enter task description (up to 2000 characters)
 
-### What Happens
+### What Happens (Full Automated Flow)
 
-1. Workflow detects `@claude` mention or manual trigger
-2. Extracts task description
-3. Posts a comment noting the workflow is **informational only**
-4. Logs task details to workflow logs
-5. **Does NOT automatically make changes** (current MVP limitation)
+1. **Developer creates issue** or PR with task description
+2. **Developer comments:** `@claude [task description]`
+3. **Workflow detects @claude mention** and extracts task
+4. **Claude Code Action starts** with:
+   - Repository context
+   - Task description
+   - Comprehensive guardrails
+   - Timeout protection (25 minutes)
+5. **Claude Code:**
+   - Reviews issue/PR context
+   - Creates a new branch (e.g., `docs/add-phase1b-section`)
+   - Makes changes on the branch
+   - Creates a PR with summary
+   - Posts summary comment to issue
+6. **Workflow completes** with result summary
+7. **Developer/QA:**
+   - Reviews PR created by Claude Code
+   - Adds `needs-qa` label if QA needed
+   - Triggers QA workflow automatically
+   - Reviews test results
+   - Approves and merges PR
 
-### Next Steps
+### Scope Guardrails (Enforced)
 
-1. Developer sees the workflow notification
-2. Developer runs Claude Code locally:
-   ```bash
-   claude --code "Update the PHASE1A_CLOSEOUT doc..."
-   ```
-3. Developer reviews changes locally
-4. Developer creates PR with changes
-5. Developer requests review
+Claude Code is instructed NOT to:
 
-### Limitations (Current MVP)
+- ❌ Modify application code unless explicitly requested
+- ❌ Modify tests unless explicitly requested
+- ❌ Add database or persistence layer
+- ❌ Add frontend runtime (React, Node, Vite, etc.)
+- ❌ Add deployment automation
+- ❌ Push directly to main branch
+- ❌ Auto-merge PRs
 
-- ❌ No automatic code generation
-- ❌ No automatic branch creation
-- ❌ No automatic commits/pushes
-- ⏳ Awaiting Anthropic Claude Code GitHub Action
+Claude Code MUST:
 
-**Rationale:** Safety-first. All code changes should be reviewed locally before pushing.
+- ✅ Create a new branch for all changes
+- ✅ Create a PR (do not auto-merge)
+- ✅ Preserve Phase 0 UI/UX for migrations
+- ✅ Preserve DonorTrust guardrails
+- ✅ Add `needs-qa` label if QA is needed
+
+### Example: Documentation Update
+
+```
+1. Issue created: "Add Phase 1B readiness guide"
+2. Comment: @claude Create comprehensive Phase 1B readiness document
+3. Workflow triggered: Claude Code starts
+4. Claude Code:
+   - Creates branch: docs/phase1b-readiness
+   - Creates file: docs/Phase_1B_READINESS.md
+   - Writes comprehensive content
+   - Creates PR: "docs: Add Phase 1B readiness guide"
+   - Comments: "PR #42 created with Phase 1B readiness documentation"
+5. Workflow completes: Success summary posted
+6. Developer:
+   - Reviews PR #42
+   - Adds label: needs-qa
+   - QA workflow runs tests
+   - QA posts result comment
+   - Developer approves and merges
+7. Done: Documentation is updated on main branch
+```
+
+---
+
+## Complete Workflow Examples
+
+### Example 1: Bug Fix (Code + Tests)
+
+```
+1. Issue: "Export card title field not mapping correctly"
+2. Developer comments: @claude Write tests for export card title mapping, then fix the issue
+3. Claude Code:
+   - Creates branch: fix/export-card-title
+   - Adds test: test_export_card_title_mapping()
+   - Implements fix in fixtures or service
+   - Creates PR #43: "fix: Map export card name to title field"
+4. Developer reviews PR, adds label: needs-qa
+5. QA workflow:
+   - Runs all tests: 335 passing
+   - Posts: "✅ All tests passed (335 total)"
+6. Developer approves PR #43
+7. Merge: Changes are on main
+```
+
+### Example 2: Feature with Phase 1B Planning
+
+```
+1. Issue: "Plan Phase 1B database migration strategy"
+2. Comment: @claude Create Phase 1B database migration guide with schema proposal
+3. Claude Code:
+   - Creates branch: docs/phase1b-database-guide
+   - Creates: docs/PHASE1B_DATABASE_MIGRATION.md
+   - Adds: Schema proposal, migration sequence, guardrails
+   - Creates PR #44: "docs: Add Phase 1B database migration guide"
+4. Developer reviews PR
+5. Add label: needs-qa (for spell-check and link validation)
+6. QA runs, posts results
+7. Merge: Guide is available
+```
 
 ---
 
@@ -152,59 +235,119 @@ Workflow automatically checks for:
 
 ## Required GitHub Secrets
 
-### For Claude Code Integration (Future)
+### ANTHROPIC_API_KEY (Required for Developer Workflow)
 
-When the Anthropic Claude Code GitHub Action becomes available:
+**Purpose:** Authentication for Claude Code GitHub Action
 
-**Secret: `ANTHROPIC_API_KEY`**
-- Value: Your Anthropic API key
-- Scope: This repository only (not organization)
-- How to set: Settings → Secrets and variables → Actions → New repository secret
-- Keep secure: Never commit, never log
+**How to obtain:**
+1. Go to https://console.anthropic.com
+2. Sign in with your Anthropic account
+3. Navigate to API keys section
+4. Create new API key or copy existing key
+5. Format: `sk-ant-...`
 
-**No secrets required for current MVP** (test-only workflows don't need API key)
+**How to set in GitHub:**
 
-### Setting Secrets
-
-1. Go to GitHub repo → Settings
-2. Click "Secrets and variables" → "Actions"
+1. Go to your GitHub repository
+2. Settings → Secrets and variables → Actions
 3. Click "New repository secret"
-4. Name: `ANTHROPIC_API_KEY`
-5. Value: `sk-ant-...` (from Anthropic console)
+4. **Name:** `ANTHROPIC_API_KEY` (exact case)
+5. **Value:** Paste your Anthropic API key
 6. Click "Add secret"
+
+**Scope:** This repository only (not organization-wide)
+
+**Security:**
+- ✅ Never commit API key to repo
+- ✅ Never log API key in workflow output
+- ✅ Rotate periodically (quarterly recommended)
+- ✅ Use GitHub's secret masking (automatic)
+
+**Verification:**
+
+Once set, verify in workflow:
+```yaml
+- name: Validate ANTHROPIC_API_KEY Secret
+  run: |
+    if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+      echo "❌ ERROR: Secret not set"
+      exit 1
+    fi
+    echo "✅ Secret is configured"
+```
+
+### QA Workflow Secrets
+
+**None required** - QA workflow only runs tests, no API calls needed.
 
 ---
 
 ## Expected PR Workflow
 
-### Minimal Example: Documentation Update
+### Automated Developer + QA Workflow
+
+**Simplified Process:**
 
 ```
-1. Create issue: "Update Phase 1A docs"
-2. Comment on issue: "@claude Add Phase 1B schema section"
-3. Developer runs Claude Code locally
-4. Developer commits changes to branch
-5. Developer creates PR
-6. Add label: "needs-qa"
-7. QA workflow runs, posts test results
-8. If tests pass: ✅ Ready for review
-9. Team reviews and approves
-10. Merge PR
+1. Developer creates GitHub issue with task
+2. Developer comments: @claude [task description]
+3. Claude Code creates PR automatically
+4. Developer adds label: needs-qa
+5. QA workflow runs automatically
+6. QA posts test results
+7. Developer/reviewer approves
+8. Merge when ready
 ```
 
-### Test-Driven Example: New Feature
+### Real Example: Phase 1B Documentation
 
 ```
-1. Create issue: "Add Phase 1B export format"
-2. Comment: "@claude Write tests for new export format first"
-3. Developer runs Claude Code locally
-4. Developer tests changes locally: pytest tests/
-5. Developer creates PR with tests
-6. Add label: "needs-qa"
-7. QA workflow runs full suite
-8. If tests pass: ✅ Code review can proceed
-9. Team reviews code
-10. If approved: Merge and close issue
+1. Issue: "Create Phase 1B database migration guide"
+2. Comment: @claude Create comprehensive guide for Phase 1B database migration including schema proposal and rollback procedures
+3. Claude Code (automated):
+   - Creates branch: docs/phase1b-database-guide
+   - Creates file: docs/PHASE1B_DATABASE_MIGRATION.md
+   - Writes guide with schema, procedures, checklist
+   - Creates PR #45: "docs: Add Phase 1B database migration guide"
+   - Posts comment: "PR #45 created with Phase 1B database migration guide"
+4. Workflow completes: ✅ Success summary posted to issue
+5. Developer/QA:
+   - Reviews PR #45
+   - Adds label: needs-qa
+6. QA workflow (automatic):
+   - Runs unit/integration tests: ✅ All 335 passing
+   - Checks for forbidden patterns: ✅ None found
+   - Posts: "✅ QA Report: All tests passing, no issues detected"
+7. Reviewer:
+   - Approves PR #45
+   - Merges to main
+8. Done: Documentation is live
+```
+
+### Real Example: Feature with Code and Tests
+
+```
+1. Issue: "Export card title field mapping bug"
+2. Comment: @claude Write test and fix for export card title field not mapping from 'name' to 'title'
+3. Claude Code (automated):
+   - Creates branch: fix/export-card-title-mapping
+   - Adds test: test_export_card_title_mapping()
+   - Implements fix in service_contracts.py
+   - Creates PR #46: "fix: Map export card name field to title"
+   - Posts comment: "PR #46 created with test and fix"
+4. Workflow completes: ✅ Success summary posted to issue
+5. Developer:
+   - Reviews PR #46
+   - Checks code changes look correct
+   - Adds label: needs-qa
+6. QA workflow (automatic):
+   - Runs all tests: ✅ 336 passing (new test included)
+   - Checks no forbidden patterns: ✅ None found
+   - Posts: "✅ QA Report: All 336 tests passing, code quality check passed"
+7. Reviewer:
+   - Approves PR #46
+   - Merges to main
+8. Done: Fix is deployed
 ```
 
 ---
@@ -302,77 +445,103 @@ permissions:
 
 | Decision | Who | When |
 |----------|-----|------|
-| Task clarification | Developer | Before running Claude Code |
-| Code review | Code reviewer | Before merge |
-| Merge | Repo maintainer | After approval |
-| Deployment | DevOps/Maintainer | After merge |
-| Cost approval | Tech lead | Before integrating expensive APIs |
+| Issue creation | Developer | Before @claude comment |
+| Task clarity | Developer | In @claude comment |
+| Scope guardrails | Automated | Claude Code enforces |
+| Code review | Reviewer | Before merge |
+| PR approval | Reviewer | Final gate |
+| Merge | Repo maintainer | After all approvals |
+| Deployment | DevOps | After merge (separate) |
+| Cost approval | Tech lead | Quarterly review |
 | Secrets rotation | Admin | Quarterly |
 
-### Not Automated
+### Fully Automated (No Human Step)
 
-- ❌ Creating issues (humans do this)
-- ❌ Writing code (Claude Code runs locally, humans decide to push)
-- ❌ Approving PRs (code review is manual)
-- ❌ Merging (human click required)
-- ❌ Deploying (separate manual process)
+- ✅ Branch creation (Claude Code)
+- ✅ Commit creation (Claude Code)
+- ✅ PR creation (Claude Code)
+- ✅ PR summary (Claude Code)
+- ✅ Test running (QA workflow)
+- ✅ Test reporting (QA workflow)
+
+### Never Automated (Always Human)
+
+- ❌ Issue creation (developer decides what to build)
+- ❌ Scope definition (developer specifies constraints)
+- ❌ Code review (humans review code quality)
+- ❌ PR approval (humans approve before merge)
+- ❌ Merge decision (maintainers decide when to merge)
+- ❌ Deployment (separate manual process)
 
 ---
 
 ## Usage Examples
 
-### Example 1: Documentation-Only Update
+### Example 1: Documentation Update (Simplest)
 
-**Issue:** "Add Phase 1B deployment guide"
+**Issue:** "Add Phase 1B database migration guide"
 
 ```
-1. Comment on issue: @claude Add deployment guide section to Phase 1B docs
-2. Workflow logs: "Claude Code Agent: Processing request..."
-3. Developer runs Claude Code: claude --code "Add deployment guide..."
-4. Developer commits: git commit -m "docs: Add Phase 1B deployment guide"
-5. Developer creates PR
-6. Workflow: `needs-qa` label triggers QA
-7. QA workflow: Runs tests, posts "✅ All tests passed" comment
-8. Developer reviews QA report
-9. Maintainer approves and merges
+1. Developer creates issue
+2. Developer comments: @claude Create comprehensive Phase 1B database migration guide
+3. Claude Code Action:
+   - Creates branch: docs/phase1b-migration
+   - Creates file: docs/PHASE1B_DATABASE_MIGRATION.md
+   - Writes complete guide with schema, procedures
+   - Creates PR #50: "docs: Add Phase 1B database migration guide"
+4. Workflow completes and posts summary
+5. Developer reviews PR #50
+6. Developer adds label: needs-qa (optional for docs)
+7. QA workflow (if label added):
+   - Runs tests: ✅ All passing
+   - Posts: "✅ QA: All tests pass, no issues"
+8. Developer approves and merges PR #50
+9. Done: Guide is live on main
 ```
 
 ### Example 2: Bug Fix with Tests
 
-**Issue:** "Fix export card title mapping"
+**Issue:** "Export card title field not mapping correctly"
 
 ```
-1. Comment: @claude The export card title field is not mapping correctly from 'name' to 'title'
-2. Developer runs Claude Code locally
-3. Developer writes test first: `test_export_card_title_mapping()`
-4. Developer runs tests: `pytest tests/unit/test_exports_service.py`
-5. Developer implements fix
-6. Developer commits: `git commit -m "fix: Map export card name field to title"`
-7. Developer creates PR with test and fix
-8. Add label: needs-qa
-9. QA workflow runs full suite
-10. QA posts: "✅ All 333 tests passed"
-11. Code review approves
-12. Maintainer merges
+1. Developer creates issue with details
+2. Developer comments: @claude Write test for export card title mapping issue, then implement fix
+3. Claude Code Action:
+   - Creates branch: fix/export-card-title
+   - Creates test: test_export_card_title_mapping()
+   - Implements fix in service code
+   - Creates PR #51: "fix: Map export card name field to title"
+4. Workflow completes
+5. Developer reviews PR #51 (code + test visible)
+6. Developer adds label: needs-qa (required for code changes)
+7. QA workflow (automatic):
+   - Runs all tests: ✅ 336 passing (includes new test)
+   - Posts: "✅ QA Report: All 336 tests passing"
+8. Developer approves PR #51
+9. Merge: Fix is on main
+10. Done: Bug is fixed
 ```
 
-### Example 3: Test-Driven Development
+### Example 3: Feature with Code and Tests
 
-**PR:** "Add Phase 1B database adapter pattern"
+**Issue:** "Implement Phase 1B repository interface protocol"
 
 ```
-1. Comment: @claude Write comprehensive tests for DatabaseRepository pattern
-2. Developer runs Claude Code
-3. Developer creates test file: `tests/unit/test_database_repository.py`
-4. Developer adds label: needs-qa
-5. QA workflow detects needs-qa
-6. QA runs: "✅ All 300+ tests still pass, 45 new tests added"
-7. Developer implements DatabaseRepository
-8. Developer verifies: `pytest tests/unit/test_database_repository.py -v`
-9. Developer creates PR with tests and implementation
-10. QA workflow runs again: "✅ All 345 tests pass"
-11. Code review approves patterns and tests
-12. Maintainer merges
+1. Developer creates issue with requirements
+2. Developer comments: @claude Design and implement RepositoryProtocol base class with tests
+3. Claude Code Action:
+   - Creates branch: feature/phase1b-repository-protocol
+   - Adds: service_contracts.py RepositoryProtocol class
+   - Adds: tests/unit/test_repository_protocol.py with 20 tests
+   - Creates PR #52: "feat: Add RepositoryProtocol for Phase 1B database abstraction"
+4. Workflow completes
+5. Developer reviews PR #52 (interface + tests)
+6. Developer adds label: needs-qa
+7. QA workflow:
+   - Runs tests: ✅ 355 passing (20 new tests)
+   - Posts: "✅ QA Report: All 355 tests passing"
+8. Architecture reviewer approves design
+9. Merge: Protocol is integrated
 ```
 
 ---
@@ -426,35 +595,36 @@ git log -1 --oneline .github/workflows/claude-dev.yml
 
 ## Future Enhancements
 
-### Phase 2: Anthropic Claude Code GitHub Action
+### Phase 2: Advanced Monitoring and Notifications
 
-Once available, add:
-- Direct Claude Code invocation from workflow
-- Output analysis and pull request generation
-- Cost tracking per run
-- Rate limiting and quotas
+- Slack notifications (PR created by Claude Code, tests completed)
+- Email summaries (weekly QA results)
+- Cost tracking dashboard (API usage per workflow)
+- GitHub issue auto-close on PR merge
+- Slack/Discord PR mention notifications
+- Custom guardrail violations reporting
 
-### Phase 3: Automatic PR Generation
+### Phase 3: Workflow Optimization
 
-```yaml
-# Future (NOT CURRENT):
-# - Claude Code generates branch
-# - Claude Code creates commit
-# - Claude Code opens PR
-# - Human reviews and merges
+- Parallel test execution (faster QA feedback)
+- Caching for large test suites
+- Incremental testing (only changed components)
+- Performance regression detection
+- Test coverage tracking per PR
 
-# Current (MVP):
-# - Workflow logs task
-# - Developer uses Claude Code locally
-# - Developer creates PR manually
-```
+### Phase 4: Multi-Repository Support
 
-### Phase 4: Integration with Other Tools
+- Organize secrets across multiple repos
+- Shared workflow templates
+- Cross-repo PR linking
+- Centralized cost and quota management
 
-- Slack notifications (workflow completed, tests failed)
-- Email summaries (daily test results)
-- Linear/GitHub issue linking (auto-close on merge)
-- Slack/Discord PR notifications
+### Phase 5: Deployment Automation (Future - Separate Workflow)
+
+- Promote to staging/production (manual gate)
+- Automated rollback on failure (with safeguards)
+- Blue-green deployments
+- Canary releases with monitoring
 
 ---
 
@@ -469,25 +639,40 @@ Once available, add:
 
 ## FAQ
 
-**Q: Do I need to set up ANTHROPIC_API_KEY for the current workflows?**
-A: No. Current workflows (test-only) don't use the API key. You'll only need it when Claude Code GitHub Action integration is added.
+**Q: Do I need to set up ANTHROPIC_API_KEY?**
+A: Yes! It's required for the developer workflow to run Claude Code. See "Required GitHub Secrets" section for setup instructions. Get your key from https://console.anthropic.com.
 
 **Q: Can the workflow automatically merge my PR?**
-A: No, intentionally. All merges require human approval.
+A: No, intentionally. All merges require human approval. Claude Code creates the PR but cannot merge it.
 
 **Q: Will the workflow cost money?**
-A: Current workflows are free (GitHub Actions free tier). API usage costs will come later if/when Claude Code GitHub Action is integrated.
+A: GitHub Actions are free tier (2000 min/month). Anthropic API calls for Claude Code will incur costs - see your Anthropic billing dashboard. Estimate: ~$0.01-0.05 per task depending on complexity.
 
-**Q: What if tests fail? Can I fix them in the workflow?**
-A: No. The workflow reports failures. You must fix them locally, commit, and push a new version.
+**Q: What if Claude Code makes a mistake?**
+A: Review the PR, request changes via GitHub UI, then comment: `@claude Apply the suggested changes`. Claude Code will update the branch.
+
+**Q: What if tests fail?**
+A: QA workflow reports failures in the PR comment. Review failures and comment: `@claude Fix the failing tests`. Claude Code will implement fixes and push to the same branch/PR.
+
+**Q: Can I ask Claude Code to make app code changes?**
+A: Only if absolutely necessary and you explicitly state it. Default: no app code changes. Example: `@claude Update app.py to add the new export route (app code change requested)`
 
 **Q: How long do test results stay available?**
-A: Artifacts are retained for 30 days. You can download them anytime from the Actions tab.
+A: Artifacts are retained for 30 days. Download from GitHub Actions tab → workflow run → Artifacts section.
 
 **Q: Can I trigger the QA workflow without the needs-qa label?**
-A: Yes, manually via GitHub Actions UI → "Run workflow" button.
+A: Yes, manually via GitHub Actions UI → "Claude Code QA Workflow" → "Run workflow" button.
+
+**Q: What if the API key expires?**
+A: Generate a new key at https://console.anthropic.com, update the GitHub secret, and workflows will use the new key immediately.
+
+**Q: Why does the workflow have a 25-minute timeout?**
+A: Safety guard against hung processes or runaway API calls. Most tasks complete in 2-5 minutes. Contact @anthropic if you need a longer timeout for complex tasks.
+
+**Q: Can I use Claude Code for deployment?**
+A: No, intentionally blocked. Deployment automation is not included in this workflow. Use a separate deployment tool.
 
 ---
 
 **Last Updated:** 2026-06-11
-**Status:** Pilot/MVP - All workflows are manual-only, non-blocking, and require human approval for merges.
+**Status:** Automated Developer Workflow (with Claude Code GitHub Action) + Manual QA - Claude Code creates PRs automatically, humans review and merge.
