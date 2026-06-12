@@ -1,0 +1,4 @@
+Flask==3.0.0
+pandas==2.1.4
+SQLAlchemy==2.0.50
+alembic==1.18.4

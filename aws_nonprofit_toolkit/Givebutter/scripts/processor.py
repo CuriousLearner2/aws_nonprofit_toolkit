@@ -273,9 +273,7 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
         return ('FAIL', "Phone too short (less than 10 digits)", None)
 
     elif len(digits) > 11:
-        # Flag as WARNING for >11 digits, allow operator to confirm
-        suggestion = f"Phone has {len(digits)} digits (expected ≤11). Confirm this is correct or remove extra digits."
-        return ('WARNING', f"Phone too long ({len(digits)} digits)", suggestion)
+        return ('FAIL', f"Phone too long ({len(digits)} digits)", None)
 
     return ('PASS', None, None)
 
