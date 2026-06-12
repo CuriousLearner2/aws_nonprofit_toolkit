@@ -168,15 +168,26 @@ def test_models_use_pure_sqlalchemy():
     print("✓ Models use pure SQLAlchemy (no Flask-SQLAlchemy coupling)")
 
 
-def test_no_database_repository_exists():
-    """Verify DatabaseImportRepository class was not implemented."""
-    scripts_dir = Path(__file__).resolve().parents[2] / 'scripts/householder'
-    source_files = scripts_dir.glob('*.py')
-    for file in source_files:
-        content = file.read_text()
-        assert 'class DatabaseImportRepository' not in content, \
-            f"DatabaseImportRepository class should not be implemented in {file.name}"
-    print("✓ No DatabaseImportRepository class implemented")
+def test_database_repository_exists_and_isolated():
+    """Verify DatabaseImportRepository exists and is isolated from routes/services."""
+    # Verify class exists
+    from scripts.householder.database_repository import DatabaseImportRepository
+    assert DatabaseImportRepository is not None
+    assert hasattr(DatabaseImportRepository, 'list_imports')
+
+    # Verify it's not imported by routes
+    app_source = Path(__file__).resolve().parents[2] / 'scripts/uploader/app.py'
+    app_content = app_source.read_text()
+    assert 'DatabaseImportRepository' not in app_content, \
+        "Routes should not import DatabaseImportRepository yet"
+
+    # Verify it's not imported by services
+    duplicates_service = Path(__file__).resolve().parents[2] / 'scripts/householder/duplicates_service.py'
+    service_content = duplicates_service.read_text()
+    assert 'DatabaseImportRepository' not in service_content, \
+        "Services should not import DatabaseImportRepository yet"
+
+    print("✓ DatabaseImportRepository exists and is properly isolated")
 
 
 def run_all_tests():
