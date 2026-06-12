@@ -304,3 +304,73 @@ class TestHouseholdsService:
         expected_keys = {"batch", "current_household", "current_household_index", "total_households"}
         actual_keys = set(result.keys())
         assert expected_keys.issubset(actual_keys)
+
+
+class TestHouseholdsServiceProviderWiring:
+    """Test that households_service uses repository provider (Phase 1B-Step 5N)."""
+
+    def test_get_households_review_default_uses_fixture_repository(self):
+        """Test that default config returns fixture-backed households."""
+        result = households_service.get_households_review("IMP-2025-0101-A")
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+        assert result["batch"]["filename"] == "donors_q1_2025.csv"
+        assert result["batch"]["progress"] == 42
+
+    def test_get_households_review_with_none_config_uses_fixture(self):
+        """Test that None config explicitly uses fixture repository."""
+        result = households_service.get_households_review("IMP-2025-0101-A", config=None)
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+
+    def test_get_households_review_with_empty_config_uses_fixture(self):
+        """Test that empty dict config uses fixture repository."""
+        result = households_service.get_households_review("IMP-2025-0101-A", config={})
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+
+    def test_get_households_review_with_explicit_fixture_config(self):
+        """Test that explicit fixture config returns fixture-backed households."""
+        config = {"HOUSEHOLDER_REPOSITORY": "fixture"}
+        result = households_service.get_households_review("IMP-2025-0101-A", config=config)
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+        assert result["batch"]["filename"] == "donors_q1_2025.csv"
+
+    def test_get_households_review_database_mode_without_url_raises_error(self):
+        """Test that database mode without GIVEBUTTER_DATABASE_URL raises ValueError."""
+        config = {"HOUSEHOLDER_REPOSITORY": "database"}
+        with pytest.raises(ValueError) as exc_info:
+            households_service.get_households_review("IMP-2025-0101-A", config=config)
+        assert "Database mode requested but no database URL configured" in str(exc_info.value)
+
+    def test_get_households_review_invalid_repository_mode_raises_error(self):
+        """Test that invalid repository mode raises ValueError."""
+        config = {"HOUSEHOLDER_REPOSITORY": "invalid_mode"}
+        with pytest.raises(ValueError) as exc_info:
+            households_service.get_households_review("IMP-2025-0101-A", config=config)
+        assert "Invalid HOUSEHOLDER_REPOSITORY mode" in str(exc_info.value)
+
+    def test_get_households_review_template_dict_shape_unchanged(self):
+        """Test that template dict shape is identical after provider wiring."""
+        # Get households with default (fixture)
+        fixture_result = households_service.get_households_review("IMP-2025-0101-A")
+        # Get households with explicit fixture config
+        config_result = households_service.get_households_review("IMP-2025-0101-A", config={"HOUSEHOLDER_REPOSITORY": "fixture"})
+
+        # Both should have same shape and data
+        assert fixture_result["batch"]["id"] == config_result["batch"]["id"]
+        assert fixture_result["batch"]["filename"] == config_result["batch"]["filename"]
+        assert fixture_result["batch"]["progress"] == config_result["batch"]["progress"]
+        assert fixture_result["current_household_index"] == config_result["current_household_index"]
+        assert fixture_result["total_households"] == config_result["total_households"]
+
+    def test_get_households_review_returns_dicts_not_orm_objects(self):
+        """Test that result contains dicts, not ORM objects."""
+        result = households_service.get_households_review("IMP-2025-0101-A")
+        assert isinstance(result, dict)
+        assert isinstance(result["batch"], dict)
+        assert isinstance(result["current_household"], dict)
+        # Verify no ORM objects
+        assert not hasattr(result, '__table__')
+        assert not hasattr(result["batch"], '__table__')

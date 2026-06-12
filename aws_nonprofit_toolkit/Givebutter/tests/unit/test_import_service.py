@@ -3,11 +3,14 @@ Unit tests for DonorTrust v1 import service.
 
 Tests verify that the service boundary correctly transforms fixture data
 into view models suitable for template rendering.
+
+Phase 1B-Step 5J: Tests for repository provider wiring.
 """
 
 import pytest
 from scripts.householder.service_contracts import ImportSummary
 from scripts.householder.fixture_repository import FixtureImportRepository
+from scripts.householder.database_repository import DatabaseImportRepository
 from scripts.householder.import_service import get_imports
 
 
@@ -155,3 +158,78 @@ class TestImportService:
             assert isinstance(item["progress"], int)
             # uploaded_timestamp can be None or string
             assert item["uploaded_timestamp"] is None or isinstance(item["uploaded_timestamp"], str)
+
+
+class TestImportServiceProviderWiring:
+    """Test that import_service uses repository provider (Phase 1B-Step 5J)."""
+
+    def test_get_imports_default_uses_fixture_repository(self):
+        """Test that default config returns fixture-backed imports."""
+        result = get_imports()
+        # Should return fixture data by default
+        assert isinstance(result, list)
+        assert len(result) > 0
+        main = next((item for item in result if item["id"] == "IMP-2025-0101-A"), None)
+        assert main is not None
+        assert main["filename"] == "donors_q1_2025.csv"
+
+    def test_get_imports_with_none_config_uses_fixture(self):
+        """Test that None config explicitly uses fixture repository."""
+        result = get_imports(config=None)
+        assert isinstance(result, list)
+        assert len(result) > 0
+        main = next((item for item in result if item["id"] == "IMP-2025-0101-A"), None)
+        assert main is not None
+
+    def test_get_imports_with_empty_config_uses_fixture(self):
+        """Test that empty dict config uses fixture repository."""
+        result = get_imports(config={})
+        assert isinstance(result, list)
+        assert len(result) > 0
+
+    def test_get_imports_with_explicit_fixture_config(self):
+        """Test that explicit fixture config returns fixture-backed imports."""
+        config = {"HOUSEHOLDER_REPOSITORY": "fixture"}
+        result = get_imports(config=config)
+        assert isinstance(result, list)
+        assert len(result) > 0
+        main = next((item for item in result if item["id"] == "IMP-2025-0101-A"), None)
+        assert main is not None
+        assert main["filename"] == "donors_q1_2025.csv"
+
+    def test_get_imports_database_mode_without_url_raises_error(self):
+        """Test that database mode without GIVEBUTTER_DATABASE_URL raises ValueError."""
+        config = {"HOUSEHOLDER_REPOSITORY": "database"}
+        with pytest.raises(ValueError) as exc_info:
+            get_imports(config=config)
+        assert "Database mode requested but no database URL configured" in str(exc_info.value)
+
+    def test_get_imports_invalid_repository_mode_raises_error(self):
+        """Test that invalid repository mode raises ValueError."""
+        config = {"HOUSEHOLDER_REPOSITORY": "invalid_mode"}
+        with pytest.raises(ValueError) as exc_info:
+            get_imports(config=config)
+        assert "Invalid HOUSEHOLDER_REPOSITORY mode" in str(exc_info.value)
+
+    def test_get_imports_template_dict_shape_unchanged(self):
+        """Test that template dict shape is identical after provider wiring."""
+        # Get imports with default (fixture)
+        fixture_result = get_imports()
+        # Get imports with explicit fixture config
+        config_result = get_imports(config={"HOUSEHOLDER_REPOSITORY": "fixture"})
+
+        # Both should have same shape and data
+        assert len(fixture_result) == len(config_result)
+        for f_item, c_item in zip(fixture_result, config_result):
+            assert f_item["id"] == c_item["id"]
+            assert f_item["filename"] == c_item["filename"]
+            assert f_item["record_count"] == c_item["record_count"]
+            assert f_item["status"] == c_item["status"]
+            assert f_item["progress"] == c_item["progress"]
+
+    def test_get_imports_returns_dicts_not_orm_objects(self):
+        """Test that result contains dicts, not ORM objects."""
+        result = get_imports()
+        for item in result:
+            assert isinstance(item, dict)
+            assert not hasattr(item, '__table__')  # Not an ORM object

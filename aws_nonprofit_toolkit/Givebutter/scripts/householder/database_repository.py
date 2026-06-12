@@ -21,10 +21,17 @@ from datetime import datetime
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker, Session
 
-from .database_models import Base, ImportBatch, ImportContact, ReviewItem, ReviewDecision
+from .database_models import Base, ImportBatch, ImportContact, ReviewItem, ReviewDecision, ReviewItemSubject, AuditLogRecord
 from .service_contracts import (
-    ImportSummary, ImportDashboardViewModel, DashboardQueueCard
+    ImportSummary, ImportDashboardViewModel, DashboardQueueCard,
+    ValidationRow, ValidationPageViewModel,
+    NormalizationRow, NormalizationPageViewModel,
+    HouseholdRow, HouseholdPageViewModel,
+    DuplicateContact, DuplicateCandidate, DuplicatePageViewModel,
+    AuditLogEntry, AuditPageViewModel,
+    ExportCard, ExportConsoleViewModel
 )
+from .export_config import EXPORT_CARD_DEFINITIONS
 
 
 def get_db_session(database_url: str = 'sqlite:///./givebutter.db') -> Session:
@@ -267,26 +274,650 @@ class DatabaseImportRepository:
         finally:
             session.close()
 
-    def get_validation(self, import_id: str):
-        """Not implemented in Phase 1B-Step 5A."""
-        raise NotImplementedError("get_validation() not yet implemented in DatabaseImportRepository")
+    def get_validation(self, import_id: str) -> ValidationPageViewModel:
+        """
+        Return validation review page data as ValidationPageViewModel.
 
-    def get_normalizations(self, import_id: str):
-        """Not implemented in Phase 1B-Step 5A."""
-        raise NotImplementedError("get_normalizations() not yet implemented in DatabaseImportRepository")
+        Queries ImportBatch and ImportContact records to build validation page
+        with all contact records and validation issues. Returns view model ready
+        for template rendering.
 
-    def get_households(self, import_id: str):
-        """Not implemented in Phase 1B-Step 5A."""
-        raise NotImplementedError("get_households() not yet implemented in DatabaseImportRepository")
+        Args:
+            import_id: Import batch ID to retrieve validation data for.
 
-    def get_duplicates(self, import_id: str):
-        """Not implemented in Phase 1B-Step 5A."""
-        raise NotImplementedError("get_duplicates() not yet implemented in DatabaseImportRepository")
+        Returns:
+            ValidationPageViewModel with batch metadata and validation rows.
 
-    def get_audit(self, import_id: str):
-        """Not implemented in Phase 1B-Step 5A."""
-        raise NotImplementedError("get_audit() not yet implemented in DatabaseImportRepository")
+        Raises:
+            Exception: If database connection fails.
+        """
+        session = get_db_session(self.database_url)
+        try:
+            # Query the batch
+            batch = session.query(ImportBatch).filter_by(id=import_id).first()
+            if not batch:
+                # Return empty validation page if batch not found
+                return ValidationPageViewModel(
+                    batch_id=import_id,
+                    filename='',
+                    progress=0,
+                    validation_rows=(),
+                    validation_issues_count=0,
+                    total_records=0,
+                )
 
-    def get_exports(self, import_id: str):
-        """Not implemented in Phase 1B-Step 5A."""
-        raise NotImplementedError("get_exports() not yet implemented in DatabaseImportRepository")
+            # Compute progress
+            total_items = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id
+            ).scalar() or 0
+
+            if total_items > 0:
+                decided_items = session.query(func.count(ReviewDecision.id)).filter(
+                    ReviewDecision.batch_id == import_id
+                ).scalar() or 0
+                progress = int((decided_items / total_items) * 100)
+            else:
+                progress = 0
+
+            # Count validation issues (review_items with item_type='validation', status='pending')
+            validation_issues_count = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'validation',
+                ReviewItem.status == 'pending'
+            ).scalar() or 0
+
+            # Query all ImportContact records for this batch
+            contacts = session.query(ImportContact).filter_by(batch_id=import_id).all()
+
+            # Build mapping of contact_id -> validation issue details
+            validation_map = {}
+            validation_reviews = session.query(ReviewItem, ReviewItemSubject).join(
+                ReviewItemSubject
+            ).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'validation'
+            ).all()
+
+            for review_item, subject in validation_reviews:
+                if subject.subject_type == 'import_contact_snapshot':
+                    contact_id = subject.subject_id
+                    payload = review_item.payload_json or {}
+                    if contact_id not in validation_map:
+                        validation_map[contact_id] = {
+                            'issue_type': payload.get('issue_type'),
+                            'issue_description': payload.get('issue_description'),
+                        }
+
+            # Build validation rows from contacts
+            validation_rows = []
+            for contact in contacts:
+                # Construct full name
+                full_name = ''
+                if contact.first_name and contact.last_name:
+                    full_name = f'{contact.first_name} {contact.last_name}'
+                elif contact.first_name:
+                    full_name = contact.first_name
+                elif contact.last_name:
+                    full_name = contact.last_name
+
+                # Construct full address
+                address_parts = []
+                if contact.address_line1:
+                    address_parts.append(contact.address_line1)
+                if contact.address_line2:
+                    address_parts.append(contact.address_line2)
+                if contact.city:
+                    address_parts.append(contact.city)
+                if contact.state:
+                    address_parts.append(contact.state)
+                if contact.postal_code:
+                    address_parts.append(contact.postal_code)
+                full_address = ', '.join(address_parts) if address_parts else ''
+
+                # Format amount
+                amount_str = ''
+                if contact.amount is not None:
+                    amount_str = f'${contact.amount:,.2f}'
+
+                # Get validation issue details if they exist
+                issue_type = None
+                issue_description = None
+                if contact.id in validation_map:
+                    issue_type = validation_map[contact.id]['issue_type']
+                    issue_description = validation_map[contact.id]['issue_description']
+
+                # Create ValidationRow (using contact.id as string for consistency)
+                row = ValidationRow(
+                    id=str(contact.id),
+                    date='',  # Date not available in ImportContact; would come from raw_import_row
+                    name=full_name,
+                    email=contact.email or '',
+                    phone=contact.phone or '',
+                    amount=amount_str,
+                    address=full_address,
+                    issue_type=issue_type,
+                    issue_description=issue_description,
+                )
+                validation_rows.append(row)
+
+            return ValidationPageViewModel(
+                batch_id=batch.id,
+                filename=batch.filename,
+                progress=progress,
+                validation_rows=tuple(validation_rows),
+                validation_issues_count=validation_issues_count,
+                total_records=len(contacts),
+            )
+
+        finally:
+            session.close()
+
+    def get_normalizations(self, import_id: str) -> NormalizationPageViewModel:
+        """
+        Return normalization review page data as NormalizationPageViewModel.
+
+        Queries ImportBatch and normalization review_items to build normalization
+        page with current suggestion and navigation state. Returns view model ready
+        for template rendering.
+
+        Args:
+            import_id: Import batch ID to retrieve normalization data for.
+
+        Returns:
+            NormalizationPageViewModel with batch metadata, current suggestion, and index.
+
+        Raises:
+            Exception: If database connection fails.
+        """
+        session = get_db_session(self.database_url)
+        try:
+            # Query the batch
+            batch = session.query(ImportBatch).filter_by(id=import_id).first()
+            if not batch:
+                # Return empty normalization page if batch not found
+                return NormalizationPageViewModel(
+                    batch_id=import_id,
+                    filename='',
+                    progress=0,
+                    current_suggestion=NormalizationRow(
+                        id='',
+                        contact_name='',
+                        field_name='',
+                        original_value='',
+                        suggested_value='',
+                        normalization_type='',
+                        status='Pending',
+                    ),
+                    current_suggestion_index=1,
+                    total_suggestions=0,
+                )
+
+            # Compute progress
+            total_items = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id
+            ).scalar() or 0
+
+            if total_items > 0:
+                decided_items = session.query(func.count(ReviewDecision.id)).filter(
+                    ReviewDecision.batch_id == import_id
+                ).scalar() or 0
+                progress = int((decided_items / total_items) * 100)
+            else:
+                progress = 0
+
+            # Query all normalization items, ordered by creation
+            normalization_items = session.query(ReviewItem).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'normalization',
+                ReviewItem.status == 'pending'
+            ).order_by(ReviewItem.created_at.asc()).all()
+
+            total_suggestions = len(normalization_items)
+
+            # Get the first normalization as current suggestion
+            if normalization_items:
+                first_item = normalization_items[0]
+                payload = first_item.payload_json or {}
+                current_suggestion = NormalizationRow(
+                    id=payload.get('id', str(first_item.id)),
+                    contact_name=payload.get('contact_name', ''),
+                    field_name=payload.get('field_name', ''),
+                    original_value=payload.get('original_value', ''),
+                    suggested_value=payload.get('suggested_value', ''),
+                    normalization_type=payload.get('normalization_type', ''),
+                    status=payload.get('status', 'Pending'),
+                )
+            else:
+                # No normalizations - return empty suggestion
+                current_suggestion = NormalizationRow(
+                    id='',
+                    contact_name='',
+                    field_name='',
+                    original_value='',
+                    suggested_value='',
+                    normalization_type='',
+                    status='Pending',
+                )
+
+            return NormalizationPageViewModel(
+                batch_id=batch.id,
+                filename=batch.filename,
+                progress=progress,
+                current_suggestion=current_suggestion,
+                current_suggestion_index=1,
+                total_suggestions=total_suggestions,
+            )
+
+        finally:
+            session.close()
+
+    def get_households(self, import_id: str) -> HouseholdPageViewModel:
+        """
+        Return household review page data as HouseholdPageViewModel.
+
+        Queries ImportBatch and household review_items to build household page
+        with current household and navigation state. Returns view model ready
+        for template rendering.
+
+        Args:
+            import_id: Import batch ID to retrieve household data for.
+
+        Returns:
+            HouseholdPageViewModel with batch metadata, current household, and index.
+
+        Raises:
+            Exception: If database connection fails.
+        """
+        session = get_db_session(self.database_url)
+        try:
+            # Query the batch
+            batch = session.query(ImportBatch).filter_by(id=import_id).first()
+            if not batch:
+                # Return empty household page if batch not found
+                return HouseholdPageViewModel(
+                    batch_id=import_id,
+                    filename='',
+                    progress=0,
+                    current_household=HouseholdRow(
+                        id='',
+                        suggested_name='',
+                        address='',
+                        confidence='',
+                        proposed_members=(),
+                        evidence=(),
+                        conflicts=(),
+                        status='Pending',
+                    ),
+                    current_household_index=1,
+                    total_households=0,
+                )
+
+            # Compute progress
+            total_items = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id
+            ).scalar() or 0
+
+            if total_items > 0:
+                decided_items = session.query(func.count(ReviewDecision.id)).filter(
+                    ReviewDecision.batch_id == import_id
+                ).scalar() or 0
+                progress = int((decided_items / total_items) * 100)
+            else:
+                progress = 0
+
+            # Query all household items, ordered by creation
+            household_items = session.query(ReviewItem).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'household',
+                ReviewItem.status == 'pending'
+            ).order_by(ReviewItem.created_at.asc()).all()
+
+            total_households = len(household_items)
+
+            # Get the first household as current household
+            if household_items:
+                first_item = household_items[0]
+                payload = first_item.payload_json or {}
+
+                # Extract proposed_members and convert to tuple
+                proposed_members = payload.get('proposed_members', [])
+                if isinstance(proposed_members, list):
+                    proposed_members = tuple(proposed_members)
+
+                # Extract evidence and convert to tuple
+                evidence = payload.get('evidence', [])
+                if isinstance(evidence, list):
+                    evidence = tuple(evidence)
+
+                # Extract conflicts and convert to tuple
+                conflicts = payload.get('conflicts', [])
+                if isinstance(conflicts, list):
+                    conflicts = tuple(conflicts)
+
+                current_household = HouseholdRow(
+                    id=payload.get('id', str(first_item.id)),
+                    suggested_name=payload.get('suggested_name', ''),
+                    address=payload.get('address', ''),
+                    confidence=payload.get('confidence', ''),
+                    proposed_members=proposed_members,
+                    evidence=evidence,
+                    conflicts=conflicts,
+                    status=payload.get('status', 'Pending'),
+                )
+            else:
+                # No households - return empty household
+                current_household = HouseholdRow(
+                    id='',
+                    suggested_name='',
+                    address='',
+                    confidence='',
+                    proposed_members=(),
+                    evidence=(),
+                    conflicts=(),
+                    status='Pending',
+                )
+
+            return HouseholdPageViewModel(
+                batch_id=batch.id,
+                filename=batch.filename,
+                progress=progress,
+                current_household=current_household,
+                current_household_index=1,
+                total_households=total_households,
+            )
+
+        finally:
+            session.close()
+
+    def get_duplicates(self, import_id: str) -> DuplicatePageViewModel:
+        """
+        Return duplicate review page data as DuplicatePageViewModel.
+
+        Queries ImportBatch and duplicate review_items to build duplicate page
+        with current candidate and navigation state. Returns view model ready
+        for template rendering.
+
+        Args:
+            import_id: Import batch ID to retrieve duplicate data for.
+
+        Returns:
+            DuplicatePageViewModel with batch metadata, current candidate, and index.
+
+        Raises:
+            Exception: If database connection fails.
+        """
+        session = get_db_session(self.database_url)
+        try:
+            # Query the batch
+            batch = session.query(ImportBatch).filter_by(id=import_id).first()
+            if not batch:
+                # Return empty duplicate page if batch not found
+                return DuplicatePageViewModel(
+                    batch_id=import_id,
+                    filename='',
+                    progress=0,
+                    current_candidate=DuplicateCandidate(
+                        id='',
+                        contact_a=DuplicateContact('', '', '', '', ''),
+                        contact_b=DuplicateContact('', '', '', '', ''),
+                        supporting_evidence=(),
+                        conflicting_evidence=(),
+                        status='Pending',
+                    ),
+                    current_candidate_index=1,
+                    total_candidates=0,
+                )
+
+            # Compute progress
+            total_items = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id
+            ).scalar() or 0
+
+            if total_items > 0:
+                decided_items = session.query(func.count(ReviewDecision.id)).filter(
+                    ReviewDecision.batch_id == import_id
+                ).scalar() or 0
+                progress = int((decided_items / total_items) * 100)
+            else:
+                progress = 0
+
+            # Query all duplicate items, ordered by creation
+            duplicate_items = session.query(ReviewItem).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'duplicate',
+                ReviewItem.status == 'pending'
+            ).order_by(ReviewItem.created_at.asc()).all()
+
+            total_candidates = len(duplicate_items)
+
+            # Get the first duplicate as current candidate
+            if duplicate_items:
+                first_item = duplicate_items[0]
+                payload = first_item.payload_json or {}
+
+                # Extract contact data from payload
+                contact_a_data = payload.get('contact_a', {})
+                contact_b_data = payload.get('contact_b', {})
+
+                contact_a = DuplicateContact(
+                    id=contact_a_data.get('id', ''),
+                    name=contact_a_data.get('name', ''),
+                    email=contact_a_data.get('email', ''),
+                    phone=contact_a_data.get('phone', ''),
+                    address=contact_a_data.get('address', ''),
+                )
+
+                contact_b = DuplicateContact(
+                    id=contact_b_data.get('id', ''),
+                    name=contact_b_data.get('name', ''),
+                    email=contact_b_data.get('email', ''),
+                    phone=contact_b_data.get('phone', ''),
+                    address=contact_b_data.get('address', ''),
+                )
+
+                # Extract supporting and conflicting evidence
+                supporting_evidence = payload.get('supporting_evidence', [])
+                if isinstance(supporting_evidence, list):
+                    supporting_evidence = tuple(supporting_evidence)
+
+                conflicting_evidence = payload.get('conflicting_evidence', [])
+                if isinstance(conflicting_evidence, list):
+                    conflicting_evidence = tuple(conflicting_evidence)
+
+                current_candidate = DuplicateCandidate(
+                    id=payload.get('id', str(first_item.id)),
+                    contact_a=contact_a,
+                    contact_b=contact_b,
+                    supporting_evidence=supporting_evidence,
+                    conflicting_evidence=conflicting_evidence,
+                    status=payload.get('status', 'Pending'),
+                )
+            else:
+                # No duplicates - return empty candidate
+                current_candidate = DuplicateCandidate(
+                    id='',
+                    contact_a=DuplicateContact('', '', '', '', ''),
+                    contact_b=DuplicateContact('', '', '', '', ''),
+                    supporting_evidence=(),
+                    conflicting_evidence=(),
+                    status='Pending',
+                )
+
+            return DuplicatePageViewModel(
+                batch_id=batch.id,
+                filename=batch.filename,
+                progress=progress,
+                current_candidate=current_candidate,
+                current_candidate_index=1,
+                total_candidates=total_candidates,
+            )
+
+        finally:
+            session.close()
+
+    def get_audit(self, import_id: str) -> AuditPageViewModel:
+        """
+        Return audit log page data as AuditPageViewModel.
+
+        Queries ImportBatch and audit log records to build audit page with all entries.
+        Returns view model ready for template rendering.
+
+        Args:
+            import_id: Import batch ID to retrieve audit data for.
+
+        Returns:
+            AuditPageViewModel with batch metadata and audit log entries.
+
+        Raises:
+            Exception: If database connection fails.
+        """
+        session = get_db_session(self.database_url)
+        try:
+            # Query the batch
+            batch = session.query(ImportBatch).filter_by(id=import_id).first()
+            if not batch:
+                # Return empty audit page if batch not found
+                return AuditPageViewModel(
+                    batch_id=import_id,
+                    filename='',
+                    progress=0,
+                    audit_entries=(),
+                )
+
+            # Compute progress
+            total_items = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id
+            ).scalar() or 0
+
+            if total_items > 0:
+                decided_items = session.query(func.count(ReviewDecision.id)).filter(
+                    ReviewDecision.batch_id == import_id
+                ).scalar() or 0
+                progress = int((decided_items / total_items) * 100)
+            else:
+                progress = 0
+
+            # Query all audit log records for this batch, ordered by timestamp ascending
+            audit_records = session.query(AuditLogRecord).filter_by(
+                batch_id=import_id
+            ).order_by(AuditLogRecord.action_timestamp.asc()).all()
+
+            # Build audit entries from records
+            audit_entries = []
+            for record in audit_records:
+                entry = AuditLogEntry(
+                    timestamp=str(record.action_timestamp) if record.action_timestamp else '',
+                    reviewer=record.actor or 'System',
+                    action=record.action_type or '',
+                    details=record.details or '' if isinstance(record.details, str) else '',
+                )
+                audit_entries.append(entry)
+
+            return AuditPageViewModel(
+                batch_id=batch.id,
+                filename=batch.filename,
+                progress=progress,
+                audit_entries=tuple(audit_entries),
+            )
+
+        finally:
+            session.close()
+
+    def get_exports(self, import_id: str) -> ExportConsoleViewModel:
+        """
+        Return export console page data as ExportConsoleViewModel.
+
+        Queries ImportBatch and computes export statistics from Option C database state.
+        Returns view model ready for template rendering.
+
+        Args:
+            import_id: Import batch ID to retrieve export data for.
+
+        Returns:
+            ExportConsoleViewModel with batch metadata and export options.
+
+        Raises:
+            Exception: If database connection fails.
+        """
+        session = get_db_session(self.database_url)
+        try:
+            # Query the batch
+            batch = session.query(ImportBatch).filter_by(id=import_id).first()
+            if not batch:
+                # Return empty exports page if batch not found
+                return ExportConsoleViewModel(
+                    batch_id=import_id,
+                    filename='',
+                    progress=0,
+                    export_cards=(),
+                    staged_record_count=0,
+                    total_decisions=0,
+                    household_count=0,
+                    recent_exports=(),
+                )
+
+            # Compute progress
+            total_items = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id
+            ).scalar() or 0
+
+            if total_items > 0:
+                decided_items = session.query(func.count(ReviewDecision.id)).filter(
+                    ReviewDecision.batch_id == import_id
+                ).scalar() or 0
+                progress = int((decided_items / total_items) * 100)
+            else:
+                progress = 0
+
+            # Build export cards from static export card definitions
+            export_cards = []
+            for card in EXPORT_CARD_DEFINITIONS:
+                export_cards.append(
+                    ExportCard(
+                        id=card['id'],
+                        title=card['name'],
+                        description=card['description'],
+                        status=card['status'],
+                        files_ready=card['files_ready'],
+                    )
+                )
+
+            # Count staged records (import_contacts for this batch)
+            staged_record_count = session.query(func.count(ImportContact.id)).filter(
+                ImportContact.batch_id == import_id
+            ).scalar() or 0
+
+            # Calculate total decisions (sum of supporting_evidence counts from duplicate items)
+            total_decisions = 0
+            duplicate_items = session.query(ReviewItem).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'duplicate'
+            ).all()
+
+            for item in duplicate_items:
+                if item.payload_json and 'supporting_evidence' in item.payload_json:
+                    evidence_list = item.payload_json.get('supporting_evidence', [])
+                    total_decisions += len(evidence_list)
+
+            # Count household items
+            household_count = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'household'
+            ).scalar() or 0
+
+            # Recent exports are empty in Phase 1B
+            recent_exports = ()
+
+            return ExportConsoleViewModel(
+                batch_id=batch.id,
+                filename=batch.filename,
+                progress=progress,
+                export_cards=tuple(export_cards),
+                staged_record_count=staged_record_count,
+                total_decisions=total_decisions,
+                household_count=household_count,
+                recent_exports=recent_exports,
+            )
+
+        finally:
+            session.close()

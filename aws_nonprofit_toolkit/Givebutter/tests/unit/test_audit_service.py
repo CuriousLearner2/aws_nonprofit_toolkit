@@ -210,3 +210,74 @@ class TestAuditService:
         assert first_entry["reviewer"]
         assert first_entry["action"]
         assert first_entry["details"]
+
+
+class TestAuditServiceProviderWiring:
+    """Test that audit_service uses repository provider (Phase 1B-Step 5P)."""
+
+    def test_get_audit_log_default_uses_fixture_repository(self):
+        """Test that default config returns fixture-backed audit."""
+        result = get_audit_log("IMP-2025-0101-A")
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+        assert result["batch"]["filename"] == "donors_q1_2025.csv"
+        assert result["batch"]["progress"] == 42
+
+    def test_get_audit_log_with_none_config_uses_fixture(self):
+        """Test that None config explicitly uses fixture repository."""
+        result = get_audit_log("IMP-2025-0101-A", config=None)
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+
+    def test_get_audit_log_with_empty_config_uses_fixture(self):
+        """Test that empty dict config uses fixture repository."""
+        result = get_audit_log("IMP-2025-0101-A", config={})
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+
+    def test_get_audit_log_with_explicit_fixture_config(self):
+        """Test that explicit fixture config returns fixture-backed audit."""
+        config = {"HOUSEHOLDER_REPOSITORY": "fixture"}
+        result = get_audit_log("IMP-2025-0101-A", config=config)
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+        assert result["batch"]["filename"] == "donors_q1_2025.csv"
+
+    def test_get_audit_log_database_mode_without_url_raises_error(self):
+        """Test that database mode without GIVEBUTTER_DATABASE_URL raises ValueError."""
+        config = {"HOUSEHOLDER_REPOSITORY": "database"}
+        with pytest.raises(ValueError) as exc_info:
+            get_audit_log("IMP-2025-0101-A", config=config)
+        assert "Database mode requested but no database URL configured" in str(exc_info.value)
+
+    def test_get_audit_log_invalid_repository_mode_raises_error(self):
+        """Test that invalid repository mode raises ValueError."""
+        config = {"HOUSEHOLDER_REPOSITORY": "invalid_mode"}
+        with pytest.raises(ValueError) as exc_info:
+            get_audit_log("IMP-2025-0101-A", config=config)
+        assert "Invalid HOUSEHOLDER_REPOSITORY mode" in str(exc_info.value)
+
+    def test_get_audit_log_template_dict_shape_unchanged(self):
+        """Test that template dict shape is identical after provider wiring."""
+        # Get audit with default (fixture)
+        fixture_result = get_audit_log("IMP-2025-0101-A")
+        # Get audit with explicit fixture config
+        config_result = get_audit_log("IMP-2025-0101-A", config={"HOUSEHOLDER_REPOSITORY": "fixture"})
+
+        # Both should have same shape and data
+        assert fixture_result["batch"]["id"] == config_result["batch"]["id"]
+        assert fixture_result["batch"]["filename"] == config_result["batch"]["filename"]
+        assert fixture_result["batch"]["progress"] == config_result["batch"]["progress"]
+        assert len(fixture_result["audit_log"]) == len(config_result["audit_log"])
+
+    def test_get_audit_log_returns_dicts_not_orm_objects(self):
+        """Test that result contains dicts, not ORM objects."""
+        result = get_audit_log("IMP-2025-0101-A")
+        assert isinstance(result, dict)
+        assert isinstance(result["batch"], dict)
+        assert isinstance(result["audit_log"], list)
+        if len(result["audit_log"]) > 0:
+            assert isinstance(result["audit_log"][0], dict)
+        # Verify no ORM objects
+        assert not hasattr(result, '__table__')
+        assert not hasattr(result["batch"], '__table__')

@@ -3,13 +3,16 @@ Validation Service - Service layer for validation review route.
 
 Thin orchestration layer that hides data source (fixture, database, API)
 from the Flask route. Returns template-ready dictionaries.
+
+Phase 1B-Step 5L: Wired to use repository provider for flexible repository selection.
 """
 
-from typing import Dict, Any
-from .fixture_repository import FixtureImportRepository
+from typing import Dict, Any, Optional, Mapping
+
+from .repository_provider import get_import_repository
 
 
-def get_validation_review(import_id: str) -> Dict[str, Any]:
+def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """
     Get validation review page data for a specific import.
 
@@ -18,9 +21,17 @@ def get_validation_review(import_id: str) -> Dict[str, Any]:
 
     Args:
         import_id: Import ID to fetch validation data for
+        config: Optional configuration mapping for repository selection.
+               If None, defaults to FixtureImportRepository (fixture-backed).
+               Can specify {'HOUSEHOLDER_REPOSITORY': 'database', 'GIVEBUTTER_DATABASE_URL': <url>}
+               for database-backed validation.
 
     Returns:
         Dictionary with 'batch', 'validation_issues', 'queue_status', and 'total_records' keys, ready for template
+
+    Raises:
+        ValueError: If database mode requested without required configuration.
     """
-    validation_vm = FixtureImportRepository.get_validation(import_id)
+    repository = get_import_repository(config)
+    validation_vm = repository.get_validation(import_id)
     return validation_vm.to_template_dict()

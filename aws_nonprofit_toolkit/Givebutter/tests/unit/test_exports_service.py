@@ -240,3 +240,87 @@ class TestExportsService:
         result = get_export_console("IMP-2025-0101-A")
         # Verify no file writing side effects by checking recent_exports is empty
         assert len(result["recent_exports"]) == 0
+
+
+class TestExportsServiceProviderWiring:
+    """Test that exports_service uses repository provider (Phase 1B-Step 5Q)."""
+
+    def test_get_export_console_default_uses_fixture_repository(self):
+        """Test that default config returns fixture-backed exports."""
+        result = get_export_console("IMP-2025-0101-A")
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+        assert result["batch"]["filename"] == "donors_q1_2025.csv"
+        assert result["batch"]["progress"] == 42
+
+    def test_get_export_console_with_none_config_uses_fixture(self):
+        """Test that None config explicitly uses fixture repository."""
+        result = get_export_console("IMP-2025-0101-A", config=None)
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+
+    def test_get_export_console_with_empty_config_uses_fixture(self):
+        """Test that empty dict config uses fixture repository."""
+        result = get_export_console("IMP-2025-0101-A", config={})
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+
+    def test_get_export_console_with_explicit_fixture_config(self):
+        """Test that explicit fixture config returns fixture-backed exports."""
+        config = {"HOUSEHOLDER_REPOSITORY": "fixture"}
+        result = get_export_console("IMP-2025-0101-A", config=config)
+        assert isinstance(result, dict)
+        assert result["batch"]["id"] == "IMP-2025-0101-A"
+        assert result["batch"]["filename"] == "donors_q1_2025.csv"
+
+    def test_get_export_console_database_mode_without_url_raises_error(self):
+        """Test that database mode without GIVEBUTTER_DATABASE_URL raises ValueError."""
+        config = {"HOUSEHOLDER_REPOSITORY": "database"}
+        with pytest.raises(ValueError) as exc_info:
+            get_export_console("IMP-2025-0101-A", config=config)
+        assert "Database mode requested but no database URL configured" in str(exc_info.value)
+
+    def test_get_export_console_invalid_repository_mode_raises_error(self):
+        """Test that invalid repository mode raises ValueError."""
+        config = {"HOUSEHOLDER_REPOSITORY": "invalid_mode"}
+        with pytest.raises(ValueError) as exc_info:
+            get_export_console("IMP-2025-0101-A", config=config)
+        assert "Invalid HOUSEHOLDER_REPOSITORY mode" in str(exc_info.value)
+
+    def test_get_export_console_template_dict_shape_unchanged(self):
+        """Test that template dict shape is identical after provider wiring."""
+        # Get exports with default (fixture)
+        fixture_result = get_export_console("IMP-2025-0101-A")
+        # Get exports with explicit fixture config
+        config_result = get_export_console("IMP-2025-0101-A", config={"HOUSEHOLDER_REPOSITORY": "fixture"})
+
+        # Both should have same shape and data
+        assert fixture_result["batch"]["id"] == config_result["batch"]["id"]
+        assert fixture_result["batch"]["filename"] == config_result["batch"]["filename"]
+        assert fixture_result["batch"]["progress"] == config_result["batch"]["progress"]
+        assert fixture_result["staged_record_count"] == config_result["staged_record_count"]
+        assert len(fixture_result["export_options"]) == len(config_result["export_options"])
+
+    def test_get_export_console_returns_dicts_not_orm_objects(self):
+        """Test that result contains dicts, not ORM objects."""
+        result = get_export_console("IMP-2025-0101-A")
+        assert isinstance(result, dict)
+        assert isinstance(result["batch"], dict)
+        assert isinstance(result["export_options"], list)
+        if len(result["export_options"]) > 0:
+            assert isinstance(result["export_options"][0], dict)
+        # Verify no ORM objects
+        assert not hasattr(result, '__table__')
+        assert not hasattr(result["batch"], '__table__')
+
+    def test_get_export_console_read_only_no_writes(self):
+        """Test that export console is read-only and does not trigger file writes."""
+        result = get_export_console("IMP-2025-0101-A")
+        # Verify read-only by checking no recent_exports are created
+        assert len(result["recent_exports"]) == 0
+        # Verify all export options have generated status but no actual files
+        export_options = result["export_options"]
+        for option in export_options:
+            # In fixture mode, files_ready should be 0 or unset
+            # The export console is read-only and doesn't write actual files
+            assert "files_ready" in option or option.get("status") == "Ready"

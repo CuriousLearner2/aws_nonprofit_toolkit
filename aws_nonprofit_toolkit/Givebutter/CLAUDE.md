@@ -72,14 +72,27 @@ source .venv/bin/activate
 ```
 
 ### Running Tests
-```bash
-# Unit + Integration tests (fast)
-pytest tests/unit tests/integration -v
 
-# E2E tests (requires Flask app running)
+**Development Strategy:**
+- **Default (daily use):** Unit + Integration tests (743 tests, ~13 seconds)
+- **Occasional:** E2E tests (66 tests, ~8 minutes, requires Flask running)
+- **CI/CD:** Full suite (809 tests, includes all above)
+
+```bash
+# Standard: Unit + Integration only (RECOMMENDED for development)
+pytest tests/unit tests/integration -q
+
+# With details
+pytest tests/unit tests/integration -v --tb=short
+
+# Parallel (faster on multi-core)
+pytest tests/unit tests/integration -n auto
+
+# E2E only (requires Flask app running separately)
+# Start Flask first: flask run --port=8000
 pytest tests/e2e/ -v
 
-# Specific test file
+# Specific E2E test file
 pytest tests/e2e/test_e2e_upload_workflow.py -v
 
 # Single test with debugging

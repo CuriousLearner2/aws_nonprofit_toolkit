@@ -4,15 +4,17 @@ Duplicates Service - Orchestrates duplicate review data.
 PHASE 1A REMEDIATION: This module was missing from Phase 1A implementation
 but is imported by app.py. Created here to complete Phase 1A.
 
-Routes duplicate review requests to FixtureImportRepository and
-returns template-ready view models.
+Phase 1B-Step 5O: Wired to use repository provider for flexible repository selection.
+
+Routes duplicate review requests to repository and returns template-ready view models.
 """
 
-from typing import Dict, Any
-from .fixture_repository import FixtureImportRepository
+from typing import Dict, Any, Optional, Mapping
+
+from .repository_provider import get_import_repository
 
 
-def get_duplicates_review(import_id: str) -> Dict[str, Any]:
+def get_duplicates_review(import_id: str, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """
     Get duplicates review page data for a specific import.
 
@@ -21,10 +23,18 @@ def get_duplicates_review(import_id: str) -> Dict[str, Any]:
 
     Args:
         import_id: Import ID to fetch duplicate data for
+        config: Optional configuration mapping for repository selection.
+               If None, defaults to FixtureImportRepository (fixture-backed).
+               Can specify {'HOUSEHOLDER_REPOSITORY': 'database', 'GIVEBUTTER_DATABASE_URL': <url>}
+               for database-backed duplicates.
 
     Returns:
         Dictionary with 'batch', 'candidate', and navigation keys,
         ready for template
+
+    Raises:
+        ValueError: If database mode requested without required configuration.
     """
-    duplicates_vm = FixtureImportRepository.get_duplicates(import_id)
+    repository = get_import_repository(config)
+    duplicates_vm = repository.get_duplicates(import_id)
     return duplicates_vm.to_template_dict()
