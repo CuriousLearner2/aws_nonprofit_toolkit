@@ -21,7 +21,9 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from scripts.householder.database_models import Base, ImportBatch, ImportContact, RawImportRow
+from scripts.householder.database_models import (
+    Base, ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewDecision
+)
 from scripts.householder.database_repository import DatabaseImportRepository
 from scripts.householder.service_contracts import ImportSummary
 from scripts.householder.fixture_repository import FixtureImportRepository
@@ -195,7 +197,7 @@ class TestDatabaseListImportsParity:
 
     @pytest.fixture
     def seeded_temp_db(self):
-        """Create temp database seeded with equivalent fixture data."""
+        """Create temp database seeded with equivalent fixture data and progress state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / 'parity_test.db'
             db_url = f'sqlite:///{db_path}'
@@ -206,7 +208,7 @@ class TestDatabaseListImportsParity:
             session = Session()
 
             # Seed with data equivalent to IMPORTS_LIST fixture
-            # IMPORT_BATCH
+            # IMP-2025-0101-A: progress 42 (21 decided out of 50 items)
             batch1 = ImportBatch(
                 id='IMP-2025-0101-A',
                 filename='donors_q1_2025.csv',
@@ -230,7 +232,28 @@ class TestDatabaseListImportsParity:
                 session.add(raw_row)
                 session.add(contact)
 
-            # IMP-2024-1201-B
+            # Create 50 review items for batch1
+            for i in range(50):
+                item = ReviewItem(
+                    batch_id='IMP-2025-0101-A',
+                    item_type='validation',
+                    status='pending',
+                    payload_json={'issue': f'validation {i}'}
+                )
+                session.add(item)
+            session.flush()  # Ensure items get IDs
+
+            # Create 21 review decisions (42% of 50) for batch1
+            batch1_items = session.query(ReviewItem).filter_by(batch_id='IMP-2025-0101-A').all()
+            for i in range(21):
+                decision = ReviewDecision(
+                    batch_id='IMP-2025-0101-A',
+                    review_item_id=batch1_items[i].id,
+                    decision='accept'
+                )
+                session.add(decision)
+
+            # IMP-2024-1201-B: progress 100 (all items decided)
             batch2 = ImportBatch(
                 id='IMP-2024-1201-B',
                 filename='donors_q4_2024.csv',
@@ -253,7 +276,28 @@ class TestDatabaseListImportsParity:
                 session.add(raw_row)
                 session.add(contact)
 
-            # IMP-2024-1001-A
+            # Create 125 review items for batch2
+            for i in range(125):
+                item = ReviewItem(
+                    batch_id='IMP-2024-1201-B',
+                    item_type='duplicate',
+                    status='resolved',
+                    payload_json={'match': f'duplicate {i}'}
+                )
+                session.add(item)
+            session.flush()
+
+            # Create 125 review decisions (100% of 125) for batch2
+            batch2_items = session.query(ReviewItem).filter_by(batch_id='IMP-2024-1201-B').all()
+            for i in range(125):
+                decision = ReviewDecision(
+                    batch_id='IMP-2024-1201-B',
+                    review_item_id=batch2_items[i].id,
+                    decision='confirm' if i % 2 == 0 else 'defer'
+                )
+                session.add(decision)
+
+            # IMP-2024-1001-A: progress 100 (all items decided)
             batch3 = ImportBatch(
                 id='IMP-2024-1001-A',
                 filename='holiday_campaign_2024.csv',
@@ -275,6 +319,27 @@ class TestDatabaseListImportsParity:
                 )
                 session.add(raw_row)
                 session.add(contact)
+
+            # Create 89 review items for batch3
+            for i in range(89):
+                item = ReviewItem(
+                    batch_id='IMP-2024-1001-A',
+                    item_type='household',
+                    status='resolved',
+                    payload_json={'group': f'household {i}'}
+                )
+                session.add(item)
+            session.flush()
+
+            # Create 89 review decisions (100% of 89) for batch3
+            batch3_items = session.query(ReviewItem).filter_by(batch_id='IMP-2024-1001-A').all()
+            for i in range(89):
+                decision = ReviewDecision(
+                    batch_id='IMP-2024-1001-A',
+                    review_item_id=batch3_items[i].id,
+                    decision='accept'
+                )
+                session.add(decision)
 
             session.add(batch1)
             session.add(batch2)
@@ -337,14 +402,44 @@ class TestDatabaseListImportsParity:
         assert by_id['IMP-2024-1201-B'].status == 'Complete'
         assert by_id['IMP-2024-1001-A'].status == 'Complete'
 
-    def test_database_computes_zero_progress_for_no_decisions(self, seeded_temp_db):
-        """Test that progress is 0 when no decisions exist."""
+    def test_database_returns_correct_progress_values(self, seeded_temp_db):
+        """Test that database computes correct progress from review_items/review_decisions."""
         db_repo = DatabaseImportRepository(database_url=seeded_temp_db)
         db_result = db_repo.list_imports()
 
-        # All seeded batches have no review_items/review_decisions, so progress should be 0
-        for summary in db_result:
-            assert summary.progress == 0
+        by_id = {r.id: r for r in db_result}
+
+        # Verify progress matches fixture values (computed from seeded decisions)
+        assert by_id['IMP-2025-0101-A'].progress == 42  # 21 of 50 items decided
+        assert by_id['IMP-2024-1201-B'].progress == 100  # 125 of 125 items decided
+        assert by_id['IMP-2024-1001-A'].progress == 100  # 89 of 89 items decided
+
+    def test_fixture_vs_database_complete_parity(self, seeded_temp_db):
+        """Test complete parity: all ImportSummary fields match fixture."""
+        fixture_result = FixtureImportRepository.list_imports()
+        db_repo = DatabaseImportRepository(database_url=seeded_temp_db)
+        db_result = db_repo.list_imports()
+
+        # Index by ID for comparison
+        fixture_by_id = {r.id: r for r in fixture_result}
+        db_by_id = {r.id: r for r in db_result}
+
+        # Verify all fields match for each import
+        for import_id in ['IMP-2025-0101-A', 'IMP-2024-1201-B', 'IMP-2024-1001-A']:
+            fixture = fixture_by_id[import_id]
+            database = db_by_id[import_id]
+
+            # Verify all template-ready fields
+            assert fixture.id == database.id, f"IDs don't match for {import_id}"
+            assert fixture.filename == database.filename, f"Filenames don't match for {import_id}"
+            assert fixture.record_count == database.record_count, f"Record counts don't match for {import_id}"
+            assert fixture.status == database.status, f"Status don't match for {import_id}"
+            assert fixture.progress == database.progress, f"Progress don't match for {import_id}: fixture={fixture.progress}, db={database.progress}"
+
+            # Verify template dict conversion works
+            fixture_dict = fixture.to_template_dict()
+            database_dict = database.to_template_dict()
+            assert fixture_dict.keys() == database_dict.keys()
 
 
 class TestDatabaseRepositoryMethods:
