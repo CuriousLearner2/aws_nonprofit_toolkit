@@ -931,6 +931,32 @@ def import_normalizations(import_id):
     data = normalizations_service.get_normalizations_review(import_id)
     return render_template('imports/normalizations.html', **data)
 
+@app.route('/imports/<import_id>/normalizations/<int:review_item_id>/decision', methods=['POST'])
+def record_normalization_decision(import_id, review_item_id):
+    """Record a reviewer's normalization decision."""
+    from scripts.householder import normalization_decision_service
+
+    decision = request.form.get('decision', '').strip()
+    notes = request.form.get('notes', '').strip() or None
+    reviewer = request.headers.get('X-Reviewer-ID') or None
+
+    try:
+        result = normalization_decision_service.record_normalization_decision(
+            import_id=import_id,
+            review_item_id=review_item_id,
+            decision=decision,
+            notes=notes,
+            reviewer=reviewer,
+        )
+        logger.info(f"Normalization decision recorded: {result.decision} for item {review_item_id}")
+        return redirect(f'/imports/{import_id}/normalizations')
+    except ValueError as e:
+        logger.warning(f"Validation error recording normalization decision: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error recording normalization decision: {str(e)}")
+        return jsonify({'error': 'Error recording decision'}), 500
+
 @app.route('/imports/<import_id>/households')
 def import_households(import_id):
     """Household grouping confirmation."""

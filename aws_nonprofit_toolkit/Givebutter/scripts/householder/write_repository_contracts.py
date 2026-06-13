@@ -50,3 +50,45 @@ class ValidationDecisionWriter(Protocol):
             DatabaseError: If transaction fails
         """
         ...
+
+
+@dataclass(frozen=True)
+class NormalizationDecisionResult:
+    """Result of recording a normalization decision."""
+    decision_id: int
+    review_item_id: int
+    decision: str
+    effective_status: str
+    audit_log_id: int
+    timestamp: datetime
+
+
+class NormalizationDecisionWriter(Protocol):
+    """Protocol for writing normalization decisions."""
+
+    def create_normalization_decision(
+        self,
+        batch_id: str,
+        review_item_id: int,
+        decision: str,
+        notes: Optional[str] = None,
+        reviewer: Optional[str] = None,
+    ) -> NormalizationDecisionResult:
+        """
+        Create a normalization decision and audit log entry.
+
+        Args:
+            batch_id: Import batch ID
+            review_item_id: ReviewItem.id to decide on
+            decision: One of 'accept_normalization', 'reject_normalization', 'defer'
+            notes: Optional context for the decision
+            reviewer: Reviewer identifier (name or email)
+
+        Returns:
+            NormalizationDecisionResult with decision details
+
+        Raises:
+            ValueError: If validation fails (unknown import, unknown item, invalid decision, wrong type)
+            DatabaseError: If transaction fails
+        """
+        ...

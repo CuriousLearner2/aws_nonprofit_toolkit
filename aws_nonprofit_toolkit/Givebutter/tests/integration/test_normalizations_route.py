@@ -79,19 +79,19 @@ class TestNormalizationsRoute:
         """Test that normalizations page contains Confirm action."""
         response = client.get('/imports/IMP-2025-0101-A/normalizations')
         assert b'Confirm' in response.data
-        assert b'confirm-normalization' in response.data
+        assert b'accept_normalization' in response.data
 
     def test_normalizations_contains_reject_action(self, client):
         """Test that normalizations page contains Reject action."""
         response = client.get('/imports/IMP-2025-0101-A/normalizations')
         assert b'Reject' in response.data
-        assert b'reject-normalization' in response.data
+        assert b'reject_normalization' in response.data
 
     def test_normalizations_contains_defer_action(self, client):
         """Test that normalizations page contains Defer action."""
         response = client.get('/imports/IMP-2025-0101-A/normalizations')
         assert b'Defer' in response.data
-        assert b'defer-normalization' in response.data
+        assert b'defer' in response.data
 
     def test_normalizations_contains_navigation_previous(self, client):
         """Test that normalizations page contains Previous button."""

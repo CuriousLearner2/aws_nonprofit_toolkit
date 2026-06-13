@@ -468,6 +468,7 @@ class DatabaseImportRepository:
                         suggested_value='',
                         normalization_type='',
                         status='Pending',
+                        effective_status='pending',
                     ),
                     current_suggestion_index=1,
                     total_suggestions=0,
@@ -486,27 +487,77 @@ class DatabaseImportRepository:
             else:
                 progress = 0
 
-            # Query all normalization items, ordered by creation
+            # Query all normalization items (left outer join with subjects for flexibility)
             normalization_items = session.query(ReviewItem).filter(
                 ReviewItem.batch_id == import_id,
-                ReviewItem.item_type == 'normalization',
-                ReviewItem.status == 'pending'
+                ReviewItem.item_type == 'normalization'
             ).order_by(ReviewItem.created_at.asc()).all()
 
             total_suggestions = len(normalization_items)
 
             # Get the first normalization as current suggestion
+            current_suggestion = None
             if normalization_items:
                 first_item = normalization_items[0]
                 payload = first_item.payload_json or {}
+
+                # Try to get contact info from ReviewItemSubject if available
+                contact_name = ''
+                subject = session.query(ReviewItemSubject).filter_by(
+                    review_item_id=first_item.id
+                ).first()
+                if subject and subject.subject_type == 'import_contact_snapshot':
+                    contact = session.query(ImportContact).filter_by(
+                        id=subject.subject_id
+                    ).first()
+                    if contact:
+                        if contact.first_name and contact.last_name:
+                            contact_name = f'{contact.first_name} {contact.last_name}'
+                        elif contact.first_name:
+                            contact_name = contact.first_name
+                        elif contact.last_name:
+                            contact_name = contact.last_name
+
+                # Extract payload details - handle both new and old payload formats
+                # New format (from ingestion): field, raw_value, normalized_value, basis, confidence
+                # Old format (from fixtures): id, contact_name, field_name, original_value, suggested_value, normalization_type
+                field_name = payload.get('field') or payload.get('field_name', '')
+                raw_value = payload.get('raw_value') or payload.get('original_value', '')
+                normalized_value = payload.get('normalized_value') or payload.get('suggested_value', '')
+                normalization_type = payload.get('basis') or payload.get('normalization_type', 'Normalization')
+
+                # Fallback to payload contact name if not found in ImportContact
+                if not contact_name:
+                    contact_name = payload.get('contact_name', '')
+
+                # Determine effective status from latest ReviewDecision
+                effective_status = 'pending'
+                latest_decision = (
+                    session.query(ReviewDecision)
+                    .filter_by(review_item_id=first_item.id)
+                    .order_by(ReviewDecision.created_at.desc())
+                    .first()
+                )
+                if latest_decision:
+                    status_map = {
+                        'accept_normalization': 'accepted',
+                        'reject_normalization': 'rejected',
+                        'defer': 'deferred',
+                    }
+                    effective_status = status_map.get(latest_decision.decision, 'pending')
+
+                # Use payload id if available, otherwise use database id
+                item_id = payload.get('id') or str(first_item.id)
+
                 current_suggestion = NormalizationRow(
-                    id=payload.get('id', str(first_item.id)),
-                    contact_name=payload.get('contact_name', ''),
-                    field_name=payload.get('field_name', ''),
-                    original_value=payload.get('original_value', ''),
-                    suggested_value=payload.get('suggested_value', ''),
-                    normalization_type=payload.get('normalization_type', ''),
-                    status=payload.get('status', 'Pending'),
+                    id=item_id,
+                    contact_name=contact_name,
+                    field_name=field_name,
+                    original_value=str(raw_value) if raw_value is not None else '',
+                    suggested_value=str(normalized_value) if normalized_value is not None else '',
+                    normalization_type=normalization_type,
+                    status='Pending',
+                    effective_status=effective_status,
                 )
             else:
                 # No normalizations - return empty suggestion
@@ -518,6 +569,7 @@ class DatabaseImportRepository:
                     suggested_value='',
                     normalization_type='',
                     status='Pending',
+                    effective_status='pending',
                 )
 
             return NormalizationPageViewModel(

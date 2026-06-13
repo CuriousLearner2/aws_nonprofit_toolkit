@@ -30,18 +30,41 @@
         </div>
     </div>
 
-    <!-- Normalization Type -->
-    <div style="margin-bottom: 16px;">
+    <!-- Normalization Type and Status -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <span style="display: inline-block; background-color: #dbeafe; color: #1e40af; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">{{ current_suggestion.normalization_type }}</span>
+        <div>
+            {% if current_suggestion.effective_status == 'pending' %}
+            <span style="background-color: #e5e7eb; color: #374151; padding: 4px 12px; border-radius: 3px; font-weight: 600; font-size: 12px;">Pending</span>
+            {% elif current_suggestion.effective_status == 'accepted' %}
+            <span style="background-color: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 3px; font-weight: 600; font-size: 12px;">Accepted</span>
+            {% elif current_suggestion.effective_status == 'rejected' %}
+            <span style="background-color: #fed7aa; color: #9a3412; padding: 4px 12px; border-radius: 3px; font-weight: 600; font-size: 12px;">Rejected</span>
+            {% elif current_suggestion.effective_status == 'deferred' %}
+            <span style="background-color: #bfdbfe; color: #1e40af; padding: 4px 12px; border-radius: 3px; font-weight: 600; font-size: 12px;">Deferred</span>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Decision Form -->
     <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #e0e0e0;">
         <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Your Decision</h4>
+
+        <!-- Hidden forms for each decision -->
+        <form id="form-confirm-{{ current_suggestion.id }}" method="POST" action="/imports/{{ batch.id }}/normalizations/{{ current_suggestion.id }}/decision" style="display: none;">
+            <input type="hidden" name="decision" value="accept_normalization">
+        </form>
+        <form id="form-reject-{{ current_suggestion.id }}" method="POST" action="/imports/{{ batch.id }}/normalizations/{{ current_suggestion.id }}/decision" style="display: none;">
+            <input type="hidden" name="decision" value="reject_normalization">
+        </form>
+        <form id="form-defer-{{ current_suggestion.id }}" method="POST" action="/imports/{{ batch.id }}/normalizations/{{ current_suggestion.id }}/decision" style="display: none;">
+            <input type="hidden" name="decision" value="defer">
+        </form>
+
         <div class="btn-group">
-            <button type="button" class="btn btn-primary" data-action="confirm-normalization" data-suggestion-id="{{ current_suggestion.id }}">Confirm</button>
-            <button type="button" class="btn btn-secondary" data-action="reject-normalization" data-suggestion-id="{{ current_suggestion.id }}">Reject</button>
-            <button type="button" class="btn btn-secondary" data-action="defer-normalization" data-suggestion-id="{{ current_suggestion.id }}">Defer</button>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('form-confirm-{{ current_suggestion.id }}').submit();">Confirm</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('form-reject-{{ current_suggestion.id }}').submit();">Reject</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('form-defer-{{ current_suggestion.id }}').submit();">Defer</button>
         </div>
     </div>
 

@@ -167,6 +167,7 @@ class NormalizationRow:
     suggested_value: str
     normalization_type: str
     status: str = "Pending"
+    effective_status: str = "pending"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -178,6 +179,7 @@ class NormalizationRow:
             "suggested_value": self.suggested_value,
             "normalization_type": self.normalization_type,
             "status": self.status,
+            "effective_status": self.effective_status,
         }
 
 
