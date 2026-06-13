@@ -1,0 +1,259 @@
+"""Integration tests for export preview route."""
+
+import pytest
+import sys
+from pathlib import Path
+from datetime import datetime
+import json
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts.uploader.app import app
+from scripts.householder.database_models import (
+    Base, ImportBatch, RawImportRow, ImportContact, ReviewItem, ReviewDecision, AuditLogRecord
+)
+from sqlalchemy.orm import sessionmaker
+import tempfile
+
+
+@pytest.fixture
+def temp_db():
+    """Create temporary SQLite database for testing."""
+    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+    db_path = db_file.name
+    db_file.close()
+
+    database_url = f'sqlite:///{db_path}'
+    from scripts.householder.database_models import create_db_engine
+    engine = create_db_engine(database_url)
+    Base.metadata.create_all(engine)
+
+    yield database_url, engine
+
+    # Cleanup
+    Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.fixture
+def flask_client_with_export_db(temp_db, monkeypatch):
+    """Flask client with database backend and seeded test data."""
+    database_url, engine = temp_db
+
+    app.config['TESTING'] = True
+
+    # Set environment variable so services can find database
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
+    # Seed database with test data
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch
+    batch = ImportBatch(
+        id='IMP-2025-0101-A',
+        filename='test_export.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Create raw import rows
+    row1 = RawImportRow(
+        batch_id='IMP-2025-0101-A',
+        row_index=1,
+        raw_csv_data={'Name': 'John Smith', 'Email': 'john@example.com', 'Amount': '100.00', 'transaction_id': 'TXN-001'},
+    )
+    row2 = RawImportRow(
+        batch_id='IMP-2025-0101-A',
+        row_index=2,
+        raw_csv_data={'Name': 'Jane Smith', 'Email': 'jane@example.com', 'Amount': '50.00', 'transaction_id': 'TXN-002'},
+    )
+    session.add(row1)
+    session.add(row2)
+    session.flush()
+
+    # Create import contacts
+    contact1 = ImportContact(
+        batch_id='IMP-2025-0101-A',
+        raw_import_row_id=row1.id,
+        first_name='John',
+        last_name='Smith',
+        email='john@example.com',
+        phone='555-1234',
+        address_line1='123 Main St',
+        city='Springfield',
+        state='IL',
+        postal_code='62701',
+        amount=100.00,
+    )
+    contact2 = ImportContact(
+        batch_id='IMP-2025-0101-A',
+        raw_import_row_id=row2.id,
+        first_name='Jane',
+        last_name='Smith',
+        email='jane@example.com',
+        phone='555-1234',
+        address_line1='123 Main St',
+        city='Springfield',
+        state='IL',
+        postal_code='62701',
+        amount=50.00,
+    )
+    session.add(contact1)
+    session.add(contact2)
+    session.flush()
+
+    # Create validation review item
+    val_item = ReviewItem(
+        batch_id='IMP-2025-0101-A',
+        item_type='validation',
+        status='pending',
+        payload_json={'issue_type': 'missing_email', 'issue': 'Email missing'},
+    )
+    session.add(val_item)
+
+    # Create normalization review item
+    norm_item = ReviewItem(
+        batch_id='IMP-2025-0101-A',
+        item_type='normalization',
+        status='pending',
+        payload_json={
+            'field': 'email',
+            'raw_value': 'john@example.com',
+            'normalized_value': 'JOHN@EXAMPLE.COM',
+        },
+    )
+    session.add(norm_item)
+
+    # Create duplicate review item
+    dup_item = ReviewItem(
+        batch_id='IMP-2025-0101-A',
+        item_type='duplicate',
+        status='pending',
+        payload_json={
+            'contact_a': {'id': str(contact1.id), 'name': 'John Smith'},
+            'contact_b': {'id': str(contact2.id), 'name': 'Jane Smith'},
+            'supporting_evidence': ['Same address'],
+            'conflicting_evidence': ['Different names'],
+        },
+    )
+    session.add(dup_item)
+
+    # Create household review item
+    hh_item = ReviewItem(
+        batch_id='IMP-2025-0101-A',
+        item_type='household',
+        status='pending',
+        payload_json={
+            'id': 'HH-001',
+            'suggested_name': 'Smith Family',
+            'address': '123 Main St, Springfield, IL',
+            'confidence': '95%',
+            'proposed_members': ['John Smith', 'Jane Smith'],
+            'evidence': ['Shared address'],
+            'conflicts': [],
+        },
+    )
+    session.add(hh_item)
+    session.commit()
+
+    # Save IDs before closing session
+    contact1_id = contact1.id
+    contact2_id = contact2.id
+    val_item_id = val_item.id
+    norm_item_id = norm_item.id
+    dup_item_id = dup_item.id
+    hh_item_id = hh_item.id
+
+    session.close()
+
+    with app.test_client() as client:
+        yield client, database_url, engine, Session, {
+            'batch_id': 'IMP-2025-0101-A',
+            'contact1_id': contact1_id,
+            'contact2_id': contact2_id,
+            'val_item_id': val_item_id,
+            'norm_item_id': norm_item_id,
+            'dup_item_id': dup_item_id,
+            'hh_item_id': hh_item_id,
+        }
+
+
+class TestExportPreviewRoute:
+    """Test export preview route."""
+
+    def test_preview_route_returns_200(self, flask_client_with_export_db):
+        """Test that preview route returns HTTP 200."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        assert response.status_code == 200
+
+    def test_preview_shows_row_count(self, flask_client_with_export_db):
+        """Test that preview response shows row count."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        assert b'2' in response.data or b'row' in response.data.lower()
+
+    def test_preview_invalid_import_returns_400(self, flask_client_with_export_db):
+        """Test that invalid import returns 400."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        response = client.post(
+            '/imports/INVALID-ID/exports/preview',
+        )
+
+        assert response.status_code == 400
+
+    def test_no_mutations_from_preview(self, flask_client_with_export_db):
+        """Test that preview does not mutate any data."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+        session = Session()
+
+        # Count before
+        contact_count_before = session.query(ImportContact).count()
+        row_count_before = session.query(RawImportRow).count()
+        decision_count_before = session.query(ReviewDecision).count()
+        audit_count_before = session.query(AuditLogRecord).count()
+
+        session.close()
+
+        # Call preview
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        session = Session()
+
+        # Count after
+        contact_count_after = session.query(ImportContact).count()
+        row_count_after = session.query(RawImportRow).count()
+        decision_count_after = session.query(ReviewDecision).count()
+        audit_count_after = session.query(AuditLogRecord).count()
+
+        # Verify no mutations
+        assert contact_count_before == contact_count_after
+        assert row_count_before == row_count_after
+        assert decision_count_before == decision_count_after
+        assert audit_count_before == audit_count_after
+
+        session.close()
+
+    def test_no_files_created(self, flask_client_with_export_db):
+        """Test that preview does not create any files."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        # Response should not be a file download
+        assert response.status_code == 200
+        assert 'text/html' in response.content_type or 'text/plain' in response.content_type

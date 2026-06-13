@@ -459,3 +459,113 @@ class ExportConsoleViewModel:
             "household_count": self.household_count,
             "recent_exports": list(self.recent_exports),
         }
+
+
+@dataclass(frozen=True)
+class ExportRow:
+    """
+    Single derived export row based on reviewer decisions.
+
+    Represents one contact with original values, applied normalizations,
+    and decision-derived context (groupings, warnings).
+    Frozen dataclass ensures immutability.
+    """
+    source_row_index: Optional[int]
+    transaction_id: Optional[str]
+    first_name: Optional[str]
+    last_name: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    address_line1: Optional[str]
+    address_line2: Optional[str]
+    city: Optional[str]
+    state: Optional[str]
+    postal_code: Optional[str]
+    amount: Optional[str]
+
+    validation_status: str
+    validation_issues: tuple
+    normalized_fields: tuple
+    normalization_warnings: tuple
+
+    duplicate_group_id: Optional[str]
+    duplicate_decision: Optional[str]
+    duplicate_warnings: tuple
+
+    household_group_id: Optional[str]
+    household_group_label: Optional[str]
+    household_members: tuple
+    household_decision: Optional[str]
+    household_warnings: tuple
+
+    export_warnings: tuple
+    export_blocked: bool
+    export_derived_at: 'datetime' = None
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        from datetime import datetime
+        derived_at = self.export_derived_at if isinstance(self.export_derived_at, datetime) else datetime.utcnow()
+        return {
+            "source_row_index": self.source_row_index,
+            "transaction_id": self.transaction_id,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "email": self.email,
+            "phone": self.phone,
+            "address_line1": self.address_line1,
+            "address_line2": self.address_line2,
+            "city": self.city,
+            "state": self.state,
+            "postal_code": self.postal_code,
+            "amount": self.amount,
+            "validation_status": self.validation_status,
+            "validation_issues": self.validation_issues,
+            "normalized_fields": self.normalized_fields,
+            "normalization_warnings": self.normalization_warnings,
+            "duplicate_group_id": self.duplicate_group_id,
+            "duplicate_decision": self.duplicate_decision,
+            "duplicate_warnings": self.duplicate_warnings,
+            "household_group_id": self.household_group_id,
+            "household_group_label": self.household_group_label,
+            "household_members": self.household_members,
+            "household_decision": self.household_decision,
+            "household_warnings": self.household_warnings,
+            "export_warnings": self.export_warnings,
+            "export_blocked": self.export_blocked,
+            "export_derived_at": derived_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True)
+class ExportPreviewResult:
+    """
+    Result of export preview derivation.
+
+    Contains derived export rows, blockers, warnings, and readiness status.
+    Frozen dataclass ensures immutability.
+    """
+    import_id: str
+    export_rows: tuple
+    blockers: tuple
+    warnings: tuple
+    row_count: int
+    blocked_count: int
+    warning_count: int
+    is_export_ready: bool
+    derived_at: 'datetime'
+
+    def to_template_dict(self) -> dict:
+        """Convert to dictionary for template rendering."""
+        from datetime import datetime
+        return {
+            "import_id": self.import_id,
+            "export_rows": [row.to_dict() for row in self.export_rows],
+            "blockers": list(self.blockers),
+            "warnings": list(self.warnings),
+            "row_count": self.row_count,
+            "blocked_count": self.blocked_count,
+            "warning_count": self.warning_count,
+            "is_export_ready": self.is_export_ready,
+            "derived_at": self.derived_at.isoformat() if isinstance(self.derived_at, datetime) else self.derived_at,
+        }

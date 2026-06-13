@@ -1031,6 +1031,28 @@ def import_exports(import_id):
     data = exports_service.get_export_console(import_id)
     return render_template('imports/exports.html', **data)
 
+@app.route('/imports/<import_id>/exports/preview', methods=['POST'])
+def preview_export(import_id):
+    """Generate export preview based on reviewer decisions."""
+    from scripts.householder import export_preview_service
+
+    try:
+        preview = export_preview_service.build_export_preview(import_id)
+        logger.info(f"Export preview generated: {preview.row_count} rows, {preview.blocked_count} blocked")
+
+        # Return preview data in template context
+        data = exports_service.get_export_console(import_id)
+        data['preview'] = preview.to_template_dict()
+        data['preview_available'] = True
+
+        return render_template('imports/exports.html', **data)
+    except ValueError as e:
+        logger.warning(f"Export preview error: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error generating export preview: {str(e)}")
+        return jsonify({'error': 'Error generating preview'}), 500
+
 @app.route('/health')
 def health():
     return jsonify({"status": "ok", "version": "3.0"})
