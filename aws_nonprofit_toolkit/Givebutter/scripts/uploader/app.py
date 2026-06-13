@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect
+from flask import Flask, render_template, request, jsonify, redirect, current_app
 from functools import wraps
 import os
 import json
@@ -1052,6 +1052,60 @@ def preview_export(import_id):
     except Exception as e:
         logger.error(f"Error generating export preview: {str(e)}")
         return jsonify({'error': 'Error generating preview'}), 500
+
+
+@app.route('/imports/<import_id>/exports/generate', methods=['POST'])
+def generate_export(import_id):
+    """Explicitly generate export file from approved preview."""
+    from scripts.householder import export_file_service
+
+    try:
+        reviewer = request.headers.get('X-Reviewer-ID')
+        output_dir = current_app.config.get('EXPORT_OUTPUT_DIR', '/tmp/givebutter/exports')
+
+        result = export_file_service.generate_export_file(
+            import_id=import_id,
+            output_dir=output_dir,
+            reviewer=reviewer,
+        )
+
+        logger.info(f"Export file generated: {import_id} -> {result.filename}")
+
+        return jsonify({
+            "status": "success",
+            "file": result.to_dict()
+        }), 200
+
+    except export_file_service.ExportBlockedError as e:
+        logger.warning(f"Export blocked for {import_id}: {e.message}")
+        return jsonify({
+            "status": "blocked",
+            "error": e.message,
+            "blockers": e.blockers,
+            "blocked_count": e.blocked_count
+        }), 400
+
+    except ValueError as e:
+        logger.warning(f"Export validation error: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+    except export_file_service.ExportError as e:
+        logger.error(f"Export error for {import_id}: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": f"Failed to generate export: {str(e)}"
+        }), 500
+
+    except Exception as e:
+        logger.error(f"Unexpected error generating export: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": "Error generating export"
+        }), 500
+
 
 @app.route('/health')
 def health():

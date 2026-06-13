@@ -24,11 +24,72 @@
     </div>
 </div>
 
+<!-- Export Preview Status -->
+{% if preview_available %}
+<div style="margin-bottom: 30px; padding: 20px; border-radius: 4px; {% if preview.blocked_count > 0 %}background-color: #fee; border-left: 4px solid #dc2626;{% else %}background-color: #f0fdf4; border-left: 4px solid #10b981;{% endif %}">
+    <h3 style="margin-top: 0; margin-bottom: 12px;">
+        {% if preview.blocked_count > 0 %}
+            ⚠️ Export Blocked
+        {% else %}
+            ✓ Export Ready
+        {% endif %}
+    </h3>
+
+    <p style="font-size: 13px; margin-bottom: 12px;">
+        <strong>Preview:</strong> {{ preview.row_count }} rows
+        {% if preview.warning_count > 0 %}
+            | <strong>{{ preview.warning_count }} warning(s)</strong>
+        {% endif %}
+    </p>
+
+    {% if preview.blocked_count > 0 %}
+    <div style="background-color: #fecaca; padding: 12px; border-radius: 3px; margin-bottom: 12px;">
+        <p style="font-size: 12px; color: #7f1d1d; margin: 0 0 8px 0; font-weight: 600;">{{ preview.blocked_count }} unresolved issue(s):</p>
+        <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #7f1d1d;">
+            {% for blocker in preview.blockers %}
+            <li>{{ blocker }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <p style="font-size: 13px; color: #065f46; margin-bottom: 16px;">All critical issues resolved. Click "Generate CSV Export" below to create downloadable file.</p>
+    {% endif %}
+
+    {% if preview.warning_count > 0 %}
+    <div style="background-color: #fef3c7; padding: 12px; border-radius: 3px; margin-bottom: 12px;">
+        <p style="font-size: 12px; color: #78350f; margin: 0 0 8px 0; font-weight: 600;">{{ preview.warning_count }} warning(s):</p>
+        <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #78350f;">
+            {% for warning in preview.warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
 <!-- Primary Action -->
-<div style="margin-bottom: 30px; padding: 20px; background-color: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px;">
-    <h3 style="margin-top: 0; margin-bottom: 12px;">Ready to Export</h3>
-    <p style="font-size: 13px; color: #065f46; margin-bottom: 16px;">All reviewer decisions have been applied to export staging. Generate your export package to download.</p>
-    <button type="button" class="btn btn-primary" onclick="generateExportPackage()" style="font-size: 16px; padding: 12px 24px;">Generate Export Package</button>
+<div style="margin-bottom: 30px; padding: 20px; background-color: #f8f8f8; border-left: 4px solid #2563eb; border-radius: 4px;">
+    <h3 style="margin-top: 0; margin-bottom: 12px;">Generate CSV Export</h3>
+    <p style="font-size: 13px; color: #1f2937; margin-bottom: 16px;">
+        {% if preview_available and preview.blocked_count == 0 %}
+            All reviewer decisions are ready. Generate your CSV export file.
+        {% elif preview_available and preview.blocked_count > 0 %}
+            Resolve the issues above before generating export.
+        {% else %}
+            Generate a preview first to verify export readiness.
+        {% endif %}
+    </p>
+    <button
+        type="button"
+        class="btn btn-primary"
+        id="generate-export-btn"
+        onclick="generateExportFile()"
+        {% if preview_available and preview.blocked_count > 0 %}disabled{% endif %}
+        style="font-size: 16px; padding: 12px 24px; {% if preview_available and preview.blocked_count > 0 %}opacity: 0.6; cursor: not-allowed;{% endif %}"
+    >
+        Generate CSV Export
+    </button>
 </div>
 
 <!-- Export Options Cards -->
@@ -132,5 +193,46 @@ document.querySelectorAll('[data-action="download-export"]').forEach(link => {
         showToast(`↓ Downloading export #${exportId}`);
     });
 });
+
+function generateExportFile() {
+    const btn = document.getElementById('generate-export-btn');
+    const batchId = '{{ batch.id }}';
+
+    // Show loading state
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Generating...';
+
+    fetch(`/imports/${batchId}/exports/generate`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Show success message
+            const file = data.file;
+            showToast(`✓ Export generated: ${file.filename}`);
+            // Refresh page to show generated file
+            setTimeout(() => window.location.reload(), 1500);
+        } else if (data.status === 'blocked') {
+            const blockerList = data.blockers.join('\n  • ');
+            alert(`Export blocked:\n  • ${blockerList}`);
+            btn.disabled = false;
+            btn.textContent = originalText;
+        } else {
+            alert(`Error: ${data.error}`);
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    })
+    .catch(err => {
+        alert(`Failed to generate export: ${err.message}`);
+        btn.disabled = false;
+        btn.textContent = originalText;
+    });
+}
 </script>
 {% endblock %}
