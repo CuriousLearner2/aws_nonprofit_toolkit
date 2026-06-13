@@ -15,11 +15,14 @@ Phase 3-Step 6 is a testing and quality assurance pass verifying that v1.1 is pr
 ## Current Baseline
 
 ### Accepted Features
-- ✓ **Phase 3-Step 1:** Export File Generation (CSV, Audited, No CRM Writeback)
-- ✓ **Phase 3-Step 2:** Export Preview Derivation (Read-Only)
-- ✓ **Phase 3-Step 3:** Export Directory Configuration + Safe Error Handling
+- ✓ **Phase 3-Step 1:** Writeback Boundary Planning
+- ✓ **Phase 3-Step 2:** Export-Only Product Improvement Planning
+- ✓ **Phase 3-Step 3:** P0 Critical Fixes
 - ✓ **Phase 3-Step 4A:** Export Readiness Dashboard
+- ✓ **Phase 3-Step 4B:** Safe Bulk Actions Planning (designed/deferred)
 - ✓ **Phase 3-Step 5:** Documentation + UX Polish
+- Phase 3-Step 6: Testing & QA (current)
+- Phase 3-Step 7: v1.1 Release Closure (next)
 
 ### Test Suite Status
 ```
@@ -145,32 +148,38 @@ grep -r "givebutter\|crm\|api_key\|credentials" scripts/ --exclude-dir=__pycache
 
 **Expected:** Zero external API calls, CSV-only export
 
-#### No Writeback Routes
+#### Export Routes Behavior (Internal Only)
 **Verify:**
-- No POST/PUT/DELETE routes for external systems
-- Export route is read-only (GET)
-- No routes that modify external state
+- Export preview is read-only (GET) — no side effects
+- Export readiness dashboard is read-only (GET) — no side effects
+- Export generation is POST that creates:
+  - One CSV file under EXPORT_OUTPUT_DIR
+  - One AuditLogRecord(action_type='export_generated')
+- Export download streams existing CSV file (no regeneration, no audit record)
+- No external system calls (no Givebutter, CRM, or other external API)
+- No source data mutations during any export operation
 
 **Test:**
-- Check export routes return HTML/CSV (no side effects)
-- Verify download routes don't create database records (except audit)
+- Verify export preview returns 200 OK without side effects
+- Verify export generation creates CSV + audit entry
+- Verify export download streams file without creating new records
+- Verify no CRM/external calls made
 
-**Expected:** All export routes are read-only
+**Expected:** Export operations internal-only, audit-backed
 
-#### Export-Only Language
+#### Export-Only Language Verification
 **Verify:**
-- No "sync", "writeback", "integration" language in UI
-- Documentation emphasizes manual upload required
-- Users clear on CSV-only model
+- User-facing UI copy does not imply sync/writeback/integration is available
+- User-facing copy consistently says "manual CSV export/import"
+- Documentation may mention sync/writeback only to clearly state it is NOT supported or is deferred
+- No false promises about automatic data sync
 
 **Test:**
-```bash
-# Verify forbidden vocabulary not in templates
-grep -r "sync\|writeback\|auto.sync\|automatic.*upload" scripts/uploader/templates/
-# Should find zero matches
-```
+- Manual: Review all UI copy for misleading integration language
+- Automated: Check templates for unsupported features promised to users
+- Verify help text clarifies export-only nature
 
-**Expected:** Clear export-only messaging throughout UI
+**Expected:** Clear, accurate representation of export-only model to users
 
 ---
 
@@ -329,19 +338,20 @@ grep -r "sync\|writeback\|auto.sync\|automatic.*upload" scripts/uploader/templat
 
 ### 6. Error-State Checks
 
-#### Missing Database Configuration
-**Scenario:** Database URL not configured
+#### Database Configuration Behavior
+**Scenario:** Verify database-mode configuration handling
 **Expected behavior:**
-- Application starts (fixture mode available)
-- Routes that require database show clear error message
-- Error message guides to database setup
+- When GIVEBUTTER_DATABASE_URL is configured and valid: database mode works
+- When GIVEBUTTER_DATABASE_URL is missing or invalid: application falls back to fixture mode or shows error
+- Behavior is documented and consistent
 
 **Test:**
-1. Unset GIVEBUTTER_DATABASE_URL
-2. Try accessing database routes
-3. Verify error message is clear and actionable
+- Verify application starts regardless of database configuration
+- Verify database-mode routes work when configured
+- Verify fallback/error behavior is documented and tested
+- Confirm no crashes or silent failures
 
-**Expected:** Clear error, not silent failure
+**Expected:** Consistent, documented behavior for database availability
 
 #### Missing Export Directory
 **Scenario:** Export output directory doesn't exist
@@ -592,20 +602,20 @@ pytest tests/integration/test_upload_ingestion_route.py -v -s
 
 **Testing Complete When:**
 
-- [x] All 1202+ unit and integration tests passing
-- [x] Zero regressions from Phase 3-Step 5 baseline
-- [x] All critical user workflows verified (manual + automated)
-- [x] Export-only guardrails confirmed (no CRM calls, no credentials, no writeback)
-- [x] Data immutability verified (raw rows, contacts unchanged)
-- [x] Audit trail completeness verified (every decision logged)
-- [x] Export preview/readiness/generation/download consistency verified
-- [x] All error states handled clearly (missing DB, missing dir, blocked export, etc.)
-- [x] Path traversal / symlink escape tests pass
-- [x] Documentation accuracy verified (guides, limitations, UX copy)
-- [x] No forbidden vocabulary found (sync, writeback, two-way sync)
-- [x] Performance acceptable (workflows complete in reasonable time)
-- [x] Regression checklist complete
-- [x] All 1202 tests still passing
+- [ ] All 1202+ unit and integration tests passing
+- [ ] Zero regressions from Phase 3-Step 5 baseline
+- [ ] All critical user workflows verified (manual + automated)
+- [ ] Export-only guardrails confirmed (no CRM calls, no credentials, no writeback)
+- [ ] Data immutability verified (raw rows, contacts unchanged)
+- [ ] Audit trail completeness verified (every decision logged)
+- [ ] Export preview/readiness/generation/download consistency verified
+- [ ] All error states handled clearly (missing export dir, blocked export, etc.)
+- [ ] Path traversal / symlink escape tests pass
+- [ ] Documentation accuracy verified (guides, limitations, UX copy)
+- [ ] User-facing copy does not mislead about integration/sync capabilities
+- [ ] Performance acceptable (workflows complete in reasonable time)
+- [ ] Regression checklist complete
+- [ ] All 1202 tests still passing
 
 **Acceptance:** Phase 3-Step 6 is ready when all criteria above are met and QA confirms no blocking issues.
 
@@ -637,16 +647,21 @@ pytest tests/integration/test_upload_ingestion_route.py -v -s
 
 ## Non-Goals (Phase 3-Step 6)
 
-This step is testing & QA only. The following are NOT in scope:
+This step is testing & QA verification. The following are NOT in scope:
 
-- Adding new features
+- Adding new product features
 - Refactoring code
-- Optimizing performance (beyond verifying acceptable)
-- Adding new test coverage (we have 1202 tests already)
+- Performance optimization (beyond verifying acceptable baseline)
 - Changing database schema
 - Implementing deferred features (bulk actions, CRM writeback, etc.)
 - Writing deployment scripts
-- Creating release notes (done in Step 7)
+- Creating release notes (Step 7 task)
+
+**In Scope (Allowed):**
+- Adding or updating tests if QA discovers coverage gaps or regressions
+- Test-only changes that preserve accepted business behavior
+- Documenting discovered issues (not fixing implementation)
+- Verification and measurement (no feature changes)
 
 ---
 
