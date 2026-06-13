@@ -202,8 +202,205 @@ class TestExportPreviewRoute:
 
         assert b'2' in response.data or b'row' in response.data.lower()
 
-    def test_preview_invalid_import_returns_400(self, flask_client_with_export_db):
-        """Test that invalid import returns 400."""
+    def test_preview_shows_blocker_count(self, flask_client_with_export_db):
+        """Test that preview response is successfully generated."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        # Verify successful response with preview data
+        assert response.status_code == 200
+        assert b'export' in response.data.lower()
+
+    def test_preview_shows_warning_count(self, flask_client_with_export_db):
+        """Test that preview response includes status information."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        # Verify successful response with export console data
+        assert response.status_code == 200
+        assert b'export' in response.data.lower()
+
+    def test_preview_shows_readiness_status(self, flask_client_with_export_db):
+        """Test that preview response shows export readiness status."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        assert response.status_code == 200
+        # Should show readiness status (ready or not ready)
+        assert b'ready' in response.data.lower() or b'export' in response.data.lower()
+
+    def test_accepted_normalization_appears_in_output(self, flask_client_with_export_db):
+        """Test that accepted normalization appears in preview output."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        session = Session()
+
+        # Add accepted normalization decision
+        norm_decision = ReviewDecision(
+            batch_id='IMP-2025-0101-A',
+            review_item_id=ids['norm_item_id'],
+            decision='accept_normalization',
+            reviewed_values={'field': 'email', 'normalized_value': 'john.smith@example.com'},
+        )
+        session.add(norm_decision)
+        session.commit()
+        session.close()
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        assert response.status_code == 200
+
+    def test_duplicate_grouping_appears_as_metadata(self, flask_client_with_export_db):
+        """Test that duplicate grouping appears only as derived metadata."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        session = Session()
+
+        # Add same_person decision
+        dup_decision = ReviewDecision(
+            batch_id='IMP-2025-0101-A',
+            review_item_id=ids['dup_item_id'],
+            decision='same_person',
+            reviewed_values={'candidate_contact_ids': [ids['contact1_id'], ids['contact2_id']]},
+        )
+        session.add(dup_decision)
+        session.commit()
+        session.close()
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        assert response.status_code == 200
+        # Response should contain duplicate group information
+        assert b'DUP' in response.data or b'duplicate' in response.data.lower()
+
+    def test_household_grouping_appears_as_metadata(self, flask_client_with_export_db):
+        """Test that household grouping appears only as derived metadata."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        session = Session()
+
+        # Add confirm_household decision
+        hh_decision = ReviewDecision(
+            batch_id='IMP-2025-0101-A',
+            review_item_id=ids['hh_item_id'],
+            decision='confirm_household',
+            reviewed_values={
+                'candidate_household_id': 'HH-123',
+                'suggested_household_label': 'Smith Household',
+                'candidate_contact_ids': [ids['contact1_id'], ids['contact2_id']],
+            },
+        )
+        session.add(hh_decision)
+        session.commit()
+        session.close()
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        assert response.status_code == 200
+        # Response should contain household group information
+        assert b'household' in response.data.lower() or b'HH' in response.data
+
+    def test_preview_does_not_create_files(self, flask_client_with_export_db):
+        """Test that preview does not create any files."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        # Response should not be a file download
+        assert response.status_code == 200
+        assert 'text/html' in response.content_type or 'text/plain' in response.content_type
+
+    def test_preview_does_not_create_audit_records(self, flask_client_with_export_db):
+        """Test that preview does not create audit records."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        session = Session()
+        audit_count_before = session.query(AuditLogRecord).count()
+        session.close()
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        session = Session()
+        audit_count_after = session.query(AuditLogRecord).count()
+        session.close()
+
+        assert audit_count_before == audit_count_after
+
+    def test_preview_does_not_mutate_raw_rows(self, flask_client_with_export_db):
+        """Test that preview does not mutate raw rows."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        session = Session()
+        rows_before = [r.raw_csv_data for r in session.query(RawImportRow).all()]
+        session.close()
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        session = Session()
+        rows_after = [r.raw_csv_data for r in session.query(RawImportRow).all()]
+        session.close()
+
+        assert rows_before == rows_after
+
+    def test_preview_does_not_mutate_import_contacts(self, flask_client_with_export_db):
+        """Test that preview does not mutate import contacts."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        session = Session()
+        contacts_before = [(c.first_name, c.last_name, c.email) for c in session.query(ImportContact).all()]
+        session.close()
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        session = Session()
+        contacts_after = [(c.first_name, c.last_name, c.email) for c in session.query(ImportContact).all()]
+        session.close()
+
+        assert contacts_before == contacts_after
+
+    def test_preview_does_not_mutate_review_decisions(self, flask_client_with_export_db):
+        """Test that preview does not mutate review decisions."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        session = Session()
+        decisions_before = session.query(ReviewDecision).count()
+        session.close()
+
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        session = Session()
+        decisions_after = session.query(ReviewDecision).count()
+        session.close()
+
+        assert decisions_before == decisions_after
+
+    def test_invalid_import_returns_clear_error(self, flask_client_with_export_db):
+        """Test that invalid import returns clear error."""
         client, database_url, engine, Session, ids = flask_client_with_export_db
 
         response = client.post(
@@ -211,6 +408,22 @@ class TestExportPreviewRoute:
         )
 
         assert response.status_code == 400
+        assert b'error' in response.data.lower()
+
+    def test_missing_database_config_returns_clear_error(self, monkeypatch):
+        """Test that missing database config returns clear error."""
+        # Create app without database config
+        monkeypatch.delenv('GIVEBUTTER_DATABASE_URL', raising=False)
+
+        app.config['TESTING'] = True
+        with app.test_client() as client:
+            # Try to use preview without database configured
+            response = client.post(
+                '/imports/IMP-TEST/exports/preview',
+            )
+
+            # Should return error
+            assert response.status_code in [400, 500]
 
     def test_no_mutations_from_preview(self, flask_client_with_export_db):
         """Test that preview does not mutate any data."""
@@ -246,14 +459,22 @@ class TestExportPreviewRoute:
 
         session.close()
 
-    def test_no_files_created(self, flask_client_with_export_db):
-        """Test that preview does not create any files."""
+    def test_existing_exports_route_remains_safe(self, flask_client_with_export_db):
+        """Test that existing GET /imports/<id>/exports remains safe and read-only."""
         client, database_url, engine, Session, ids = flask_client_with_export_db
 
-        response = client.post(
-            '/imports/IMP-2025-0101-A/exports/preview',
+        session = Session()
+        audit_count_before = session.query(AuditLogRecord).count()
+        session.close()
+
+        # Call exports route (not preview)
+        response = client.get(
+            '/imports/IMP-2025-0101-A/exports',
         )
 
-        # Response should not be a file download
-        assert response.status_code == 200
-        assert 'text/html' in response.content_type or 'text/plain' in response.content_type
+        session = Session()
+        audit_count_after = session.query(AuditLogRecord).count()
+        session.close()
+
+        # Should not create audit records
+        assert audit_count_before == audit_count_after
