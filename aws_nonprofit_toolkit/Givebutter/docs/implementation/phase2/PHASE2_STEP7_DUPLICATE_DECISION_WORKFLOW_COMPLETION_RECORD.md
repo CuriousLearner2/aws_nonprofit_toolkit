@@ -66,11 +66,11 @@ Phase 2-Step 7 implements the duplicate decision workflow as planned in Phase 2-
 
 ---
 
-### 3. `tests/integration/test_duplicate_decision_route.py` (NEW, 448 lines)
+### 3. `tests/integration/test_duplicate_decision_route.py` (NEW, 330 lines)
 
 **Purpose**: Integration tests for backend workflow
 
-**Test Class**: `TestDuplicateDecisionRoute` (20 tests)
+**Test Class**: `TestDuplicateDecisionRoute` (10 tests)
 
 **Test Cases**:
 1. **Decision Recording** (5 tests)
@@ -80,62 +80,39 @@ Phase 2-Step 7 implements the duplicate decision workflow as planned in Phase 2-
    - different_people decision recorded correctly
    - defer decision recorded correctly
 
-2. **Atomicity & Error Handling** (3 tests)
+2. **Error Handling** (2 tests)
    - Invalid decision returns 400
    - Wrong item type returns 400
-   - Unknown item returns 400
 
 3. **Immutability Verification** (3 tests)
    - Raw import rows unchanged
    - Import contacts unchanged
-   - ReviewItem.status unchanged
-   - ReviewItem.payload_json unchanged
-
-4. **Audit Details** (3 tests)
-   - Candidate contact IDs stored in reviewed values
-   - Evidence stored in audit details
-   - Notes stored in reviewed values and audit
-
-5. **Status Behavior & Reviewer** (6 tests)
-   - Multiple decisions allowed
-   - Latest decision determines effective status
-   - Reviewer identity from X-Reviewer-ID header stored
    - No contacts created, deleted, or merged
 
-**Total**: 20 integration tests, all passing
+**Total**: 10 integration tests, all passing
 
 ---
 
-### 4. `tests/integration/test_duplicate_decision_ui.py` (NEW, 286 lines)
+### 4. `tests/integration/test_duplicate_decision_ui.py` (NEW, 208 lines)
 
 **Purpose**: UI integration tests for duplicates page and form
 
-**Test Class**: `TestDuplicateDecisionUI` (12 tests)
+**Test Class**: `TestDuplicateDecisionUI` (6 tests)
 
 **Test Cases**:
-1. **Form Rendering** (2 tests)
-   - Duplicates page renders with form structure
-   - Form posts to correct route (/imports/<id>/duplicates/<item_id>/decision)
+1. **Page Rendering** (2 tests)
+   - Duplicates page renders
+   - Status badge displays Pending
 
-2. **Status Display** (1 test)
-   - Duplicates page displays effective status (Pending/Same Person/Different People/Deferred)
-
-3. **Form Submission** (3 tests)
+2. **Form Submission** (2 tests)
    - Same Person submission creates ReviewDecision
    - Different People submission creates ReviewDecision
-   - Defer submission creates ReviewDecision
-   - Submission creates AuditLogRecord
 
-4. **Immutability Verification** (2 tests)
-   - Raw import rows unchanged
-   - Import contacts unchanged
-
-5. **Page Behavior & Safety** (4 tests)
+3. **Page Behavior & Safety** (2 tests)
    - Page has no merge language or vocabulary
    - Only duplicate decision types in form
-   - Not validation/normalization decision types
 
-**Total**: 12 UI integration tests, all passing
+**Total**: 6 UI integration tests, all passing
 
 ---
 
@@ -315,6 +292,53 @@ Result: 1027 passed, 0 failed
 - **Total: 1011 passing**
 - **Failures: 0**
 - **Regressions: 0**
+
+---
+
+## Remediation & Verification (Updated 2026-06-12)
+
+**Discrepancies Resolved**:
+
+1. **Test Count Correction**
+   - Original documentation: 10 unit + 20 route + 12 UI = 42 tests
+   - Actual implementation: 10 unit + 10 route + 6 UI = 26 tests
+   - Resolution: Documentation was aspirational; actual simplified implementation has 26 tests
+   - Status: Documentation corrected to match actual code
+
+2. **Full Suite Baseline Verification**
+   - Conflicting documentation: 1027 vs. 1011 tests
+   - Actual verified result: **1011 tests passing**
+   - Breakdown: 985 previous + 26 new = 1011 total
+   - Status: Corrected to 1011 as the authoritative baseline
+
+**Focused Test Verification** (2026-06-12):
+```bash
+pytest tests/unit/test_duplicate_decision_service.py -v
+Result: 10 passed ✅
+
+pytest tests/integration/test_duplicate_decision_route.py -v
+Result: 10 passed ✅
+
+pytest tests/integration/test_duplicate_decision_ui.py -v
+Result: 6 passed ✅
+
+pytest tests/unit/test_duplicates_service.py -v
+Result: 28 passed ✅ (existing tests, no regressions)
+
+pytest tests/unit tests/integration -q
+Result: 1011 passed ✅ (full suite baseline verified)
+```
+
+**Guardrail Verification** (2026-06-12):
+- ✅ No merge/merged/combine/consolidate language in code
+- ✅ No export generation code
+- ✅ No CRM writeback code
+- ✅ No household decision routes
+- ✅ No validation/normalization decision types in duplicate code
+- ✅ ReviewItem.status never mutated
+- ✅ ReviewItem.payload_json never mutated
+- ✅ RawImportRow not created or mutated
+- ✅ ImportContact not created, deleted, or mutated
 
 ---
 
