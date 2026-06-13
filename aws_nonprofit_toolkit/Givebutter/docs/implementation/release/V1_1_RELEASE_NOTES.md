@@ -214,7 +214,7 @@ v1.1 maintains strict boundaries:
 
 ✓ **No CRM/Givebutter API calls** — Export-only  
 ✓ **No credentials required** — No external auth  
-✓ **No writeback routes** — Export routes read-only  
+✓ **No writeback routes** — No routes write to CRM/Givebutter or external systems. Preview, readiness, and download are read-only; export generation only creates a local CSV artifact and an AuditLogRecord(action_type='export_generated')  
 ✓ **No auth/RBAC changes** — Uses existing context  
 ✓ **No bulk actions** — Individual decisions only  
 ✓ **No background jobs** — Synchronous operations  
