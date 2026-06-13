@@ -30,6 +30,7 @@ class ValidationDecisionWriter(Protocol):
         review_item_id: int,
         decision: str,
         notes: Optional[str] = None,
+        reviewed_values: Optional[dict] = None,
         reviewer: Optional[str] = None,
     ) -> ValidationDecisionResult:
         """
@@ -40,6 +41,8 @@ class ValidationDecisionWriter(Protocol):
             review_item_id: ReviewItem.id to decide on
             decision: One of 'accept_issue', 'dismiss_issue', 'defer'
             notes: Optional context for the decision
+            reviewed_values: Optional dict of field corrections (e.g., {'name': 'John Doe', 'email': 'john@example.com'})
+                           Stored as metadata without mutating raw data.
             reviewer: Reviewer identifier (name or email)
 
         Returns:

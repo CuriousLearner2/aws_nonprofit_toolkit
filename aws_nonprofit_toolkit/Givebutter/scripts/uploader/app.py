@@ -943,6 +943,67 @@ def record_validation_decision(import_id, review_item_id):
         logger.error(f"Error recording validation decision: {str(e)}")
         return jsonify({'error': 'Error recording decision'}), 500
 
+
+@app.route('/imports/<import_id>/validation/<int:review_item_id>/save-correction', methods=['POST'])
+def save_validation_correction(import_id, review_item_id):
+    """Save inline corrections for validation issue without mutating raw data.
+
+    Stores reviewed_values (corrections) in ReviewDecision as metadata.
+    Raw import data remains immutable.
+    """
+    data = request.get_json() or {}
+    reviewed_values = data.get('reviewed_values', {})
+    reviewer = request.headers.get('X-Reviewer-ID') or None
+
+    try:
+        result = validation_decision_service.record_validation_decision(
+            import_id=import_id,
+            review_item_id=review_item_id,
+            decision='accept_issue',
+            reviewed_values=reviewed_values,
+            reviewer=reviewer,
+        )
+        logger.info(f"Validation correction saved for item {review_item_id}: {reviewed_values}")
+        return jsonify({
+            'success': True,
+            'decision_id': result.decision_id,
+            'effective_status': result.effective_status,
+            'message': 'Correction saved successfully'
+        }), 200
+    except ValueError as e:
+        logger.warning(f"Validation error saving correction: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error saving validation correction: {str(e)}")
+        return jsonify({'error': 'Error saving correction'}), 500
+
+
+@app.route('/imports/<import_id>/validation/<int:review_item_id>/defer', methods=['POST'])
+def defer_validation_item(import_id, review_item_id):
+    """Defer a validation issue for later review."""
+    reviewer = request.headers.get('X-Reviewer-ID') or None
+
+    try:
+        result = validation_decision_service.record_validation_decision(
+            import_id=import_id,
+            review_item_id=review_item_id,
+            decision='defer',
+            reviewer=reviewer,
+        )
+        logger.info(f"Validation item {review_item_id} deferred for later review")
+        return jsonify({
+            'success': True,
+            'decision_id': result.decision_id,
+            'effective_status': result.effective_status,
+            'message': 'Item deferred successfully'
+        }), 200
+    except ValueError as e:
+        logger.warning(f"Validation error deferring item: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error deferring validation item: {str(e)}")
+        return jsonify({'error': 'Error deferring item'}), 500
+
 @app.route('/imports/<import_id>/normalizations')
 def import_normalizations(import_id):
     """Field normalization suggestions."""

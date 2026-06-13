@@ -52,6 +52,7 @@ class DatabaseValidationDecisionWriter:
         review_item_id: int,
         decision: str,
         notes: Optional[str] = None,
+        reviewed_values: Optional[dict] = None,
         reviewer: Optional[str] = None,
     ) -> ValidationDecisionResult:
         """
@@ -60,7 +61,7 @@ class DatabaseValidationDecisionWriter:
         Workflow:
         1. Validate inputs (batch exists, item exists, item type is 'validation')
         2. Begin transaction
-        3. Insert ReviewDecision
+        3. Insert ReviewDecision (with reviewed_values if provided)
         4. Insert AuditLogRecord
         5. Commit transaction
         6. Derive effective status
@@ -71,6 +72,8 @@ class DatabaseValidationDecisionWriter:
             review_item_id: ReviewItem.id
             decision: One of 'accept_issue', 'dismiss_issue', 'defer'
             notes: Optional notes
+            reviewed_values: Optional dict of field corrections (e.g., {'name': 'John Doe', 'email': 'john@example.com'})
+                           Stored as metadata without mutating raw data.
             reviewer: Reviewer identifier
 
         Returns:
@@ -105,15 +108,17 @@ class DatabaseValidationDecisionWriter:
                 )
 
             # Create ReviewDecision
-            reviewed_values = None
+            # Merge reviewed_values from parameter with notes
+            stored_values = reviewed_values.copy() if reviewed_values else {}
             if notes:
-                reviewed_values = {'notes': notes}
+                stored_values['notes'] = notes
+            final_reviewed_values = stored_values if stored_values else None
 
             decision_record = ReviewDecision(
                 batch_id=batch_id,
                 review_item_id=review_item_id,
                 decision=decision,
-                reviewed_values=reviewed_values,
+                reviewed_values=final_reviewed_values,
                 reviewer=reviewer,
                 created_at=datetime.utcnow(),
             )
@@ -139,6 +144,7 @@ class DatabaseValidationDecisionWriter:
                 'decision_type': 'validation_decision',
                 'decision_value': decision,
                 'notes': notes,
+                'reviewed_values': reviewed_values,
                 'prior_status': prior_status,
                 'effective_status': effective_status,
             }

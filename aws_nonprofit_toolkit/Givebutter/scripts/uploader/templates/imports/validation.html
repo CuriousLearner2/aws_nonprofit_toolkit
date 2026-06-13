@@ -27,40 +27,85 @@
             <tr>
                 <th style="width: 40px;"><input type="checkbox" id="select-all"></th>
                 <th style="width: 80px;">Transaction ID</th>
-                <th style="width: 80px;">Date</th>
-                <th style="width: 120px;">Name</th>
-                <th style="width: 140px;">Email</th>
-                <th style="width: 100px;">Phone</th>
-                <th style="width: 80px;">Amount</th>
-                <th style="width: 140px;">Address</th>
-                <th style="width: 100px;">Validation Status</th>
-                <th style="width: 80px;">Action</th>
+                <th style="width: 70px;">Date</th>
+                <th style="width: 100px;">Name</th>
+                <th style="width: 110px;">Email</th>
+                <th style="width: 90px;">Phone</th>
+                <th style="width: 70px;">Amount</th>
+                <th style="width: 100px;">Address</th>
+                <th style="width: 80px;">Status</th>
+                <th style="width: 120px;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for record in validation_issues %}
-            <tr>
+            <tr data-record-id="{{ record.id }}" class="validation-row">
                 <td><input type="checkbox" class="row-selector" data-record-id="{{ record.id }}"></td>
-                <td>{{ record.id }}</td>
-                <td style="color: #666;">{{ record.date }}</td>
-                <td style="font-weight: 500;">{{ record.name }}</td>
-                <td style="color: #666;">{{ record.email }}</td>
-                <td style="color: #666;">{{ record.phone }}</td>
-                <td style="text-align: right;">{{ record.amount }}</td>
-                <td style="color: #666; font-size: 12px;">{{ record.address }}</td>
+                <td style="font-weight: 500; background-color: #f9fafb;">{{ record.id }}</td>
+
+                <!-- Inline Editable: Date -->
+                <td>
+                    <input type="text" class="inline-edit-field" data-field="date" data-record-id="{{ record.id }}"
+                           value="{{ record.date or '' }}" placeholder="YYYY-MM-DD"
+                           style="width: 65px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                </td>
+
+                <!-- Inline Editable: Name -->
+                <td>
+                    <input type="text" class="inline-edit-field" data-field="name" data-record-id="{{ record.id }}"
+                           value="{{ record.name or '' }}" placeholder="First Last"
+                           style="width: 95px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                </td>
+
+                <!-- Inline Editable: Email -->
+                <td>
+                    <input type="text" class="inline-edit-field" data-field="email" data-record-id="{{ record.id }}"
+                           value="{{ record.email or '' }}" placeholder="email@example.com"
+                           style="width: 105px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                </td>
+
+                <!-- Inline Editable: Phone -->
+                <td>
+                    <input type="text" class="inline-edit-field" data-field="phone" data-record-id="{{ record.id }}"
+                           value="{{ record.phone or '' }}" placeholder="(555) 555-5555"
+                           style="width: 85px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                </td>
+
+                <!-- Inline Editable: Amount -->
+                <td>
+                    <input type="text" class="inline-edit-field" data-field="amount" data-record-id="{{ record.id }}"
+                           value="{{ record.amount or '' }}" placeholder="0.00"
+                           style="width: 65px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; text-align: right; box-sizing: border-box;">
+                </td>
+
+                <!-- Inline Editable: Address -->
+                <td>
+                    <input type="text" class="inline-edit-field" data-field="address" data-record-id="{{ record.id }}"
+                           value="{{ record.address or '' }}" placeholder="Street, City, State"
+                           style="width: 95px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                </td>
+
+                <!-- Status Badge -->
                 <td>
                     {% if record.effective_status == 'pending' %}
-                    <span style="background-color: #e5e7eb; color: #374151; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Pending</span>
+                    <span style="background-color: #e5e7eb; color: #374151; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Pending</span>
                     {% elif record.effective_status == 'accepted' %}
-                    <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Accepted</span>
+                    <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Accepted</span>
                     {% elif record.effective_status == 'dismissed' %}
-                    <span style="background-color: #fed7aa; color: #9a3412; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Dismissed</span>
+                    <span style="background-color: #fed7aa; color: #9a3412; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Dismissed</span>
                     {% elif record.effective_status == 'deferred' %}
-                    <span style="background-color: #bfdbfe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Deferred</span>
+                    <span style="background-color: #bfdbfe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Deferred</span>
                     {% endif %}
                 </td>
-                <td>
-                    <a href="#" class="table-action" data-action="inspect-record" data-record-id="{{ record.id }}">Inspect</a>
+
+                <!-- Row Actions -->
+                <td style="white-space: nowrap;">
+                    <button type="button" class="btn-save-correction" data-record-id="{{ record.id }}"
+                            style="padding: 3px 6px; background-color: #10b981; color: white; border: none; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 600; margin-right: 3px;">Save</button>
+                    <button type="button" class="btn-defer" data-record-id="{{ record.id }}"
+                            style="padding: 3px 6px; background-color: #6b7280; color: white; border: none; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 600; margin-right: 3px;">Defer</button>
+                    <a href="#" class="table-action" data-action="inspect-record" data-record-id="{{ record.id }}"
+                       style="padding: 3px 6px; background-color: #3b82f6; color: white; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 600; text-decoration: none; display: inline-block;">Detail</a>
                 </td>
             </tr>
             {% endfor %}
@@ -104,6 +149,8 @@
 </div>
 
 <script>
+const batchId = '{{ batch.id }}';
+
 document.getElementById('select-all').addEventListener('change', function() {
     const checkboxes = document.querySelectorAll('input[type="checkbox"].row-selector');
     checkboxes.forEach(cb => cb.checked = this.checked);
@@ -121,30 +168,120 @@ document.querySelectorAll('input[type="checkbox"].row-selector').forEach(cb => {
     cb.addEventListener('change', updateSelectionCount);
 });
 
+// Save inline correction
+document.querySelectorAll('.btn-save-correction').forEach(btn => {
+    btn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        const recordId = this.getAttribute('data-record-id');
+        const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
+        if (!row) return;
+
+        // Collect edited values from inline inputs
+        const editedValues = {};
+        const fields = ['date', 'name', 'email', 'phone', 'amount', 'address'];
+        fields.forEach(field => {
+            const input = row.querySelector(`.inline-edit-field[data-field="${field}"]`);
+            if (input) {
+                editedValues[field] = input.value.trim();
+            }
+        });
+
+        // Send to backend
+        try {
+            const response = await fetch(`/imports/${batchId}/validation/${recordId}/save-correction`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ reviewed_values: editedValues }),
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                // Update status badge
+                const statusCell = row.querySelector('td:nth-child(9)');
+                if (statusCell && result.effective_status) {
+                    const statusMap = {
+                        'accepted': { bg: '#dcfce7', color: '#166534', text: 'Accepted' },
+                        'dismissed': { bg: '#fed7aa', color: '#9a3412', text: 'Dismissed' },
+                        'pending': { bg: '#e5e7eb', color: '#374151', text: 'Pending' },
+                        'deferred': { bg: '#bfdbfe', color: '#1e40af', text: 'Deferred' },
+                    };
+                    const style = statusMap[result.effective_status] || statusMap['pending'];
+                    statusCell.innerHTML = `<span style="background-color: ${style.bg}; color: ${style.color}; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">${style.text}</span>`;
+                }
+                alert('Correction saved!');
+            } else {
+                alert('Error saving correction: ' + response.statusText);
+            }
+        } catch (error) {
+            alert('Error saving correction: ' + error.message);
+        }
+    });
+});
+
+// Defer action
+document.querySelectorAll('.btn-defer').forEach(btn => {
+    btn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        const recordId = this.getAttribute('data-record-id');
+        const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
+        if (!row) return;
+
+        try {
+            const response = await fetch(`/imports/${batchId}/validation/${recordId}/defer`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                // Update status badge to Deferred
+                const statusCell = row.querySelector('td:nth-child(9)');
+                if (statusCell) {
+                    statusCell.innerHTML = `<span style="background-color: #bfdbfe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Deferred</span>`;
+                }
+                alert('Record deferred for later review');
+            } else {
+                alert('Error deferring record: ' + response.statusText);
+            }
+        } catch (error) {
+            alert('Error deferring record: ' + error.message);
+        }
+    });
+});
+
+// Inspect/Detail modal (updated to extract from inline inputs)
 document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
     link.addEventListener('click', function(e) {
         e.preventDefault();
         const recordId = this.getAttribute('data-record-id');
 
         // Find the row with this record ID
-        const row = document.querySelector(`tr td input[data-record-id="${recordId}"]`)?.closest('tr');
+        const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
         if (!row) return;
 
-        // Extract record data from table row
-        const cells = row.querySelectorAll('td');
-        const transactionId = cells[1]?.textContent?.trim() || '';
-        const date = cells[2]?.textContent?.trim() || '';
-        const name = cells[3]?.textContent?.trim() || '';
-        const email = cells[4]?.textContent?.trim() || '';
-        const phone = cells[5]?.textContent?.trim() || '';
-        const amount = cells[6]?.textContent?.trim() || '';
-        const address = cells[7]?.textContent?.trim() || '';
-        const statusSpan = cells[8]?.querySelector('span');
+        // Extract record data from inline inputs
+        const transactionId = row.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
+        const dateInput = row.querySelector(`.inline-edit-field[data-field="date"]`);
+        const date = dateInput ? dateInput.value : '';
+        const nameInput = row.querySelector(`.inline-edit-field[data-field="name"]`);
+        const name = nameInput ? nameInput.value : '';
+        const emailInput = row.querySelector(`.inline-edit-field[data-field="email"]`);
+        const email = emailInput ? emailInput.value : '';
+        const phoneInput = row.querySelector(`.inline-edit-field[data-field="phone"]`);
+        const phone = phoneInput ? phoneInput.value : '';
+        const amountInput = row.querySelector(`.inline-edit-field[data-field="amount"]`);
+        const amount = amountInput ? amountInput.value : '';
+        const addressInput = row.querySelector(`.inline-edit-field[data-field="address"]`);
+        const address = addressInput ? addressInput.value : '';
+        const statusSpan = row.querySelector('td:nth-child(9) span');
         const status = statusSpan?.textContent?.trim() || 'Pending';
 
         // Build modal content with record details and decision form
         const modalBody = document.getElementById('modal-record-content');
-        const batchId = '{{ batch.id }}';
 
         modalBody.innerHTML = `
             <div style="margin-bottom: 20px;">

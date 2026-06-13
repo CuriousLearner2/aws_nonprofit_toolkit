@@ -17,6 +17,7 @@ def record_validation_decision(
     review_item_id: int,
     decision: str,
     notes: Optional[str] = None,
+    reviewed_values: Optional[Mapping[str, Any]] = None,
     reviewer: Optional[str] = None,
     config: Optional[Mapping[str, Any]] = None,
 ) -> ValidationDecisionResult:
@@ -32,6 +33,8 @@ def record_validation_decision(
         review_item_id: ReviewItem.id to decide on
         decision: One of 'accept_issue', 'dismiss_issue', 'defer'
         notes: Optional context or explanation
+        reviewed_values: Optional dict of field corrections (e.g., {'name': 'John Doe', 'email': 'john@example.com'})
+                        Stored as metadata without mutating raw data.
         reviewer: Reviewer identifier (name or email); defaults to None for anonymous
         config: Optional configuration mapping for database selection.
                If None, uses environment variables.
@@ -60,6 +63,7 @@ def record_validation_decision(
         review_item_id=review_item_id,
         decision=decision,
         notes=notes,
+        reviewed_values=reviewed_values,
         reviewer=reviewer,
     )
 
