@@ -893,6 +893,20 @@ def import_dashboard(import_id):
                          batch=dashboard_data['batch'],
                          queue_status=dashboard_data['queue_status'])
 
+@app.route('/imports/<import_id>/readiness')
+def import_readiness(import_id):
+    """Export readiness dashboard."""
+    from scripts.householder import readiness_service
+    try:
+        readiness = readiness_service.get_export_readiness(import_id)
+        return render_template('imports/readiness.html', **readiness.to_template_dict())
+    except ValueError as e:
+        logger.warning(f"Readiness error for {import_id}: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Unexpected error loading readiness: {str(e)}")
+        return jsonify({'error': 'Error loading readiness'}), 500
+
 @app.route('/imports/<import_id>/duplicates')
 def import_duplicates(import_id):
     """Possible duplicates review."""

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Export Readiness — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Export Readiness Dashboard</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Progress:</strong> {{ batch.progress }}% complete</p>
+
+<div class="safety-strip">Batch-level readiness status. Raw import data stays unchanged.</div>
+
+<!-- Main Readiness Status -->
+{% if readiness.is_export_ready %}
+<div style="margin-bottom: 30px; padding: 24px; background-color: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px;">
+    <h2 style="margin-top: 0; color: #065f46;">✓ Export Ready</h2>
+    <p style="font-size: 14px; color: #065f46; margin-bottom: 16px;">
+        This batch has <strong>{{ readiness.staged_records }} records</strong> staged for export.
+        All validation issues resolved. Ready to generate CSV export.
+    </p>
+    <a href="/imports/{{ batch.id }}/exports" class="btn btn-primary" style="text-decoration: none;">Open Export Console</a>
+</div>
+{% else %}
+<div style="margin-bottom: 30px; padding: 24px; background-color: #fef2f2; border-left: 4px solid #dc2626; border-radius: 4px;">
+    <h2 style="margin-top: 0; color: #7f1d1d;">⚠️ Export Blocked</h2>
+    <p style="font-size: 14px; color: #7f1d1d; margin-bottom: 16px;">
+        <strong>{{ readiness.blocker_count }} blocker(s)</strong> prevent export.
+        Resolve issues in the review queues below.
+    </p>
+
+    {% if readiness.blockers %}
+    <div style="background-color: #fecaca; padding: 12px; border-radius: 3px; margin-bottom: 12px;">
+        <p style="font-size: 13px; color: #7f1d1d; margin: 0 0 8px 0; font-weight: 600;">Blockers:</p>
+        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #7f1d1d;">
+            {% for blocker in readiness.blockers %}
+            <li style="margin-bottom: 4px;">{{ blocker }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <p style="font-size: 13px; color: #7f1d1d; margin-bottom: 0;">
+        <strong>Next step:</strong> Go to the review queues below to resolve blocking issues.
+    </p>
+</div>
+{% endif %}
+
+<!-- Warnings (if any) -->
+{% if readiness.warning_count > 0 %}
+<div style="margin-bottom: 30px; padding: 16px; background-color: #fffbeb; border-left: 3px solid #f59e0b; border-radius: 4px;">
+    <p style="font-size: 13px; color: #92400e; margin: 0 0 8px 0; font-weight: 600;">{{ readiness.warning_count }} warning(s)</p>
+    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #92400e;">
+        {% for warning in readiness.warnings %}
+        <li style="margin-bottom: 4px;">{{ warning }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- Review Queue Status -->
+<div style="margin-bottom: 30px;">
+    <h3>Review Queues</h3>
+    <p style="font-size: 13px; color: #666; margin-bottom: 16px;">Complete remaining review work to reach export-ready status.</p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        <!-- Validation Review -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                <div>
+                    <h4 style="margin: 0; font-size: 14px;">Validation Review</h4>
+                    <p style="margin: 0; font-size: 12px; color: #666;">Resolve invalid records</p>
+                </div>
+                <span style="background-color: {% if queue_status.validation_issues > 0 %}#fee2e2{% else %}#dcfce7{% endif %}; color: {% if queue_status.validation_issues > 0 %}#991b1b{% else %}#166534{% endif %}; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">{{ queue_status.validation_issues }}</span>
+            </div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                {% if queue_status.validation_issues > 0 %}
+                    {{ queue_status.validation_issues }} issue(s) pending review
+                {% else %}
+                    All records validated ✓
+                {% endif %}
+            </p>
+            <a href="/imports/{{ batch.id }}/validation" class="btn btn-secondary" style="width: 100%; text-align: center; text-decoration: none; padding: 8px; font-size: 13px;">Review Records</a>
+        </div>
+
+        <!-- Duplicates -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                <div>
+                    <h4 style="margin: 0; font-size: 14px;">Possible Duplicates</h4>
+                    <p style="margin: 0; font-size: 12px; color: #666;">Mark same/different</p>
+                </div>
+                <span style="background-color: {% if queue_status.duplicates_pending > 0 %}#fef3c7{% else %}#dcfce7{% endif %}; color: {% if queue_status.duplicates_pending > 0 %}#78350f{% else %}#166534{% endif %}; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">{{ queue_status.duplicates_pending }}</span>
+            </div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                {% if queue_status.duplicates_pending > 0 %}
+                    {{ queue_status.duplicates_pending }} pair(s) pending
+                {% else %}
+                    All duplicates decided ✓
+                {% endif %}
+            </p>
+            <a href="/imports/{{ batch.id }}/duplicates" class="btn btn-secondary" style="width: 100%; text-align: center; text-decoration: none; padding: 8px; font-size: 13px;">Review Duplicates</a>
+        </div>
+
+        <!-- Normalizations -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                <div>
+                    <h4 style="margin: 0; font-size: 14px;">Normalizations</h4>
+                    <p style="margin: 0; font-size: 12px; color: #666;">Accept/reject cleanup</p>
+                </div>
+                <span style="background-color: {% if queue_status.normalizations_pending > 0 %}#dbeafe{% else %}#dcfce7{% endif %}; color: {% if queue_status.normalizations_pending > 0 %}#0c4a6e{% else %}#166534{% endif %}; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">{{ queue_status.normalizations_pending }}</span>
+            </div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                {% if queue_status.normalizations_pending > 0 %}
+                    {{ queue_status.normalizations_pending }} suggestion(s) pending
+                {% else %}
+                    All suggestions decided ✓
+                {% endif %}
+            </p>
+            <a href="/imports/{{ batch.id }}/normalizations" class="btn btn-secondary" style="width: 100%; text-align: center; text-decoration: none; padding: 8px; font-size: 13px;">Review Normalizations</a>
+        </div>
+
+        <!-- Households -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                <div>
+                    <h4 style="margin: 0; font-size: 14px;">Households</h4>
+                    <p style="margin: 0; font-size: 12px; color: #666;">Confirm groupings</p>
+                </div>
+                <span style="background-color: {% if queue_status.households_pending > 0 %}#dcfce7{% else %}#dcfce7{% endif %}; color: {% if queue_status.households_pending > 0 %}#166534{% else %}#166534{% endif %}; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600;">{{ queue_status.households_pending }}</span>
+            </div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                {% if queue_status.households_pending > 0 %}
+                    {{ queue_status.households_pending }} suggestion(s) pending
+                {% else %}
+                    All groupings confirmed ✓
+                {% endif %}
+            </p>
+            <a href="/imports/{{ batch.id }}/households" class="btn btn-secondary" style="width: 100%; text-align: center; text-decoration: none; padding: 8px; font-size: 13px;">Review Households</a>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom Navigation -->
+<hr style="margin: 30px 0;">
+
+<div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+    {% if readiness.is_export_ready %}
+    <a href="/imports/{{ batch.id }}/exports" class="btn btn-primary" style="text-decoration: none;">Open Export Console</a>
+    {% else %}
+    <a href="/imports/{{ batch.id }}/validation" class="btn btn-primary" style="text-decoration: none;">Start Review</a>
+    {% endif %}
+    <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
+    <a href="/imports" class="btn btn-secondary" style="text-decoration: none;">Back to Imports</a>
+</div>
+
+<!-- Safety Information -->
+<div style="margin-top: 30px; padding: 16px; background-color: #f8f8f8; border-left: 3px solid #0ea5e9; border-radius: 3px;">
+    <p style="font-size: 12px; color: #666; margin: 0; line-height: 1.6;">
+        <strong>Readiness status is read-only and derived from your review decisions.</strong>
+        Raw import records remain unchanged. No data is written to Givebutter or any CRM.
+    </p>
+</div>
+
+{% endblock %}
