@@ -115,10 +115,11 @@
             <thead>
                 <tr>
                     <th>Filename</th>
-                    <th style="width: 120px;">Type</th>
+                    <th style="width: 80px;">Type</th>
                     <th style="width: 120px;">Generated</th>
-                    <th style="width: 100px;">Size</th>
-                    <th style="width: 80px;"></th>
+                    <th style="width: 80px;">Rows</th>
+                    <th style="width: 80px;">Warnings</th>
+                    <th style="width: 100px;"></th>
                 </tr>
             </thead>
             <tbody>
@@ -127,9 +128,10 @@
                     <td style="font-weight: 500; color: #2563eb;">{{ export.filename }}</td>
                     <td style="font-size: 13px;">{{ export.export_type }}</td>
                     <td style="font-size: 13px; color: #666;">{{ export.generated_timestamp }}</td>
-                    <td style="font-size: 13px; color: #666;">{{ export.file_size }}</td>
+                    <td style="font-size: 13px; color: #666; text-align: right;">{{ export.row_count }}</td>
+                    <td style="font-size: 13px; color: {% if export.warning_count > 0 %}#fca5a5{% else %}#9ca3af{% endif %}; text-align: right;">{{ export.warning_count }}</td>
                     <td style="text-align: center;">
-                        <a href="#" class="table-action" data-action="download-export" data-export-id="{{ export.id }}">Download</a>
+                        <a href="/imports/{{ batch.id }}/exports/download/{{ export.audit_log_id }}" class="table-action" data-action="download-export" data-audit-log-id="{{ export.audit_log_id }}">Download</a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -188,9 +190,8 @@
 <script>
 document.querySelectorAll('[data-action="download-export"]').forEach(link => {
     link.addEventListener('click', function(e) {
-        e.preventDefault();
-        const exportId = this.getAttribute('data-export-id');
-        showToast(`↓ Downloading export #${exportId}`);
+        const auditLogId = this.getAttribute('data-audit-log-id');
+        showToast(`↓ Downloading export #${auditLogId}`);
     });
 });
 

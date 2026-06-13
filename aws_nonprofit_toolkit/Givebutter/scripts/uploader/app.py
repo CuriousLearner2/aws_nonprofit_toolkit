@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, current_app
+from flask import Flask, render_template, request, jsonify, redirect, current_app, send_file
 from functools import wraps
 import os
 import json
@@ -1105,6 +1105,46 @@ def generate_export(import_id):
             "status": "error",
             "error": "Error generating export"
         }), 500
+
+
+@app.route('/imports/<import_id>/exports/download/<int:audit_log_id>')
+def download_export(import_id, audit_log_id):
+    """Download previously generated export file."""
+    from scripts.householder import export_download_service
+
+    try:
+        output_dir = current_app.config.get('EXPORT_OUTPUT_DIR', '/tmp/givebutter/exports')
+
+        download_info = export_download_service.get_export_download_info(
+            import_id=import_id,
+            audit_log_id=audit_log_id,
+            export_dir=output_dir,
+        )
+
+        logger.info(f"Export download: {import_id} audit={audit_log_id} file={download_info.filename}")
+
+        return send_file(
+            download_info.file_path,
+            as_attachment=True,
+            download_name=download_info.filename,
+            mimetype=download_info.content_type,
+        )
+
+    except export_download_service.ExportNotFoundError as e:
+        logger.warning(f"Export not found: {import_id} audit={audit_log_id}")
+        return jsonify({"error": "Export not found"}), 404
+
+    except export_download_service.ExportAccessError as e:
+        logger.warning(f"Access denied for export: {import_id} audit={audit_log_id}")
+        return jsonify({"error": "Access denied"}), 403
+
+    except export_download_service.ExportPathError as e:
+        logger.warning(f"Path error for export: {import_id} audit={audit_log_id}")
+        return jsonify({"error": "File not found"}), 404
+
+    except Exception as e:
+        logger.error(f"Download error: {str(e)}")
+        return jsonify({"error": "Download failed"}), 500
 
 
 @app.route('/health')
