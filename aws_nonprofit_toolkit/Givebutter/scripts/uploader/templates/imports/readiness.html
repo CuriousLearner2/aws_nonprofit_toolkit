@@ -6,7 +6,10 @@
 <h1>Export Readiness Dashboard</h1>
 <p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Progress:</strong> {{ batch.progress }}% complete</p>
 
-<div class="safety-strip">Batch-level readiness status. Raw import data stays unchanged.</div>
+<div class="safety-strip">
+  <strong>Export readiness check:</strong> Verifies all review decisions are complete. Raw import data stays unchanged. Manual CSV export required.
+  <a href="/docs/user-guide/export-only-workflow" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">View workflow guide</a>
+</div>
 
 <!-- Main Readiness Status -->
 {% if readiness.is_export_ready %}

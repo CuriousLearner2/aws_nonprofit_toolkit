@@ -6,7 +6,10 @@
 <h1>Import Dashboard</h1>
 <p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Source:</strong> {{ batch.filename }} | <strong>Progress:</strong> {{ batch.progress }}% complete</p>
 
-<div class="safety-strip">Review queues by action type. All decisions are logged to the audit trail.</div>
+<div class="safety-strip">
+  <strong>Review workflow:</strong> Complete each queue in any order. All decisions are logged to the audit trail. Raw import data stays unchanged.
+  <a href="/docs/user-guide/export-only-workflow" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">View workflow guide</a>
+</div>
 
 <!-- Queue Status Cards -->
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px;">
