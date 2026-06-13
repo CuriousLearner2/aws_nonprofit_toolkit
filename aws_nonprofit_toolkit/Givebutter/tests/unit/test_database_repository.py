@@ -2932,3 +2932,103 @@ class TestDatabaseRepositoryBoundaryChecks:
         # This will fail because database is empty, but verifies no ORM leak
         # actual test is in return type verification above
         assert repo is not None
+
+
+class TestRecentExportsLimit:
+    """Test P0 fix: recent exports query limited to 50 records."""
+
+    @pytest.fixture
+    def temp_db_with_many_exports(self):
+        """Create temp database with 60+ audit log entries for export_generated actions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_file = Path(tmpdir) / "test.db"
+            db_url = f"sqlite:///{db_file}"
+
+            engine = create_engine(db_url)
+            Base.metadata.create_all(engine)
+            SessionLocal = sessionmaker(bind=engine)
+            session = SessionLocal()
+
+            # Create batch
+            batch = ImportBatch(
+                id='IMP-2025-0101-A',
+                filename='test_exports.csv',
+                upload_timestamp=datetime.utcnow(),
+                uploader='test_user'
+            )
+            session.add(batch)
+            session.flush()
+
+            # Create 60 audit log entries for export_generated (to test limit of 50)
+            base_time = datetime.utcnow()
+            for i in range(60):
+                # Create entries with descending timestamps (newest first)
+                timestamp = base_time - timedelta(seconds=i)
+                record = AuditLogRecord(
+                    batch_id='IMP-2025-0101-A',
+                    action_type='export_generated',
+                    action_timestamp=timestamp,
+                    actor='test_reviewer',
+                    details={
+                        'filename': f'export_{60-i:03d}.csv',
+                        'export_type': 'csv',
+                        'row_count': 100 + i,
+                        'warning_count': i % 5
+                    }
+                )
+                session.add(record)
+
+            session.commit()
+            session.close()
+
+            yield db_url
+
+    def test_get_recent_exports_limited_to_50(self, temp_db_with_many_exports):
+        """Test that get_recent_exports returns at most 50 records."""
+        from scripts.householder.exports_service import get_recent_exports
+
+        result = get_recent_exports('IMP-2025-0101-A', config={'GIVEBUTTER_DATABASE_URL': temp_db_with_many_exports})
+
+        # Should return exactly 50, not all 60
+        assert len(result) == 50
+        assert all(isinstance(r, dict) for r in result)
+
+    def test_get_recent_exports_newest_first_ordering(self, temp_db_with_many_exports):
+        """Test that get_recent_exports returns entries sorted newest first by timestamp."""
+        from scripts.householder.exports_service import get_recent_exports
+        from datetime import datetime
+
+        result = get_recent_exports('IMP-2025-0101-A', config={'GIVEBUTTER_DATABASE_URL': temp_db_with_many_exports})
+
+        # Verify ordering: entries sorted by timestamp, newest first
+        assert len(result) == 50
+
+        # Parse timestamps and verify descending order (newest first)
+        for i in range(len(result) - 1):
+            current_iso = result[i]['generated_at']
+            next_iso = result[i + 1]['generated_at']
+
+            # Parse ISO timestamps
+            current_time = datetime.fromisoformat(current_iso)
+            next_time = datetime.fromisoformat(next_iso)
+
+            # Current should be >= next (newest first)
+            assert current_time >= next_time, f"Should be sorted newest first: {current_time} >= {next_time}"
+
+    def test_get_recent_exports_includes_metadata(self, temp_db_with_many_exports):
+        """Test that get_recent_exports includes all required metadata."""
+        from scripts.householder.exports_service import get_recent_exports
+
+        result = get_recent_exports('IMP-2025-0101-A', config={'GIVEBUTTER_DATABASE_URL': temp_db_with_many_exports})
+
+        assert len(result) > 0
+        export = result[0]
+
+        # Verify all required fields present
+        assert 'audit_log_id' in export
+        assert 'filename' in export
+        assert 'export_type' in export
+        assert 'generated_at' in export
+        assert 'generated_timestamp' in export
+        assert 'row_count' in export
+        assert 'warning_count' in export

@@ -368,3 +368,56 @@ def test_no_external_system_calls_made(client, sample_export_result, tmp_path):
         response = client.post('/imports/IMP-TEST-001/exports/generate')
 
         assert response.status_code == 200
+
+
+# P0 Fix Tests: Better blocked export messaging
+
+def test_blocked_export_includes_actionable_next_steps(client, tmp_path):
+    """P0 fix: blocked export error includes 'Go to Validation Review' action."""
+    from scripts.uploader.app import app as flask_app
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    blockers = ["Missing required email", "Invalid phone format"]
+    error = ExportBlockedError(blockers=blockers, blocked_count=2)
+
+    with patch('scripts.householder.export_file_service.generate_export_file', side_effect=error):
+        response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+        assert response.status_code == 400
+        data = response.get_json()
+
+        # Verify response structure
+        assert data['status'] == 'blocked'
+        assert 'action' in data
+        assert 'Validation Review' in data['action']
+        assert 'blockers' in data
+        assert len(data['blockers']) == 2
+
+        # Verify error message includes detailed context
+        assert 'error' in data
+        assert 'Missing required email' in data['error']
+        assert 'Invalid phone format' in data['error']
+
+
+def test_blocked_export_error_message_format(client, tmp_path):
+    """P0 fix: blocked export error message is formatted with clear structure."""
+    from scripts.uploader.app import app as flask_app
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    blockers = ["Issue 1", "Issue 2"]
+    error = ExportBlockedError(blockers=blockers, blocked_count=2)
+
+    with patch('scripts.householder.export_file_service.generate_export_file', side_effect=error):
+        response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+        data = response.get_json()
+
+        # Verify error message contains Blockers: header and resolution guidance
+        assert 'Blockers:' in data['error']
+        assert 'Resolve these issues in Validation Review' in data['error']

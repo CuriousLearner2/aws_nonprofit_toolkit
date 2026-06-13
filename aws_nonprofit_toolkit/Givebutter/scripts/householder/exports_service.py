@@ -80,13 +80,13 @@ def get_recent_exports(import_id: str, config: Optional[Mapping[str, Any]] = Non
         session = SessionLocal()
 
         try:
-            # Query audit records for export_generated actions
+            # Query audit records for export_generated actions (limit to 50 most recent)
             records = session.query(AuditLogRecord).filter_by(
                 batch_id=import_id,
                 action_type="export_generated"
             ).order_by(
                 AuditLogRecord.action_timestamp.desc()  # Newest first
-            ).all()
+            ).limit(50).all()
 
             # Convert to template-ready format
             exports = []

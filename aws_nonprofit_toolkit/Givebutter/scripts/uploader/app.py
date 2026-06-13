@@ -1057,11 +1057,22 @@ def preview_export(import_id):
 @app.route('/imports/<import_id>/exports/generate', methods=['POST'])
 def generate_export(import_id):
     """Explicitly generate export file from approved preview."""
+    import os
     from scripts.householder import export_file_service
 
     try:
         reviewer = request.headers.get('X-Reviewer-ID')
         output_dir = current_app.config.get('EXPORT_OUTPUT_DIR', '/tmp/givebutter/exports')
+
+        # Validate export directory is configured and writable
+        if not output_dir:
+            raise ValueError("Export directory is not configured. Set EXPORT_OUTPUT_DIR environment variable.")
+
+        if not os.path.exists(output_dir):
+            raise ValueError(f"Export directory does not exist: {output_dir}")
+
+        if not os.access(output_dir, os.W_OK):
+            raise ValueError(f"Export directory is not writable: {output_dir}")
 
         result = export_file_service.generate_export_file(
             import_id=import_id,
@@ -1078,9 +1089,13 @@ def generate_export(import_id):
 
     except export_file_service.ExportBlockedError as e:
         logger.warning(f"Export blocked for {import_id}: {e.message}")
+        blockers_text = "\n  • ".join(e.blockers) if e.blockers else "Unknown"
+        detailed_message = f"{e.message}\n\nBlockers:\n  • {blockers_text}\n\nResolve these issues in Validation Review before generating a CSV export."
         return jsonify({
             "status": "blocked",
-            "error": e.message,
+            "error": detailed_message,
+            "message": "Export blocked — unresolved validation issues remain.",
+            "action": "Go to Validation Review",
             "blockers": e.blockers,
             "blocked_count": e.blocked_count
         }), 400
