@@ -620,6 +620,7 @@ class DatabaseImportRepository:
                         evidence=(),
                         conflicts=(),
                         status='Pending',
+                        effective_status='pending',
                     ),
                     current_household_index=1,
                     total_households=0,
@@ -667,6 +668,22 @@ class DatabaseImportRepository:
                 if isinstance(conflicts, list):
                     conflicts = tuple(conflicts)
 
+                # Derive effective status from latest ReviewDecision
+                latest_decision = (
+                    session.query(ReviewDecision)
+                    .filter_by(review_item_id=first_item.id)
+                    .order_by(ReviewDecision.created_at.desc())
+                    .first()
+                )
+                effective_status = 'pending'
+                if latest_decision:
+                    status_map = {
+                        'confirm_household': 'confirmed',
+                        'reject_household': 'rejected',
+                        'defer': 'deferred',
+                    }
+                    effective_status = status_map.get(latest_decision.decision, 'pending')
+
                 current_household = HouseholdRow(
                     id=payload.get('id', str(first_item.id)),
                     suggested_name=payload.get('suggested_name', ''),
@@ -676,6 +693,7 @@ class DatabaseImportRepository:
                     evidence=evidence,
                     conflicts=conflicts,
                     status=payload.get('status', 'Pending'),
+                    effective_status=effective_status,
                 )
             else:
                 # No households - return empty household
@@ -688,6 +706,7 @@ class DatabaseImportRepository:
                     evidence=(),
                     conflicts=(),
                     status='Pending',
+                    effective_status='pending',
                 )
 
             return HouseholdPageViewModel(

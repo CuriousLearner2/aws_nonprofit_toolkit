@@ -15,6 +15,7 @@ from .write_repository_contracts import (
     ValidationDecisionResult, ValidationDecisionWriter,
     NormalizationDecisionResult, NormalizationDecisionWriter,
     DuplicateDecisionResult, DuplicateDecisionWriter,
+    HouseholdDecisionResult, HouseholdDecisionWriter,
 )
 
 
@@ -616,6 +617,223 @@ class DatabaseDuplicateDecisionWriter:
         status_map = {
             'same_person': 'same_person',
             'different_people': 'different_people',
+            'defer': 'deferred',
+        }
+        return status_map.get(prior.decision, 'pending')
+
+
+class DatabaseHouseholdDecisionWriter:
+    """Implement HouseholdDecisionWriter for database backend."""
+
+    def __init__(self, database_url: str = 'sqlite:///./givebutter.db'):
+        """
+        Initialize write repository with database connection string.
+
+        Args:
+            database_url: Database connection URL
+        """
+        self.database_url = database_url
+
+    def create_household_decision(
+        self,
+        batch_id: str,
+        review_item_id: int,
+        decision: str,
+        notes: Optional[str] = None,
+        reviewer: Optional[str] = None,
+    ) -> HouseholdDecisionResult:
+        """
+        Create a household decision and audit log entry atomically.
+
+        Workflow:
+        1. Validate inputs (batch exists, item exists, item type is 'household')
+        2. Extract household/member details from ReviewItem.payload_json
+        3. Begin transaction
+        4. Insert ReviewDecision
+        5. Insert AuditLogRecord
+        6. Commit transaction
+        7. Derive effective status
+        8. Return result
+
+        Args:
+            batch_id: Import batch ID
+            review_item_id: ReviewItem.id
+            decision: One of 'confirm_household', 'reject_household', 'defer'
+            notes: Optional notes
+            reviewer: Reviewer identifier
+
+        Returns:
+            HouseholdDecisionResult
+
+        Raises:
+            ValueError: If validation fails
+            Exception: If database transaction fails
+        """
+        import json
+
+        session = get_db_session(self.database_url)
+        try:
+            # Validation: Import batch exists
+            batch = session.query(ImportBatch).filter_by(id=batch_id).first()
+            if not batch:
+                raise ValueError(f"Import batch '{batch_id}' not found")
+
+            # Validation: Review item exists
+            item = session.query(ReviewItem).filter_by(id=review_item_id).first()
+            if not item:
+                raise ValueError(f"Review item {review_item_id} not found")
+
+            # Validation: Item belongs to this batch
+            if item.batch_id != batch_id:
+                raise ValueError(
+                    f"Review item {review_item_id} does not belong to batch '{batch_id}'"
+                )
+
+            # Validation: Item type is 'household'
+            if item.item_type != 'household':
+                raise ValueError(
+                    f"Review item {review_item_id} is not a household item (type: {item.item_type})"
+                )
+
+            # Extract household and member details from payload_json
+            payload = item.payload_json
+            if not isinstance(payload, dict):
+                payload = json.loads(payload) if isinstance(payload, str) else {}
+
+            candidate_household_id = payload.get('id')
+            suggested_household_label = payload.get('suggested_name')
+            address = payload.get('address')
+            basis = payload.get('evidence', [])
+            proposed_members = payload.get('proposed_members', [])
+            proposed_members_count = len(proposed_members) if isinstance(proposed_members, list) else 0
+
+            # Extract candidate contact IDs from proposed_members if available
+            candidate_contact_ids = []
+            if isinstance(proposed_members, list):
+                for member in proposed_members:
+                    if isinstance(member, str):
+                        # Format: "John Smith (TXN-001)" or "Contact-123"
+                        import re
+                        match = re.search(r'\(([^)]+)\)', member)
+                        if match:
+                            candidate_contact_ids.append(match.group(1))
+
+            # Build reviewed_values from household data
+            reviewed_values = {
+                'candidate_household_id': candidate_household_id,
+                'candidate_contact_ids': candidate_contact_ids,
+                'suggested_household_label': suggested_household_label,
+                'address': address,
+                'basis': basis if isinstance(basis, list) else [],
+                'proposed_members_count': proposed_members_count,
+            }
+            if notes:
+                reviewed_values['notes'] = notes
+
+            decision_record = ReviewDecision(
+                batch_id=batch_id,
+                review_item_id=review_item_id,
+                decision=decision,
+                reviewed_values=reviewed_values,
+                reviewer=reviewer,
+                created_at=datetime.utcnow(),
+            )
+            session.add(decision_record)
+            session.flush()  # Flush to get the ID
+
+            decision_id = decision_record.id
+            now = datetime.utcnow()
+
+            # Create AuditLogRecord
+            # Determine prior status (from latest previous decision)
+            prior_status = self._get_prior_status(session, review_item_id, decision_id)
+
+            # Determine effective status (what it is now after this decision)
+            status_map = {
+                'confirm_household': 'confirmed',
+                'reject_household': 'rejected',
+                'defer': 'deferred',
+            }
+            effective_status = status_map.get(decision, 'pending')
+
+            audit_details = {
+                'decision_type': 'household_decision',
+                'decision_value': decision,
+                'candidate_household_id': candidate_household_id,
+                'candidate_contact_ids': candidate_contact_ids,
+                'suggested_household_label': suggested_household_label,
+                'address': address,
+                'basis': basis if isinstance(basis, list) else [],
+                'proposed_members_count': proposed_members_count,
+                'notes': notes,
+                'prior_status': prior_status,
+                'effective_status': effective_status,
+            }
+
+            audit_record = AuditLogRecord(
+                batch_id=batch_id,
+                action_type='decision_recorded',
+                action_timestamp=now,
+                actor=reviewer,
+                item_id=review_item_id,
+                decision_id=decision_id,
+                details=audit_details,
+                created_at=now,
+            )
+            session.add(audit_record)
+            session.flush()  # Flush to get the ID
+
+            audit_id = audit_record.id
+
+            # Commit transaction
+            session.commit()
+
+            return HouseholdDecisionResult(
+                decision_id=decision_id,
+                review_item_id=review_item_id,
+                decision=decision,
+                effective_status=effective_status,
+                audit_log_id=audit_id,
+                timestamp=now,
+            )
+
+        except ValueError:
+            # Validation errors: rollback and re-raise
+            session.rollback()
+            raise
+        except Exception as e:
+            # Unexpected errors: rollback and wrap
+            session.rollback()
+            raise RuntimeError(f"Error recording household decision: {str(e)}") from e
+        finally:
+            session.close()
+
+    def _get_prior_status(self, session: Session, review_item_id: int, exclude_decision_id: int) -> str:
+        """
+        Get the effective status before the most recent decision.
+
+        Args:
+            session: Active database session
+            review_item_id: ReviewItem.id
+            exclude_decision_id: Decision ID to exclude (current decision)
+
+        Returns:
+            Prior effective status, or 'pending' if no prior decisions
+        """
+        prior = (
+            session.query(ReviewDecision)
+            .filter_by(review_item_id=review_item_id)
+            .filter(ReviewDecision.id != exclude_decision_id)
+            .order_by(ReviewDecision.created_at.desc())
+            .first()
+        )
+
+        if not prior:
+            return 'pending'
+
+        status_map = {
+            'confirm_household': 'confirmed',
+            'reject_household': 'rejected',
             'defer': 'deferred',
         }
         return status_map.get(prior.decision, 'pending')

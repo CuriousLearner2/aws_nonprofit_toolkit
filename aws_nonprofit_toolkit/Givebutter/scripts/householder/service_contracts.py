@@ -228,6 +228,7 @@ class HouseholdRow:
     evidence: tuple  # Tuple of evidence strings
     conflicts: tuple  # Tuple of conflict strings
     status: str = "Pending"
+    effective_status: str = "pending"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -240,6 +241,7 @@ class HouseholdRow:
             "evidence": self.evidence,
             "conflicts": self.conflicts,
             "status": self.status,
+            "effective_status": self.effective_status,
         }
 
 

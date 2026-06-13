@@ -134,3 +134,45 @@ class DuplicateDecisionWriter(Protocol):
             DatabaseError: If transaction fails
         """
         ...
+
+
+@dataclass(frozen=True)
+class HouseholdDecisionResult:
+    """Result of recording a household decision."""
+    decision_id: int
+    review_item_id: int
+    decision: str
+    effective_status: str
+    audit_log_id: int
+    timestamp: datetime
+
+
+class HouseholdDecisionWriter(Protocol):
+    """Protocol for writing household decisions."""
+
+    def create_household_decision(
+        self,
+        batch_id: str,
+        review_item_id: int,
+        decision: str,
+        notes: Optional[str] = None,
+        reviewer: Optional[str] = None,
+    ) -> HouseholdDecisionResult:
+        """
+        Create a household decision and audit log entry.
+
+        Args:
+            batch_id: Import batch ID
+            review_item_id: ReviewItem.id to decide on
+            decision: One of 'confirm_household', 'reject_household', 'defer'
+            notes: Optional context for the decision
+            reviewer: Reviewer identifier (name or email)
+
+        Returns:
+            HouseholdDecisionResult with decision details
+
+        Raises:
+            ValueError: If validation fails (unknown import, unknown item, invalid decision, wrong type)
+            DatabaseError: If transaction fails
+        """
+        ...
