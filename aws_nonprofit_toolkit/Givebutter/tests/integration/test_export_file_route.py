@@ -421,3 +421,107 @@ def test_blocked_export_error_message_format(client, tmp_path):
         # Verify error message contains Blockers: header and resolution guidance
         assert 'Blockers:' in data['error']
         assert 'Resolve these issues in Validation Review' in data['error']
+
+
+# Export Directory Configuration Tests
+
+def test_missing_export_output_dir_config(client):
+    """P0 fix: missing EXPORT_OUTPUT_DIR produces clear actionable error."""
+    from scripts.uploader.app import app as flask_app
+
+    # Remove or unset EXPORT_OUTPUT_DIR
+    if 'EXPORT_OUTPUT_DIR' in flask_app.config:
+        del flask_app.config['EXPORT_OUTPUT_DIR']
+
+    response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+    assert response.status_code == 500
+    data = response.get_json()
+
+    # Verify clear message about configuration
+    assert 'Export directory' in data['error'] or 'EXPORT_OUTPUT_DIR' in data['error']
+
+
+def test_nonexistent_export_directory(client, tmp_path):
+    """P0 fix: non-existent export directory produces clear error."""
+    from scripts.uploader.app import app as flask_app
+
+    # Set config to a directory that doesn't exist
+    nonexistent_dir = str(tmp_path / "does" / "not" / "exist")
+    flask_app.config['EXPORT_OUTPUT_DIR'] = nonexistent_dir
+
+    response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+    assert response.status_code == 500
+    data = response.get_json()
+
+    # Verify error message mentions the directory problem
+    assert 'does not exist' in data['error'] or 'Export directory' in data['error']
+
+
+def test_unwritable_export_directory(client, tmp_path):
+    """P0 fix: unwritable export directory produces clear error."""
+    from scripts.uploader.app import app as flask_app
+    import stat
+
+    # Create directory with no write permissions
+    restricted_dir = tmp_path / "restricted"
+    restricted_dir.mkdir()
+    restricted_path = str(restricted_dir)
+
+    # Remove write permissions
+    os.chmod(restricted_path, stat.S_IRUSR | stat.S_IXUSR)  # read + execute only
+
+    flask_app.config['EXPORT_OUTPUT_DIR'] = restricted_path
+
+    try:
+        response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+        assert response.status_code == 500
+        data = response.get_json()
+
+        # Verify error message mentions write access
+        assert 'writable' in data['error'] or 'write' in data['error'].lower() or 'Export directory' in data['error']
+    finally:
+        # Restore permissions for cleanup
+        os.chmod(restricted_path, stat.S_IRWXU)
+
+
+def test_blocked_export_creates_no_audit_record(client, tmp_path):
+    """P0 guardrail: blocked export does not create audit log entry."""
+    from scripts.uploader.app import app as flask_app
+    from scripts.householder.database_models import AuditLogRecord
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    blockers = ["Unresolved validation"]
+    error = ExportBlockedError(blockers=blockers, blocked_count=1)
+
+    with patch('scripts.householder.export_file_service.generate_export_file', side_effect=error):
+        response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+        assert response.status_code == 400
+        # Verify no file was written or audit logged
+        assert len(os.listdir(export_dir)) == 0
+
+
+def test_failed_export_creates_no_csv_file(client, tmp_path):
+    """P0 guardrail: failed export does not write CSV file."""
+    from scripts.uploader.app import app as flask_app
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    error = ExportIOError("File write failed")
+
+    with patch('scripts.householder.export_file_service.generate_export_file', side_effect=error):
+        response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+        assert response.status_code == 500
+        # Verify no files were written to export directory
+        assert len(os.listdir(export_dir)) == 0
