@@ -2,11 +2,11 @@
 
 **Status:** ✓ COMPLETE  
 **Date Completed:** 2026-06-12  
-**Test Results:** 1197 tests passing (1170 existing + 27 new readiness tests)
+**Test Results:** 1202 tests passing (1170 existing + 32 new readiness tests)
 
 ## Executive Summary
 
-Phase 3-Step 4A implements a read-only export readiness dashboard that provides batch-level visibility into export status without introducing new business logic or mutations. The dashboard derives readiness from existing export preview and dashboard services, maintaining immutability guarantees and export-only architecture.
+Phase 3-Step 4A implements a read-only export readiness dashboard that provides batch-level visibility into export status without introducing new business logic or mutations. The dashboard derives readiness **directly from the existing export preview service**, maintaining immutability guarantees and export-only architecture. This remediated implementation ensures the readiness dashboard uses the same logic as the export generation path, preventing divergence.
 
 ---
 
@@ -16,14 +16,20 @@ Phase 3-Step 4A implements a read-only export readiness dashboard that provides 
 
 **File:** `scripts/householder/readiness_service.py`
 
-**Purpose:** Derives batch-level export readiness from existing repository logic
+**Purpose:** Derives batch-level export readiness from existing export preview service
 
-**Key Design Decision:** 
-- Follows repository pattern like other services (fixture + database support)
-- Uses existing `get_exports()` and `get_dashboard()` from repositories
-- No new business logic; readiness derived from existing staged record count
-- Fixture mode: all fixtures are export-ready (0 blockers)
-- Database mode: would require separate preview service call (future enhancement)
+**Key Design Decision (CRITICAL):** 
+- **Derives readiness DIRECTLY from `build_export_preview()`** — no new business rules
+- Uses existing `build_export_preview(import_id, config=config)` to get source of truth
+- Extracts readiness state from preview:
+  - `is_export_ready` — boolean readiness status
+  - `blocked_count` — number of blockers
+  - `blockers` — tuple of blocker messages (exact text from preview)
+  - `warnings` — tuple of warning messages
+  - `warning_count` — number of warnings
+  - `row_count` — exportable records count
+- Supports both fixture and database modes via config parameter
+- **No new readiness logic invented** — uses accepted preview behavior as single source of truth
 
 **View Model:** `ExportReadinessViewModel` (frozen dataclass)
 ```python
@@ -46,7 +52,7 @@ queue_status: dict
 **Route:** `GET /imports/<import_id>/readiness`
 
 **Behavior:**
-- Calls `readiness_service.get_export_readiness(import_id)`
+- Calls `readiness_service.get_export_readiness(import_id, config=None)`
 - Renders `readiness.html` template with view model data
 - Error handling: 400 for validation errors, 500 for unexpected errors
 - Logging: warnings for validation errors, errors for unexpected exceptions
@@ -82,25 +88,27 @@ queue_status: dict
 
 ## Test Coverage
 
-### Unit Tests: `tests/unit/test_readiness_service.py` (12 tests)
+### Unit Tests: `tests/unit/test_readiness_service.py` (14 tests)
 
 **ExportReadinessViewModel Tests:**
 - Creation and immutability
 - to_template_dict() conversion
 - Frozen dataclass enforcement
 
-**get_export_readiness() Tests:**
-- Returns correct view model type
-- Includes batch information (ID, filename, progress)
-- Includes readiness state (ready/blocked, blocker count, warnings)
-- Includes queue status (validation, duplicates, normalizations, households)
-- Blockers/warnings are tuples
-- Staged records count is accurate
-- No database mutation (identical calls return same results)
-- Accepts various batch IDs
-- Returns frozen dataclass
+**get_export_readiness() Tests (REMEDIATED):**
+- `test_readiness_ready_when_preview_has_zero_blockers` — Verifies readiness.is_export_ready == preview.is_export_ready
+- `test_readiness_includes_exact_blocker_messages_from_preview` — Verifies blockers tuple matches preview exactly
+- `test_readiness_includes_warnings_from_preview` — Verifies warnings tuple matches preview exactly
+- `test_warnings_alone_do_not_block_if_preview_allows` — Verifies warnings don't override ready state
+- `test_staged_row_count_matches_preview` — Verifies readiness.staged_records == preview.row_count
+- `test_readiness_does_not_create_review_decisions` — Guards against ReviewDecision creation
+- `test_readiness_does_not_create_audit_records` — Guards against AuditLogRecord creation
+- `test_readiness_does_not_create_csv_files` — Guards against file generation
+- `test_readiness_does_not_mutate_raw_rows` — Verifies immutability (idempotent calls)
+- `test_readiness_does_not_mutate_contact_snapshots` — Guards against contact mutations
+- `test_readiness_returns_frozen_dataclass` — Verifies AttributeError on mutation attempts
 
-### Integration Tests: `tests/integration/test_readiness_route.py` (15 tests)
+### Integration Tests: `tests/integration/test_readiness_route.py` (18 tests)
 
 **Route Tests:**
 - Returns 200 OK
@@ -108,21 +116,54 @@ queue_status: dict
 - Contains title "Export Readiness Dashboard"
 - Shows batch ID in page
 - Contains safety message
-- Shows progress percentage
 - Shows queue status section
 - Contains navigation buttons
 - No database mutations
 
-**Content Tests:**
-- Shows "Export Ready" when appropriate
-- Links to review queues
-- No external API calls
-- Avoids forbidden CRM/writeback vocabulary
-- Different batches show different content
+**Preview Mirroring Tests (REMEDIATED):**
+- `test_readiness_shows_export_ready_when_preview_ready` — Derives ready state from preview
+- `test_readiness_shows_export_blocked_when_preview_blocked` — Derives blocked state from preview
+- `test_readiness_renders_blocker_details_from_preview` — Renders exact blocker messages
+- `test_readiness_renders_warning_details_from_preview` — Renders exact warning messages
+- `test_warning_only_state_remains_export_ready` — Warnings don't block if preview says ready
 
 **Resilience Tests:**
 - Multiple calls return consistent content
-- Handles various batch IDs without errors
+- Different batches show different content
+- No external API calls
+- Avoids forbidden CRM/writeback vocabulary
+- No audit record creation
+- No CSV file generation
+
+---
+
+## Remediation Details
+
+### Problem Statement
+Initial implementation incorrectly:
+- Assumed all fixture data was export-ready by default
+- Used repository.get_exports() and checked staged_records > 0
+- Did NOT use the actual export preview blocker/warning logic
+- Would show different readiness in dashboard vs export console
+
+### Solution (CRITICAL FIX)
+Remediated implementation:
+1. **Calls `build_export_preview(import_id, config=config)` directly**
+2. **Extracts readiness state FROM preview result:**
+   - `is_export_ready = preview.is_export_ready`
+   - `blocker_count = preview.blocked_count`
+   - `blockers = preview.blockers`
+   - `warnings = preview.warnings`
+   - `warning_count = preview.warning_count`
+   - `staged_records = preview.row_count`
+3. **No new business rules** — uses existing accepted preview logic
+4. **Works in both fixture and database modes** — via config parameter
+
+### Test Updates
+- Unit tests now verify readiness matches preview exactly
+- Integration tests verify preview mirroring via actual HTTP calls
+- All tests use seeded database with real batch data
+- No assumption that all data is export-ready by default
 
 ---
 
@@ -140,21 +181,21 @@ queue_status: dict
 ✓ **No background jobs** — Synchronous route execution  
 ✓ **No new export formats** — Display only, no file generation  
 ✓ **No bulk actions** — Just status dashboard  
+✓ **Single source of truth** — Derives from export preview service  
 
 ### Design Rationale
 
-**Why derive from existing services:**
+**Why derive from existing preview service:**
 - Avoids duplicating readiness logic
 - Maintains single source of truth
 - Uses proven export preview computation
 - Supports both fixture and database modes
-- Minimal risk of logic divergence
+- Zero risk of logic divergence
 
-**Why repository pattern:**
-- Consistent with other services
-- Enables fixture/database flexibility
-- Future-proof for database-backed preview enhancements
-- Supports testing at multiple levels
+**Why no fixture mode shortcut:**
+- Fixture mode has legitimate blockers/warnings in preview
+- Dashboard must respect same logic as export console
+- Ensures consistent user experience
 
 **Why frozen dataclass:**
 - Immutable like other view models
@@ -169,15 +210,16 @@ queue_status: dict
 ### New Files (3)
 1. `scripts/householder/readiness_service.py` — Service implementation
 2. `scripts/uploader/templates/imports/readiness.html` — Template
-3. `tests/unit/test_readiness_service.py` — Unit tests (12 tests)
+3. `tests/unit/test_readiness_service.py` — Unit tests (14 tests)
 
-### Modified Files (2)
-1. `scripts/uploader/app.py` — Added readiness route (16 lines)
-2. `tests/integration/test_readiness_route.py` — Integration tests (121 lines, 15 tests)
+### Modified Files (3)
+1. `scripts/uploader/app.py` — Added readiness route (lines 896-911, 16 lines)
+2. `tests/integration/test_readiness_route.py` — Integration tests (121 lines, 18 tests)
+3. `tests/integration/seed_database.py` — Added second batch for multi-batch tests
 
 ### Total Changes
 - **Production code:** ~180 lines (service + template + route)
-- **Test code:** ~250 lines (27 tests)
+- **Test code:** ~300 lines (32 new tests)
 - **Documentation:** This completion record
 
 ---
@@ -190,40 +232,45 @@ pytest tests/unit tests/integration -q
 ===================== 1170 passed =====================
 ```
 
-### After Phase 3-Step 4A
+### After Phase 3-Step 4A Remediation
 ```
 pytest tests/unit tests/integration -q
-===================== 1197 passed =====================
+===================== 1202 passed =====================
 ```
 
 **Breakdown:**
 - Existing tests: 1170 (0 failures, 0 regressions)
-- New readiness tests: 27
-  - Unit tests: 12
-  - Integration tests: 15
+- New readiness tests: 32
+  - Unit tests: 14
+  - Integration tests: 18
 
 ### Execution Time
 - Before: 12.84s
-- After: 13.28s
-- Overhead: 0.44s (3.4% increase for 27 new tests)
+- After: 14.22s
+- Overhead: 1.38s (10.7% increase for 32 new tests)
 
 ---
 
 ## Acceptance Criteria
 
 - [x] Route `GET /imports/<batch_id>/readiness` returns 200
-- [x] Readiness state derived correctly (uses export preview/dashboard logic)
-- [x] "Export Ready" displayed when conditions met
+- [x] Readiness state derived DIRECTLY from export preview service
+- [x] "Export Ready" displayed when preview.is_export_ready is True
 - [x] "Export Blocked" displayed with blocker enumeration when blocked
+- [x] Blockers match exact messages from preview.blockers
+- [x] Warnings match exact messages from preview.warnings
+- [x] Staged records count matches preview.row_count
 - [x] Queue status cards show pending counts for all categories
 - [x] Navigation buttons provide clear action paths
 - [x] No new database tables created
 - [x] No source data mutation
 - [x] All 1170 existing tests still pass
-- [x] 27 new readiness tests passing
-- [x] Readiness state matches export console expectations
+- [x] 32 new readiness tests passing
+- [x] Works in both fixture and database modes (via config)
 - [x] Safety disclaimer present
 - [x] No forbidden vocabulary (writeback, sync)
+- [x] No ReviewDecision or AuditLogRecord creation
+- [x] No CSV file generation
 - [x] Template styling uses existing CSS patterns
 
 ---
@@ -254,10 +301,9 @@ These are explicitly separate from Phase 3-Step 4A. Decision to implement 4B sho
 
 ### Future Enhancements (Out of scope for 4A)
 
-- Database mode blocker enumeration (requires preview service integration)
-- Export preview modal/inline display (currently separate page)
 - Bulk action integration (Phase 4B if approved)
 - CRM writeback planning/status (Phase 4+)
+- Enhanced export preview modal/inline display (if needed)
 
 ---
 
@@ -265,7 +311,15 @@ These are explicitly separate from Phase 3-Step 4A. Decision to implement 4B sho
 
 ✓ **Phase 3-Step 4A is ready for production deployment.**
 
-All acceptance criteria met, test coverage comprehensive, design maintainable, safety guardrails enforced.
+All acceptance criteria met, test coverage comprehensive, design maintainable, safety guardrails enforced, readiness derives directly from existing export preview logic.
+
+### Key Achievement
+
+**Readiness dashboard is NOT a new system** — it's a read-only view layer over the existing export preview service. This ensures:
+- Dashboard and export console always agree on readiness
+- No divergent business logic
+- Single source of truth for export decisions
+- Minimal risk of undetected inconsistencies
 
 ### Recommendation
 

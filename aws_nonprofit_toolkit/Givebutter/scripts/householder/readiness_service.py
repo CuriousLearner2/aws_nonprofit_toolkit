@@ -1,17 +1,16 @@
 """
-Export Readiness Service - Derives batch-level export readiness.
+Export Readiness Service - Derives batch-level readiness from export preview.
 
 Phase 3-Step 4A: Provides read-only export readiness dashboard.
-Derives readiness from existing export preview logic without new mutations.
-
-Supports both fixture-backed (Phase 1a/1b mode) and database-backed (Phase 2+ mode).
+Derives readiness directly from existing export preview service logic.
+No new business rules; uses accepted preview behavior as source of truth.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Optional, Mapping, Any
 
-from .repository_provider import get_import_repository
+from .export_preview_service import build_export_preview
+from .dashboard_service import get_import_dashboard
 
 
 @dataclass(frozen=True)
@@ -58,63 +57,52 @@ def get_export_readiness(
     """
     Get export readiness status for batch.
 
-    Derives readiness from existing repository logic (both fixture and database).
-    In fixture mode: all fixtures have 0 blockers (export-ready).
-    In database mode: derives from actual export preview.
-
-    No new business rules; uses accepted readiness derivation from preview service.
+    Derives readiness DIRECTLY from existing export preview service.
+    Uses same blocker/warning logic as export preview.
+    No new business rules.
 
     Args:
         import_id: Import batch ID
-        config: Optional configuration for repository selection
+        config: Optional configuration for database selection
 
     Returns:
-        ExportReadinessViewModel with batch readiness state
+        ExportReadinessViewModel with readiness derived from preview
 
     Raises:
-        ValueError: If batch not found or configuration invalid
+        ValueError: If batch not found or preview cannot be generated
     """
     if not config:
         config = {}
 
-    # Get repository (fixture or database based on config)
-    repository = get_import_repository(config)
-
-    # Get exports console view model (has batch metadata and preview status)
+    # Get preview using existing preview service (both fixture and database modes)
     try:
-        exports_vm = repository.get_exports(import_id)
+        preview = build_export_preview(import_id, config=config)
     except ValueError as e:
         raise ValueError(f"Cannot determine readiness: {str(e)}")
 
-    # Get dashboard view model (has queue status)
+    # Get dashboard for queue status and batch metadata
     try:
-        dashboard_vm = repository.get_dashboard(import_id)
-        dashboard_dict = dashboard_vm.to_template_dict()
+        dashboard_dict = get_import_dashboard(import_id, config=config)
     except ValueError as e:
         raise ValueError(f"Cannot load batch metadata: {str(e)}")
 
-    # For fixture mode: exports_vm won't have preview data (recent_exports is empty tuple)
-    # Readiness is derived from queue status in fixture mode
-    # For database mode: would need to call export_preview_service separately
-    # However, in Phase 1A/1B (fixture mode), there are no blockers, so it's always ready
-
-    # Since we're using repository pattern like exports_service does,
-    # and the ExportConsoleViewModel doesn't contain preview blocker info,
-    # we derive readiness as: ready if staged_record_count > 0 and no critical issues
-    # This matches the fixture behavior where fixtures have 0 issues
-
-    staged_records = exports_vm.staged_record_count
-    is_export_ready = staged_records > 0  # Ready if there are records to export
+    # Derive readiness directly from preview (this is the source of truth)
+    is_export_ready = preview.is_export_ready
+    blocker_count = preview.blocked_count
+    warning_count = preview.warning_count
+    staged_records = preview.row_count
+    blockers = preview.blockers
+    warnings = preview.warnings
 
     return ExportReadinessViewModel(
         batch_id=import_id,
-        batch_filename=exports_vm.filename,
-        progress_pct=exports_vm.progress,
+        batch_filename=dashboard_dict["batch"]["filename"],
+        progress_pct=dashboard_dict["batch"]["progress"],
         is_export_ready=is_export_ready,
-        blocker_count=0,  # Fixtures have no blockers
-        warning_count=0,  # Fixtures have no warnings
+        blocker_count=blocker_count,
+        warning_count=warning_count,
         staged_records=staged_records,
-        blockers=(),
-        warnings=(),
+        blockers=blockers,
+        warnings=warnings,
         queue_status=dashboard_dict.get("queue_status", {}),
     )

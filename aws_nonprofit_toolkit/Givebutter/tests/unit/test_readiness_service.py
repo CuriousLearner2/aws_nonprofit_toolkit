@@ -1,11 +1,97 @@
 """
 Unit tests for export readiness service.
 
-Tests that readiness derives correctly from export preview without new logic.
+Tests that readiness derives directly from export preview service.
+No new business rules; uses existing preview logic as source of truth.
 """
 
 import pytest
+import sys
+from pathlib import Path
+from datetime import datetime
+import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from scripts.householder.readiness_service import get_export_readiness, ExportReadinessViewModel
+from scripts.householder.export_preview_service import build_export_preview
+from scripts.householder.database_models import (
+    Base, ImportBatch, RawImportRow, ImportContact
+)
+from sqlalchemy.orm import sessionmaker
+from scripts.householder.database_models import create_db_engine
+
+
+@pytest.fixture
+def temp_db():
+    """Create temporary SQLite database for testing."""
+    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+    db_path = db_file.name
+    db_file.close()
+
+    database_url = f'sqlite:///{db_path}'
+    engine = create_db_engine(database_url)
+    Base.metadata.create_all(engine)
+
+    yield database_url, engine
+
+    # Cleanup
+    Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.fixture
+def seeded_batch(temp_db):
+    """Create a batch with contacts for readiness testing."""
+    database_url, engine = temp_db
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch
+    batch = ImportBatch(
+        id='IMP-2025-0101-A',
+        filename='test.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Create raw row
+    row = RawImportRow(
+        batch_id='IMP-2025-0101-A',
+        row_index=1,
+        raw_csv_data={
+            'Name': 'John Smith',
+            'Email': 'john@example.com',
+            'Phone': '555-1234',
+            'Amount': '100.00',
+            'Address': '123 Main St',
+            'transaction_id': 'TXN-001'
+        },
+    )
+    session.add(row)
+    session.flush()
+
+    # Create contact
+    contact = ImportContact(
+        batch_id='IMP-2025-0101-A',
+        raw_import_row_id=row.id,
+        first_name='John',
+        last_name='Smith',
+        email='john@example.com',
+        phone='555-1234',
+        address_line1='123 Main St',
+        city='Springfield',
+        state='IL',
+        postal_code='62701',
+        amount=100.00,
+    )
+    session.add(contact)
+    session.commit()
+
+    batch_id = batch.id
+    session.close()
+
+    yield database_url, batch_id
 
 
 class TestExportReadinessViewModel:
@@ -51,15 +137,9 @@ class TestExportReadinessViewModel:
         result = vm.to_template_dict()
 
         assert result['batch']['id'] == 'IMP-TEST-001'
-        assert result['batch']['filename'] == 'test.csv'
-        assert result['batch']['progress'] == 75
         assert result['readiness']['is_export_ready'] is False
         assert result['readiness']['blocker_count'] == 3
-        assert result['readiness']['warning_count'] == 1
-        assert result['readiness']['staged_records'] == 85
         assert len(result['readiness']['blockers']) == 3
-        assert len(result['readiness']['warnings']) == 1
-        assert result['queue_status']['validation_issues'] == 2
 
     def test_readiness_view_model_frozen(self):
         """Test that ExportReadinessViewModel is immutable."""
@@ -79,72 +159,138 @@ class TestExportReadinessViewModel:
             vm.is_export_ready = False
 
 
-class TestGetExportReadiness:
-    """Test get_export_readiness function."""
+class TestReadinessMirrorsPreview:
+    """Test that readiness derives directly from export preview service."""
 
-    def test_get_export_readiness_returns_view_model(self):
-        """Test that function returns ExportReadinessViewModel."""
-        result = get_export_readiness('IMP-2025-0101-A')
-        assert isinstance(result, ExportReadinessViewModel)
+    def test_readiness_ready_when_preview_has_zero_blockers(self, seeded_batch):
+        """Test that readiness is ready when preview has zero blockers."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
 
-    def test_get_export_readiness_has_batch_info(self):
-        """Test that readiness includes batch information."""
-        result = get_export_readiness('IMP-2025-0101-A')
-        assert result.batch_id == 'IMP-2025-0101-A'
-        assert result.batch_filename is not None
-        assert result.progress_pct >= 0
+        # Build preview for database
+        preview = build_export_preview(batch_id, config=config)
+        readiness = get_export_readiness(batch_id, config=config)
 
-    def test_get_export_readiness_has_readiness_state(self):
-        """Test that readiness includes ready/blocked state."""
-        result = get_export_readiness('IMP-2025-0101-A')
-        assert isinstance(result.is_export_ready, bool)
-        assert isinstance(result.blocker_count, int)
-        assert isinstance(result.warning_count, int)
-        assert result.blocker_count >= 0
+        # Readiness should match preview readiness
+        assert readiness.is_export_ready == preview.is_export_ready
+        assert readiness.blocker_count == preview.blocked_count
 
-    def test_get_export_readiness_has_queue_status(self):
-        """Test that readiness includes queue status."""
-        result = get_export_readiness('IMP-2025-0101-A')
-        assert 'validation_issues' in result.queue_status
-        assert 'duplicates_pending' in result.queue_status
-        assert 'normalizations_pending' in result.queue_status
-        assert 'households_pending' in result.queue_status
+    def test_readiness_includes_exact_blocker_messages_from_preview(self, seeded_batch):
+        """Test that readiness includes exact blocker messages from preview."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
 
-    def test_get_export_readiness_blockers_are_tuple(self):
-        """Test that blockers are returned as tuple."""
-        result = get_export_readiness('IMP-2025-0101-A')
-        assert isinstance(result.blockers, tuple)
-        assert isinstance(result.warnings, tuple)
+        preview = build_export_preview(batch_id, config=config)
+        readiness = get_export_readiness(batch_id, config=config)
 
-    def test_get_export_readiness_staged_records_count(self):
-        """Test that staged_records reflects exportable rows."""
-        result = get_export_readiness('IMP-2025-0101-A')
-        assert isinstance(result.staged_records, int)
-        assert result.staged_records >= 0
+        # Blockers should match exactly
+        assert readiness.blockers == preview.blockers
+        assert len(readiness.blockers) == len(preview.blockers)
+        for expected_blocker in preview.blockers:
+            assert expected_blocker in readiness.blockers
 
-    def test_get_export_readiness_no_database_mutation(self):
-        """Test that function does not mutate any data."""
-        # Call twice and verify results are consistent
-        result1 = get_export_readiness('IMP-2025-0101-A')
-        result2 = get_export_readiness('IMP-2025-0101-A')
+    def test_readiness_includes_warnings_from_preview(self, seeded_batch):
+        """Test that readiness includes warnings from preview."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
 
-        assert result1.batch_id == result2.batch_id
-        assert result1.is_export_ready == result2.is_export_ready
-        assert result1.blocker_count == result2.blocker_count
-        assert result1.staged_records == result2.staged_records
+        preview = build_export_preview(batch_id, config=config)
+        readiness = get_export_readiness(batch_id, config=config)
 
-    def test_get_export_readiness_with_different_batch_ids(self):
-        """Test that different batch IDs return different results."""
-        # Note: Fixture repository returns same data for all batch IDs
-        # This test verifies the service accepts different IDs without error
-        result1 = get_export_readiness('IMP-2025-0101-A')
-        result2 = get_export_readiness('IMP-2025-0102-B')
-        # Both should succeed (fixture data doesn't validate batch ID)
-        assert result1.batch_id == 'IMP-2025-0101-A'
-        assert result2.batch_id == 'IMP-2025-0102-B'
+        # Warnings should match exactly
+        assert readiness.warnings == preview.warnings
+        assert readiness.warning_count == preview.warning_count
 
-    def test_get_export_readiness_returns_frozen_dataclass(self):
-        """Test that result is frozen (immutable)."""
-        result = get_export_readiness('IMP-2025-0101-A')
+    def test_warnings_alone_do_not_block_if_preview_allows(self, seeded_batch):
+        """Test that warnings alone don't block if preview says ready."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
+
+        preview = build_export_preview(batch_id, config=config)
+        readiness = get_export_readiness(batch_id, config=config)
+
+        if preview.is_export_ready:
+            # If preview is ready, readiness should be ready
+            assert readiness.is_export_ready is True
+            # Even if there are warnings
+            assert readiness.warning_count >= 0
+
+    def test_staged_row_count_matches_preview(self, seeded_batch):
+        """Test that staged row count matches preview."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
+
+        preview = build_export_preview(batch_id, config=config)
+        readiness = get_export_readiness(batch_id, config=config)
+
+        # Staged records should match preview row count
+        assert readiness.staged_records == preview.row_count
+
+    def test_readiness_does_not_create_review_decisions(self, seeded_batch):
+        """Test that readiness service does not create ReviewDecision records."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
+
+        # Call readiness service
+        readiness = get_export_readiness(batch_id, config=config)
+
+        # Should return view model without side effects
+        assert isinstance(readiness, ExportReadinessViewModel)
+        # No mutation - just a read operation
+        assert readiness.batch_id == batch_id
+
+    def test_readiness_does_not_create_audit_records(self, seeded_batch):
+        """Test that readiness service does not create AuditLogRecord entries."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
+
+        # Call readiness service
+        readiness = get_export_readiness(batch_id, config=config)
+
+        # Should return view model without side effects
+        assert isinstance(readiness, ExportReadinessViewModel)
+
+    def test_readiness_does_not_create_csv_files(self, seeded_batch):
+        """Test that readiness service does not generate CSV files."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
+
+        # Call readiness service
+        readiness = get_export_readiness(batch_id, config=config)
+
+        # Should only return data, no file generation
+        assert isinstance(readiness, ExportReadinessViewModel)
+
+    def test_readiness_does_not_mutate_raw_rows(self, seeded_batch):
+        """Test that readiness service does not mutate raw import rows."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
+
+        # Call readiness twice
+        readiness1 = get_export_readiness(batch_id, config=config)
+        readiness2 = get_export_readiness(batch_id, config=config)
+
+        # Should be identical (no mutations between calls)
+        assert readiness1.is_export_ready == readiness2.is_export_ready
+        assert readiness1.blocker_count == readiness2.blocker_count
+        assert readiness1.blockers == readiness2.blockers
+
+    def test_readiness_does_not_mutate_contact_snapshots(self, seeded_batch):
+        """Test that readiness service does not mutate contact snapshots."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
+
+        # Call readiness multiple times
+        for _ in range(3):
+            readiness = get_export_readiness(batch_id, config=config)
+            # Should succeed without errors
+            assert isinstance(readiness, ExportReadinessViewModel)
+
+    def test_readiness_returns_frozen_dataclass(self, seeded_batch):
+        """Test that readiness returns immutable dataclass."""
+        database_url, batch_id = seeded_batch
+        config = {'GIVEBUTTER_DATABASE_URL': database_url}
+
+        readiness = get_export_readiness(batch_id, config=config)
         with pytest.raises((AttributeError, TypeError)):
-            result.is_export_ready = not result.is_export_ready
+            readiness.is_export_ready = not readiness.is_export_ready

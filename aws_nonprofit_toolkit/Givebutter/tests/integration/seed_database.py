@@ -178,4 +178,54 @@ def seed_test_data(session):
     for audit_entry in audit_entries:
         session.add(audit_entry)
 
+    session.flush()
+
+    # 8. Create second batch for multi-batch tests
+    batch2 = ImportBatch(
+        id='IMP-TEST-002',
+        filename='donors_q2_2025.csv',
+        upload_timestamp=datetime(2026, 6, 2, 9, 0, 0),
+        uploader='test_uploader',
+        status='pending',
+        raw_row_count=2,
+    )
+    session.add(batch2)
+    session.flush()
+
+    # Add raw rows for second batch
+    raw_rows_data_2 = [
+        {'row_index': 0, 'name': 'Alice Brown', 'email': 'alice@example.com', 'phone': '(555) 222-3333', 'address': '999 Pine Rd'},
+        {'row_index': 1, 'name': 'Bob Davis', 'email': 'bob@example.com', 'phone': '(555) 444-5555', 'address': '888 Birch Ln'},
+    ]
+
+    raw_import_rows_2 = []
+    for row_data in raw_rows_data_2:
+        raw_row = RawImportRow(
+            batch_id=batch2.id,
+            row_index=row_data['row_index'],
+            raw_csv_data=row_data,
+        )
+        session.add(raw_row)
+        raw_import_rows_2.append(raw_row)
+
+    session.flush()
+
+    # Add contacts for second batch
+    contact_data_2 = [
+        {'first_name': 'Alice', 'last_name': 'Brown', 'email': 'alice@example.com', 'phone': '(555) 222-3333', 'address_line1': '999 Pine Rd'},
+        {'first_name': 'Bob', 'last_name': 'Davis', 'email': 'bob@example.com', 'phone': '(555) 444-5555', 'address_line1': '888 Birch Ln'},
+    ]
+
+    for idx, contact_dict in enumerate(contact_data_2):
+        import_contact = ImportContact(
+            batch_id=batch2.id,
+            raw_import_row_id=raw_import_rows_2[idx].id,
+            first_name=contact_dict['first_name'],
+            last_name=contact_dict['last_name'],
+            email=contact_dict['email'],
+            phone=contact_dict['phone'],
+            address_line1=contact_dict['address_line1'],
+        )
+        session.add(import_contact)
+
     session.commit()
