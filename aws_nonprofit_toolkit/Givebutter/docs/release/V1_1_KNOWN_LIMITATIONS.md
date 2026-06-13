@@ -346,8 +346,9 @@ Householder v1.1 is an **export-only** tool designed for donor import review and
 - No sensitive field masking
 
 **Recommendation:**
-- Limit Householder access to trusted users
-- RBAC should control who can access Householder overall
+- Limit Householder access to trusted users only (at infrastructure level)
+- All users with access see all fields in all batches
+- Consider network-level or application-level access restrictions
 
 ---
 

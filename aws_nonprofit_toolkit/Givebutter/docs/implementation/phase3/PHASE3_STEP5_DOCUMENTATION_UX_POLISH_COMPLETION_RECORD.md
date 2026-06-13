@@ -341,20 +341,23 @@ All documentation created, UX copy improved, safety model reinforced, deferred f
 
 ## Next Steps
 
-**Phase 3 Complete:**
+**Phase 3 Progress:**
 - Phase 3-Step 1: ✓ Export File Generation (CSV, Audited, No CRM Writeback)
 - Phase 3-Step 2: ✓ Export Preview Derivation (Read-Only)
 - Phase 3-Step 3: ✓ Export Directory Configuration + Safe Error Handling
 - Phase 3-Step 4A: ✓ Export Readiness Dashboard
 - Phase 3-Step 4B: DEFERRED (Bulk Actions; designed, not implemented)
 - Phase 3-Step 5: ✓ Documentation + UX Polish
+- Phase 3-Step 6: PENDING (Testing & QA pass for v1.1)
+- Phase 3-Step 7: PENDING (v1.1 Release Documentation & Rollout)
 
-**Ready for v1.1 release.**
+**v1.1 Release Readiness:**
+v1.1 is NOT ready for release until Phase 3-Step 6 (Testing & QA) and Phase 3-Step 7 (Release) are completed and accepted.
 
-**Recommendations:**
+**Phase 3-Step 5 Closeout:**
 1. Use user guides for help documentation/training
 2. Reference known limitations in release notes
-3. Gather post-launch user feedback on deferred features
-4. Revisit 4B implementation if bulk action demand is validated
-5. Consider CRM integration (v2.0+) based on user feedback
+3. All documentation preserved for v1.1 release
+4. Defer bulk actions pending post-launch user feedback
+5. Defer CRM integration to v2.0+ phase
 
