@@ -103,6 +103,7 @@ class ValidationRow:
     address: str
     issue_type: Optional[str] = None
     issue_description: Optional[str] = None
+    effective_status: str = "pending"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -116,6 +117,7 @@ class ValidationRow:
             "address": self.address,
             "issue_type": self.issue_type,
             "issue_description": self.issue_description,
+            "effective_status": self.effective_status,
         }
 
 

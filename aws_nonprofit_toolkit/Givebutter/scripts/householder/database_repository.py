@@ -346,6 +346,7 @@ class DatabaseImportRepository:
                         validation_map[contact_id] = {
                             'issue_type': payload.get('issue_type'),
                             'issue_description': payload.get('issue_description'),
+                            'review_item_id': review_item.id,
                         }
 
             # Build validation rows from contacts
@@ -382,9 +383,28 @@ class DatabaseImportRepository:
                 # Get validation issue details if they exist
                 issue_type = None
                 issue_description = None
+                review_item_id = None
                 if contact.id in validation_map:
                     issue_type = validation_map[contact.id]['issue_type']
                     issue_description = validation_map[contact.id]['issue_description']
+                    review_item_id = validation_map[contact.id]['review_item_id']
+
+                # Determine effective status from latest ReviewDecision
+                effective_status = 'pending'
+                if review_item_id:
+                    latest_decision = (
+                        session.query(ReviewDecision)
+                        .filter_by(review_item_id=review_item_id)
+                        .order_by(ReviewDecision.created_at.desc())
+                        .first()
+                    )
+                    if latest_decision:
+                        status_map = {
+                            'accept_issue': 'accepted',
+                            'dismiss_issue': 'dismissed',
+                            'defer': 'deferred',
+                        }
+                        effective_status = status_map.get(latest_decision.decision, 'pending')
 
                 # Create ValidationRow (using contact.id as string for consistency)
                 row = ValidationRow(
@@ -397,6 +417,7 @@ class DatabaseImportRepository:
                     address=full_address,
                     issue_type=issue_type,
                     issue_description=issue_description,
+                    effective_status=effective_status,
                 )
                 validation_rows.append(row)
 

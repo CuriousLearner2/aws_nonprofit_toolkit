@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect
 from functools import wraps
 import os
 import json
@@ -68,6 +68,7 @@ try:
         import_service,
         dashboard_service,
         validation_service,
+        validation_decision_service,
         normalizations_service,
         households_service,
         duplicates_service,
@@ -83,6 +84,7 @@ except ImportError:
         import_service,
         dashboard_service,
         validation_service,
+        validation_decision_service,
         normalizations_service,
         households_service,
         duplicates_service,
@@ -898,6 +900,30 @@ def import_validation(import_id):
     """Validation review for records with issues."""
     data = validation_service.get_validation_review(import_id)
     return render_template('imports/validation.html', **data)
+
+@app.route('/imports/<import_id>/validation/<int:review_item_id>/decision', methods=['POST'])
+def record_validation_decision(import_id, review_item_id):
+    """Record a reviewer's validation decision."""
+    decision = request.form.get('decision', '').strip()
+    notes = request.form.get('notes', '').strip() or None
+    reviewer = request.headers.get('X-Reviewer-ID') or None
+
+    try:
+        result = validation_decision_service.record_validation_decision(
+            import_id=import_id,
+            review_item_id=review_item_id,
+            decision=decision,
+            notes=notes,
+            reviewer=reviewer,
+        )
+        logger.info(f"Validation decision recorded: {result.decision} for item {review_item_id}")
+        return redirect(f'/imports/{import_id}/validation')
+    except ValueError as e:
+        logger.warning(f"Validation error recording decision: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error recording validation decision: {str(e)}")
+        return jsonify({'error': 'Error recording decision'}), 500
 
 @app.route('/imports/<import_id>/normalizations')
 def import_normalizations(import_id):

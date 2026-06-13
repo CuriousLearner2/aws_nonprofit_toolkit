@@ -48,12 +48,14 @@
                 <td style="text-align: right;">{{ record.amount }}</td>
                 <td style="color: #666; font-size: 12px;">{{ record.address }}</td>
                 <td>
-                    {% if record.issue_type == 'missing-required' %}
-                    <span style="background-color: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Missing Required</span>
-                    {% elif record.issue_type == 'format-invalid' %}
-                    <span style="background-color: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Invalid Format</span>
-                    {% elif record.issue_type == 'length-exceeded' %}
-                    <span style="background-color: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Length Exceeded</span>
+                    {% if record.effective_status == 'pending' %}
+                    <span style="background-color: #e5e7eb; color: #374151; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Pending</span>
+                    {% elif record.effective_status == 'accepted' %}
+                    <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Accepted</span>
+                    {% elif record.effective_status == 'dismissed' %}
+                    <span style="background-color: #fed7aa; color: #9a3412; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Dismissed</span>
+                    {% elif record.effective_status == 'deferred' %}
+                    <span style="background-color: #bfdbfe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 600;">Deferred</span>
                     {% endif %}
                 </td>
                 <td>
@@ -81,7 +83,7 @@
 <div id="record-modal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h2 class="modal-title">Record Details</h2>
+            <h2 class="modal-title">Record Details & Decision</h2>
         </div>
         <div class="modal-body" id="modal-record-content">
             <!-- Populated by JavaScript -->
@@ -114,7 +116,88 @@ document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
     link.addEventListener('click', function(e) {
         e.preventDefault();
         const recordId = this.getAttribute('data-record-id');
-        showToast(`Inspecting record #${recordId}`);
+
+        // Find the row with this record ID
+        const row = document.querySelector(`tr td input[data-record-id="${recordId}"]`)?.closest('tr');
+        if (!row) return;
+
+        // Extract record data from table row
+        const cells = row.querySelectorAll('td');
+        const transactionId = cells[1]?.textContent?.trim() || '';
+        const date = cells[2]?.textContent?.trim() || '';
+        const name = cells[3]?.textContent?.trim() || '';
+        const email = cells[4]?.textContent?.trim() || '';
+        const phone = cells[5]?.textContent?.trim() || '';
+        const amount = cells[6]?.textContent?.trim() || '';
+        const address = cells[7]?.textContent?.trim() || '';
+        const statusSpan = cells[8]?.querySelector('span');
+        const status = statusSpan?.textContent?.trim() || 'Pending';
+
+        // Build modal content with record details and decision form
+        const modalBody = document.getElementById('modal-record-content');
+        const batchId = '{{ batch.id }}';
+
+        modalBody.innerHTML = `
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin-top: 0;">Record #${recordId}</h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <tr>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Transaction ID:</strong></td>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;">${transactionId}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Name:</strong></td>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;">${name}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Email:</strong></td>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;">${email}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Phone:</strong></td>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;">${phone}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Amount:</strong></td>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;">${amount}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Address:</strong></td>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;">${address}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Current Status:</strong></td>
+                        <td style="padding: 6px; border-bottom: 1px solid #eee;">${status}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <h3>Record Decision</h3>
+                <form method="POST" action="/imports/${batchId}/validation/${recordId}/decision" style="margin: 0;">
+                    <div style="margin-bottom: 12px;">
+                        <label for="decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Decision:</label>
+                        <select id="decision-${recordId}" name="decision" required style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+                            <option value="">-- Select Decision --</option>
+                            <option value="accept_issue">Accept Issue (data is valid)</option>
+                            <option value="dismiss_issue">Dismiss Issue (false positive)</option>
+                            <option value="defer">Defer (need more information)</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <label for="notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Notes (optional):</label>
+                        <textarea id="notes-${recordId}" name="notes" placeholder="Any context for this decision..." style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; min-height: 60px; box-sizing: border-box;"></textarea>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1; padding: 8px; background-color: #3b82f6; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Record Decision</button>
+                        <button type="button" onclick="closeModal('record-modal')" class="btn btn-secondary" style="flex: 1; padding: 8px; background-color: #6b7280; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `;
+
         openModal('record-modal');
     });
 });
