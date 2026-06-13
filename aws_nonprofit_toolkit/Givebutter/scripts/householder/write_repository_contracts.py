@@ -92,3 +92,45 @@ class NormalizationDecisionWriter(Protocol):
             DatabaseError: If transaction fails
         """
         ...
+
+
+@dataclass(frozen=True)
+class DuplicateDecisionResult:
+    """Result of recording a duplicate decision."""
+    decision_id: int
+    review_item_id: int
+    decision: str
+    effective_status: str
+    audit_log_id: int
+    timestamp: datetime
+
+
+class DuplicateDecisionWriter(Protocol):
+    """Protocol for writing duplicate decisions."""
+
+    def create_duplicate_decision(
+        self,
+        batch_id: str,
+        review_item_id: int,
+        decision: str,
+        notes: Optional[str] = None,
+        reviewer: Optional[str] = None,
+    ) -> DuplicateDecisionResult:
+        """
+        Create a duplicate decision and audit log entry.
+
+        Args:
+            batch_id: Import batch ID
+            review_item_id: ReviewItem.id to decide on
+            decision: One of 'same_person', 'different_people', 'defer'
+            notes: Optional context for the decision
+            reviewer: Reviewer identifier (name or email)
+
+        Returns:
+            DuplicateDecisionResult with decision details
+
+        Raises:
+            ValueError: If validation fails (unknown import, unknown item, invalid decision, wrong type)
+            DatabaseError: If transaction fails
+        """
+        ...

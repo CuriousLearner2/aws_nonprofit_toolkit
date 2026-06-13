@@ -797,6 +797,22 @@ class DatabaseImportRepository:
                 if isinstance(conflicting_evidence, list):
                     conflicting_evidence = tuple(conflicting_evidence)
 
+                # Derive effective status from latest ReviewDecision
+                latest_decision = (
+                    session.query(ReviewDecision)
+                    .filter_by(review_item_id=first_item.id)
+                    .order_by(ReviewDecision.created_at.desc())
+                    .first()
+                )
+                effective_status = 'pending'
+                if latest_decision:
+                    status_map = {
+                        'same_person': 'same_person',
+                        'different_people': 'different_people',
+                        'defer': 'deferred',
+                    }
+                    effective_status = status_map.get(latest_decision.decision, 'pending')
+
                 current_candidate = DuplicateCandidate(
                     id=payload.get('id', str(first_item.id)),
                     contact_a=contact_a,
@@ -804,6 +820,7 @@ class DatabaseImportRepository:
                     supporting_evidence=supporting_evidence,
                     conflicting_evidence=conflicting_evidence,
                     status=payload.get('status', 'Pending'),
+                    effective_status=effective_status,
                 )
             else:
                 # No duplicates - return empty candidate
@@ -814,6 +831,7 @@ class DatabaseImportRepository:
                     supporting_evidence=(),
                     conflicting_evidence=(),
                     status='Pending',
+                    effective_status='pending',
                 )
 
             return DuplicatePageViewModel(

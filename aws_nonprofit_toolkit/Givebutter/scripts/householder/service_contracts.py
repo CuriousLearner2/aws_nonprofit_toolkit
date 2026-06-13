@@ -311,6 +311,7 @@ class DuplicateCandidate:
     supporting_evidence: tuple  # Tuple of evidence strings
     conflicting_evidence: tuple  # Tuple of conflict strings
     status: str = "Pending"
+    effective_status: str = "pending"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -321,6 +322,7 @@ class DuplicateCandidate:
             "supporting_evidence": self.supporting_evidence,
             "conflicting_evidence": self.conflicting_evidence,
             "status": self.status,
+            "effective_status": self.effective_status,
         }
 
 

@@ -57,25 +57,70 @@
     </div>
 </div>
 
+<!-- Status Badge -->
+<div style="margin-bottom: 20px;">
+    {% if candidate.effective_status == 'pending' %}
+        <span style="padding: 4px 12px; border-radius: 3px; background-color: #e5e7eb; color: #374151; font-size: 13px; font-weight: 500;">Pending</span>
+    {% elif candidate.effective_status == 'same_person' %}
+        <span style="padding: 4px 12px; border-radius: 3px; background-color: #d1fae5; color: #065f46; font-size: 13px; font-weight: 500;">Same Person</span>
+    {% elif candidate.effective_status == 'different_people' %}
+        <span style="padding: 4px 12px; border-radius: 3px; background-color: #fed7aa; color: #92400e; font-size: 13px; font-weight: 500;">Different People</span>
+    {% elif candidate.effective_status == 'deferred' %}
+        <span style="padding: 4px 12px; border-radius: 3px; background-color: #dbeafe; color: #0c4a6e; font-size: 13px; font-weight: 500;">Deferred</span>
+    {% endif %}
+</div>
+
 <!-- Reviewer Form -->
 <div class="card">
-    <form id="duplicate-form">
-        <h3>Your Decision</h3>
+    <h3>Your Decision</h3>
 
-        {% if candidate.conflicting_evidence|length > 0 %}
-        <div class="form-group">
-            <label class="form-label">Notes (required due to conflicting evidence)</label>
-            <textarea id="reviewer-notes" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-family: inherit; font-size: 13px; height: 80px;" placeholder="Explain your decision..."></textarea>
-        </div>
-        {% endif %}
+    {% if candidate.conflicting_evidence|length > 0 %}
+    <div class="form-group">
+        <label class="form-label">Notes (required due to conflicting evidence)</label>
+        <textarea id="reviewer-notes" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-family: inherit; font-size: 13px; height: 80px;" placeholder="Explain your decision..."></textarea>
+    </div>
+    {% endif %}
 
-        <div class="btn-group" style="margin-top: 16px;">
-            <button type="button" id="mark-same-person-btn" class="btn btn-primary" data-action="mark-same-person" data-item-id="{{ candidate.id }}">Mark as Same Person</button>
-            <button type="button" class="btn btn-secondary" data-action="different" data-item-id="{{ candidate.id }}">Different Person</button>
-            <button type="button" class="btn btn-secondary" data-action="defer" data-item-id="{{ candidate.id }}">Defer</button>
-        </div>
+    <!-- Hidden forms for each decision type -->
+    <form id="form-same-person-{{ candidate.id }}" method="POST" action="/imports/{{ batch.id }}/duplicates/{{ candidate.id }}/decision" style="display: none;">
+        <input type="hidden" name="decision" value="same_person">
+        <textarea name="notes" id="notes-same-person" style="display: none;"></textarea>
     </form>
+
+    <form id="form-different-people-{{ candidate.id }}" method="POST" action="/imports/{{ batch.id }}/duplicates/{{ candidate.id }}/decision" style="display: none;">
+        <input type="hidden" name="decision" value="different_people">
+        <textarea name="notes" id="notes-different-people" style="display: none;"></textarea>
+    </form>
+
+    <form id="form-defer-{{ candidate.id }}" method="POST" action="/imports/{{ batch.id }}/duplicates/{{ candidate.id }}/decision" style="display: none;">
+        <input type="hidden" name="decision" value="defer">
+        <textarea name="notes" id="notes-defer" style="display: none;"></textarea>
+    </form>
+
+    <div class="btn-group" style="margin-top: 16px;">
+        <button type="button" class="btn btn-primary" onclick="submitDuplicateDecision('same_person', {{ candidate.id }})">Mark as Same Person</button>
+        <button type="button" class="btn btn-secondary" onclick="submitDuplicateDecision('different_people', {{ candidate.id }})">Mark as Different People</button>
+        <button type="button" class="btn btn-secondary" onclick="submitDuplicateDecision('defer', {{ candidate.id }})">Defer</button>
+    </div>
 </div>
+
+<script>
+function submitDuplicateDecision(decisionType, candidateId) {
+    const notesElement = document.getElementById('reviewer-notes');
+    const notes = notesElement ? notesElement.value.trim() : '';
+
+    const formId = 'form-' + decisionType + '-' + candidateId;
+    const form = document.getElementById(formId);
+
+    if (form) {
+        const notesInput = form.querySelector('textarea[name="notes"]');
+        if (notesInput) {
+            notesInput.value = notes;
+        }
+        form.submit();
+    }
+}
+</script>
 
 <!-- Navigation -->
 <div style="margin-top: 24px; display: flex; gap: 12px;">
