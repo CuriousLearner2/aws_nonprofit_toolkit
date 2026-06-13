@@ -13,44 +13,69 @@
 ```bash
 cd /Users/gautambiswas/Claude\ Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
 
-export GIVEBUTTER_DATABASE_URL="sqlite:////Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/householder_demo.db"
-
-export EXPORT_OUTPUT_DIR="/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/exports_demo"
+export GIVEBUTTER_DATABASE_URL="sqlite:///householder_demo.db"
+export EXPORT_OUTPUT_DIR="./exports_demo"
+export HOUSEHOLDER_REPOSITORY=database
 ```
 
-### Step 2: Seed Demo Data (Optional Reset)
+### Step 2: Migrate and Seed Demo Database
 
-If you've run the demo before and want to start fresh:
-
-```bash
-python scripts/reset_demo_batch.py
-```
-
-Then seed the demo:
+Create the demo database with the correct schema and seed it with demo data:
 
 ```bash
-python scripts/seed_demo_batch.py
+source .venv/bin/activate
+python scripts/migrate_demo_db.py
 ```
 
 Expected output:
 ```
-✓ Demo batch created successfully!
-Batch ID: demo-20260613-143000
+======================================================================
+Householder Demo Database Migration
+======================================================================
+
+✓ Demo batch created!
+======================================================================
+
+Batch ID: demo-20260613-162339
 Records: 12
-Review items: 5 (7 expected issues)
-...
-✓ Ready for UX review at: http://localhost:8000/dashboard
+Review items: 5
+
+Export readiness: BLOCKED (Carol White missing phone)
+
+✓ Ready for: http://localhost:8000/imports
+======================================================================
 ```
 
 ### Step 3: Start Flask App
 
 ```bash
+export FLASK_APP=scripts/uploader/app:app
 flask run --host=127.0.0.1 --port=8000
 ```
 
 ### Step 4: Open Browser
 
-Navigate to: **`http://localhost:8000/dashboard`**
+Navigate to: **`http://localhost:8000/imports`**
+
+---
+
+## Phase 1A Limitations (Current Release)
+
+**What Works** ✅
+- View import list and batch summary
+- View all review queues (validation, duplicates, households, normalizations)
+- View audit log (pre-populated)
+- View export console with available export options
+- Navigate between all 8 routes
+
+**What's Not Yet Implemented** ⏳
+- Decision persistence (clicking "Confirm", "Accept", "Reject" doesn't save decisions)
+- Audit trail updates (user actions not recorded)
+- Export generation (no real CSV files created)
+- Export download (no files available)
+- Readiness blocking logic (export always shows UI layout, not gated by decisions)
+
+Phase 1B (database persistence) will add decision recording and export generation.
 
 ---
 
@@ -58,192 +83,121 @@ Navigate to: **`http://localhost:8000/dashboard`**
 
 Follow this sequence to exercise all major UX flows:
 
-### 1. Import Dashboard
+### 1. Imports List
 
-**URL:** `http://localhost:8000/dashboard`
+**URL:** `http://localhost:8000/imports`
 
 **What to see:**
-- Batch summary: "12 records imported, 5 review items detected"
-- Export status: **"BLOCKED"** (Carol White missing phone)
-- Review queues list:
-  - Validation: 2 items
-  - Normalization: 1 item
-  - Duplicates: 1 item
-  - Households: 1 item
+- List of all imports including demo batch
+- Batch ID: demo-20260613-162339
+- Records: 12
+- Status: pending_review
 
-**Action:** Observe the dashboard and queue counts.
+**Action:** Click on the demo batch to access its dashboard.
 
 ---
 
-### 2. Validation Review Queue
+### 2. Import Dashboard
 
-**URL:** `http://localhost:8000/validation`
+**URL:** `http://localhost:8000/imports/<batch_id>/dashboard`
+
+**What to see:**
+- Batch summary: "12 records imported"
+- Review queues:
+  - Validation: 2 items (Jane Smith, Carol White)
+  - Duplicates: 1 item
+  - Households: 1 item
+  - Normalizations: 1 item
+
+**Action:** Observe the dashboard and navigate to each queue.
+
+---
+
+### 3. Validation Review Queue
+
+**URL:** `http://localhost:8000/imports/<batch_id>/validation`
 
 **What to see:**
 - Jane Smith (email typo: gmial.com)
 - Carol White (missing phone) — **This is the blocker**
 
-**Action:** 
-1. Review Carol White (missing phone)
-2. Click "Reject" or "Flag" to mark it as blocked
-3. Click "Save Decision"
-4. Check audit trail (should show decision recorded)
-
-**Expected outcome:** Decision saved, audit log updated.
+**Action:** Review both validation issues. *(Decisions not yet saved in Phase 1A)*
 
 ---
 
-### 3. Duplicate Review Queue
+### 4. Duplicate Review Queue
 
-**URL:** `http://localhost:8000/duplicates`
+**URL:** `http://localhost:8000/imports/<batch_id>/duplicates`
 
 **What to see:**
 - Robert Smith and Bob Smith (same email: bob.smith@example.com, same phone: 555-0003)
+- Supporting evidence shown
 
-**Action:**
-1. Review the duplicate pair
-2. Click "Different Person" (or "Same Person" — both are valid)
-3. Click "Save Decision"
-
-**Expected outcome:** Decision saved, appears in audit log.
+**Action:** Review the duplicate pair. *(Decisions not yet saved in Phase 1A)*
 
 ---
 
-### 4. Household Review Queue
+### 5. Household Review Queue
 
-**URL:** `http://localhost:8000/households`
+**URL:** `http://localhost:8000/imports/<batch_id>/households`
 
 **What to see:**
 - Eve Davis and Frank Davis (same phone: 555-0009)
+- Evidence and confidence level shown
 
-**Action:**
-1. Review the household pair
-2. Click "Confirm" (or "Reject" — both are valid)
-3. Click "Save Decision"
-
-**Expected outcome:** Decision saved, appears in audit log.
+**Action:** Review the household suggestion. *(Decisions not yet saved in Phase 1A)*
 
 ---
 
-### 5. Normalization Review Queue
+### 6. Normalization Review Queue
 
-**URL:** `http://localhost:8000/normalizations`
+**URL:** `http://localhost:8000/imports/<batch_id>/normalizations`
 
 **What to see:**
-- Grace Miller (phone: (555) 004-1234 → can be normalized to 555-0041234)
+- Grace Miller (phone: (555) 004-1234 → normalized to 555-0041234)
+- Original and suggested values shown
 
-**Action:**
-1. Review the normalization suggestion
-2. Click "Accept" to use normalized version
-3. Click "Save Decision"
-
-**Expected outcome:** Decision saved, appears in audit log.
+**Action:** Review the normalization suggestion. *(Decisions not yet saved in Phase 1A)*
 
 ---
 
-### 6. Readiness Dashboard — Blocked State
+### 7. Audit Trail
 
-**URL:** `http://localhost:8000/readiness`
-
-**Before resolving Carol White:**
-- Status: **"Export BLOCKED"** (red)
-- Blocker shown: "Carol White: missing phone (validation error)"
-- "Generate Export" button: **Disabled** (greyed out)
-
-**Action:** Observe the blocked state and blocker message.
-
----
-
-### 7. Resolve the Blocker
-
-**Back to Validation:** `http://localhost:8000/validation`
-
-1. Resolve Carol White (missing phone)
-   - Click "Reject" or "Accept" (marks decision as made)
-   - Click "Save Decision"
-
-2. Back to Readiness: `http://localhost:8000/readiness`
-
-**Expected outcome:** Status changes to **"Ready to Export"** (green), "Generate Export" button enabled.
-
----
-
-### 8. Readiness Dashboard — Ready State
-
-**URL:** `http://localhost:8000/readiness`
-
-**After resolving all blockers:**
-- Status: **"Ready to Export"** (green)
-- All queues show: "✓ Resolved"
-- "Generate Export" button: **Enabled** (clickable)
-
-**Action:** Observe the ready state.
-
----
-
-### 9. Export Preview
-
-**URL:** `http://localhost:8000/exports` (or preview endpoint)
+**URL:** `http://localhost:8000/imports/<batch_id>/audit`
 
 **What to see:**
-- Preview of export CSV
-- Columns: First Name, Last Name, Email, Phone, Amount, Date, Transaction ID
-- 12 rows of data (including Carol White with resolved issues)
+- Pre-populated audit log entries showing batch creation
+- Timestamp, reviewer, and action columns
 
-**Action:** Review the export preview to verify data looks correct.
-
----
-
-### 10. Export Generation
-
-**On Readiness Dashboard:** Click **"Generate Export"**
-
-**What to see:**
-- Processing message: "Generating export..."
-- Success message: "Export created: householder-export-demo-[timestamp].csv"
-- File appears in exports_demo/ directory
-
-**Expected outcome:** Export file created, can be downloaded.
+**Action:** Review the audit trail. *(User actions not yet recorded in Phase 1A)*
 
 ---
 
-### 11. Recent Exports / Download
+### 8. Export Console
 
-**URL:** `http://localhost:8000/exports`
-
-**What to see:**
-- List of export files
-- Filename: householder-export-demo-[timestamp].csv
-- Size and timestamp
-- "Download" link
-
-**Action:** Click "Download" to download the export CSV.
-
-**Expected outcome:** File downloads to your machine (check Downloads folder).
-
----
-
-### 12. Audit Trail
-
-**URL:** `http://localhost:8000/audit`
+**URL:** `http://localhost:8000/imports/<batch_id>/exports`
 
 **What to see:**
-- Log entries for:
-  - `import_batch_created` (when demo batch was seeded)
-  - `decision_made` (for each decision you made: Carol White, Robert/Bob, Eve/Frank, Grace, Jane)
-  - `export_generated` (when export was created)
-  - (optionally) `export_downloaded` (when file was downloaded)
+- 3 export card options:
+  1. Reviewed Export (CSV with reviewer decisions)
+  2. Household Export (household groupings)
+  3. Backlog Export (unresolved suggestions)
+- Staging statistics:
+  - 12 staged records
+  - 5 total decisions
+  - 5 households
+- "Generate Export Package" button
 
-**Expected outcome:** All actions logged with timestamps.
+**Action:** Review the export console. *(Export generation not yet implemented in Phase 1A)*
 
 ---
 
 ## Expected State Summary
 
-### Initial State (After Seed)
+### Initial State (After Migration)
 
 ```
-Batch ID: demo-20260613-143000
+Batch ID: demo-20260613-162339 (or similar timestamp)
 Records: 12
 Review items: 5
 
@@ -253,21 +207,20 @@ Queue counts:
   Duplicates: 1 (Robert & Bob Smith)
   Households: 1 (Eve & Frank Davis)
 
-Export readiness: BLOCKED (Carol White)
+Audit entries: 1 (batch created)
+Export readiness: BLOCKED (Carol White missing phone)
 ```
 
-### After Decisions
+### What You Can Explore
 
 ```
-All issues resolved:
-  Validation: ✓ 2 decided
-  Normalization: ✓ 1 decided
-  Duplicates: ✓ 1 decided
-  Households: ✓ 1 decided
-
-Export readiness: READY (green)
-Export file: householder-export-demo-[timestamp].csv
-Audit trail: 7+ entries
+✅ View all 8 routes (imports, dashboard, validation, duplicates, households, normalizations, audit, exports)
+✅ Review all 5 review items with supporting evidence
+✅ See pre-populated audit log
+✅ View export console with 3 export options
+⏳ Decision persistence (coming in Phase 1B)
+⏳ Export generation (coming in Phase 1B)
+⏳ Readiness blocking logic (coming in Phase 1B)
 ```
 
 ---
@@ -281,21 +234,12 @@ If you want to keep the demo data and run the demo again later, just restart the
 ### Option B: Reset for Next Demo
 
 ```bash
-export GIVEBUTTER_DATABASE_URL="sqlite:////Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/householder_demo.db"
-export EXPORT_OUTPUT_DIR="/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/exports_demo"
-
-python scripts/reset_demo_batch.py
+rm householder_demo.db
+source .venv/bin/activate
+python scripts/migrate_demo_db.py
 ```
 
-Expected output:
-```
-✓ Demo cleanup complete!
-Deleted from demo database: 12 records, 5 review items
-Deleted from demo exports: 1 export files
-Demo is clean. Ready for next seeding.
-```
-
-Then run `python scripts/seed_demo_batch.py` to seed fresh data.
+This deletes the demo database and recreates it with fresh demo data.
 
 ### Option C: Nuke Demo Entirely
 
@@ -303,7 +247,7 @@ Then run `python scripts/seed_demo_batch.py` to seed fresh data.
 rm -rf householder_demo.db exports_demo
 ```
 
-Then run `python scripts/seed_demo_batch.py` to recreate.
+Then run `python scripts/migrate_demo_db.py` to recreate from scratch.
 
 ---
 
@@ -313,69 +257,63 @@ Then run `python scripts/seed_demo_batch.py` to recreate.
 ```bash
 ls -la householder_demo.db
 ```
-Expected: Demo file exists (separate from production).
+Expected: Demo file exists in current directory.
 
 **Demo exports path:**
 ```bash
 ls -la exports_demo
 ```
-Expected: Demo directory exists (separate from production).
+Expected: Demo directory exists in current directory.
 
 **Production database (verify untouched):**
 ```bash
-ls -la givebutter.db
+sqlite3 givebutter.db "SELECT COUNT(*) FROM import_batches WHERE id LIKE 'demo%';"
 ```
-Expected: Unchanged from before demo.
-
-**Production exports (verify untouched):**
-```bash
-ls -la exports
-```
-Expected: Unchanged from before demo (should be empty initially).
-
-**Verify no demo data in production:**
-```bash
-sqlite3 givebutter.db "SELECT COUNT(*) FROM import_batches WHERE batch_name LIKE 'DEMO%';"
-```
-Expected output: `0` (no demo data in production)
+Expected output: `0` (no demo data in production database)
 
 ---
 
 ## Troubleshooting
 
-### Demo Won't Seed
+### Migration Won't Run
 
-**Error: "Not using demo database!"**
-- Solution: Verify `GIVEBUTTER_DATABASE_URL` contains "demo" and "householder_demo.db"
+**Error: "unable to open database file"**
+- Solution: Verify you're in the correct directory and the path is accessible
+- Use relative paths: `sqlite:///householder_demo.db`
 
-**Error: "Not using demo export directory!"**
-- Solution: Verify `EXPORT_OUTPUT_DIR` contains "demo" and "exports_demo"
-
-### Demo Database Corrupted
-
-**Solution:** Delete and reseed
-```bash
-rm householder_demo.db
-python scripts/seed_demo_batch.py
-```
-
-### Need Fresh Demo State
-
-**Solution:** Run reset script
-```bash
-python scripts/reset_demo_batch.py
-python scripts/seed_demo_batch.py
-```
-
-### App Won't Start
-
-**Check environment variables:**
+**Error: "Not using demo environment"**
+- Solution: Verify environment variables are set:
 ```bash
 echo $GIVEBUTTER_DATABASE_URL
 echo $EXPORT_OUTPUT_DIR
 ```
+Both should be set to demo paths.
 
-Both should contain "demo".
+### Flask Won't Start
+
+**Error: "Address already in use"**
+- Solution: Kill existing Flask process
+```bash
+lsof -i :8000 | grep LISTEN | awk '{print $2}' | xargs kill -9
+```
+Then restart Flask.
+
+### App Shows Wrong Data
+
+**Error: Seeing fixture data instead of demo data**
+- Solution: Verify `HOUSEHOLDER_REPOSITORY=database` is set
+```bash
+echo $HOUSEHOLDER_REPOSITORY
+```
+Must be set to "database".
+
+### Demo Database Corrupted
+
+**Solution:** Delete and remigrate
+```bash
+rm householder_demo.db
+python scripts/migrate_demo_db.py
+```
 
 ---
 
@@ -389,22 +327,34 @@ Both should contain "demo".
 
 ---
 
-## What You're Exercising
+## What You're Exercising (Phase 1A)
 
 By following this demo walkthrough, you're validating:
 
-1. ✓ **Import & Dashboard** — Batch creation, issue detection, queue display
-2. ✓ **Validation Workflow** — Flagging validation issues, decision recording
-3. ✓ **Duplicate Detection** — Finding duplicates, making decisions
-4. ✓ **Household Detection** — Finding household matches, making decisions
-5. ✓ **Normalization** — Suggesting field cleanups, accepting/rejecting
-6. ✓ **Readiness Logic** — Blocking on required decisions, enabling export when ready
-7. ✓ **Export Generation** — Creating export CSV, verifying format
-8. ✓ **Export Download** — Downloading export file from browser
-9. ✓ **Audit Trail** — Recording all actions and decisions
-10. ✓ **Data Immutability** — Raw data unchanged, decisions are metadata only
+**Service-Boundary Architecture** ✅
+- 8 canonical routes now service-backed (no direct fixture access)
+- Service layer hides repository implementation (fixture vs database)
+- View models provide immutable contracts between services and templates
+- Templates unchanged from Phase 0 (UI preserved exactly)
 
-All without touching production data or exports.
+**Data Viewing & Navigation** ✅
+1. Import listing and batch discovery
+2. Dashboard with queue summaries
+3. All 5 review items properly categorized
+4. Duplicate detection with supporting evidence
+5. Household detection with confidence levels
+6. Normalization suggestions with original/suggested values
+7. Audit log display
+8. Export console with available export options
+
+**Phase 1B Features** (Coming Soon) ⏳
+- Decision persistence and recording
+- Audit trail updates for user actions
+- Export generation and file creation
+- Readiness blocking logic based on decisions
+- Decision-based workflow gating
+
+All demo data is isolated from production (`householder_demo.db` vs `givebutter.db`).
 
 ---
 
