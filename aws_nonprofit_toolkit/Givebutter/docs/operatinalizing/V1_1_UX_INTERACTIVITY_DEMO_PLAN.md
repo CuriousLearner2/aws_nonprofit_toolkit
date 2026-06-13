@@ -705,7 +705,7 @@ sqlite3 givebutter.db "SELECT COUNT(*) FROM import_batches WHERE batch_name LIKE
 - [ ] No external API calls detected
 - [ ] No source-data mutations detected
 - [ ] Demo batch is easy to reset (script provided)
-- [ ] All demo exports are in standard exports/ directory
+- [ ] All demo exports are in `exports_demo/` (isolated, production `exports/` untouched)
 - [ ] Test suite still passes (1202 tests)
 
 ---
@@ -732,7 +732,7 @@ All 15 hard guardrails remain in place during demo:
 
 ---
 
-## Section 13: Implementation Plan (When Approved)
+## Section 14: Implementation Plan (When Approved)
 
 **If plan is accepted, implementation will create isolated demo environment:**
 
@@ -793,6 +793,8 @@ All 15 hard guardrails remain in place during demo:
 ## Section 15: Sign-Off
 
 **UX Interactivity Demo Plan (Revised with Isolation): COMPLETE & READY FOR APPROVAL**
+
+Sections: 15 (Purpose through Sign-Off)
 
 - [x] Purpose documented (stakeholder review, support training, UX validation)
 - [x] Recommended approach chosen: Option B (Seeded SQLite Demo Batch)
