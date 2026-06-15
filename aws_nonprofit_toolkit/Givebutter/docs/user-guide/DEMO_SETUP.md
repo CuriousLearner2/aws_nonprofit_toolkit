@@ -82,6 +82,59 @@ Phase 2+ will add export generation and batch approval workflows.
 
 ---
 
+## Email Validation Logic
+
+The validation system uses a **three-tier approach** to balance accuracy with usability:
+
+### Tier 0: Common Typo Domains (Detected First)
+
+We check for the most common typo domains that don't match any real domain:
+
+**Typos detected & suggested:**
+- "gamil.com" → Suggests "gmail.com" ✓ (i-l swap)
+- "gmial.com" → Suggests "gmail.com" ✓ (letter swap)
+- "gmal.com" → Suggests "gmail.com" ✓ (missing i)
+- "gmai.com" → Suggests "gmail.com" ✓ (incomplete)
+- "yahooo.com" → Suggests "yahoo.com" ✓ (extra o)
+- "yaho.com" → Suggests "yahoo.com" ✓ (missing o)
+- "hotmial.com" → Suggests "hotmail.com" ✓ (letter swap)
+- "hotmal.com" → Suggests "hotmail.com" ✓ (missing i)
+
+When detected, the issue shows: **"Possible typo. Did you mean gmail.com?"**
+
+### Tier 1: Recognized Domains (Strict Validation)
+
+For the top 30 most common email providers (gmail, yahoo, outlook, hotmail, aol, icloud, mail.com, gmx, web.de, protonmail, yandex, qq, sina, and regional variants), we apply strict validation to catch typos:
+
+**Typos detected:**
+- "gmial.com" → Flagged (gmail typo)
+- "gmal.com" → Flagged (gmail typo)
+- "yahooo.com" → Flagged (yahoo typo)
+- "hotmial.com" → Flagged (hotmail typo)
+
+**Valid corrections:**
+- "jane.smith@gmail.com" → Accepted
+- "jane.smith@hotmail.com" → Accepted
+
+### Tier 2: Unrecognized Domains (Lenient Validation)
+
+For any domain not on our recognized list, we accept it if it has valid canonical email format (something@something.something):
+
+**Accepted without issues:**
+- "user@mycompany.com" → Corporate email
+- "user@mail.cz" → Regional email provider
+- "user@university.edu" → University email
+
+### Format Validation (All Domains)
+
+All emails must satisfy the canonical format. These are rejected:
+- "@@gmail.com" → Invalid (double @)
+- "@gmail.com" → Invalid (missing local part)
+- "user@gmail" → Invalid (missing TLD)
+- "usergmail.com" → Invalid (missing @)
+
+---
+
 ## Guided Walkthrough
 
 Follow this sequence to exercise all major UX flows:
@@ -126,21 +179,41 @@ Follow this sequence to exercise all major UX flows:
 - Carol White (missing phone) — Shows "Missing Required Field" issue
 
 **Test Autosave and Issue Recalculation:**
+
+**Test 1: Common Typo with Suggestion (gamil.com → gmail.com):**
 1. Click on Jane Smith's email field (currently `jane.smith@gmial.com`)
-2. Change `gmial.com` to `gmail.com`
+2. Change to `jane.smith@gamil.com` (i-l swap typo)
 3. Click away or press Tab
-4. Observe: "Saving..." appears, then "Saved" (green)
-5. **Issue badge disappears automatically** (issue resolved!)
-6. **Row Status changes from "Invalid Format" to "No issues"**
-7. Refresh page — corrected email persists
-8. Change email back to `gmial.com` (introduce typo)
-9. Observe: Issue reappears and Row Status updates back to "Invalid Format"
+4. **Observe: Issue appears with suggestion** "Possible typo. Did you mean gmail.com?"
+5. **Row Status shows "Warning"**
+6. Now change to `jane.smith@gmail.com` (correct it)
+7. Click away — **Issue disappears, Row Status becomes "No issues"**
+
+**Test 2: Recognized Domain Typo (gmial.com):**
+1. Change email back to `jane.smith@gmial.com` (letter swap typo)
+2. Click away — **Issue appears** (recognized typo in gmail domain)
+3. **Row Status shows "Invalid Format"**
+4. Correct to `jane.smith@gmail.com`
+5. Click away — **Issue resolves, Row Status becomes "No issues"**
+
+**Test 3: Unrecognized Domain (Corporate Email):**
+1. Change email to `jane.smith@mycompany.com`
+2. Click away — **No issues appear** (unrecognized domain accepted if format valid)
+3. Row Status shows "No issues"
+
+**Test 4: Invalid Format:**
+1. Change email to `jane.smith@@mycompany.com` (double @)
+2. Click away — **Issue appears** (canonical format violation detected)
+3. Row Status shows "Invalid Format"
 
 **For Carol White:** Add phone number `555-0002`
 - Observe: "Missing Required Field" issue disappears
 - Row Status changes to "No issues"
 
-**Action:** Test the complete autosave and issue recalculation workflow. Observe row status and issue display updates in real-time.
+**Action:** Test the complete autosave and issue recalculation workflow with typo suggestions. Observe:
+- Common typos show helpful suggestions
+- Row status updates dynamically
+- Both recognized and unrecognized domains work correctly
 
 ---
 

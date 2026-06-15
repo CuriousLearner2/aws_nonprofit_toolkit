@@ -343,18 +343,53 @@ class TestIssueRecalculation:
         assert len(issues_after) == 0 or issues_after[0]['field'] != 'email'
 
     def test_is_issue_resolved_logic(self):
-        """is_issue_resolved returns correct boolean."""
+        """is_issue_resolved returns correct boolean with two-tier validation and typo detection."""
         # Missing issue resolved when value present
         assert is_issue_resolved('phone', '555-1234', 'missing') is True
 
         # Missing issue not resolved when empty
         assert is_issue_resolved('phone', '', 'missing') is False
 
-        # Typo issue resolved when value differs from raw
-        assert is_issue_resolved('email', 'corrected@example.com', 'typo', raw_value='typo@example.com') is True
+        # === Common typo domains (detected for all emails) ===
+        # Common typo not resolved (no correction made)
+        assert is_issue_resolved('email', 'user@gamil.com', 'possible_typo', raw_value='user@gamil.com') is False
 
-        # Typo issue not resolved when value same as raw
-        assert is_issue_resolved('email', 'typo@example.com', 'typo', raw_value='typo@example.com') is False
+        # Common typo resolved when corrected
+        assert is_issue_resolved('email', 'user@gmail.com', 'possible_typo', raw_value='user@gamil.com') is True
+
+        # Other typo domains detected
+        assert is_issue_resolved('email', 'user@yahooo.com', 'possible_typo', raw_value='user@yahooo.com') is False
+        assert is_issue_resolved('email', 'user@yahoo.com', 'possible_typo', raw_value='user@yahooo.com') is True
+
+        # === TIER 1: Recognized domains (strict validation) ===
+        # Gmail typo not resolved (no correction made)
+        assert is_issue_resolved('email', 'user@gmial.com', 'possible_typo', raw_value='user@gmial.com') is False
+
+        # Gmail typo resolved when corrected to valid format
+        assert is_issue_resolved('email', 'user@gmail.com', 'possible_typo', raw_value='user@gmial.com') is True
+
+        # Hotmail typo resolved when corrected
+        assert is_issue_resolved('email', 'user@hotmail.com', 'possible_typo', raw_value='user@hotmial.com') is True
+
+        # === TIER 2: Unrecognized domains (lenient validation) ===
+        # Corporate domain accepted (format valid)
+        assert is_issue_resolved('email', 'user@mycompany.com', 'possible_typo', raw_value='user@test.com') is True
+
+        # Czech domain accepted (format valid)
+        assert is_issue_resolved('email', 'user@mail.cz', 'possible_typo', raw_value='user@test.com') is True
+
+        # Multi-part unrecognized domain accepted
+        assert is_issue_resolved('email', 'user@company.co.uk', 'possible_typo', raw_value='user@test.com') is True
+
+        # === Invalid formats (all domains) ===
+        # Format validation: double @ rejected
+        assert is_issue_resolved('email', 'user@@gmail.com', 'possible_typo', raw_value='user@gmial.com') is False
+
+        # Format validation: missing local part rejected
+        assert is_issue_resolved('email', '@gmail.com', 'possible_typo', raw_value='user@gmial.com') is False
+
+        # Format validation: missing TLD rejected
+        assert is_issue_resolved('email', 'user@gmail', 'possible_typo', raw_value='user@gmial.com') is False
 
         # Typo without raw_value cannot be determined as resolved
         assert is_issue_resolved('email', 'corrected@example.com', 'typo') is False

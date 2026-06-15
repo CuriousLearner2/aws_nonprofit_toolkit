@@ -18,6 +18,48 @@ from .database_models import (
 from .autosave_service import get_effective_values
 import os
 
+# Top 30 recognized email domains - strict validation applied to these
+RECOGNIZED_EMAIL_DOMAINS = {
+    # Major global providers
+    'gmail.com',
+    'yahoo.com',
+    'outlook.com',
+    'hotmail.com',
+    'aol.com',
+    'icloud.com',
+    'mail.com',
+    'gmx.com',
+    'web.de',
+    'protonmail.com',
+    'proton.me',
+    'zoho.com',
+    'fastmail.com',
+    'mailbox.org',
+    'posteo.de',
+    # Regional variants
+    'yahoo.co.uk', 'yahoo.ca', 'yahoo.fr', 'yahoo.de', 'yahoo.it',
+    'outlook.co.uk', 'outlook.fr', 'outlook.de',
+    'hotmail.co.uk', 'hotmail.fr', 'hotmail.de',
+    # International providers
+    'mail.ru',
+    'yandex.com',
+    'qq.com',
+    'sina.com',
+    '163.com',
+}
+
+# Common typo domains - maps incorrect domain to correct domain
+COMMON_TYPO_DOMAINS = {
+    'gamil.com': 'gmail.com',      # i-l swap
+    'gmial.com': 'gmail.com',      # letter swap
+    'gmal.com': 'gmail.com',       # missing i
+    'gmai.com': 'gmail.com',       # incomplete
+    'yahooo.com': 'yahoo.com',     # extra o
+    'yaho.com': 'yahoo.com',       # missing o
+    'hotmial.com': 'hotmail.com',  # letter swap
+    'hotmal.com': 'hotmail.com',   # missing i
+}
+
 
 def recalculate_row_issues(
     batch_id: str,
@@ -102,11 +144,19 @@ def recalculate_row_issues(
                 continue
             else:
                 # Issue remains unresolved
+                description = payload.get('description', f"Issue with {issue_field}")
+
+                # Add suggestion if it's a common typo domain
+                if issue_field == 'email' and issue_reason in ('typo', 'possible_typo', 'format'):
+                    suggestion = _get_email_suggestion(effective_value)
+                    if suggestion:
+                        description += f" Did you mean {suggestion}?"
+
                 current_issues.append({
                     'issue_id': issue.id,
                     'issue_type': issue.item_type,
                     'field': issue_field,
-                    'description': payload.get('description', f"Issue with {issue_field}"),
+                    'description': description,
                     'severity': severity,
                     'overridden': _is_issue_overridden(batch, raw_import_row_id, issue_field)
                 })
@@ -128,7 +178,7 @@ def is_issue_resolved(
 
     Resolution logic:
     - Missing: resolved if value is now non-empty
-    - Typo/format: resolved if value matches raw (no correction) OR appears to have valid format
+    - Typo/format: requires raw_value for comparison; resolved if value differs AND format is valid
 
     Args:
         field: Field name (e.g., 'email', 'phone')
@@ -149,32 +199,60 @@ def is_issue_resolved(
         # Issue resolved if now non-empty
         return bool(effective_str)
     elif issue_reason in ('typo', 'format', 'possible_typo'):
-        # For typo/format issues: only resolved if value is actually corrected to valid format
-        # Not resolved if just different from raw but still invalid
+        # For typo/format issues: MUST have raw_value to determine if correction was made
+        if raw_value is None:
+            # Cannot determine if corrected without raw value
+            return False
+
         if not effective_str:
+            return False
+
+        # Check if a correction was actually made
+        raw_str = str(raw_value).strip() if raw_value else ''
+        if effective_str == raw_str:
+            # No correction made, issue not resolved
             return False
 
         # Basic validation for common issues
         if field == 'email':
-            # Email issue resolved only if it's valid format and no known typos
+            # Email validation: two-tier approach
             import re
 
-            # Check for basic valid email format: something@something.something
+            # Canonical format: something@something.something
             email_pattern = r'^[^@]+@[^@]+\.[^@]+$'
             if not re.match(email_pattern, effective_str.lower()):
-                # Invalid email format (missing @ or domain dot)
+                # Invalid canonical format (missing @, domain, or TLD)
                 return False
 
-            # Check for known typo patterns
-            invalid_typos = [
-                r'gmial(?:\.com)?',  # gmail typo: gmial
-                r'gmal(?:\.com)?',   # gmail typo: gmal (missing i)
-                r'yahooo(?:\.com)?', # yahoo typo: yahooo
-                r'hotmial(?:\.com)?',# hotmail typo: hotmial
-                r'\bgmai\b',         # gmai standalone (not part of gmail)
-            ]
-            has_invalid = any(re.search(pattern, effective_str.lower()) for pattern in invalid_typos)
-            return not has_invalid
+            # Extract domain for recognized domain check
+            try:
+                domain = effective_str.lower().rsplit('@', 1)[1]
+            except (IndexError, AttributeError):
+                return False
+
+            # Check for common typo domains FIRST (applies to all emails)
+            if domain in COMMON_TYPO_DOMAINS:
+                # This is a known typo domain - not resolved unless corrected to actual domain
+                corrected_domain = COMMON_TYPO_DOMAINS[domain]
+                # Only resolved if user corrected it to the right domain
+                return raw_value is not None and corrected_domain in raw_value.lower()
+
+            # Two-tier validation:
+            # Tier 1: Recognized domains - strict validation (catch typos)
+            if domain in RECOGNIZED_EMAIL_DOMAINS:
+                invalid_typos = [
+                    r'gmial(?:\.com)?',  # gmail typo: gmial
+                    r'gmal(?:\.com)?',   # gmail typo: gmal (missing i)
+                    r'yahooo(?:\.com)?', # yahoo typo: yahooo
+                    r'hotmial(?:\.com)?',# hotmail typo: hotmial
+                    r'\bgmai\b',         # gmai standalone (not part of gmail)
+                ]
+                has_invalid = any(re.search(pattern, effective_str.lower()) for pattern in invalid_typos)
+                return not has_invalid
+            else:
+                # Tier 2: Unrecognized domains - lenient validation
+                # If format is valid, accept it (likely corporate/regional email)
+                return True
         elif field == 'phone':
             # Phone issue resolved if it has valid format (digits and common separators)
             import re
@@ -183,13 +261,33 @@ def is_issue_resolved(
             return valid_phone
         else:
             # For other fields, check if effective differs meaningfully from raw
-            if raw_value is not None:
-                raw_str = str(raw_value).strip() if raw_value else ''
-                # Resolved if effective differs from raw
-                return effective_str != raw_str
-            return False
+            # (raw_value comparison already done above)
+            return True
     else:
         return False  # Unknown reason, don't auto-resolve
+
+
+def _get_email_suggestion(email: str) -> Optional[str]:
+    """
+    Check if email has a common typo domain and return suggestion.
+
+    Args:
+        email: Email address to check
+
+    Returns:
+        Suggested correct domain, or None if no typo detected
+    """
+    if not email:
+        return None
+
+    try:
+        domain = email.lower().rsplit('@', 1)[1]
+        if domain in COMMON_TYPO_DOMAINS:
+            return COMMON_TYPO_DOMAINS[domain]
+    except (IndexError, AttributeError):
+        pass
+
+    return None
 
 
 def _is_issue_overridden(
