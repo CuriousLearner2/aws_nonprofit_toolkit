@@ -64,20 +64,20 @@ def seed_demo_batch(session):
     session.add(batch)
     session.flush()
 
-    # Demo donor data
+    # Demo donor data (using real area codes instead of reserved 555)
     donors = [
-        ("Jane", "Smith", "jane.smith@gmial.com", "555-0001", "100.00", "2025-01-01"),  # typo in email
+        ("Jane", "Smith", "jane.smith@gmial.com", "415-200-0001", "100.00", "2025-01-01"),  # typo in email
         ("Carol", "White", "carol.white@example.com", None, "250.00", "2025-01-02"),  # missing phone
-        ("Robert", "Smith", "bob.smith@example.com", "555-0003", "150.00", "2025-01-03"),
-        ("Bob", "Smith", "bob.smith@example.com", "555-0003", "200.00", "2025-01-04"),  # duplicate
-        ("Eve", "Davis", "eve.davis@example.com", "555-0009", "75.00", "2025-01-05"),
-        ("Frank", "Davis", "frank.davis@example.com", "555-0009", "125.00", "2025-01-06"),  # household
-        ("Grace", "Miller", "grace.miller@example.com", "(555) 004-1234", "300.00", "2025-01-07"),  # needs normalization
-        ("Henry", "Brown", "henry.brown@example.com", "555-0008", "50.00", "2025-01-08"),
-        ("Iris", "Jones", "iris.jones@example.com", "555-0010", "180.00", "2025-01-09"),
-        ("Jack", "Garcia", "jack.garcia@example.com", "555-0011", "220.00", "2025-01-10"),
-        ("Karen", "Martinez", "karen.martinez@example.com", "555-0012", "95.00", "2025-01-11"),
-        ("Leo", "Rodriguez", "leo.rodriguez@example.com", "555-0013", "140.00", "2025-01-12"),
+        ("Robert", "Smith", "bob.smith@example.com", "415-200-0003", "150.00", "2025-01-03"),
+        ("Bob", "Smith", "bob.smith@example.com", "415-200-0003", "200.00", "2025-01-04"),  # duplicate
+        ("Eve", "Davis", "eve.davis@example.com", "415-200-0009", "75.00", "2025-01-05"),
+        ("Frank", "Davis", "frank.davis@example.com", "415-200-0009", "125.00", "2025-01-06"),  # household
+        ("Grace", "Miller", "grace.miller@example.com", "(415) 200-1234", "300.00", "2025-01-07"),  # needs normalization
+        ("Henry", "Brown", "henry.brown@example.com", "415-200-0008", "50.00", "2025-01-08"),
+        ("Iris", "Jones", "iris.jones@example.com", "415-200-0010", "180.00", "2025-01-09"),
+        ("Jack", "Garcia", "jack.garcia@example.com", "415-200-0011", "220.00", "2025-01-10"),
+        ("Karen", "Martinez", "karen.martinez@example.com", "415-200-0012", "95.00", "2025-01-11"),
+        ("Leo", "Rodriguez", "leo.rodriguez@example.com", "415-200-0013", "140.00", "2025-01-12"),
     ]
 
     # Add raw import rows
@@ -181,7 +181,7 @@ def seed_demo_batch(session):
         confidence=0.92,
         payload_json={
             "match_type": "potential_duplicate",
-            "evidence": ["same_email: bob.smith@example.com", "same_phone: 555-0003"],
+            "evidence": ["same_email: bob.smith@example.com", "same_phone: 415-200-0003"],
             "conflicts": []
         }
     )
@@ -197,7 +197,7 @@ def seed_demo_batch(session):
         confidence=0.88,
         payload_json={
             "suggested_name": "Davis Household",
-            "basis": "Same phone number (555-0009)",
+            "basis": "Same phone number (415-200-0009)",
             "confidence": 0.88
         }
     )
@@ -214,7 +214,7 @@ def seed_demo_batch(session):
         payload_json={
             "field": "phone",
             "raw_value": "(555) 004-1234",
-            "normalized_value": "555-0041234",
+            "normalized_value": "415-200-1234",
             "basis": "Standard phone normalization"
         }
     )
