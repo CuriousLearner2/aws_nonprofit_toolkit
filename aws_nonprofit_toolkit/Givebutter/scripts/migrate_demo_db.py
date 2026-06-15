@@ -119,7 +119,7 @@ def seed_demo_batch(session):
 
     session.flush()
 
-    # Create review items (5 items as per spec)
+    # Create review items (6 items: 3 validation, 1 duplicate, 1 household, 1 normalization)
     review_items = []
 
     # 1. Jane Smith - validation issue (email typo)
@@ -139,8 +139,25 @@ def seed_demo_batch(session):
     session.flush()
     review_items.append(item1)
 
-    # 2. Carol White - validation issue (missing phone)
+    # 2. Jane Smith - validation issue (phone too short)
     item2 = ReviewItem(
+        batch_id=batch_id,
+        item_type="validation",
+        status="pending",
+        confidence=0.95,
+        payload_json={
+            "field": "phone",
+            "reason": "format",
+            "severity": "warning",
+            "description": "Phone number too short (7 digits, need 10)"
+        }
+    )
+    session.add(item2)
+    session.flush()
+    review_items.append(item2)
+
+    # 3. Carol White - validation issue (missing phone)
+    item3 = ReviewItem(
         batch_id=batch_id,
         item_type="validation",
         status="pending",
@@ -152,12 +169,12 @@ def seed_demo_batch(session):
             "description": "Required field missing (phone)"
         }
     )
-    session.add(item2)
+    session.add(item3)
     session.flush()
-    review_items.append(item2)
+    review_items.append(item3)
 
-    # 3. Robert/Bob Smith - duplicate
-    item3 = ReviewItem(
+    # 5. Robert/Bob Smith - duplicate
+    item4 = ReviewItem(
         batch_id=batch_id,
         item_type="duplicate",
         status="pending",
@@ -168,12 +185,12 @@ def seed_demo_batch(session):
             "conflicts": []
         }
     )
-    session.add(item3)
+    session.add(item4)
     session.flush()
-    review_items.append(item3)
+    review_items.append(item4)
 
-    # 4. Eve/Frank Davis - household
-    item4 = ReviewItem(
+    # 6. Eve/Frank Davis - household
+    item5 = ReviewItem(
         batch_id=batch_id,
         item_type="household",
         status="pending",
@@ -184,12 +201,12 @@ def seed_demo_batch(session):
             "confidence": 0.88
         }
     )
-    session.add(item4)
+    session.add(item5)
     session.flush()
-    review_items.append(item4)
+    review_items.append(item5)
 
-    # 5. Grace Miller - normalization
-    item5 = ReviewItem(
+    # 7. Grace Miller - normalization
+    item6 = ReviewItem(
         batch_id=batch_id,
         item_type="normalization",
         status="pending",
@@ -201,19 +218,20 @@ def seed_demo_batch(session):
             "basis": "Standard phone normalization"
         }
     )
-    session.add(item5)
+    session.add(item6)
     session.flush()
-    review_items.append(item5)
+    review_items.append(item6)
 
     # Add review item subjects linking items to raw import rows
     subjects = [
-        (item1.id, "import_raw_row", raw_row_ids[0], "primary"),  # Jane Smith (idx 0)
-        (item2.id, "import_raw_row", raw_row_ids[1], "primary"),  # Carol White (idx 1)
-        (item3.id, "import_raw_row", raw_row_ids[2], "primary"),  # Robert Smith (idx 2)
-        (item3.id, "import_raw_row", raw_row_ids[3], "secondary"),  # Bob Smith (idx 3)
-        (item4.id, "import_raw_row", raw_row_ids[4], "primary"),  # Eve Davis (idx 4)
-        (item4.id, "import_raw_row", raw_row_ids[5], "secondary"),  # Frank Davis (idx 5)
-        (item5.id, "import_raw_row", raw_row_ids[6], "primary"),  # Grace Miller (idx 6)
+        (item1.id, "import_raw_row", raw_row_ids[0], "primary"),  # Jane Smith - email (idx 0)
+        (item2.id, "import_raw_row", raw_row_ids[0], "primary"),  # Jane Smith - phone (idx 0)
+        (item3.id, "import_raw_row", raw_row_ids[1], "primary"),  # Carol White - phone (idx 1)
+        (item4.id, "import_raw_row", raw_row_ids[2], "primary"),  # Robert Smith (idx 2)
+        (item4.id, "import_raw_row", raw_row_ids[3], "secondary"),  # Bob Smith (idx 3)
+        (item5.id, "import_raw_row", raw_row_ids[4], "primary"),  # Eve Davis (idx 4)
+        (item5.id, "import_raw_row", raw_row_ids[5], "secondary"),  # Frank Davis (idx 5)
+        (item6.id, "import_raw_row", raw_row_ids[6], "primary"),  # Grace Miller (idx 6)
     ]
 
     for review_item_id, subject_type, subject_id, role in subjects:

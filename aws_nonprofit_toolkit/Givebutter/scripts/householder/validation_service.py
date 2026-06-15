@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional, Mapping
 import os
 
 from .repository_provider import get_import_repository
+from .issue_recalculation_service import recalculate_row_issues
+from .row_status_service import derive_row_status
 
 
 def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
@@ -39,30 +41,27 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
     validation_vm = repository.get_validation(import_id)
     result = validation_vm.to_template_dict()
 
-    # Enrich validation_issues with row_status and issues
-    # Use issue_type/issue_description from the ValidationRow data
+    # Enrich validation_issues with row_status and issues using recalculation service
     for record in result.get('validation_issues', []):
-        issue_type = record.get('issue_type')
-        issue_description = record.get('issue_description')
-        issue_field = record.get('issue_field')
-        issue_reason = record.get('issue_reason')
+        raw_import_row_id = record.get('raw_import_row_id')
 
-        if issue_type:
-            # Map issue_type codes to readable labels
-            issue_labels = {
-                'format-invalid': 'Invalid Format',
-                'missing-required': 'Missing Required Field',
-                'length-exceeded': 'Length Exceeded',
-            }
-            status_label = issue_labels.get(issue_type, f'Unknown Issue')
-            record['row_status'] = status_label
+        if raw_import_row_id:
+            # Get all issues for this row (recalculates based on effective values)
+            all_issues = recalculate_row_issues(import_id, raw_import_row_id)
 
-            # Create issue object with field and reason for template
-            record['issues'] = [{
-                'field': issue_field or issue_type,
-                'reason': issue_reason or issue_description or 'Issue detected',
-                'severity': 'error'
-            }] if issue_type else []
+            # Get row status
+            row_status = derive_row_status(import_id, raw_import_row_id)
+
+            # Format issues for template
+            record['issues'] = [
+                {
+                    'field': issue.get('field', 'unknown'),
+                    'reason': issue.get('description', 'Issue detected'),
+                    'severity': issue.get('severity', 'warning')
+                }
+                for issue in all_issues
+            ]
+            record['row_status'] = row_status
         else:
             # No issue in this record
             record['row_status'] = 'No issues'

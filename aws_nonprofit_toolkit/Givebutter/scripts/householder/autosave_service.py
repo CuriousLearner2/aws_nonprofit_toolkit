@@ -158,19 +158,21 @@ def get_effective_values(
         # Start with raw values
         effective_values = dict(raw_row.raw_csv_data) if raw_row.raw_csv_data else {}
 
-        # Find latest ReviewDecision for this row (any decision that has reviewed_values)
-        # Order by created_at DESC, id DESC (tie-breaker)
-        latest_decision = session.query(ReviewDecision).filter_by(
+        # Accumulate corrections from ALL ReviewDecisions for this row
+        # Each autosave creates a new decision with reviewed_values for one or more fields
+        # We need to merge them all in chronological order (later decisions override earlier)
+        decisions = session.query(ReviewDecision).filter_by(
             batch_id=batch_id,
             raw_import_row_id=raw_import_row_id
         ).order_by(
-            ReviewDecision.created_at.desc(),
-            ReviewDecision.id.desc()
-        ).first()
+            ReviewDecision.created_at.asc(),  # Earliest first
+            ReviewDecision.id.asc()
+        ).all()
 
-        # Merge corrections: latest reviewed_values override raw
-        if latest_decision and latest_decision.reviewed_values:
-            effective_values.update(latest_decision.reviewed_values)
+        # Merge corrections: iterate in chronological order, later overrides earlier
+        for decision in decisions:
+            if decision.reviewed_values:
+                effective_values.update(decision.reviewed_values)
 
         return effective_values
 
