@@ -125,15 +125,22 @@ Follow this sequence to exercise all major UX flows:
 - Jane Smith (email typo: gmial.com) — Shows "Invalid Format" issue
 - Carol White (missing phone) — Shows "Missing Required Field" issue
 
-**Test Autosave:**
-1. Click on Jane Smith's email field
+**Test Autosave and Issue Recalculation:**
+1. Click on Jane Smith's email field (currently `jane.smith@gmial.com`)
 2. Change `gmial.com` to `gmail.com`
 3. Click away or press Tab
 4. Observe: "Saving..." appears, then "Saved" (green)
-5. Issue badge disappears automatically
-6. Refresh page — change persists
+5. **Issue badge disappears automatically** (issue resolved!)
+6. **Row Status changes from "Invalid Format" to "No issues"**
+7. Refresh page — corrected email persists
+8. Change email back to `gmial.com` (introduce typo)
+9. Observe: Issue reappears and Row Status updates back to "Invalid Format"
 
-**Action:** Test editing and autosaving on both records. Observe row status changes.
+**For Carol White:** Add phone number `555-0002`
+- Observe: "Missing Required Field" issue disappears
+- Row Status changes to "No issues"
+
+**Action:** Test the complete autosave and issue recalculation workflow. Observe row status and issue display updates in real-time.
 
 ---
 
@@ -230,9 +237,13 @@ Export readiness: BLOCKED (Carol White missing phone)
 ✅ Review all 5 review items with supporting evidence
 ✅ See pre-populated audit log
 ✅ View export console with 3 export options
-⏳ Decision persistence (coming in Phase 1B)
-⏳ Export generation (coming in Phase 1B)
-⏳ Readiness blocking logic (coming in Phase 1B)
+✅ Autosave field corrections (inline edits with blur trigger)
+✅ Issue recalculation (issues appear/disappear based on corrected values)
+✅ Row Status updates (dynamic based on effective values)
+✅ Issue display with field name and reason code
+⏳ Decision recording UI (validation/normalization/duplicate/household decisions)
+⏳ Batch approval workflow (Approve File button)
+⏳ Export generation (coming in Phase 2)
 ```
 
 ---

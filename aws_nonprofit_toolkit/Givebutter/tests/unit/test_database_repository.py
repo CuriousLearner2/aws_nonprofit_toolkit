@@ -934,8 +934,10 @@ class TestDatabaseGetValidation:
                 item_type='validation',
                 status='pending',
                 payload_json={
-                    'issue_type': 'format-invalid',
-                    'issue_description': 'Phone number format invalid'
+                    'field': 'phone',
+                    'reason': 'possible_typo',
+                    'severity': 'warning',
+                    'description': 'Phone number format invalid'
                 }
             )
             session.add(validation_item_1)
@@ -945,8 +947,10 @@ class TestDatabaseGetValidation:
                 item_type='validation',
                 status='pending',
                 payload_json={
-                    'issue_type': 'missing-required',
-                    'issue_description': 'Missing campaign field'
+                    'field': 'email',
+                    'reason': 'possible_typo',
+                    'severity': 'warning',
+                    'description': 'Email format appears invalid'
                 }
             )
             session.add(validation_item_2)
@@ -956,8 +960,10 @@ class TestDatabaseGetValidation:
                 item_type='validation',
                 status='pending',
                 payload_json={
-                    'issue_type': 'format-invalid',
-                    'issue_description': 'Address incomplete (missing ZIP)'
+                    'field': 'postal_code',
+                    'reason': 'missing',
+                    'severity': 'error',
+                    'description': 'Address incomplete (missing ZIP)'
                 }
             )
             session.add(validation_item_3)
@@ -967,8 +973,10 @@ class TestDatabaseGetValidation:
                 item_type='validation',
                 status='pending',
                 payload_json={
-                    'issue_type': 'missing-required',
-                    'issue_description': 'Phone number missing'
+                    'field': 'phone',
+                    'reason': 'missing',
+                    'severity': 'error',
+                    'description': 'Phone number missing'
                 }
             )
             session.add(validation_item_5)
