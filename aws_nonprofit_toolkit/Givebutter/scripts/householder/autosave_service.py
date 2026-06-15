@@ -178,3 +178,55 @@ def get_effective_values(
 
     finally:
         session.close()
+
+
+def validate_corrected_values(
+    corrected_values: Mapping[str, Any],
+) -> tuple[bool, Optional[dict]]:
+    """
+    Validate corrected field values before autosave.
+
+    Ensures that corrections are valid before saving to ReviewDecision.
+    Invalid values are rejected with specific error messages.
+
+    Args:
+        corrected_values: Dict of field values to validate (e.g., {'email': 'user@example.com'})
+
+    Returns:
+        Tuple of (is_valid: bool, errors: dict or None)
+        - If valid: (True, None)
+        - If invalid: (False, {'field': 'error message', ...})
+    """
+    from .phone_validation_service import is_valid_phone
+    import re
+
+    errors = {}
+
+    for field, value in corrected_values.items():
+        if not value or not isinstance(value, str):
+            # Empty values are allowed (might be clearing a field)
+            continue
+
+        value_str = value.strip()
+        if not value_str:
+            continue
+
+        # Validate email field
+        if field == 'email':
+            # Canonical format: something@something.something
+            email_pattern = r'^[^@]+@[^@]+\.[^@]+$'
+            if not re.match(email_pattern, value_str.lower()):
+                errors['email'] = 'Invalid email format (require: localpart@domain.tld)'
+
+        # Validate phone field
+        elif field == 'phone':
+            # Use phonenumbers library for validation
+            if not is_valid_phone(value_str, 'US'):
+                errors['phone'] = 'Invalid phone format (require: 10+ digit US number)'
+
+        # Add more field validations as needed
+
+    if errors:
+        return False, errors
+    else:
+        return True, None

@@ -1045,7 +1045,21 @@ def autosave_row_corrections(import_id):
         return jsonify({'error': 'raw_import_row_id required'}), 400
 
     try:
-        # Save corrections
+        # Validate corrections BEFORE saving
+        from householder.autosave_service import validate_corrected_values
+        is_valid, errors = validate_corrected_values(corrected_values)
+
+        if not is_valid:
+            # Return validation error - don't save
+            logger.info(f"Row {raw_import_row_id} autosave validation failed: {errors}")
+            return jsonify({
+                'success': False,
+                'error': 'Validation failed',
+                'validation_errors': errors,
+                'message': 'Corrections not saved - please fix validation errors'
+            }), 400
+
+        # Save corrections (only if validation passed)
         result = autosave_row_corrections(
             batch_id=import_id,
             raw_import_row_id=raw_import_row_id,

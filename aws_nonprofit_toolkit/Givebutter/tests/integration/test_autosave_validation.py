@@ -1,0 +1,365 @@
+"""
+Integration tests for autosave validation (validate before save).
+
+Critical: Invalid corrections should NOT be saved.
+- Invalid email → rejected, not saved
+- Invalid phone → rejected, not saved
+- Valid corrections → saved with "Saved" feedback
+"""
+
+import pytest
+import sys
+import tempfile
+from pathlib import Path
+from datetime import datetime
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts.uploader.app import app
+from scripts.householder.database_models import (
+    Base, ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject,
+    ReviewDecision, create_db_engine
+)
+from scripts.householder.autosave_service import get_effective_values, validate_corrected_values
+from sqlalchemy.orm import sessionmaker
+
+
+@pytest.fixture
+def temp_db():
+    """Create temporary SQLite database for testing."""
+    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+    db_path = db_file.name
+    db_file.close()
+
+    database_url = f'sqlite:///{db_path}'
+    engine = create_db_engine(database_url)
+    Base.metadata.create_all(engine)
+
+    yield database_url, engine
+
+    # Cleanup
+    Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.fixture
+def client_with_db(temp_db, monkeypatch):
+    """Flask test client configured with temporary database."""
+    database_url, engine = temp_db
+
+    # Monkeypatch environment variable
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
+    # Configure Flask app
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client, database_url
+
+
+def setup_validation_batch(database_url):
+    """Set up a batch with email and phone validation issues."""
+    SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+    session = SessionLocal()
+
+    try:
+        batch = ImportBatch(
+            id='test-validation',
+            filename='test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id='test-validation',
+            row_index=0,
+            raw_csv_data={
+                'transaction_id': 'TX001',
+                'date': '2024-01-01',
+                'first_name': 'Jane',
+                'last_name': 'Smith',
+                'email': 'jane.smith@gmial.com',  # Email typo
+                'phone': '555-0001',              # Phone too short
+                'amount': '100.00',
+                'address': '123 Main St',
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+
+        # Email validation issue
+        email_issue = ReviewItem(
+            batch_id='test-validation',
+            item_type='validation',
+            status=None,
+            confidence=0.95,
+            payload_json={
+                'field': 'email',
+                'reason': 'possible_typo',
+                'severity': 'warning',
+                'description': 'Invalid email format (gmial.com typo)'
+            },
+        )
+        session.add(email_issue)
+        session.flush()
+
+        # Phone validation issue
+        phone_issue = ReviewItem(
+            batch_id='test-validation',
+            item_type='validation',
+            status=None,
+            confidence=0.95,
+            payload_json={
+                'field': 'phone',
+                'reason': 'format',
+                'severity': 'warning',
+                'description': 'Phone number too short'
+            },
+        )
+        session.add(phone_issue)
+        session.flush()
+
+        # Link issues to row
+        email_subject = ReviewItemSubject(
+            review_item_id=email_issue.id,
+            subject_type='import_raw_row',
+            subject_id=raw_row.id,
+            role='primary',
+        )
+        session.add(email_subject)
+
+        phone_subject = ReviewItemSubject(
+            review_item_id=phone_issue.id,
+            subject_type='import_raw_row',
+            subject_id=raw_row.id,
+            role='primary',
+        )
+        session.add(phone_subject)
+        session.commit()
+
+        return batch.id, raw_row.id
+    finally:
+        session.close()
+
+
+@pytest.mark.integration
+class TestAutosaveValidation:
+    """Test suite for autosave validation (validate-before-save)."""
+
+    def test_validate_corrected_values_invalid_email(self):
+        """Unit test: validate_corrected_values rejects invalid email."""
+        is_valid, errors = validate_corrected_values({'email': 'invalid-email'})
+        assert is_valid is False
+        assert 'email' in errors
+        assert 'Invalid email format' in errors['email']
+
+    def test_validate_corrected_values_invalid_phone(self):
+        """Unit test: validate_corrected_values rejects invalid phone."""
+        is_valid, errors = validate_corrected_values({'phone': '555'})
+        assert is_valid is False
+        assert 'phone' in errors
+        assert 'Invalid phone' in errors['phone']
+
+    def test_validate_corrected_values_valid_email(self):
+        """Unit test: validate_corrected_values accepts valid email."""
+        is_valid, errors = validate_corrected_values({'email': 'user@example.com'})
+        assert is_valid is True
+        assert errors is None
+
+    def test_validate_corrected_values_valid_phone(self):
+        """Unit test: validate_corrected_values accepts valid phone."""
+        is_valid, errors = validate_corrected_values({'phone': '(415) 555-1234'})
+        assert is_valid is True
+        assert errors is None
+
+    def test_autosave_invalid_email_not_saved(self, client_with_db):
+        """CRITICAL: Invalid email correction is REJECTED and NOT saved."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Try to autosave invalid email
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {
+                    'email': 'invalid-email-no-at-sign'  # Invalid
+                }
+            }
+        )
+
+        # Should fail
+        assert response.status_code == 400
+        result = response.get_json()
+        assert result['success'] is False
+        assert 'validation_errors' in result
+        assert 'email' in result['validation_errors']
+
+        # Verify NOT saved to database
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).all()
+            # Should have no decisions (not saved)
+            assert len(decisions) == 0, f"Invalid email was saved! {decisions}"
+        finally:
+            session.close()
+
+    def test_autosave_invalid_phone_not_saved(self, client_with_db):
+        """CRITICAL: Invalid phone correction is REJECTED and NOT saved."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Try to autosave invalid phone (too short)
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {
+                    'phone': '555'  # Invalid - too short
+                }
+            }
+        )
+
+        # Should fail
+        assert response.status_code == 400
+        result = response.get_json()
+        assert result['success'] is False
+        assert 'validation_errors' in result
+        assert 'phone' in result['validation_errors']
+
+        # Verify NOT saved to database
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).all()
+            assert len(decisions) == 0, f"Invalid phone was saved! {decisions}"
+        finally:
+            session.close()
+
+    def test_autosave_valid_email_saved(self, client_with_db):
+        """Valid email correction is ACCEPTED and saved."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Autosave valid email
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {
+                    'email': 'jane.smith@gmail.com'  # Valid
+                }
+            }
+        )
+
+        # Should succeed
+        assert response.status_code == 200
+        result = response.get_json()
+        assert result['success'] is True
+        assert result['effective_values']['email'] == 'jane.smith@gmail.com'
+
+        # Verify saved to database
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decision = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).first()
+            assert decision is not None
+            assert decision.reviewed_values['email'] == 'jane.smith@gmail.com'
+        finally:
+            session.close()
+
+    def test_autosave_valid_phone_saved(self, client_with_db):
+        """Valid phone correction is ACCEPTED and saved."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Autosave valid phone
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {
+                    'phone': '(415) 555-1234'  # Valid
+                }
+            }
+        )
+
+        # Should succeed
+        assert response.status_code == 200
+        result = response.get_json()
+        assert result['success'] is True
+        assert result['effective_values']['phone'] == '(415) 555-1234'
+
+        # Verify saved to database
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decision = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).first()
+            assert decision is not None
+            assert decision.reviewed_values['phone'] == '(415) 555-1234'
+        finally:
+            session.close()
+
+    def test_autosave_mixed_valid_invalid_not_saved(self, client_with_db):
+        """If ANY field is invalid, NONE are saved (all-or-nothing)."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Try to autosave mix of valid email + invalid phone
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {
+                    'email': 'jane.smith@gmail.com',  # Valid
+                    'phone': '555'  # Invalid
+                }
+            }
+        )
+
+        # Should fail
+        assert response.status_code == 400
+        result = response.get_json()
+        assert result['success'] is False
+        assert 'phone' in result['validation_errors']
+
+        # Verify NOTHING saved (all-or-nothing)
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).all()
+            assert len(decisions) == 0, "Mixed valid/invalid should not save anything"
+        finally:
+            session.close()
+
+    def test_effective_values_excludes_unsaved_invalid_corrections(self, client_with_db):
+        """Effective values don't include invalid corrections that weren't saved."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Try invalid email
+        response1 = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'email': 'invalid-email'}
+            }
+        )
+        assert response1.status_code == 400
+
+        # Get effective values - should still be original raw value
+        effective = get_effective_values(batch_id, raw_row_id, database_url)
+        assert effective['email'] == 'jane.smith@gmial.com', \
+            "Invalid correction should not appear in effective values"
