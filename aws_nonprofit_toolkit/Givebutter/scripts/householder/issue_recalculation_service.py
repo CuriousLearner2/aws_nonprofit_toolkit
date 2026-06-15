@@ -156,10 +156,16 @@ def is_issue_resolved(
 
         # Basic validation for common issues
         if field == 'email':
-            # Email issue resolved only if it contains valid domain patterns
-            # (not common typos like gmial, gmal, etc.)
-            # Use regex to avoid false positives (e.g., 'gmai' in 'gmail')
+            # Email issue resolved only if it's valid format and no known typos
             import re
+
+            # Check for basic valid email format: something@something.something
+            email_pattern = r'^[^@]+@[^@]+\.[^@]+$'
+            if not re.match(email_pattern, effective_str.lower()):
+                # Invalid email format (missing @ or domain dot)
+                return False
+
+            # Check for known typo patterns
             invalid_typos = [
                 r'gmial(?:\.com)?',  # gmail typo: gmial
                 r'gmal(?:\.com)?',   # gmail typo: gmal (missing i)
@@ -168,7 +174,7 @@ def is_issue_resolved(
                 r'\bgmai\b',         # gmai standalone (not part of gmail)
             ]
             has_invalid = any(re.search(pattern, effective_str.lower()) for pattern in invalid_typos)
-            return not has_invalid and '@' in effective_str
+            return not has_invalid
         elif field == 'phone':
             # Phone issue resolved if it has valid format (digits and common separators)
             import re
