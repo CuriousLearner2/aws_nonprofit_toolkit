@@ -104,6 +104,8 @@ class ValidationRow:
     raw_import_row_id: Optional[int] = None
     issue_type: Optional[str] = None
     issue_description: Optional[str] = None
+    issue_field: Optional[str] = None
+    issue_reason: Optional[str] = None
     effective_status: str = "pending"
 
     def to_dict(self) -> dict:
@@ -119,6 +121,8 @@ class ValidationRow:
             "raw_import_row_id": self.raw_import_row_id,
             "issue_type": self.issue_type,
             "issue_description": self.issue_description,
+            "issue_field": self.issue_field,
+            "issue_reason": self.issue_reason,
             "effective_status": self.effective_status,
         }
 

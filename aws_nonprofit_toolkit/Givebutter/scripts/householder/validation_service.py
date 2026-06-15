@@ -44,6 +44,8 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
     for record in result.get('validation_issues', []):
         issue_type = record.get('issue_type')
         issue_description = record.get('issue_description')
+        issue_field = record.get('issue_field')
+        issue_reason = record.get('issue_reason')
 
         if issue_type:
             # Map issue_type codes to readable labels
@@ -57,8 +59,8 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
 
             # Create issue object with field and reason for template
             record['issues'] = [{
-                'field': issue_type,
-                'reason': issue_description or 'Issue detected',
+                'field': issue_field or issue_type,
+                'reason': issue_reason or issue_description or 'Issue detected',
                 'severity': 'error'
             }] if issue_type else []
         else:

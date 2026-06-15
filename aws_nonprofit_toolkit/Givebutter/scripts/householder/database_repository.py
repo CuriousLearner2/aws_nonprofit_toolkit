@@ -343,11 +343,27 @@ class DatabaseImportRepository:
                     contact_id = subject.subject_id
                     payload = review_item.payload_json or {}
                     if contact_id not in validation_map:
+                        # Map reason codes to issue_type codes that validation_service expects
+                        reason = payload.get('reason', '')
+                        reason_to_issue_type = {
+                            'missing': 'missing-required',
+                            'possible_typo': 'format-invalid',
+                            'format': 'format-invalid',
+                            'typo': 'format-invalid',
+                        }
+                        issue_type = reason_to_issue_type.get(reason, 'format-invalid' if reason else None)
+
                         validation_map[contact_id] = {
-                            'issue_type': payload.get('issue_type'),
-                            'issue_description': payload.get('issue_description'),
+                            'issue_type': issue_type,
+                            'issue_description': payload.get('description'),
+                            'field': payload.get('field'),
+                            'reason': payload.get('reason'),
                             'review_item_id': review_item.id,
                         }
+
+            # Import effective values function and issue recalculation
+            from .autosave_service import get_effective_values
+            from .issue_recalculation_service import recalculate_row_issues
 
             # Build validation rows from contacts
             validation_rows = []
@@ -375,19 +391,48 @@ class DatabaseImportRepository:
                     address_parts.append(contact.postal_code)
                 full_address = ', '.join(address_parts) if address_parts else ''
 
+                # Get effective values (raw + corrections)
+                try:
+                    effective = get_effective_values(import_id, contact.raw_import_row_id, self.database_url)
+                except Exception:
+                    # Fall back to raw values if effective values can't be computed
+                    effective = {}
+
+                # Use effective email and phone, fall back to contact values if not in corrections
+                effective_email = effective.get('email', contact.email or '')
+                effective_phone = effective.get('phone', contact.phone or '')
+
                 # Format amount
                 amount_str = ''
                 if contact.amount is not None:
                     amount_str = f'${contact.amount:,.2f}'
 
-                # Get validation issue details if they exist
+                # Get current validation issues (recalculated based on effective values)
+                try:
+                    current_issues = recalculate_row_issues(import_id, contact.raw_import_row_id, self.database_url)
+                except Exception:
+                    current_issues = []
+
+                # Use first issue if any exist
                 issue_type = None
                 issue_description = None
+                issue_field = None
+                issue_reason = None
                 review_item_id = None
-                if contact.id in validation_map:
-                    issue_type = validation_map[contact.id]['issue_type']
-                    issue_description = validation_map[contact.id]['issue_description']
-                    review_item_id = validation_map[contact.id]['review_item_id']
+                if current_issues:
+                    first_issue = current_issues[0]
+                    issue_field = first_issue.get('field')
+                    issue_description = first_issue.get('description')
+                    review_item_id = first_issue.get('issue_id')
+                    severity = first_issue.get('severity', 'warning')
+
+                    # Map severity and field to issue_type codes that validation_service expects
+                    if severity == 'error':
+                        issue_type = 'missing-required'
+                        issue_reason = 'missing'
+                    else:
+                        issue_type = 'format-invalid'
+                        issue_reason = 'possible_typo'
 
                 # Determine effective status from latest ReviewDecision
                 effective_status = 'pending'
@@ -411,13 +456,15 @@ class DatabaseImportRepository:
                     id=str(contact.id),
                     date='',  # Date not available in ImportContact; would come from raw_import_row
                     name=full_name,
-                    email=contact.email or '',
-                    phone=contact.phone or '',
+                    email=effective_email,
+                    phone=effective_phone,
                     amount=amount_str,
                     address=full_address,
                     raw_import_row_id=contact.raw_import_row_id,
                     issue_type=issue_type,
                     issue_description=issue_description,
+                    issue_field=issue_field,
+                    issue_reason=issue_reason,
                     effective_status=effective_status,
                 )
                 validation_rows.append(row)

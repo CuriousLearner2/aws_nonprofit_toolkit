@@ -70,13 +70,14 @@ def recalculate_row_issues(
         raw_data = raw_row.raw_csv_data or {}
 
         # Get all existing validation issues for this row
+        # Check both import_raw_row (Phase 1B raw data) and import_contact_snapshot (demo data)
         existing_issues = session.query(ReviewItem).join(
             ReviewItemSubject,
             ReviewItem.id == ReviewItemSubject.review_item_id
         ).filter(
             ReviewItem.batch_id == batch_id,
             ReviewItem.item_type == 'validation',
-            ReviewItemSubject.subject_type == 'import_raw_row',
+            ReviewItemSubject.subject_type.in_(['import_raw_row', 'import_contact_snapshot']),
             ReviewItemSubject.subject_id == raw_import_row_id
         ).all()
 

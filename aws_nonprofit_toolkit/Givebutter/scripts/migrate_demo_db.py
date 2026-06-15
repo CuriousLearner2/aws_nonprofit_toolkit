@@ -126,8 +126,9 @@ def seed_demo_batch(session):
         confidence=0.95,
         payload_json={
             "field": "email",
-            "issue": "Invalid email format",
-            "value": "jane.smith@gmial.com"
+            "reason": "possible_typo",
+            "severity": "warning",
+            "description": "Invalid email format (gmial.com typo)"
         }
     )
     session.add(item1)
@@ -142,8 +143,9 @@ def seed_demo_batch(session):
         confidence=0.98,
         payload_json={
             "field": "phone",
-            "issue": "Required field missing",
-            "value": None
+            "reason": "missing",
+            "severity": "error",
+            "description": "Required field missing (phone)"
         }
     )
     session.add(item2)

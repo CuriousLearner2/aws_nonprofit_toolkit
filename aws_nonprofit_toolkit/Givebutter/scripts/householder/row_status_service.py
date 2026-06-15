@@ -49,68 +49,46 @@ def derive_row_status(
     if database_url is None:
         database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
 
-    engine = create_engine(database_url, echo=False)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
+    # Use issue_recalculation_service to get current issues
+    from .issue_recalculation_service import recalculate_row_issues
 
     try:
-        # Verify batch and row exist
-        batch = session.query(ImportBatch).filter_by(id=batch_id).first()
-        if not batch:
-            raise ValueError(f"Import batch '{batch_id}' not found")
+        # Get current issues using issue_recalculation_service
+        current_issues = recalculate_row_issues(batch_id, raw_import_row_id, database_url)
 
-        raw_row = session.query(RawImportRow).filter_by(id=raw_import_row_id).first()
-        if not raw_row:
-            raise ValueError(f"Raw import row {raw_import_row_id} not found")
-
-        # Get all validation issues for this row
-        issues = session.query(ReviewItem).join(
-            ReviewItemSubject,
-            ReviewItem.id == ReviewItemSubject.review_item_id
-        ).filter(
-            ReviewItem.batch_id == batch_id,
-            ReviewItem.item_type == 'validation',
-            ReviewItemSubject.subject_type == 'import_raw_row',
-            ReviewItemSubject.subject_id == raw_import_row_id
-        ).all()
-
-        if not issues:
-            # No issues at all
+        if not current_issues:
+            # No unresolved issues
             return "No issues"
 
         # Check for blocking issues
         has_blocking = False
         has_warning = False
 
-        for issue in issues:
-            # Get latest decision for this issue (by created_at DESC, id DESC)
-            latest_decision = session.query(ReviewDecision).filter_by(
-                review_item_id=issue.id
-            ).order_by(
-                ReviewDecision.created_at.desc(),
-                ReviewDecision.id.desc()
-            ).first()
-
-            # If no decision or decision is 'defer', issue is unresolved
-            if not latest_decision or latest_decision.decision == 'defer':
-                # Check if blocking or warning
-                # For now, assume payload_json contains severity info or we check issue type
-                severity = issue.payload_json.get('severity', 'warning') if issue.payload_json else 'warning'
-                if severity == 'error':
-                    has_blocking = True
-                else:
-                    has_warning = True
+        for issue in current_issues:
+            severity = issue.get('severity', 'warning')
+            if severity == 'error':
+                has_blocking = True
+            else:
+                has_warning = True
 
         # Check approval override state FIRST
-        # If this row is in override_details, it was explicitly approved with remaining issues
-        if batch.approval_status == 'approved_with_overrides':
-            if batch.override_details:
-                overrides = batch.override_details.get('overrides', [])
-                # Check if this row is in the overrides
-                for override in overrides:
-                    if override.get('raw_import_row_id') == raw_import_row_id:
-                        # Row was explicitly approved with overrides
-                        return "Overridden"
+        engine = create_engine(database_url, echo=False)
+        SessionLocal = sessionmaker(bind=engine)
+        session = SessionLocal()
+
+        try:
+            batch = session.query(ImportBatch).filter_by(id=batch_id).first()
+
+            if batch and batch.approval_status == 'approved_with_overrides':
+                if batch.override_details:
+                    overrides = batch.override_details.get('overrides', [])
+                    # Check if this row is in the overrides
+                    for override in overrides:
+                        if override.get('raw_import_row_id') == raw_import_row_id:
+                            # Row was explicitly approved with overrides
+                            return "Overridden"
+        finally:
+            session.close()
 
         # Determine status based on issue types (if not overridden)
         if has_blocking:
@@ -120,8 +98,9 @@ def derive_row_status(
         else:
             return "No issues"
 
-    finally:
-        session.close()
+    except Exception as e:
+        # If issue recalculation fails, default to "No issues"
+        return "No issues"
 
 
 def is_row_overridden(
