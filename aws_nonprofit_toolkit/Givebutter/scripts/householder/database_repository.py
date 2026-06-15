@@ -415,6 +415,7 @@ class DatabaseImportRepository:
                     phone=contact.phone or '',
                     amount=amount_str,
                     address=full_address,
+                    raw_import_row_id=contact.raw_import_row_id,
                     issue_type=issue_type,
                     issue_description=issue_description,
                     effective_status=effective_status,

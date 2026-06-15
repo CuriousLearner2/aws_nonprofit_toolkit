@@ -59,23 +59,26 @@ Navigate to: **`http://localhost:8000/imports`**
 
 ---
 
-## Phase 1A Limitations (Current Release)
+## Phase 1B Implementation (Current Release)
 
 **What Works** ✅
 - View import list and batch summary
 - View all review queues (validation, duplicates, households, normalizations)
-- View audit log (pre-populated)
+- View audit log (pre-populated with batch creation)
 - View export console with available export options
 - Navigate between all 8 routes
+- **Autosave field corrections** (edit and save inline)
+- **Row status updates** based on corrections
+- **Issue badge display** with field and reason
+- **Decision recording** (validation, normalization, duplicates, households)
 
 **What's Not Yet Implemented** ⏳
-- Decision persistence (clicking "Confirm", "Accept", "Reject" doesn't save decisions)
-- Audit trail updates (user actions not recorded)
 - Export generation (no real CSV files created)
-- Export download (no files available)
-- Readiness blocking logic (export always shows UI layout, not gated by decisions)
+- Export download (no files available to download)
+- Batch approval workflow (Approve File button)
+- Override logic for approving with remaining issues
 
-Phase 1B (database persistence) will add decision recording and export generation.
+Phase 2+ will add export generation and batch approval workflows.
 
 ---
 
@@ -118,10 +121,19 @@ Follow this sequence to exercise all major UX flows:
 **URL:** `http://localhost:8000/imports/<batch_id>/validation`
 
 **What to see:**
-- Jane Smith (email typo: gmial.com)
-- Carol White (missing phone) — **This is the blocker**
+- Table with 10 columns: Txn ID, Date, Name, Email, Phone, Amount, Address, Row Status, Issues, Actions
+- Jane Smith (email typo: gmial.com) — Shows "Invalid Format" issue
+- Carol White (missing phone) — Shows "Missing Required Field" issue
 
-**Action:** Review both validation issues. *(Decisions not yet saved in Phase 1A)*
+**Test Autosave:**
+1. Click on Jane Smith's email field
+2. Change `gmial.com` to `gmail.com`
+3. Click away or press Tab
+4. Observe: "Saving..." appears, then "Saved" (green)
+5. Issue badge disappears automatically
+6. Refresh page — change persists
+
+**Action:** Test editing and autosaving on both records. Observe row status changes.
 
 ---
 
@@ -327,13 +339,13 @@ python scripts/migrate_demo_db.py
 
 ---
 
-## What You're Exercising (Phase 1A)
+## What You're Exercising (Phase 1B)
 
 By following this demo walkthrough, you're validating:
 
 **Service-Boundary Architecture** ✅
-- 8 canonical routes now service-backed (no direct fixture access)
-- Service layer hides repository implementation (fixture vs database)
+- 8 canonical routes now service-backed with database backend
+- Service layer handles fixture vs database repository selection
 - View models provide immutable contracts between services and templates
 - Templates unchanged from Phase 0 (UI preserved exactly)
 
@@ -347,12 +359,24 @@ By following this demo walkthrough, you're validating:
 7. Audit log display
 8. Export console with available export options
 
-**Phase 1B Features** (Coming Soon) ⏳
-- Decision persistence and recording
-- Audit trail updates for user actions
+**Autosave & Field Corrections** ✅
+- Edit inline fields (Date, Name, Email, Phone, Amount, Address)
+- Click away to trigger autosave
+- "Saving..." → "Saved" feedback
+- Issue badges disappear when fixed
+- Row status updates automatically
+
+**Decision Recording** ✅
+- Validation decisions (Accept Issue, Dismiss, Defer)
+- Normalization decisions
+- Duplicate decisions
+- Household decisions
+
+**Phase 2+ Features** (Coming Soon) ⏳
 - Export generation and file creation
-- Readiness blocking logic based on decisions
-- Decision-based workflow gating
+- Batch approval workflow (Approve File)
+- Override logic for remaining issues
+- Export download capability
 
 All demo data is isolated from production (`householder_demo.db` vs `givebutter.db`).
 

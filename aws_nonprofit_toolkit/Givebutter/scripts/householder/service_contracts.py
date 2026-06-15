@@ -101,6 +101,7 @@ class ValidationRow:
     phone: str
     amount: str
     address: str
+    raw_import_row_id: Optional[int] = None
     issue_type: Optional[str] = None
     issue_description: Optional[str] = None
     effective_status: str = "pending"
@@ -115,6 +116,7 @@ class ValidationRow:
             "phone": self.phone,
             "amount": self.amount,
             "address": self.address,
+            "raw_import_row_id": self.raw_import_row_id,
             "issue_type": self.issue_type,
             "issue_description": self.issue_description,
             "effective_status": self.effective_status,
