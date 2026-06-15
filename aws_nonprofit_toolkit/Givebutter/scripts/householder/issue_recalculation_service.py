@@ -16,6 +16,7 @@ from .database_models import (
     ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject
 )
 from .autosave_service import get_effective_values
+from .phone_validation_service import is_valid_phone
 import os
 
 # Top 30 recognized email domains - strict validation applied to these
@@ -254,11 +255,9 @@ def is_issue_resolved(
                 # If format is valid, accept it (likely corporate/regional email)
                 return True
         elif field == 'phone':
-            # Phone issue resolved if it has valid format (digits and common separators)
-            import re
-            # Valid patterns: 555-1234, (555) 555-1234, 5551234, etc.
-            valid_phone = bool(re.search(r'\d{3}[-.]?\d{3}[-.]?\d{4}|^\d{10}$', effective_str))
-            return valid_phone
+            # Phone issue resolved if it's valid per phonenumbers library
+            # Supports 131+ countries with intelligent parsing of various formats
+            return is_valid_phone(effective_str)
         else:
             # For other fields, check if effective differs meaningfully from raw
             # (raw_value comparison already done above)

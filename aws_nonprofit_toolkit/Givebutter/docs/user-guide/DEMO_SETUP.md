@@ -82,6 +82,22 @@ Phase 2+ will add export generation and batch approval workflows.
 
 ---
 
+## Phone Validation Logic
+
+Phone validation uses **Google's phonenumbers library** for professional international support:
+
+- **131+ countries**: Intelligent parsing for any region
+- **Format flexibility**: Accepts (415) 555-2671, 415-555-2671, 4155552671, +1 415 555 2671, etc.
+- **Type detection**: Identifies mobile, fixed-line, toll-free, VoIP, etc.
+- **Smart parsing**: Automatically detects country code from +prefix or uses region parameter
+
+**In the demo:**
+- Carol White has phone `555-0002` (missing) → Shows "Missing Required Field" issue
+- Adding a valid phone (e.g., `555-0003`) → Issue resolves, Row Status becomes "No issues"
+- The library validates against real telecom rules for each country
+
+---
+
 ## Email Validation Logic
 
 The validation system uses a **three-tier approach** to balance accuracy with usability:

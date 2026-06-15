@@ -99,11 +99,15 @@ def seed_demo_batch(session):
 
     session.flush()
 
+    # Collect raw_import_row IDs for review item linking
+    raw_rows = session.query(RawImportRow).filter_by(batch_id=batch_id).order_by(RawImportRow.id).all()
+    raw_row_ids = [row.id for row in raw_rows[:len(donors)]]
+
     # Add import contacts (denormalized snapshot)
     for idx, (first, last, email, phone, amount, date) in enumerate(donors, 1):
         contact = ImportContact(
             batch_id=batch_id,
-            raw_import_row_id=idx,
+            raw_import_row_id=raw_row_ids[idx - 1],
             first_name=first,
             last_name=last,
             email=email,
@@ -201,15 +205,15 @@ def seed_demo_batch(session):
     session.flush()
     review_items.append(item5)
 
-    # Add review item subjects linking items to import contacts
+    # Add review item subjects linking items to raw import rows
     subjects = [
-        (item1.id, "import_contact_snapshot", 1, "primary"),  # Jane Smith
-        (item2.id, "import_contact_snapshot", 2, "primary"),  # Carol White
-        (item3.id, "import_contact_snapshot", 3, "primary"),  # Robert Smith
-        (item3.id, "import_contact_snapshot", 4, "secondary"),  # Bob Smith
-        (item4.id, "import_contact_snapshot", 5, "primary"),  # Eve Davis
-        (item4.id, "import_contact_snapshot", 6, "secondary"),  # Frank Davis
-        (item5.id, "import_contact_snapshot", 7, "primary"),  # Grace Miller
+        (item1.id, "import_raw_row", raw_row_ids[0], "primary"),  # Jane Smith (idx 0)
+        (item2.id, "import_raw_row", raw_row_ids[1], "primary"),  # Carol White (idx 1)
+        (item3.id, "import_raw_row", raw_row_ids[2], "primary"),  # Robert Smith (idx 2)
+        (item3.id, "import_raw_row", raw_row_ids[3], "secondary"),  # Bob Smith (idx 3)
+        (item4.id, "import_raw_row", raw_row_ids[4], "primary"),  # Eve Davis (idx 4)
+        (item4.id, "import_raw_row", raw_row_ids[5], "secondary"),  # Frank Davis (idx 5)
+        (item5.id, "import_raw_row", raw_row_ids[6], "primary"),  # Grace Miller (idx 6)
     ]
 
     for review_item_id, subject_type, subject_id, role in subjects:
