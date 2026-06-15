@@ -37,6 +37,8 @@ class ImportBatch(Base):
     uploader = Column(String(255), nullable=True)
     status = Column(String(50), nullable=False, default='pending')
     raw_row_count = Column(Integer, nullable=False, default=0)
+    approval_status = Column(String(50), nullable=True)  # pending, approved, approved_with_overrides
+    override_details = Column(JSON, nullable=True)  # {overrides: [{row_number, transaction_id, issue}, ...]}
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -149,6 +151,7 @@ class ReviewDecision(Base):
 
     Each decision applies to a review_item as a whole.
     One item may have multiple subjects; the decision treats them as a unit.
+    For row-level autosave (no specific review_item), raw_import_row_id tracks the row.
 
     decision values: 'accept', 'reject', 'same_person', 'different_person', 'defer', 'confirmed'
     """
@@ -156,7 +159,8 @@ class ReviewDecision(Base):
 
     id = Column(Integer, primary_key=True)
     batch_id = Column(String(50), ForeignKey('import_batches.id'), nullable=False)
-    review_item_id = Column(Integer, ForeignKey('review_items.id'), nullable=False)
+    review_item_id = Column(Integer, ForeignKey('review_items.id'), nullable=True)
+    raw_import_row_id = Column(Integer, ForeignKey('raw_import_rows.id'), nullable=True)
     decision = Column(String(100), nullable=False)
     reviewed_values = Column(JSON, nullable=True)
     reviewer = Column(String(255), nullable=True)

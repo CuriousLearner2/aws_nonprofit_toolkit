@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Validation Review — DonorTrust v1{% endblock %}
+{% block title %}Validation Review — DonorTrust v1.1{% endblock %}
 
 {% block content %}
 <h1>Validation Review</h1>
 <p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Total Records:</strong> {{ total_records }} | <strong>Issues Found:</strong> {{ queue_status.validation_issues }}</p>
 
-<div class="safety-strip">All records with validation issues flagged below. Inspect details, mark as reviewed, or defer for later.</div>
+<div class="safety-strip">All records with validation issues flagged below. Edit inline fields (autosaves on blur), or inspect details.</div>
 
 <!-- Filter & Controls -->
 <div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">
@@ -25,87 +25,98 @@
     <table style="font-size: 13px;">
         <thead>
             <tr>
-                <th style="width: 40px;"><input type="checkbox" id="select-all"></th>
-                <th style="width: 80px;">Transaction ID</th>
+                <th style="width: 80px;">Txn ID</th>
                 <th style="width: 70px;">Date</th>
                 <th style="width: 100px;">Name</th>
                 <th style="width: 110px;">Email</th>
                 <th style="width: 90px;">Phone</th>
                 <th style="width: 70px;">Amount</th>
                 <th style="width: 100px;">Address</th>
-                <th style="width: 80px;">Status</th>
-                <th style="width: 120px;">Actions</th>
+                <th style="width: 100px;">Row Status</th>
+                <th style="width: 150px;">Issues</th>
+                <th style="width: 60px;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for record in validation_issues %}
-            <tr data-record-id="{{ record.id }}" class="validation-row">
-                <td><input type="checkbox" class="row-selector" data-record-id="{{ record.id }}"></td>
+            <tr data-record-id="{{ record.id }}" data-raw-id="{{ record.raw_import_row_id }}" class="validation-row">
+                <!-- Read-only: Txn ID -->
                 <td style="font-weight: 500; background-color: #f9fafb;">{{ record.id }}</td>
 
-                <!-- Inline Editable: Date -->
+                <!-- Editable: Date -->
                 <td>
-                    <input type="text" class="inline-edit-field" data-field="date" data-record-id="{{ record.id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="date" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.date or '' }}" placeholder="YYYY-MM-DD"
                            style="width: 65px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                    <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
-                <!-- Inline Editable: Name -->
+                <!-- Editable: Name -->
                 <td>
-                    <input type="text" class="inline-edit-field" data-field="name" data-record-id="{{ record.id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="name" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.name or '' }}" placeholder="First Last"
                            style="width: 95px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                    <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
-                <!-- Inline Editable: Email -->
+                <!-- Editable: Email -->
                 <td>
-                    <input type="text" class="inline-edit-field" data-field="email" data-record-id="{{ record.id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="email" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.email or '' }}" placeholder="email@example.com"
                            style="width: 105px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                    <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
-                <!-- Inline Editable: Phone -->
+                <!-- Editable: Phone -->
                 <td>
-                    <input type="text" class="inline-edit-field" data-field="phone" data-record-id="{{ record.id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="phone" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.phone or '' }}" placeholder="(555) 555-5555"
                            style="width: 85px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                    <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
-                <!-- Inline Editable: Amount -->
+                <!-- Editable: Amount -->
                 <td>
-                    <input type="text" class="inline-edit-field" data-field="amount" data-record-id="{{ record.id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="amount" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.amount or '' }}" placeholder="0.00"
                            style="width: 65px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; text-align: right; box-sizing: border-box;">
+                    <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
-                <!-- Inline Editable: Address -->
+                <!-- Editable: Address -->
                 <td>
-                    <input type="text" class="inline-edit-field" data-field="address" data-record-id="{{ record.id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="address" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.address or '' }}" placeholder="Street, City, State"
                            style="width: 95px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                    <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
-                <!-- Status Badge -->
-                <td>
-                    {% if record.effective_status == 'pending' %}
-                    <span style="background-color: #e5e7eb; color: #374151; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Pending</span>
-                    {% elif record.effective_status == 'accepted' %}
-                    <span style="background-color: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Accepted</span>
-                    {% elif record.effective_status == 'dismissed' %}
-                    <span style="background-color: #fed7aa; color: #9a3412; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Dismissed</span>
-                    {% elif record.effective_status == 'deferred' %}
-                    <span style="background-color: #bfdbfe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Deferred</span>
+                <!-- Read-only: Row Status -->
+                <td class="row-status-cell">
+                    <span class="row-status-badge" style="background-color: #e5e7eb; color: #374151; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">{{ record.row_status or 'No issues' }}</span>
+                </td>
+
+                <!-- Read-only: Issues -->
+                <td class="issues-cell" style="font-size: 11px;">
+                    {% if record.issues %}
+                        {% for issue in record.issues %}
+                        <div style="margin-bottom: 4px;">
+                            <span style="background-color: {% if issue.severity == 'error' %}#fee2e2{% else %}#fef3c7{% endif %};
+                                         color: {% if issue.severity == 'error' %}#991b1b{% else %}#78350f{% endif %};
+                                         padding: 2px 4px; border-radius: 2px; display: inline-block;">
+                                {{ issue.field or 'unknown' }} — {{ issue.reason or 'issue' }}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <span style="color: #9ca3af; font-style: italic;">None</span>
                     {% endif %}
                 </td>
 
-                <!-- Row Actions -->
+                <!-- Actions -->
                 <td style="white-space: nowrap;">
-                    <button type="button" class="btn-save-correction" data-record-id="{{ record.id }}"
-                            style="padding: 3px 6px; background-color: #10b981; color: white; border: none; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 600; margin-right: 3px;">Save</button>
-                    <button type="button" class="btn-defer" data-record-id="{{ record.id }}"
-                            style="padding: 3px 6px; background-color: #6b7280; color: white; border: none; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 600; margin-right: 3px;">Defer</button>
                     <a href="#" class="table-action" data-action="inspect-record" data-record-id="{{ record.id }}"
-                       style="padding: 3px 6px; background-color: #3b82f6; color: white; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 600; text-decoration: none; display: inline-block;">Detail</a>
+                       style="padding: 3px 6px; background-color: #3b82f6; color: white; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 600; text-decoration: none; display: inline-block;">Inspect</a>
                 </td>
             </tr>
             {% endfor %}
@@ -121,16 +132,15 @@
     {% endif %}
 </div>
 
-<!-- Sticky Action Bar -->
-<div class="sticky-action-bar">
-    <div class="sticky-action-bar-status">
-        <input type="checkbox" id="select-all-bar" style="margin-right: 8px;">
-        <span id="selection-count">0 records selected</span>
-    </div>
-    <div class="sticky-action-bar-actions">
-        <button class="btn btn-secondary" id="review-selected-btn" disabled>Review Selected (0)</button>
-        <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
-    </div>
+<!-- Approval Action Bar -->
+<div style="margin-top: 24px; display: flex; gap: 12px;">
+    <button id="approve-file-btn" type="button"
+            style="padding: 10px 16px; background-color: #10b981; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 14px; font-weight: 600;">
+        Approve File
+    </button>
+    <a href="/imports/{{ batch.id }}/dashboard" style="padding: 10px 16px; background-color: #6b7280; color: white; border-radius: 3px; cursor: pointer; font-size: 14px; font-weight: 600; text-decoration: none; display: inline-block;">
+        Back to Dashboard
+    </a>
 </div>
 
 <!-- Record Inspection Modal -->
@@ -148,141 +158,163 @@
     </div>
 </div>
 
+<!-- Approval Check Modal -->
+<div id="approval-modal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h2 class="modal-title">Approve File</h2>
+        </div>
+        <div class="modal-body" id="modal-approval-content">
+            <!-- Populated by JavaScript -->
+        </div>
+        <div class="modal-footer" id="modal-approval-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('approval-modal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const batchId = '{{ batch.id }}';
 
-document.getElementById('select-all').addEventListener('change', function() {
-    const checkboxes = document.querySelectorAll('input[type="checkbox"].row-selector');
-    checkboxes.forEach(cb => cb.checked = this.checked);
-    updateSelectionCount();
+// Autosave on blur for editable fields
+document.querySelectorAll('.autosave-field').forEach(input => {
+    input.addEventListener('blur', async function() {
+        await autosaveField(this);
+    });
+
+    // Also autosave on Enter key
+    input.addEventListener('keypress', async function(e) {
+        if (e.key === 'Enter') {
+            await autosaveField(this);
+        }
+    });
 });
 
-function updateSelectionCount() {
-    const checked = document.querySelectorAll('input[type="checkbox"].row-selector:checked').length;
-    document.getElementById('selection-count').textContent = `${checked} record${checked !== 1 ? 's' : ''} selected`;
-    document.getElementById('review-selected-btn').textContent = `Review Selected (${checked})`;
-    document.getElementById('review-selected-btn').disabled = checked === 0;
-}
+async function autosaveField(input) {
+    const field = input.getAttribute('data-field');
+    const rawId = input.getAttribute('data-raw-id');
+    const value = input.value.trim();
+    const row = input.closest('tr');
+    const statusSpan = input.parentElement.querySelector('.autosave-status');
 
-document.querySelectorAll('input[type="checkbox"].row-selector').forEach(cb => {
-    cb.addEventListener('change', updateSelectionCount);
-});
+    if (!statusSpan) return;
 
-// Save inline correction
-document.querySelectorAll('.btn-save-correction').forEach(btn => {
-    btn.addEventListener('click', async function(e) {
-        e.preventDefault();
-        const recordId = this.getAttribute('data-record-id');
-        const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
-        if (!row) return;
+    // Show saving state
+    statusSpan.textContent = 'Saving...';
+    statusSpan.style.display = 'inline';
+    statusSpan.style.color = '#6b7280';
+    input.style.borderColor = '#fbbf24';
 
-        // Collect edited values from inline inputs
-        const editedValues = {};
-        const fields = ['date', 'name', 'email', 'phone', 'amount', 'address'];
-        fields.forEach(field => {
-            const input = row.querySelector(`.inline-edit-field[data-field="${field}"]`);
-            if (input) {
-                editedValues[field] = input.value.trim();
-            }
+    try {
+        const response = await fetch(`/imports/${batchId}/autosave`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                raw_import_row_id: parseInt(rawId),
+                corrected_values: { [field]: value }
+            }),
         });
 
-        // Send to backend
-        try {
-            const response = await fetch(`/imports/${batchId}/validation/${recordId}/save-correction`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ reviewed_values: editedValues }),
-            });
+        if (response.ok) {
+            const result = await response.json();
 
-            if (response.ok) {
-                const result = await response.json();
-                // Update status badge
-                const statusCell = row.querySelector('td:nth-child(9)');
-                if (statusCell && result.effective_status) {
-                    const statusMap = {
-                        'accepted': { bg: '#dcfce7', color: '#166534', text: 'Accepted' },
-                        'dismissed': { bg: '#fed7aa', color: '#9a3412', text: 'Dismissed' },
-                        'pending': { bg: '#e5e7eb', color: '#374151', text: 'Pending' },
-                        'deferred': { bg: '#bfdbfe', color: '#1e40af', text: 'Deferred' },
-                    };
-                    const style = statusMap[result.effective_status] || statusMap['pending'];
-                    statusCell.innerHTML = `<span style="background-color: ${style.bg}; color: ${style.color}; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">${style.text}</span>`;
-                }
-                alert('Correction saved!');
-            } else {
-                alert('Error saving correction: ' + response.statusText);
+            // Update row with refreshed state
+            if (result.effective_values) {
+                updateRowFromAutosave(row, result);
             }
-        } catch (error) {
-            alert('Error saving correction: ' + error.message);
+
+            // Show saved state
+            statusSpan.textContent = 'Saved';
+            statusSpan.style.color = '#10b981';
+            input.style.borderColor = '#d0d0d0';
+            setTimeout(() => {
+                statusSpan.style.display = 'none';
+            }, 2000);
+        } else {
+            // Show error state
+            statusSpan.textContent = 'Error';
+            statusSpan.style.color = '#ef4444';
+            input.style.borderColor = '#ef4444';
+        }
+    } catch (error) {
+        // Show error state
+        statusSpan.textContent = 'Error';
+        statusSpan.style.color = '#ef4444';
+        input.style.borderColor = '#ef4444';
+    }
+}
+
+function updateRowFromAutosave(row, result) {
+    // Update effective values
+    ['date', 'name', 'email', 'phone', 'amount', 'address'].forEach(field => {
+        const input = row.querySelector(`.autosave-field[data-field="${field}"]`);
+        if (input && result.effective_values[field] !== undefined) {
+            input.value = result.effective_values[field] || '';
         }
     });
-});
 
-// Defer action
-document.querySelectorAll('.btn-defer').forEach(btn => {
-    btn.addEventListener('click', async function(e) {
-        e.preventDefault();
-        const recordId = this.getAttribute('data-record-id');
-        const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
-        if (!row) return;
+    // Update Row Status
+    const statusCell = row.querySelector('.row-status-cell');
+    if (statusCell && result.row_status) {
+        const statusMap = {
+            'No issues': { bg: '#dcfce7', color: '#166534' },
+            'Warning': { bg: '#fef3c7', color: '#78350f' },
+            'Blocking': { bg: '#fee2e2', color: '#991b1b' },
+            'Overridden': { bg: '#e0e7ff', color: '#312e81' }
+        };
+        const style = statusMap[result.row_status] || { bg: '#e5e7eb', color: '#374151' };
+        statusCell.innerHTML = `<span class="row-status-badge" style="background-color: ${style.bg}; color: ${style.color}; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">${result.row_status}</span>`;
+    }
 
-        try {
-            const response = await fetch(`/imports/${batchId}/validation/${recordId}/defer`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+    // Update Issues
+    const issuesCell = row.querySelector('.issues-cell');
+    if (issuesCell && result.issues !== undefined) {
+        if (result.issues.length === 0) {
+            issuesCell.innerHTML = '<span style="color: #9ca3af; font-style: italic;">None</span>';
+        } else {
+            let issuesHtml = '';
+            result.issues.forEach(issue => {
+                const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
+                const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
+                issuesHtml += `<div style="margin-bottom: 4px;">
+                    <span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
+                        ${issue.field || 'unknown'} — ${issue.reason || 'issue'}
+                    </span>
+                </div>`;
             });
-
-            if (response.ok) {
-                const result = await response.json();
-                // Update status badge to Deferred
-                const statusCell = row.querySelector('td:nth-child(9)');
-                if (statusCell) {
-                    statusCell.innerHTML = `<span style="background-color: #bfdbfe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Deferred</span>`;
-                }
-                alert('Record deferred for later review');
-            } else {
-                alert('Error deferring record: ' + response.statusText);
-            }
-        } catch (error) {
-            alert('Error deferring record: ' + error.message);
+            issuesCell.innerHTML = issuesHtml;
         }
-    });
-});
+    }
+}
 
-// Inspect/Detail modal (updated to extract from inline inputs)
+// Inspect/Detail modal
 document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
     link.addEventListener('click', function(e) {
         e.preventDefault();
         const recordId = this.getAttribute('data-record-id');
-
-        // Find the row with this record ID
         const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
         if (!row) return;
 
-        // Extract record data from inline inputs
-        const transactionId = row.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
-        const dateInput = row.querySelector(`.inline-edit-field[data-field="date"]`);
+        // Extract values from inline inputs
+        const transactionId = row.querySelector('td:nth-child(1)')?.textContent?.trim() || '';
+        const dateInput = row.querySelector(`.autosave-field[data-field="date"]`);
         const date = dateInput ? dateInput.value : '';
-        const nameInput = row.querySelector(`.inline-edit-field[data-field="name"]`);
+        const nameInput = row.querySelector(`.autosave-field[data-field="name"]`);
         const name = nameInput ? nameInput.value : '';
-        const emailInput = row.querySelector(`.inline-edit-field[data-field="email"]`);
+        const emailInput = row.querySelector(`.autosave-field[data-field="email"]`);
         const email = emailInput ? emailInput.value : '';
-        const phoneInput = row.querySelector(`.inline-edit-field[data-field="phone"]`);
+        const phoneInput = row.querySelector(`.autosave-field[data-field="phone"]`);
         const phone = phoneInput ? phoneInput.value : '';
-        const amountInput = row.querySelector(`.inline-edit-field[data-field="amount"]`);
+        const amountInput = row.querySelector(`.autosave-field[data-field="amount"]`);
         const amount = amountInput ? amountInput.value : '';
-        const addressInput = row.querySelector(`.inline-edit-field[data-field="address"]`);
+        const addressInput = row.querySelector(`.autosave-field[data-field="address"]`);
         const address = addressInput ? addressInput.value : '';
-        const statusSpan = row.querySelector('td:nth-child(9) span');
-        const status = statusSpan?.textContent?.trim() || 'Pending';
+        const statusSpan = row.querySelector('.row-status-badge');
+        const status = statusSpan?.textContent?.trim() || 'No issues';
 
-        // Build modal content with record details and decision form
         const modalBody = document.getElementById('modal-record-content');
-
         modalBody.innerHTML = `
             <div style="margin-bottom: 20px;">
                 <h3 style="margin-top: 0;">Record #${recordId}</h3>
@@ -347,5 +379,138 @@ document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
         openModal('record-modal');
     });
 });
+
+// Approve File button
+document.getElementById('approve-file-btn').addEventListener('click', async function() {
+    try {
+        const response = await fetch(`/imports/${batchId}/approve-batch`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                approval_status: 'approved_with_overrides',
+                rows_with_overrides: []
+            }),
+        });
+
+        const result = await response.json();
+
+        if (result.requires_override_confirmation) {
+            // Show approval modal with remaining issues
+            showApprovalModal(result.remaining_issues);
+        } else if (result.success) {
+            // Batch approved without issues
+            alert('File approved successfully!');
+            window.location.href = `/imports/${batchId}/dashboard`;
+        } else {
+            alert('Error: ' + (result.error || 'Failed to approve file'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+});
+
+function showApprovalModal(remainingIssues) {
+    const modalBody = document.getElementById('modal-approval-content');
+    const modalFooter = document.getElementById('modal-approval-footer');
+
+    let issuesHtml = '<div style="margin-bottom: 20px;">';
+    issuesHtml += `<p style="color: #666; margin-bottom: 16px;">This file has ${remainingIssues.length} row(s) with unresolved issues. Please review and confirm approval with overrides.</p>`;
+    issuesHtml += '<div style="border: 1px solid #e5e7eb; border-radius: 3px; max-height: 300px; overflow-y: auto;">';
+
+    remainingIssues.forEach(rowIssue => {
+        issuesHtml += `<div style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+            <strong>Row ${rowIssue.row_index}:</strong>
+            <div style="margin-top: 4px; font-size: 12px;">`;
+
+        rowIssue.issues.forEach(issue => {
+            const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
+            const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
+            issuesHtml += `<span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block; margin-right: 4px; margin-bottom: 4px;">
+                ${issue.field || 'unknown'} — ${issue.reason || 'issue'}
+            </span>`;
+        });
+
+        issuesHtml += '</div></div>';
+    });
+
+    issuesHtml += '</div></div>';
+
+    modalBody.innerHTML = issuesHtml;
+
+    // Update footer with approve button
+    modalFooter.innerHTML = `
+        <button type="button" class="btn btn-secondary" onclick="closeModal('approval-modal')" style="padding: 8px 16px; background-color: #6b7280; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Cancel</button>
+        <button type="button" id="confirm-override-btn" style="padding: 8px 16px; background-color: #10b981; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Approve with Overrides</button>
+    `;
+
+    document.getElementById('confirm-override-btn').addEventListener('click', async function() {
+        await confirmApprovalWithOverrides(remainingIssues);
+    });
+
+    openModal('approval-modal');
+}
+
+async function confirmApprovalWithOverrides(remainingIssues) {
+    const rowsWithOverrides = remainingIssues.map(rowIssue => ({
+        raw_import_row_id: rowIssue.raw_import_row_id,
+        row_index: rowIssue.row_index,
+        issues: rowIssue.issues
+    }));
+
+    try {
+        const response = await fetch(`/imports/${batchId}/approve-batch`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                approval_status: 'approved_with_overrides',
+                rows_with_overrides: rowsWithOverrides
+            }),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Update affected rows to show Overridden status
+            rowsWithOverrides.forEach(override => {
+                const row = document.querySelector(`tr[data-raw-id="${override.raw_import_row_id}"]`);
+                if (row) {
+                    const statusCell = row.querySelector('.row-status-cell');
+                    if (statusCell) {
+                        statusCell.innerHTML = `<span class="row-status-badge" style="background-color: #e0e7ff; color: #312e81; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Overridden</span>`;
+                    }
+
+                    const issuesCell = row.querySelector('.issues-cell');
+                    if (issuesCell && override.issues.length > 0) {
+                        let issuesHtml = '';
+                        override.issues.forEach(issue => {
+                            const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
+                            const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
+                            issuesHtml += `<div style="margin-bottom: 4px;">
+                                <span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
+                                    ${issue.field || 'unknown'} — Overridden
+                                </span>
+                            </div>`;
+                        });
+                        issuesCell.innerHTML = issuesHtml;
+                    }
+                }
+            });
+
+            closeModal('approval-modal');
+            alert('File approved with overrides successfully!');
+            setTimeout(() => {
+                window.location.href = `/imports/${batchId}/dashboard`;
+            }, 1000);
+        } else {
+            alert('Error: ' + (result.error || 'Failed to approve file'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
 </script>
 {% endblock %}

@@ -1004,6 +1004,176 @@ def defer_validation_item(import_id, review_item_id):
         logger.error(f"Error deferring validation item: {str(e)}")
         return jsonify({'error': 'Error deferring item'}), 500
 
+
+@app.route('/imports/<import_id>/autosave', methods=['POST'])
+def autosave_row_corrections(import_id):
+    """Autosave row-level corrections (v1.1 Phase 2).
+
+    Stores corrected/export values in ReviewDecision.reviewed_values.
+    Raw import data remains immutable.
+    Creates append-only ReviewDecision record.
+    Returns refreshed row state for immediate UI refresh.
+
+    Expected JSON:
+    {
+        'raw_import_row_id': int,
+        'corrected_values': {'field': value, ...}
+    }
+
+    Returns:
+    {
+        'success': bool,
+        'decision_id': int,
+        'effective_values': dict,
+        'row_status': str,
+        'issues': list,
+        'saved_at': str (ISO timestamp),
+        'message': str
+    }
+    """
+    from householder.autosave_service import autosave_row_corrections, get_effective_values
+    from householder.row_status_service import derive_row_status
+    from householder.issue_recalculation_service import recalculate_row_issues
+    from datetime import datetime
+
+    data = request.get_json() or {}
+    raw_import_row_id = data.get('raw_import_row_id')
+    corrected_values = data.get('corrected_values', {})
+    reviewer = request.headers.get('X-Reviewer-ID')
+
+    if not raw_import_row_id:
+        return jsonify({'error': 'raw_import_row_id required'}), 400
+
+    try:
+        # Save corrections
+        result = autosave_row_corrections(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id,
+            corrected_values=corrected_values,
+            reviewer=reviewer
+        )
+
+        # Get refreshed row state
+        effective_values = get_effective_values(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id
+        )
+
+        row_status = derive_row_status(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id
+        )
+
+        issues = recalculate_row_issues(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id
+        )
+
+        logger.info(f"Row {raw_import_row_id} autosave completed: {corrected_values}")
+
+        return jsonify({
+            'success': True,
+            'decision_id': result.decision_id,
+            'effective_values': effective_values,
+            'row_status': row_status,
+            'issues': issues,
+            'saved_at': datetime.utcnow().isoformat(),
+            'message': 'Autosave completed successfully'
+        }), 200
+    except ValueError as e:
+        logger.warning(f"Autosave validation error: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error during autosave: {str(e)}")
+        return jsonify({'error': 'Autosave failed'}), 500
+
+
+@app.route('/imports/<import_id>/approve-batch', methods=['POST'])
+def approve_import_batch(import_id):
+    """Approve batch with or without overrides (v1.1 Phase 2).
+
+    Two-mode workflow:
+
+    MODE 1 - Simple Approval (no remaining issues):
+      Request: { "approval_status": "approved" }
+      Response: { "success": true, "approval_status": "approved", ... }
+
+    MODE 2 - Check for Issues:
+      Request: { "approval_status": "approved_with_overrides", "rows_with_overrides": [] }
+      Response: { "success": false, "requires_override_confirmation": true, "remaining_issues": [...] }
+
+    MODE 3 - Confirm Override:
+      Request: { "approval_status": "approved_with_overrides", "rows_with_overrides": [{...}, ...] }
+      Response: { "success": true, "approval_status": "approved_with_overrides", ... }
+
+    Expected JSON:
+    {
+        'approval_status': 'approved' | 'approved_with_overrides',
+        'rows_with_overrides': [{'raw_import_row_id': int, 'row_index': int, 'issues': [...]}, ...]
+    }
+    """
+    from householder.approval_service import approve_batch
+    import os
+
+    data = request.get_json() or {}
+    approval_status = data.get('approval_status')
+    rows_with_overrides = data.get('rows_with_overrides', [])
+    reviewer = request.headers.get('X-Reviewer-ID')
+
+    if not approval_status:
+        return jsonify({'error': 'approval_status required'}), 400
+
+    # Determine database URL
+    database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
+
+    try:
+        # MODE 2: Check for remaining issues (empty rows_with_overrides list)
+        if approval_status == 'approved_with_overrides' and not rows_with_overrides:
+            from householder.approval_service import check_batch_remaining_issues
+
+            try:
+                remaining_issues_by_row = check_batch_remaining_issues(
+                    batch_id=import_id,
+                    database_url=database_url
+                )
+
+                if remaining_issues_by_row:
+                    # Issues remain - need confirmation
+                    return jsonify({
+                        'success': False,
+                        'requires_override_confirmation': True,
+                        'remaining_issues': remaining_issues_by_row,
+                        'message': f'Batch has {len(remaining_issues_by_row)} row(s) with unresolved issues. Please confirm override.'
+                    }), 200
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 404
+
+        # MODE 1 or MODE 3: Perform actual approval
+        result = approve_batch(
+            batch_id=import_id,
+            approval_status=approval_status,
+            rows_with_overrides=rows_with_overrides if rows_with_overrides else None,
+            reviewer=reviewer,
+            database_url=database_url
+        )
+
+        logger.info(f"Batch {import_id} approved: {approval_status}, overrides={result['override_count']}")
+
+        return jsonify({
+            'success': True,
+            'approval_status': result['approval_status'],
+            'override_count': result['override_count'],
+            'audit_log_id': result['audit_log_id'],
+            'message': 'Batch approval recorded successfully'
+        }), 200
+
+    except ValueError as e:
+        logger.warning(f"Approval validation error: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error during batch approval: {str(e)}")
+        return jsonify({'error': 'Batch approval failed'}), 500
+
 @app.route('/imports/<import_id>/normalizations')
 def import_normalizations(import_id):
     """Field normalization suggestions."""

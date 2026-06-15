@@ -150,16 +150,18 @@ class TestValidationDecisionUI:
         assert 'decision' in html or 'Decision' in html
         assert 'notes' in html or 'Notes' in html
 
-    def test_validation_page_displays_effective_status(self, flask_client_with_validation_items):
-        """Validation page shows effective status for validation items."""
+    def test_validation_page_displays_row_status(self, flask_client_with_validation_items):
+        """Validation page shows row status from Phase 2 derivation (Phase 3)."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
 
         response = client.get('/imports/IMP-2025-0101-A/validation')
         assert response.status_code == 200
         html = response.data.decode('utf-8')
 
-        # Check for status display (Pending, Accepted, Dismissed, Deferred)
-        assert 'Pending' in html or 'pending' in html
+        # Check for Row Status column header and values
+        assert 'Row Status' in html
+        # Should show derived row status values
+        assert 'No issues' in html or 'Warning' in html or 'Blocking' in html
 
     def test_validation_page_contains_inspect_links(self, flask_client_with_validation_items):
         """Validation page contains Inspect links for each record."""
@@ -233,8 +235,8 @@ class TestValidationDecisionUI:
         assert audit.action_type == 'decision_recorded'
         session.close()
 
-    def test_after_decision_page_shows_updated_status(self, flask_client_with_validation_items):
-        """After submitting decision, validation page shows new effective status."""
+    def test_after_decision_page_shows_row_status(self, flask_client_with_validation_items):
+        """After submitting decision, validation page shows derived row status (Phase 3)."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
         item_id, contact_id = validation_items[0]
 
@@ -249,8 +251,9 @@ class TestValidationDecisionUI:
         assert response.status_code == 200
         html = response.data.decode('utf-8')
 
-        # Should show updated status
-        assert 'Dismissed' in html or 'dismissed' in html or 'Pending' in html
+        # Should show Row Status column with derived status values
+        assert 'Row Status' in html
+        assert 'No issues' in html or 'Warning' in html or 'Blocking' in html
 
     def test_accepted_decision_shows_accepted_status(self, flask_client_with_validation_items):
         """Form submission with 'accept_issue' updates effective status."""

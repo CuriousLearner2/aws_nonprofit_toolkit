@@ -59,10 +59,10 @@ class TestValidationRoute:
         assert b'<th' in response.data  # Table header tag
         assert b'</th>' in response.data
 
-    def test_validation_contains_checkbox_column(self, client):
-        """Test that validation table contains checkbox column."""
+    def test_validation_contains_action_button(self, client):
+        """Test that validation table contains action button (Phase 3)."""
         response = client.get('/imports/IMP-2025-0101-A/validation')
-        assert b'type="checkbox"' in response.data
+        assert b'Inspect' in response.data or b'inspect-record' in response.data
 
     def test_validation_contains_transaction_id_column(self, client):
         """Test that validation table displays transaction IDs."""
