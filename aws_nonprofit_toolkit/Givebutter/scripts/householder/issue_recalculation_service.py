@@ -157,9 +157,17 @@ def is_issue_resolved(
         # Basic validation for common issues
         if field == 'email':
             # Email issue resolved only if it contains valid domain patterns
-            # (not common typos like gmial, gmai, gmal, etc.)
-            invalid_patterns = ['gmial', 'gmai', 'gmal', 'yahooo', 'hotmial']
-            has_invalid = any(pattern in effective_str.lower() for pattern in invalid_patterns)
+            # (not common typos like gmial, gmal, etc.)
+            # Use regex to avoid false positives (e.g., 'gmai' in 'gmail')
+            import re
+            invalid_typos = [
+                r'gmial(?:\.com)?',  # gmail typo: gmial
+                r'gmal(?:\.com)?',   # gmail typo: gmal (missing i)
+                r'yahooo(?:\.com)?', # yahoo typo: yahooo
+                r'hotmial(?:\.com)?',# hotmail typo: hotmial
+                r'\bgmai\b',         # gmai standalone (not part of gmail)
+            ]
+            has_invalid = any(re.search(pattern, effective_str.lower()) for pattern in invalid_typos)
             return not has_invalid and '@' in effective_str
         elif field == 'phone':
             # Phone issue resolved if it has valid format (digits and common separators)
