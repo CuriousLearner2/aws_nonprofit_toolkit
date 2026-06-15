@@ -128,7 +128,7 @@ def is_issue_resolved(
 
     Resolution logic:
     - Missing: resolved if value is now non-empty
-    - Typo/format: resolved if value differs from raw (indicates correction was made)
+    - Typo/format: resolved if value matches raw (no correction) OR appears to have valid format
 
     Args:
         field: Field name (e.g., 'email', 'phone')
@@ -149,13 +149,30 @@ def is_issue_resolved(
         # Issue resolved if now non-empty
         return bool(effective_str)
     elif issue_reason in ('typo', 'format', 'possible_typo'):
-        # Issue resolved if value was corrected (differs from raw)
-        if raw_value is not None:
-            raw_str = str(raw_value).strip() if raw_value else ''
-            # Resolved if effective differs from raw (indicates correction)
-            return effective_str and (effective_str != raw_str)
+        # For typo/format issues: only resolved if value is actually corrected to valid format
+        # Not resolved if just different from raw but still invalid
+        if not effective_str:
+            return False
+
+        # Basic validation for common issues
+        if field == 'email':
+            # Email issue resolved only if it contains valid domain patterns
+            # (not common typos like gmial, gmai, gmal, etc.)
+            invalid_patterns = ['gmial', 'gmai', 'gmal', 'yahooo', 'hotmial']
+            has_invalid = any(pattern in effective_str.lower() for pattern in invalid_patterns)
+            return not has_invalid and '@' in effective_str
+        elif field == 'phone':
+            # Phone issue resolved if it has valid format (digits and common separators)
+            import re
+            # Valid patterns: 555-1234, (555) 555-1234, 5551234, etc.
+            valid_phone = bool(re.search(r'\d{3}[-.]?\d{3}[-.]?\d{4}|^\d{10}$', effective_str))
+            return valid_phone
         else:
-            # Without raw value for comparison, can't determine if corrected
+            # For other fields, check if effective differs meaningfully from raw
+            if raw_value is not None:
+                raw_str = str(raw_value).strip() if raw_value else ''
+                # Resolved if effective differs from raw
+                return effective_str != raw_str
             return False
     else:
         return False  # Unknown reason, don't auto-resolve
