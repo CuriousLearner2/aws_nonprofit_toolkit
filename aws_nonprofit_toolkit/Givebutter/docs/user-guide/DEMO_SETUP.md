@@ -68,8 +68,10 @@ Navigate to: **`http://localhost:8000/imports`**
 - View export console with available export options
 - Navigate between all 8 routes
 - **Autosave field corrections** (edit and save inline)
+- **Validation before save** (invalid corrections rejected with error messages)
 - **Row status updates** based on corrections
 - **Issue badge display** with field and reason
+- **Phone number auto-formatting** (live format as user types: 2024341297 → (202) 434-1297)
 - **Decision recording** (validation, normalization, duplicates, households)
 
 **What's Not Yet Implemented** ⏳
@@ -78,23 +80,34 @@ Navigate to: **`http://localhost:8000/imports`**
 - Batch approval workflow (Approve File button)
 - Override logic for approving with remaining issues
 
-Phase 2+ will add export generation and batch approval workflows.
+Phase 2+ will add export generation, batch approval workflows, and override logic.
 
 ---
 
-## Phone Validation Logic
+## Phone Validation & Auto-Formatting
 
-Phone validation uses **Google's phonenumbers library** for professional international support:
-
+**Validation:** Uses **Google's phonenumbers library** for professional international support:
 - **131+ countries**: Intelligent parsing for any region
 - **Format flexibility**: Accepts (415) 555-2671, 415-555-2671, 4155552671, +1 415 555 2671, etc.
 - **Type detection**: Identifies mobile, fixed-line, toll-free, VoIP, etc.
-- **Smart parsing**: Automatically detects country code from +prefix or uses region parameter
+- **Telecom compliance**: Validates against real NANP rules (US area codes, exchange codes must start with 2-9, etc.)
+
+**Auto-Formatting:** As you type digits into a phone field, the system automatically formats to **(XXX) XXX-XXXX**:
+- **Live formatting**: Type `2024341297` → See `(202) 434-1297` in real-time
+- **Smart formatting**: Only formats when you have 10+ consecutive digits
+- **Blur formatting**: When you click away, any valid number gets formatted automatically
+- **Enter key**: Press Enter to confirm and format
+
+**Validation Before Save:** Before autosaving a correction:
+1. Server validates the phone number against phonenumbers rules
+2. If invalid → Returns error (e.g., "Invalid phone format") and **does NOT save**
+3. If valid → Saves to database and shows "Saved" confirmation
 
 **In the demo:**
-- Carol White has phone `555-0002` (missing) → Shows "Missing Required Field" issue
-- Adding a valid phone (e.g., `555-0003`) → Issue resolves, Row Status becomes "No issues"
-- The library validates against real telecom rules for each country
+- Carol White has phone `(missing)` → Shows "Missing Required Field" issue
+- Type `2024341297` → Auto-formats to `(202) 434-1297` as you type
+- Click away or press Enter → Phone saves, Issue resolves, Row Status becomes "No issues"
+- Invalid numbers (e.g., `555-0000` with reserved area code) → Rejected with error, not saved
 
 ---
 
@@ -222,14 +235,28 @@ Follow this sequence to exercise all major UX flows:
 2. Click away — **Issue appears** (canonical format violation detected)
 3. Row Status shows "Invalid Format"
 
-**For Carol White:** Add phone number `555-0002`
-- Observe: "Missing Required Field" issue disappears
-- Row Status changes to "No issues"
+**Test 5: Phone Auto-Formatting and Validation (Carol White):**
+1. Click on Carol White's phone field (currently empty)
+2. Type digits: `2024341297` (10 digits, no formatting)
+3. **Observe: As you type, the number auto-formats to `(202) 434-1297`**
+4. Click away or press Tab → **Phone saves automatically, "Missing Required Field" issue disappears**
+5. Row Status changes to "No issues"
+6. Now try an invalid phone: Change to `555` (too short, reserved area code)
+7. Press Tab or click away → **Error message appears**, phone NOT saved, issue reappears
 
-**Action:** Test the complete autosave and issue recalculation workflow with typo suggestions. Observe:
-- Common typos show helpful suggestions
+**Test 6: Validation Before Save (Prevent Invalid Data):**
+1. In Carol White's phone field, try typing `555-000-0033` (reserved area code 555)
+2. Press Tab → **Error appears**: "Invalid phone format" (555 is reserved by NANP rules)
+3. **Phone is NOT saved to database**, "Missing Required Field" issue reappears
+4. Now correct to `415-200-0003` (valid California number)
+5. Press Tab → **Saves successfully**, error clears, issue disappears
+
+**Action:** Test the complete autosave and issue recalculation workflow with:
+- Email typo suggestions
+- Phone auto-formatting (live as-you-type)
+- Validation-before-save (invalid corrections rejected)
 - Row status updates dynamically
-- Both recognized and unrecognized domains work correctly
+- Both recognized and unrecognized domains
 
 ---
 
@@ -327,11 +354,14 @@ Export readiness: BLOCKED (Carol White missing phone)
 ✅ See pre-populated audit log
 ✅ View export console with 3 export options
 ✅ Autosave field corrections (inline edits with blur trigger)
+✅ Validation before save (invalid corrections rejected with error messages)
+✅ Phone number auto-formatting (live as-you-type, 2024341297 → (202) 434-1297)
 ✅ Issue recalculation (issues appear/disappear based on corrected values)
 ✅ Row Status updates (dynamic based on effective values)
 ✅ Issue display with field name and reason code
 ⏳ Decision recording UI (validation/normalization/duplicate/household decisions)
 ⏳ Batch approval workflow (Approve File button)
+⏳ Override logic (approving with remaining issues)
 ⏳ Export generation (coming in Phase 2)
 ```
 
@@ -462,6 +492,8 @@ By following this demo walkthrough, you're validating:
 **Autosave & Field Corrections** ✅
 - Edit inline fields (Date, Name, Email, Phone, Amount, Address)
 - Click away to trigger autosave
+- **Validation before save** (invalid corrections rejected with error messages)
+- **Phone auto-formatting** (live as-you-type formatting to (XXX) XXX-XXXX)
 - "Saving..." → "Saved" feedback
 - Issue badges disappear when fixed
 - Row status updates automatically
@@ -474,8 +506,8 @@ By following this demo walkthrough, you're validating:
 
 **Phase 2+ Features** (Coming Soon) ⏳
 - Export generation and file creation
-- Batch approval workflow (Approve File)
-- Override logic for remaining issues
+- Batch approval workflow (Approve File button)
+- Override logic for approving batches with remaining validation issues
 - Export download capability
 
 All demo data is isolated from production (`householder_demo.db` vs `givebutter.db`).
