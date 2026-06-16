@@ -171,11 +171,6 @@ class TestHouseholdsRouteRegression:
         response = client.get('/imports/IMP-2025-0101-A/validation')
         assert response.status_code == 200
 
-    def test_normalizations_still_service_backed(self, client):
-        """Regression: /imports/<import_id>/normalizations still returns 200."""
-        response = client.get('/imports/IMP-2025-0101-A/normalizations')
-        assert response.status_code == 200
-
     def test_duplicates_still_fixture_backed(self, client):
         """Regression: /imports/<import_id>/duplicates still returns 200 (fixture-backed)."""
         response = client.get('/imports/IMP-2025-0101-A/duplicates')
@@ -191,14 +186,13 @@ class TestHouseholdsRouteRegression:
         response = client.get('/imports/IMP-2025-0101-A/exports')
         assert response.status_code == 200
 
-    def test_all_8_donortrust_routes_return_200(self, client):
-        """All 8 canonical DonorTrust routes return HTTP 200."""
+    def test_all_7_donortrust_routes_return_200(self, client):
+        """All 7 canonical DonorTrust routes return HTTP 200 (normalizations removed in Phase 1B)."""
         routes = [
             '/imports',
             '/imports/IMP-2025-0101-A/dashboard',
-            '/imports/IMP-2025-0101-A/duplicates',
             '/imports/IMP-2025-0101-A/validation',
-            '/imports/IMP-2025-0101-A/normalizations',
+            '/imports/IMP-2025-0101-A/duplicates',
             '/imports/IMP-2025-0101-A/households',
             '/imports/IMP-2025-0101-A/audit',
             '/imports/IMP-2025-0101-A/exports',

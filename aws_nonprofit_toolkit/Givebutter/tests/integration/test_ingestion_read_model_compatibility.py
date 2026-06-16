@@ -103,23 +103,6 @@ class TestRepositoryMethodsWithIngestedData:
         assert page.validation_issues_count >= 0
         assert page.total_records == 4
 
-    def test_get_normalizations_returns_normalization_items(self, ingested_batch):
-        """get_normalizations() returns normalization page with suggestions."""
-        db_url = ingested_batch["db_url"]
-        batch_id = ingested_batch["batch_id"]
-
-        repo = DatabaseImportRepository(db_url)
-        page = repo.get_normalizations(batch_id)
-
-        # Should return normalization page view model
-        assert page is not None
-        assert page.batch_id == batch_id
-        assert page.filename == "export.csv"
-        assert page.progress >= 0
-        # total_suggestions should reflect rows with suggestions
-        assert page.total_suggestions >= 0
-        assert page.current_suggestion_index >= 0
-
     def test_get_households_returns_empty(self, ingested_batch):
         """get_households() returns page with zero households (deferred to Phase 2)."""
         db_url = ingested_batch["db_url"]

@@ -41,7 +41,6 @@ try:
         IMPORT_BATCH,
         CONTACTS,
         DUPLICATE_CANDIDATES,
-        NORMALIZATION_SUGGESTIONS,
         HOUSEHOLD_SUGGESTIONS,
         AUDIT_LOG_ENTRIES,
         EXPORT_CARDS,
@@ -54,7 +53,6 @@ except ImportError:
         IMPORT_BATCH,
         CONTACTS,
         DUPLICATE_CANDIDATES,
-        NORMALIZATION_SUGGESTIONS,
         HOUSEHOLD_SUGGESTIONS,
         AUDIT_LOG_ENTRIES,
         EXPORT_CARDS,
@@ -69,8 +67,6 @@ try:
         dashboard_service,
         validation_service,
         validation_decision_service,
-        normalizations_service,
-        normalization_decision_service,
         households_service,
         duplicates_service,
         duplicate_decision_service,
@@ -87,8 +83,6 @@ except ImportError:
         dashboard_service,
         validation_service,
         validation_decision_service,
-        normalizations_service,
-        normalization_decision_service,
         households_service,
         duplicates_service,
         duplicate_decision_service,
@@ -1187,38 +1181,6 @@ def approve_import_batch(import_id):
     except Exception as e:
         logger.error(f"Error during batch approval: {str(e)}")
         return jsonify({'error': 'Batch approval failed'}), 500
-
-@app.route('/imports/<import_id>/normalizations')
-def import_normalizations(import_id):
-    """Field normalization suggestions."""
-    data = normalizations_service.get_normalizations_review(import_id)
-    return render_template('imports/normalizations.html', **data)
-
-@app.route('/imports/<import_id>/normalizations/<int:review_item_id>/decision', methods=['POST'])
-def record_normalization_decision(import_id, review_item_id):
-    """Record a reviewer's normalization decision."""
-    from scripts.householder import normalization_decision_service
-
-    decision = request.form.get('decision', '').strip()
-    notes = request.form.get('notes', '').strip() or None
-    reviewer = request.headers.get('X-Reviewer-ID') or None
-
-    try:
-        result = normalization_decision_service.record_normalization_decision(
-            import_id=import_id,
-            review_item_id=review_item_id,
-            decision=decision,
-            notes=notes,
-            reviewer=reviewer,
-        )
-        logger.info(f"Normalization decision recorded: {result.decision} for item {review_item_id}")
-        return redirect(f'/imports/{import_id}/normalizations')
-    except ValueError as e:
-        logger.warning(f"Validation error recording normalization decision: {str(e)}")
-        return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        logger.error(f"Error recording normalization decision: {str(e)}")
-        return jsonify({'error': 'Error recording decision'}), 500
 
 @app.route('/imports/<import_id>/duplicates/<int:review_item_id>/decision', methods=['POST'])
 def record_duplicate_decision(import_id, review_item_id):

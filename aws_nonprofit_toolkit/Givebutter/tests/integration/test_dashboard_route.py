@@ -113,11 +113,6 @@ class TestDashboardRoute:
         assert response.status_code == 200
         assert b'Validation' in response.data
 
-    def test_normalizations_route_untouched(self, client):
-        """Test that normalizations route was not modified."""
-        response = client.get('/imports/IMP-2025-0101-A/normalizations')
-        assert response.status_code == 200
-
     def test_households_route_untouched(self, client):
         """Test that households route was not modified."""
         response = client.get('/imports/IMP-2025-0101-A/households')

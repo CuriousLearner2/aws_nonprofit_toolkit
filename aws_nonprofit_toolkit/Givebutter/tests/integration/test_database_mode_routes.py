@@ -76,22 +76,6 @@ class TestDatabaseModeRoutes:
         # Verify at least one contact from seed appears (validation routes show contact data)
         assert 'John Smith' in html or 'Jane Doe' in html or 'CONTACT' in html
 
-    def test_normalizations_from_database(self, client):
-        """Verify /imports/<id>/normalizations renders from database.
-
-        Database seed includes:
-        - 1 normalization review item: NORM-001
-        - 1 contact: CONTACT-002 (Jon Smith)
-        """
-        response = client.get('/imports/IMP-TEST-001/normalizations')
-        assert response.status_code == 200
-
-        html = response.get_data(as_text=True)
-
-        assert 'IMP-TEST-001' in html
-        # Verify normalization-related content
-        assert 'Normaliz' in html or 'normaliz' in html
-
     def test_households_from_database(self, client):
         """Verify /imports/<id>/households renders from database.
 

@@ -38,7 +38,7 @@ Householder Demo Database Migration
 
 Batch ID: demo-20260613-162339
 Records: 12
-Review items: 5
+Review items: 4
 
 Export readiness: BLOCKED (Carol White missing phone)
 
@@ -63,16 +63,16 @@ Navigate to: **`http://localhost:8000/imports`**
 
 **What Works** ✅
 - View import list and batch summary
-- View all review queues (validation, duplicates, households, normalizations)
+- View all review queues (validation, duplicates, households)
 - View audit log (pre-populated with batch creation)
 - View export console with available export options
-- Navigate between all 8 routes
+- Navigate between all 7 routes
 - **Autosave field corrections** (edit and save inline)
 - **Validation before save** (invalid corrections rejected with error messages)
 - **Row status updates** based on corrections
 - **Issue badge display** with field and reason
 - **Phone number auto-formatting** (live format as user types: 2024341297 → (202) 434-1297)
-- **Decision recording** (validation, normalization, duplicates, households)
+- **Decision recording** (validation, duplicates, households)
 
 **What's Not Yet Implemented** ⏳
 - Export generation (no real CSV files created)
@@ -192,7 +192,6 @@ Follow this sequence to exercise all major UX flows:
   - Validation: 2 items (Jane Smith, Carol White)
   - Duplicates: 1 item
   - Households: 1 item
-  - Normalizations: 1 item
 
 **Action:** Observe the dashboard and navigate to each queue.
 
@@ -284,19 +283,7 @@ Follow this sequence to exercise all major UX flows:
 
 ---
 
-### 6. Normalization Review Queue
-
-**URL:** `http://localhost:8000/imports/<batch_id>/normalizations`
-
-**What to see:**
-- Grace Miller (phone: (555) 004-1234 → normalized to 555-0041234)
-- Original and suggested values shown
-
-**Action:** Review the normalization suggestion. *(Decisions not yet saved in Phase 1A)*
-
----
-
-### 7. Audit Trail
+### 6. Audit Trail
 
 **URL:** `http://localhost:8000/imports/<batch_id>/audit`
 
@@ -304,11 +291,11 @@ Follow this sequence to exercise all major UX flows:
 - Pre-populated audit log entries showing batch creation
 - Timestamp, reviewer, and action columns
 
-**Action:** Review the audit trail. *(User actions not yet recorded in Phase 1A)*
+**Action:** Review the audit trail. *(User actions not yet recorded in Phase 1B)*
 
 ---
 
-### 8. Export Console
+### 7. Export Console
 
 **URL:** `http://localhost:8000/imports/<batch_id>/exports`
 
@@ -334,11 +321,10 @@ Follow this sequence to exercise all major UX flows:
 ```
 Batch ID: demo-20260613-162339 (or similar timestamp)
 Records: 12
-Review items: 5
+Review items: 4
 
 Queue counts:
   Validation: 2 (Jane Smith, Carol White)
-  Normalization: 1 (Grace Miller)
   Duplicates: 1 (Robert & Bob Smith)
   Households: 1 (Eve & Frank Davis)
 
@@ -349,8 +335,8 @@ Export readiness: BLOCKED (Carol White missing phone)
 ### What You Can Explore
 
 ```
-✅ View all 8 routes (imports, dashboard, validation, duplicates, households, normalizations, audit, exports)
-✅ Review all 5 review items with supporting evidence
+✅ View all 7 routes (imports, dashboard, validation, duplicates, households, audit, exports)
+✅ Review all 4 review items with supporting evidence
 ✅ See pre-populated audit log
 ✅ View export console with 3 export options
 ✅ Autosave field corrections (inline edits with blur trigger)
@@ -359,7 +345,7 @@ Export readiness: BLOCKED (Carol White missing phone)
 ✅ Issue recalculation (issues appear/disappear based on corrected values)
 ✅ Row Status updates (dynamic based on effective values)
 ✅ Issue display with field name and reason code
-⏳ Decision recording UI (validation/normalization/duplicate/household decisions)
+⏳ Decision recording UI (validation/duplicate/household decisions)
 ⏳ Batch approval workflow (Approve File button)
 ⏳ Override logic (approving with remaining issues)
 ⏳ Export generation (coming in Phase 2)
@@ -474,7 +460,7 @@ python scripts/migrate_demo_db.py
 By following this demo walkthrough, you're validating:
 
 **Service-Boundary Architecture** ✅
-- 8 canonical routes now service-backed with database backend
+- 7 canonical routes now service-backed with database backend
 - Service layer handles fixture vs database repository selection
 - View models provide immutable contracts between services and templates
 - Templates unchanged from Phase 0 (UI preserved exactly)

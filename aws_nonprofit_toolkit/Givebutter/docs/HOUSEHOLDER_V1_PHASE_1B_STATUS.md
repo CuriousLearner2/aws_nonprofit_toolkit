@@ -22,8 +22,8 @@ Phase 1B delivers a fully functional validation review interface with:
 
 ### 1. Data Viewing & Navigation
 - ✅ Import listing with batch discovery
-- ✅ Dashboard with queue summaries (validation, duplicates, households, normalizations)
-- ✅ All 8 canonical routes fully functional
+- ✅ Dashboard with queue summaries (validation, duplicates, households)
+- ✅ All 7 canonical routes fully functional
 - ✅ Review items properly categorized and displayed
 - ✅ Audit log with pre-populated entries
 - ✅ Export console with available export options
@@ -68,7 +68,6 @@ Phase 1B delivers a fully functional validation review interface with:
 
 ### 5. Decision Recording
 - ✅ **Validation decisions:** Accept Issue, Dismiss, Defer
-- ✅ **Normalization decisions:** Apply, Defer
 - ✅ **Duplicate decisions:** Keep First, Keep Second, Keep Both
 - ✅ **Household decisions:** Create Household, Not Related, Defer
 - ✅ **Append-only audit trail:** Each decision creates permanent record
@@ -109,20 +108,20 @@ Phase 2 will add:
 - Notification: show success, record approval in audit log
 
 ### 2. Override Logic (Approve Despite Issues)
-**Status:** Deferred to Phase 2
+**Status:** Deferred to Phase 2+
 
 Current limitation:
 - Batch approval blocked if validation issues remain
 - No way to approve batch with known issues (intentionally)
 - Operator workflow requires fixing or dismissing ALL issues
 
-Phase 2 will add:
+Phase 2+ will add:
 - Override decision type: "Approve with Override"
 - Confirmation dialog: "This batch has 3 remaining issues. Approve anyway?"
 - Override audit trail: track which issues were overridden and why
 - Export inclusion: show which records were overridden in final export
 
-**Design Rationale:** Phase 1B blocks overrides to ensure strict validation. Phase 2 will add override capability for operators who need it, with full audit trail for compliance.
+**Design Rationale:** Phase 1B prioritizes data quality by blocking approvals with unresolved issues. Phase 2+ will add override capability for operators who need flexible workflows, with full audit trail for compliance.
 
 ### 3. Export Generation & Download
 **Status:** Deferred to Phase 2
@@ -229,7 +228,6 @@ Phase 2 will add:
 
 **Demo batch includes 12 records with:**
 - 2 validation issues (Jane Smith email typo, Carol White missing phone)
-- 1 normalization suggestion (Grace Miller phone formatting)
 - 1 duplicate pair (Robert & Bob Smith)
 - 1 household pair (Eve & Frank Davis)
 

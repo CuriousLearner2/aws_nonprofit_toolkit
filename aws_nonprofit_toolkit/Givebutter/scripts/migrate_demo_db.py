@@ -119,7 +119,7 @@ def seed_demo_batch(session):
 
     session.flush()
 
-    # Create review items (5 items: 2 validation, 1 duplicate, 1 household, 1 normalization)
+    # Create review items (4 items: 2 validation, 1 duplicate, 1 household)
     review_items = []
 
     # 1. Jane Smith - validation issue (email typo)
@@ -188,23 +188,6 @@ def seed_demo_batch(session):
     session.flush()
     review_items.append(item4)
 
-    # 5. Grace Miller - normalization
-    item5 = ReviewItem(
-        batch_id=batch_id,
-        item_type="normalization",
-        status="pending",
-        confidence=0.99,
-        payload_json={
-            "field": "phone",
-            "raw_value": "(555) 004-1234",
-            "normalized_value": "415-200-1234",
-            "basis": "Standard phone normalization"
-        }
-    )
-    session.add(item5)
-    session.flush()
-    review_items.append(item5)
-
     # Add review item subjects linking items to raw import rows
     subjects = [
         (item1.id, "import_raw_row", raw_row_ids[0], "primary"),  # Jane Smith - email (idx 0)
@@ -213,7 +196,6 @@ def seed_demo_batch(session):
         (item3.id, "import_raw_row", raw_row_ids[3], "secondary"),  # Bob Smith (idx 3)
         (item4.id, "import_raw_row", raw_row_ids[4], "primary"),  # Eve Davis (idx 4)
         (item4.id, "import_raw_row", raw_row_ids[5], "secondary"),  # Frank Davis (idx 5)
-        (item5.id, "import_raw_row", raw_row_ids[6], "primary"),  # Grace Miller (idx 6)
     ]
 
     for review_item_id, subject_type, subject_id, role in subjects:

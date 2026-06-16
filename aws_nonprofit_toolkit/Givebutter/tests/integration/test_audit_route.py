@@ -121,11 +121,6 @@ class TestAuditRoute:
         assert response.status_code == 200
         assert b'Validation' in response.data
 
-    def test_normalizations_route_still_works(self, client):
-        """Test that /normalizations route still works (Step 4 regression check)."""
-        response = client.get('/imports/IMP-2025-0101-A/normalizations')
-        assert response.status_code == 200
-
     def test_households_route_still_works(self, client):
         """Test that /households route still works (Step 5 regression check)."""
         response = client.get('/imports/IMP-2025-0101-A/households')

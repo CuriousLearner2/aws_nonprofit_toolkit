@@ -161,11 +161,6 @@ class TestValidationRoute:
         assert response.status_code == 200
         assert b'Possible Duplicates' in response.data or b'Duplicate' in response.data.decode('utf-8', errors='ignore')
 
-    def test_normalizations_route_untouched(self, client):
-        """Test that normalizations route was not modified."""
-        response = client.get('/imports/IMP-2025-0101-A/normalizations')
-        assert response.status_code == 200
-
     def test_households_route_untouched(self, client):
         """Test that households route was not modified."""
         response = client.get('/imports/IMP-2025-0101-A/households')

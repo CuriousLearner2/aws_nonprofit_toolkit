@@ -17,7 +17,6 @@ try:
         IMPORT_BATCH,
         QUEUE_STATUS,
         CONTACTS,
-        NORMALIZATION_SUGGESTIONS,
         HOUSEHOLD_SUGGESTIONS,
         DUPLICATE_CANDIDATES,
         AUDIT_LOG_ENTRIES,
@@ -30,7 +29,6 @@ except ImportError:
         IMPORT_BATCH,
         QUEUE_STATUS,
         CONTACTS,
-        NORMALIZATION_SUGGESTIONS,
         HOUSEHOLD_SUGGESTIONS,
         DUPLICATE_CANDIDATES,
         AUDIT_LOG_ENTRIES,
@@ -195,56 +193,6 @@ class FixtureImportRepository:
             validation_rows=validation_rows,
             validation_issues_count=QUEUE_STATUS.get('validation_issues', 0),
             total_records=IMPORT_BATCH['record_count'],
-        )
-
-    @staticmethod
-    def get_normalizations(import_id: str) -> NormalizationPageViewModel:
-        """
-        Return normalizations review page data as NormalizationPageViewModel.
-
-        Adapts IMPORT_BATCH and NORMALIZATION_SUGGESTIONS fixtures into
-        normalization page view model. Returns current suggestion with batch info.
-
-        Args:
-            import_id: Import ID (unused for fixture data, preserved for API consistency)
-
-        Returns:
-            NormalizationPageViewModel with batch, current suggestion, and navigation state.
-        """
-        # Get first suggestion or create empty one if none available
-        current_suggestion_data = (
-            NORMALIZATION_SUGGESTIONS[0] if NORMALIZATION_SUGGESTIONS else None
-        )
-
-        if not current_suggestion_data:
-            # Handle empty suggestions list gracefully
-            current_suggestion = NormalizationRow(
-                id="",
-                contact_name="",
-                field_name="",
-                original_value="",
-                suggested_value="",
-                normalization_type="",
-                status="Pending",
-            )
-        else:
-            current_suggestion = NormalizationRow(
-                id=current_suggestion_data['id'],
-                contact_name=current_suggestion_data['contact_name'],
-                field_name=current_suggestion_data['field_name'],
-                original_value=current_suggestion_data['original_value'],
-                suggested_value=current_suggestion_data['suggested_value'],
-                normalization_type=current_suggestion_data['normalization_type'],
-                status=current_suggestion_data.get('status', 'Pending'),
-            )
-
-        return NormalizationPageViewModel(
-            batch_id=IMPORT_BATCH['id'],
-            filename=IMPORT_BATCH['filename'],
-            progress=IMPORT_BATCH['progress'],
-            current_suggestion=current_suggestion,
-            current_suggestion_index=1,
-            total_suggestions=len(NORMALIZATION_SUGGESTIONS),
         )
 
     @staticmethod

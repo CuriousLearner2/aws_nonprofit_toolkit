@@ -149,11 +149,6 @@ class TestFixtureImportRepositoryConforms:
         assert hasattr(FixtureImportRepository, 'get_validation')
         assert callable(getattr(FixtureImportRepository, 'get_validation'))
 
-    def test_fixture_repository_has_get_normalizations(self):
-        """Test that FixtureImportRepository has get_normalizations method."""
-        assert hasattr(FixtureImportRepository, 'get_normalizations')
-        assert callable(getattr(FixtureImportRepository, 'get_normalizations'))
-
     def test_fixture_repository_has_get_households(self):
         """Test that FixtureImportRepository has get_households method."""
         assert hasattr(FixtureImportRepository, 'get_households')
@@ -193,11 +188,6 @@ class TestFixtureImportRepositoryReturnTypes:
         """Test that get_validation returns ValidationPageViewModel."""
         result = FixtureImportRepository.get_validation("IMP-2025-0101-A")
         assert isinstance(result, ValidationPageViewModel)
-
-    def test_get_normalizations_returns_normalization_page_view_model(self):
-        """Test that get_normalizations returns NormalizationPageViewModel."""
-        result = FixtureImportRepository.get_normalizations("IMP-2025-0101-A")
-        assert isinstance(result, NormalizationPageViewModel)
 
     def test_get_households_returns_household_page_view_model(self):
         """Test that get_households returns HouseholdPageViewModel."""
@@ -242,13 +232,6 @@ class TestFixtureImportRepositoryViewModelImmutability:
     def test_validation_page_view_model_is_frozen(self):
         """Test that ValidationPageViewModel is frozen dataclass."""
         result = FixtureImportRepository.get_validation("IMP-2025-0101-A")
-        # Attempt to modify should raise exception
-        with pytest.raises((AttributeError, ValueError)):
-            result.batch_id = "new_id"
-
-    def test_normalization_page_view_model_is_frozen(self):
-        """Test that NormalizationPageViewModel is frozen dataclass."""
-        result = FixtureImportRepository.get_normalizations("IMP-2025-0101-A")
         # Attempt to modify should raise exception
         with pytest.raises((AttributeError, ValueError)):
             result.batch_id = "new_id"
@@ -357,10 +340,6 @@ class TestProtocolDocumentation:
     def test_get_validation_has_docstring(self):
         """Test that get_validation method has docstring."""
         assert ImportRepositoryProtocol.get_validation.__doc__ is not None
-
-    def test_get_normalizations_has_docstring(self):
-        """Test that get_normalizations method has docstring."""
-        assert ImportRepositoryProtocol.get_normalizations.__doc__ is not None
 
     def test_get_households_has_docstring(self):
         """Test that get_households method has docstring."""
