@@ -176,18 +176,63 @@
 <script>
 const batchId = '{{ batch.id }}';
 
+// Phone number auto-formatting
+function formatPhoneNumber(value) {
+    // Strip all non-digit characters
+    const digits = value.replace(/\D/g, '');
+
+    // If less than 10 digits, return as-is for user to complete
+    if (digits.length < 10) {
+        return digits;
+    }
+
+    // Format as (XXX) XXX-XXXX (take first 10 digits)
+    const areaCode = digits.slice(0, 3);
+    const exchange = digits.slice(3, 6);
+    const lineNumber = digits.slice(6, 10);
+
+    return `(${areaCode}) ${exchange}-${lineNumber}`;
+}
+
 // Autosave on blur for editable fields
 document.querySelectorAll('.autosave-field').forEach(input => {
     input.addEventListener('blur', async function() {
+        // Format phone numbers on blur
+        if (this.getAttribute('data-field') === 'phone') {
+            this.value = formatPhoneNumber(this.value);
+        }
         await autosaveField(this);
     });
 
     // Also autosave on Enter key
     input.addEventListener('keypress', async function(e) {
         if (e.key === 'Enter') {
+            // Format phone numbers before saving
+            if (this.getAttribute('data-field') === 'phone') {
+                this.value = formatPhoneNumber(this.value);
+            }
             await autosaveField(this);
         }
     });
+
+    // Live formatting for phone numbers as user types
+    if (input.getAttribute('data-field') === 'phone') {
+        input.addEventListener('input', function() {
+            const cursorPos = this.selectionStart;
+            const oldValue = this.value;
+            const newValue = formatPhoneNumber(this.value);
+            this.value = newValue;
+
+            // Try to maintain cursor position (account for formatting changes)
+            if (oldValue.length < newValue.length) {
+                // Characters were added (formatting), move cursor forward
+                this.setSelectionRange(cursorPos + 1, cursorPos + 1);
+            } else {
+                // Cursor position stays roughly the same
+                this.setSelectionRange(cursorPos, cursorPos);
+            }
+        });
+    }
 });
 
 async function autosaveField(input) {
@@ -251,7 +296,12 @@ function updateRowFromAutosave(row, result) {
     ['date', 'name', 'email', 'phone', 'amount', 'address'].forEach(field => {
         const input = row.querySelector(`.autosave-field[data-field="${field}"]`);
         if (input && result.effective_values[field] !== undefined) {
-            input.value = result.effective_values[field] || '';
+            let value = result.effective_values[field] || '';
+            // Format phone numbers for display
+            if (field === 'phone' && value) {
+                value = formatPhoneNumber(value);
+            }
+            input.value = value;
         }
     });
 
