@@ -5,9 +5,23 @@ IMPORTANT: These tests verify actual Playwright browser interactions with the DO
 not API responses. They must assert visible behavior: error borders, status badges,
 issues cells.
 
-These tests use database-backed Flask testing with proper ImportBatch/RawImportRow
-seeding. The validation service calculates row_status and issues on-the-fly,
-so no explicit ReviewItem seeding is needed.
+Infrastructure:
+- Database-backed Flask testing with ImportBatch/RawImportRow seeding
+- Validation service calculates row_status and issues on-the-fly
+- No explicit ReviewItem seeding needed (service-generated)
+- Flask runs in background thread, Playwright drives browser
+
+Synchronization:
+- Use page.wait_for_function() to poll DOM state (not arbitrary sleeps)
+- Wait for specific condition: status badge text, error border color, issues cell text
+- Each wait has explicit timeout (5000ms default)
+
+Assertions:
+- Hard assertions only (test fails immediately if condition not met)
+- Assert both "email" AND "invalid" terms in Issues cell (not either/or)
+- Assert exact status text ('Blocking' not just 'not No issues')
+
+See E2E_TEST_RELIABILITY.md for patterns and troubleshooting.
 """
 
 import pytest

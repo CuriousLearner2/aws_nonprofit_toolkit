@@ -74,9 +74,10 @@ source .venv/bin/activate
 ### Running Tests
 
 **Development Strategy:**
-- **Default (daily use):** Unit + Integration tests (743 tests, ~13 seconds)
-- **Occasional:** E2E tests (66 tests, ~8 minutes, requires Flask running)
-- **CI/CD:** Full suite (809 tests, includes all above)
+- **Default (daily use):** Unit + Integration tests (1263 tests, ~11 seconds)
+- **Quality Gate (fast validation):** Review Screen regression suite (15 tests, ~2.4 seconds)
+- **Browser Interaction:** Playwright DOM tests (automatic Flask startup, ~5 seconds per test)
+- **Full suite:** All unit + integration + E2E (~25 seconds total)
 
 ```bash
 # Standard: Unit + Integration only (RECOMMENDED for development)
@@ -88,22 +89,57 @@ pytest tests/unit tests/integration -v --tb=short
 # Parallel (faster on multi-core)
 pytest tests/unit tests/integration -n auto
 
-# E2E only (requires Flask app running separately)
-# Start Flask first: flask run --port=8000
-pytest tests/e2e/ -v
+# Quality gate: Fast regression tests for Validation Review
+bash scripts/dev/quality_gate_review_screen.sh
 
-# Specific E2E test file
-pytest tests/e2e/test_e2e_upload_workflow.py -v
+# E2E browser test (starts Flask automatically with database mode)
+pytest tests/e2e/test_validation_review_dom.py -v
+
+# E2E test with 5-run reliability check
+bash scripts/dev/ux_gate_validation_review.sh
 
 # Single test with debugging
-pytest tests/e2e/test_e2e_upload_workflow.py::test_page_loads_successfully -vv -s
+pytest tests/e2e/test_validation_review_dom.py::test_invalid_email_updates_visible_row_status_and_issues -vv -s
+```
+
+### E2E Infrastructure (Database-Backed)
+
+The E2E tests use a database-backed Flask fixture that:
+- Creates a temporary SQLite database per test
+- Configures Flask for database mode (`HOUSEHOLDER_REPOSITORY=database`)
+- Seeds test data (ImportBatch, RawImportRow, ImportContact)
+- Starts Flask in a background thread
+- Provides deterministic, isolated test environment
+
+**Example E2E test pattern:**
+```python
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_validation_review_dom(e2e_database_and_app):
+    """Playwright browser test with database-backed Flask."""
+    database_url, db_path, flask_app = e2e_database_and_app
+    
+    # Seed test data
+    Session = sessionmaker(bind=create_db_engine(database_url))
+    session = Session()
+    batch = ImportBatch(id='test-batch', ...)
+    session.add(batch)
+    session.commit()
+    
+    # Launch browser and test
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.goto('http://127.0.0.1:8001/imports/test-batch/validation')
 ```
 
 ### After Committing
 
-1. **Pre-commit hook** automatically validates E2E tests
-2. **CI/CD** (when configured) runs full suite with timeout=120s
-3. **Monitor results** - flag any test taking > 15 seconds consistently
+1. **Pre-commit hook** automatically validates E2E tests (no hidden selectors)
+2. **Quality gate runs** - `bash scripts/dev/quality_gate_review_screen.sh` (15 tests, ~2.4s)
+3. **Browser gate runs** - `bash scripts/dev/ux_gate_validation_review.sh` (5 consecutive runs, ~5s each)
+4. **CI/CD** (when configured) runs full suite with timeout=120s
+5. **Monitor results** - flag any test taking > 15 seconds consistently
 
 ---
 
@@ -140,29 +176,58 @@ sqlite3 givebutter.db "SELECT * FROM donations LIMIT 5;"
 1. **Kill the process**
    ```bash
    pkill -f "pytest tests/e2e"
-   pkill -f "python.*app.py"  # Flask app
+   pkill -f "Flask"  # Background Flask threads
+   lsof -i :8001 | grep -v LISTEN | awk '{print $2}' | xargs kill -9  # Force kill port 8001
    ```
 
 2. **Check for hidden selectors**
    ```bash
-   grep -r "input\[type=\"file\"\]" tests/e2e/
+   grep -r "wait_for_selector('input\[type=\"file\"\]')" tests/e2e/
    ```
 
-3. **Verify Flask app is not already running**
+3. **Verify ports are available**
    ```bash
-   lsof -i :8000
+   lsof -i :8000  # Upload app
+   lsof -i :8001  # E2E test app
    ```
 
-4. **Refer to**
+4. **Check database cleanup**
+   ```bash
+   ls -la /tmp/*.db 2>/dev/null | wc -l  # Should be minimal
+   ```
+
+5. **Refer to**
    - SKILL_RESILIENT_TEST_DESIGN.md (general patterns)
    - E2E_TEST_RELIABILITY.md (project-specific)
    - givebutter_e2e_test_incident.md (incident details)
 
-### If test fails intermittently
+### If browser test fails intermittently
 
-- Add more specific waits: `await page.wait_for_selector(specific_element)`
-- Increase sleep before assertions: `await asyncio.sleep(2)`
-- Check fixture scope (are tests sharing state?)
+**Replace arbitrary sleeps with explicit waits:**
+- ❌ Don't use: `await asyncio.sleep(2)`
+- ✅ Do use: `await page.wait_for_function("() => document.querySelector('.selector')?.textContent?.trim() === 'expected'", timeout=5000)`
+
+**Common synchronization patterns:**
+```python
+# Wait for DOM element to appear
+await page.wait_for_selector('.row-status-badge', timeout=5000)
+
+# Wait for specific text content
+await page.wait_for_function(
+    "() => document.querySelector('.row-status-badge')?.textContent?.trim() === 'Blocking'",
+    timeout=5000
+)
+
+# Wait for error state to clear
+await page.wait_for_function(
+    "() => !window.getComputedStyle(document.querySelector('input')).borderColor.includes('rgb(239')",
+    timeout=5000
+)
+```
+
+**Verify assertions are hard (not conditional):**
+- ❌ Don't use: `if status == 'Blocking': pass  # soft assertion`
+- ✅ Do use: `assert status == 'Blocking'  # hard assertion - test fails if not true`
 
 ---
 
@@ -185,5 +250,5 @@ Before you start working on tests in this project:
 
 ---
 
-**Last updated:** 2026-06-01  
-**Status:** Active (Post-incident improvements in place)
+**Last updated:** 2026-06-17  
+**Status:** Active (E2E infrastructure and browser DOM tests added)

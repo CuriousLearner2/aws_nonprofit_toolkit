@@ -2,7 +2,7 @@
 
 Complete donation data management and operator review system for Givebutter exports.
 
-**Status:** ✅ Production Ready | **Version:** 3.4 | **Last Updated:** 2026-06-05
+**Status:** ✅ Production Ready | **Version:** 3.5 | **Last Updated:** 2026-06-17
 
 ---
 
@@ -112,6 +112,52 @@ Then:
 2. **Review** validation results
 3. **Decide** for each record (approved/followup/rejected)
 4. **Submit** to generate output files
+
+## Testing
+
+### Run All Tests
+
+```bash
+cd Givebutter
+source .venv/bin/activate
+
+# Standard: Unit + Integration tests (recommended)
+pytest tests/unit tests/integration -q
+
+# Quality gate: Fast Validation Review regression suite
+bash scripts/dev/quality_gate_review_screen.sh
+
+# Browser: Playwright DOM interaction tests
+bash scripts/dev/ux_gate_validation_review.sh
+
+# Full suite: All tests
+pytest tests/unit tests/integration -q && bash scripts/dev/quality_gate_review_screen.sh
+```
+
+### Test Coverage
+
+| Suite | Count | Runtime | Purpose |
+|-------|-------|---------|---------|
+| Unit tests | 765 | ~2s | Core function logic |
+| Integration tests | 498 | ~9s | API endpoints, workflows |
+| Quality gate | 15 | ~2.4s | Validation Review regression suite |
+| Browser DOM | 1 | ~5s | User interaction (Review Status invariant) |
+
+### Invariant Being Tested
+
+**Review Status Invariant:**
+> No visible field-level Error may coexist with Review Status = "No issues"
+
+The browser test (`test_invalid_email_updates_visible_row_status_and_issues`) verifies:
+1. Invalid email input → red border + "Blocking" status
+2. Valid email correction → error clears + status recalculates
+3. Error styling and status text coordinate correctly
+
+### Documentation
+
+- **[CLAUDE.md](CLAUDE.md)** — Testing guidelines and setup
+- **[E2E_TEST_RELIABILITY.md](E2E_TEST_RELIABILITY.md)** — Browser test reliability patterns and troubleshooting
+- **[SKILL_RESILIENT_TEST_DESIGN.md](SKILL_RESILIENT_TEST_DESIGN.md)** — General test design principles
 
 ## Output Files
 
