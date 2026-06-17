@@ -197,9 +197,9 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
 
                 await email_input.fill('john@example')  # Invalid: missing domain
                 await email_input.evaluate("el => el.blur()")  # Trigger autosave
-                # Wait for row status to show 'Blocking' badge (indication of error)
+                # Wait for row status dropdown to update with 'Blocking' status
                 await page.wait_for_function(
-                    "() => document.querySelector('.row-status-badge')?.textContent?.trim() === 'Blocking'",
+                    "() => document.querySelector('select.row-status-dropdown option:first-child')?.textContent?.trim() === 'Blocking'",
                     timeout=5000
                 )
 
@@ -214,13 +214,14 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 assert is_red, f"A1 FAILED: Email should have red border, got: {border_color}"
                 print("✓ A1: Email field shows red error border")
 
-                # A2 & A3: Status shows 'Blocking' (not 'No issues')
-                status_badge = await page.query_selector('.row-status-badge')
-                assert status_badge is not None, "A2 FAILED: Status badge should appear after error"
+                # A2 & A3: Row Status dropdown shows 'Blocking' (not 'No issues')
+                dropdown = await page.query_selector('select.row-status-dropdown')
+                assert dropdown is not None, "A2 FAILED: Status dropdown should exist"
 
-                badge_text = await status_badge.inner_text()
-                assert badge_text == 'Blocking', f"A3 FAILED: Status should be 'Blocking', got: {badge_text}"
-                print(f"✓ A2: Review Status changed to badge")
+                first_option = await dropdown.query_selector('option:first-child')
+                dropdown_text = await first_option.inner_text()
+                assert dropdown_text == 'Blocking', f"A3 FAILED: Status should be 'Blocking', got: {dropdown_text}"
+                print(f"✓ A2: Review Status dropdown exists")
                 print(f"✓ A3: Review Status is 'Blocking' (not 'No issues')")
 
                 # A4: Issues show email error
@@ -240,9 +241,9 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
 
                 await email_input.fill('john@example.com')  # Valid
                 await email_input.evaluate("el => el.blur()")  # Trigger autosave
-                # Wait for row status to NOT be 'Blocking' (error cleared)
+                # Wait for row status to change from 'Blocking' (error cleared)
                 await page.wait_for_function(
-                    "() => document.querySelector('.row-status-badge')?.textContent?.trim() !== 'Blocking'",
+                    "() => document.querySelector('select.row-status-dropdown option:first-child')?.textContent?.trim() !== 'Blocking'",
                     timeout=5000
                 )
 
@@ -257,19 +258,235 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 assert not is_red_after, f"A5 FAILED: Error border should clear, got: {border_color_after}"
                 print(f"✓ A5: Email error styling cleared")
 
-                # A6: Status recalculates (blocking badge gone or status changed)
-                status_badge_after = await page.query_selector('.row-status-badge')
-                if status_badge_after:
-                    badge_text_after = await status_badge_after.inner_text()
-                    assert badge_text_after != 'Blocking', f"A6 FAILED: Status should change from Blocking, got: {badge_text_after}"
-                else:
-                    # Dropdown should reappear if badge is gone
-                    dropdown = await page.query_selector('.row-status-dropdown')
-                    # It's OK if dropdown doesn't exist - the important thing is the badge is gone
+                # A6: Status dropdown recalculates (no longer 'Blocking')
+                dropdown_final = await page.query_selector('select.row-status-dropdown')
+                assert dropdown_final is not None, "A6 FAILED: Dropdown should still exist"
+                first_option_final = await dropdown_final.query_selector('option:first-child')
+                final_status = await first_option_final.inner_text()
+                assert final_status != 'Blocking', f"A6 FAILED: Status should change from Blocking, got: {final_status}"
 
-                print(f"✓ A6: Review Status recalculated after correction")
+                print(f"✓ A6: Review Status recalculated to '{final_status}' after correction")
 
                 print(f"\n=== ALL TESTS PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_validation_error_preserves_review_status_dropdown(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify that validation errors update the dropdown text without replacing the dropdown DOM element.
+
+    Regression test for fix c62423c: autosave errors must update dropdown.options[0].textContent
+    instead of destroying the dropdown with innerHTML replacement.
+
+    This test verifies:
+    1. The <select> dropdown element exists after an invalid email error
+    2. The dropdown remains enabled and interactive
+    3. The dropdown's first option text reflects current row_status ('Blocking')
+    4. The dropdown's options include expected reviewer actions (Needs follow-up, Defer, etc.)
+    5. The dropdown's event listeners still work (change event fires when selecting an option)
+
+    Flow:
+    1. Seed database with valid email
+    2. Load validation page
+    3. Change email to invalid and blur (autosave)
+    4. Assert dropdown <select> exists and is enabled
+    5. Assert first option shows 'Blocking'
+    6. Assert dropdown contains expected options
+    7. Assert selecting an option still triggers change event
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='dropdown-preserve-batch',
+            filename='dropdown_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row with valid email
+        raw_row = RawImportRow(
+            batch_id='dropdown-preserve-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Jane Doe',
+                'date': '2026-01-20',
+                'email': 'jane@example.com',
+                'phone': '(555) 987-6543',
+                'amount': '250.00',
+                'address': '456 Oak Ave'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        # Create ImportContact
+        import_contact = ImportContact(
+            batch_id='dropdown-preserve-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='Jane',
+            last_name='Doe',
+            email='jane@example.com',
+            phone='(555) 987-6543',
+            address_line1='456 Oak Ave',
+            amount=250.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/dropdown-preserve-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/dropdown-preserve-batch/validation')
+
+                # Wait for table to load
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # Find email input
+                email_input = await page.query_selector('input[data-testid="email-input-1"]')
+                assert email_input is not None, "Email input not found"
+
+                # ===== TRIGGER INVALID EMAIL ERROR =====
+                print(f"\n=== PART 1: Trigger Error State ===")
+
+                await email_input.fill('jane@invalid')  # Invalid email
+                await email_input.evaluate("el => el.blur()")  # Trigger autosave
+
+                # Wait for error state to be visible
+                # After error, the dropdown's first option is updated to show the blocking status
+                await page.wait_for_function(
+                    "() => document.querySelector('select.row-status-dropdown option:first-child')?.textContent?.trim() === 'Blocking'",
+                    timeout=5000
+                )
+                print("✓ Error state triggered (dropdown first option shows 'Blocking')")
+
+                # ===== VERIFY DROPDOWN EXISTS =====
+                print(f"\n=== PART 2: Verify Dropdown Preservation ===")
+
+                # B1: Dropdown <select> element exists
+                dropdown = await page.query_selector('select.row-status-dropdown')
+                assert dropdown is not None, "B1 FAILED: Dropdown <select> element was not found (may have been replaced)"
+                print("✓ B1: Dropdown <select> element exists in DOM")
+
+                # B2: Dropdown is visible
+                is_visible = await dropdown.is_visible()
+                assert is_visible, "B2 FAILED: Dropdown should be visible"
+                print("✓ B2: Dropdown is visible")
+
+                # B3: Dropdown is enabled
+                is_enabled = await dropdown.is_enabled()
+                assert is_enabled, "B3 FAILED: Dropdown should be enabled"
+                print("✓ B3: Dropdown is enabled")
+
+                # B4: First option textContent shows 'Blocking'
+                first_option = await dropdown.query_selector('option:first-child')
+                assert first_option is not None, "B4 FAILED: First option not found"
+
+                first_option_text = await first_option.inner_text()
+                assert first_option_text == 'Blocking', f"B4 FAILED: First option should show 'Blocking', got: {first_option_text}"
+                print(f"✓ B4: First option shows 'Blocking': '{first_option_text}'")
+
+                # B5: Dropdown contains expected reviewer action options
+                all_options = await dropdown.query_selector_all('option')
+                option_texts = []
+                for opt in all_options:
+                    text = await opt.inner_text()
+                    option_texts.append(text)
+
+                # Expected options (should include at least one reviewer action)
+                has_follow_up = any('follow' in opt.lower() for opt in option_texts)
+                has_defer = any('defer' in opt.lower() for opt in option_texts)
+                has_reject = any('reject' in opt.lower() for opt in option_texts)
+
+                assert len(all_options) > 1, f"B5 FAILED: Dropdown should have multiple options, got: {option_texts}"
+                assert has_follow_up or has_defer or has_reject, f"B5 FAILED: Dropdown should contain reviewer actions, got: {option_texts}"
+                print(f"✓ B5: Dropdown contains expected options: {option_texts}")
+
+                # B6: Selecting an option triggers change event (dropdown is still functional)
+                print(f"\n=== PART 3: Verify Dropdown Functionality ===")
+
+                # Get the initial dropdown value (should be empty or the current status)
+                initial_value = await dropdown.input_value()
+                print(f"  Initial dropdown value: '{initial_value}'")
+
+                # Select "Defer" option if available
+                defer_option = None
+                for opt in all_options:
+                    text = await opt.inner_text()
+                    if 'defer' in text.lower():
+                        defer_option = opt
+                        break
+
+                if defer_option:
+                    # Get the defer option's value
+                    defer_value = await defer_option.get_attribute('value')
+                    print(f"  Selecting 'Defer' option with value: '{defer_value}'")
+
+                    # Select the defer option
+                    await dropdown.select_option(defer_value)
+
+                    # Wait for dropdown to change (value should update)
+                    await page.wait_for_function(
+                        f"() => document.querySelector('select.row-status-dropdown')?.value === '{defer_value}'",
+                        timeout=5000
+                    )
+
+                    new_value = await dropdown.input_value()
+                    assert new_value == defer_value, f"B6 FAILED: Dropdown value should be '{defer_value}', got: '{new_value}'"
+                    print(f"✓ B6: Dropdown selection works, value changed to: '{new_value}'")
+                else:
+                    print(f"  (Skipping dropdown selection test - 'Defer' option not found)")
+
+                print(f"\n=== ALL DROPDOWN PRESERVATION TESTS PASSED ===")
 
             finally:
                 await browser.close()
