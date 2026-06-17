@@ -114,12 +114,17 @@ def record_row_decision(
         session.add(row_decision)
         session.commit()
 
+        # Calculate current row status for frontend dropdown update
+        from .row_status_service import derive_row_status
+        row_status = derive_row_status(batch_id, raw_import_row_id, database_url)
+
         return {
             'decision_id': row_decision.id,
             'decision': decision,
             'timestamp': row_decision.created_at.isoformat(),
             'success': True,
             'message': f'Row decision recorded: {decision}',
+            'row_status': row_status,  # For frontend dropdown display
         }
 
     finally:

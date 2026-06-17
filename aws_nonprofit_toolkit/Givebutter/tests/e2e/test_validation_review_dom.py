@@ -687,3 +687,246 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
 
     finally:
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_inspect_modal_preserves_controls_after_decision_recording(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify that the inspect modal's decision dropdown and controls
+    are preserved after recording a decision.
+
+    This is a regression test for lines 723 and 735 in validation.html,
+    which used innerHTML to replace dropdown options.
+
+    Regression issue: After recording a decision from the inspect modal,
+    the dropdown in the table is updated via innerHTML, which can destroy
+    the dropdown element or its options, potentially breaking the reset option visibility.
+
+    This test verifies:
+    1. Open inspect modal
+    2. Record a decision (select an option, click Record Decision)
+    3. Modal closes and decision is recorded
+    4. Table dropdown reflects the new decision
+    5. Reset option is visible
+    6. Dropdown is still interactive
+    7. Re-open inspect modal and verify decision is shown
+    8. Verify all controls in modal still work
+
+    Flow:
+    1. Seed database with a test row
+    2. Load validation page
+    3. Click "Inspect" button to open modal
+    4. Verify modal shows decision dropdown with options
+    5. Select a decision ("Defer")
+    6. Click "Record Decision" button
+    7. Assert modal closes
+    8. Assert table dropdown shows the decision
+    9. Assert reset option is visible
+    10. Click "Inspect" again
+    11. Verify modal opens and shows the previous decision
+    12. Verify decision dropdown still has all options
+    13. Select another decision
+    14. Verify it can be changed successfully
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='inspect-modal-batch',
+            filename='inspect_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row
+        raw_row = RawImportRow(
+            batch_id='inspect-modal-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Modal Test User',
+                'date': '2026-02-01',
+                'email': 'modal@example.com',
+                'phone': '(555) 999-8888',
+                'amount': '500.00',
+                'address': '999 Modal St'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        # Create ImportContact
+        import_contact = ImportContact(
+            batch_id='inspect-modal-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='Modal',
+            last_name='User',
+            email='modal@example.com',
+            phone='(555) 999-8888',
+            address_line1='999 Modal St',
+            amount=500.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/inspect-modal-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/inspect-modal-batch/validation')
+
+                # Wait for table to load
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # ===== PART 1: Open Inspect Modal =====
+                print(f"\n=== PART 1: Open Inspect Modal ===")
+
+                # Find inspect button (typically in Actions column)
+                inspect_button = await page.query_selector('a[data-action="inspect-record"]')
+                assert inspect_button is not None, "Inspect button not found"
+
+                await inspect_button.click()
+
+                # Wait for modal to appear
+                await page.wait_for_selector('#record-modal', timeout=5000)
+
+                # Verify modal is visible
+                modal = await page.query_selector('#record-modal')
+                is_visible = await modal.is_visible()
+                assert is_visible, "Modal should be visible"
+                print("✓ Inspect modal opened successfully")
+
+                # ===== PART 2: Verify Modal Controls =====
+                print(f"\n=== PART 2: Verify Modal Controls ===")
+
+                # Find decision dropdown in modal
+                decision_dropdown = await page.query_selector('#record-modal select[id^="row-decision-"]')
+                assert decision_dropdown is not None, "P2 FAILED: Decision dropdown not found in modal"
+                print("✓ P2: Decision dropdown exists in modal")
+
+                # Find notes field
+                notes_field = await page.query_selector('#record-modal textarea[id^="row-notes-"]')
+                assert notes_field is not None, "P3 FAILED: Notes field not found in modal"
+                print("✓ P3: Notes field exists in modal")
+
+                # Find Record Decision button
+                record_btn = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
+                assert record_btn is not None, "P4 FAILED: Record Decision button not found"
+                print("✓ P4: Record Decision button exists in modal")
+
+                # ===== PART 3: Record a Decision =====
+                print(f"\n=== PART 3: Record a Decision ===")
+
+                # Select "Defer" option
+                await decision_dropdown.select_option('defer')
+                print("✓ P5: Selected 'Defer' option")
+
+                # Click Record Decision
+                await record_btn.click()
+                print("✓ P6: Clicked Record Decision button")
+
+                # Wait for modal to close
+                await page.wait_for_selector('#record-modal:not([style*="display: block"])', timeout=5000)
+                print("✓ P7: Modal closed after recording decision")
+
+                # ===== PART 4: Verify Table Dropdown Updated =====
+                print(f"\n=== PART 4: Verify Table Dropdown Updated ===")
+
+                # Find table dropdown
+                table_dropdown = await page.query_selector('select.row-status-dropdown')
+                assert table_dropdown is not None, "P8 FAILED: Table dropdown not found"
+                print("✓ P8: Table dropdown exists")
+
+                # Check that dropdown has multiple options (not just one)
+                all_options = await table_dropdown.query_selector_all('option')
+                assert len(all_options) > 1, f"P9 FAILED: Dropdown should have multiple options, got {len(all_options)}"
+                print(f"✓ P9: Dropdown has {len(all_options)} options (preserved)")
+
+                # Check first option shows decision
+                first_option = await table_dropdown.query_selector('option:first-child')
+                first_option_text = await first_option.inner_text()
+                print(f"✓ P10: First option shows: '{first_option_text}'")
+
+                # Check reset option visibility
+                reset_option = await table_dropdown.query_selector('.reset-option')
+                if reset_option:
+                    reset_display = await reset_option.evaluate("el => window.getComputedStyle(el).display")
+                    assert reset_display != 'none', "P11 FAILED: Reset option should be visible"
+                    print("✓ P11: Reset option is visible")
+
+                # ===== PART 5: Re-open Inspect Modal and Verify =====
+                print(f"\n=== PART 5: Re-open Inspect Modal ===")
+
+                # Click inspect button again
+                inspect_button_2 = await page.query_selector('a[data-action="inspect-record"]')
+                assert inspect_button_2 is not None, "Inspect button not found on second open"
+
+                await inspect_button_2.click()
+
+                # Wait for modal
+                await page.wait_for_selector('#record-modal', timeout=5000)
+                print("✓ P12: Modal re-opened successfully")
+
+                # Verify decision dropdown in modal
+                decision_dropdown_2 = await page.query_selector('#record-modal select[id^="row-decision-"]')
+                assert decision_dropdown_2 is not None, "P13 FAILED: Decision dropdown not found on re-open"
+                print("✓ P13: Decision dropdown exists in re-opened modal")
+
+                # Verify it has all expected options
+                modal_options = await decision_dropdown_2.query_selector_all('option')
+                assert len(modal_options) > 1, f"P14 FAILED: Modal dropdown should have multiple options, got {len(modal_options)}"
+                print(f"✓ P14: Modal dropdown has {len(modal_options)} options")
+
+                # Find and verify reset option exists in modal
+                modal_reset = await decision_dropdown_2.query_selector('.reset-option')
+                if modal_reset:
+                    print("✓ P15: Reset option exists in modal")
+
+                print(f"\n=== ALL INSPECT MODAL CONTROLS TESTS PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()

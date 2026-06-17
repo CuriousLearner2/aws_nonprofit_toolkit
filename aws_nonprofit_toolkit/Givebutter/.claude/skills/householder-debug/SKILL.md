@@ -3,7 +3,7 @@
 name: householder-debug
 description: Orchestrates a disciplined Householder / DonorTrust bug-fix loop using the implementer and reviewer agents.
 allowed-tools: Read, Grep, Glob, Bash, Task
--------------------------------------------
+---
 
 # Householder Debug Skill
 
@@ -146,6 +146,37 @@ Also verify:
 * System-derived statuses remain display-only unless explicitly reset by system recalculation.
 * Reviewer dispositions remain reviewer metadata and do not mutate raw data.
 
+## Browser test requirements
+
+For review-screen, autosave, validation, approval, export, modal, or inline-editing work, browser tests must verify both visible state and control preservation.
+
+A browser test is not sufficient if it only checks that the right text, badge, color, or message appears.
+
+Browser tests must also verify that required controls remain usable after UI state changes.
+
+For any affected row or workflow, verify as applicable:
+
+* Required control still exists.
+* Required control is visible.
+* Required control is enabled.
+* Expected options/actions remain available.
+* Interaction still works after UI state changes.
+* Event listeners still work after autosave success or error.
+* The control is not replaced by a static badge, span, or text-only element unless that is explicitly intended.
+
+Examples:
+
+* If Review Status changes to `Blocking`, the Review Status dropdown/select must still exist and remain usable.
+* If Issues update after autosave, the Inspect button must still exist and remain usable.
+* If a modal opens, its required fields and buttons must remain focusable and actionable.
+* If a row is re-rendered, expected row actions must still be present.
+
+Regression rule:
+
+Do not update a table cell or row with destructive `innerHTML` replacement if that cell or row contains interactive controls, unless the full control is intentionally re-rendered with all expected options, event handlers, data attributes, and accessibility behavior restored.
+
+Browser tests should fail if a visual update accidentally destroys an interactive control.
+
 ## Implementation discipline
 
 The Implementer must not start by editing code.
@@ -180,6 +211,9 @@ The Reviewer must explicitly check:
 * Were unrelated files changed?
 * Were migrations changed unnecessarily?
 
+* Do browser tests verify both visible state and control preservation?
+* Do required controls remain present, visible, enabled, and usable after UI state changes?
+* Do browser tests avoid accepting text-only/static replacements when the workflow requires continued interaction?
 Reviewer verdict must be one of:
 
 * `Accept`

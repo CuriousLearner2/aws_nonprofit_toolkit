@@ -720,7 +720,11 @@ document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
                     if (dropdown) {
                         if (decision === 'clear_decision') {
                             // Reset to show system status
-                            dropdown.innerHTML = '';
+                            // Update only the first option's text, don't destroy the dropdown
+                            const firstOption = dropdown.querySelector('option:first-child');
+                            if (firstOption) {
+                                firstOption.textContent = result.row_status || 'No issues';
+                            }
                             dropdown.value = '';
                             dropdown.style.backgroundColor = 'white';
                             dropdown.setAttribute('data-has-decision', 'false');
@@ -732,7 +736,11 @@ document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
                             closeModal('record-modal');
                             alert('Reviewer decision removed. Row status now reflects system status.');
                         } else {
-                            dropdown.innerHTML = `<option value="${decision}" selected>${decision.replace(/_/g, ' ')}</option>`;
+                            // Update only the first option's text, don't destroy the dropdown
+                            const firstOption = dropdown.querySelector('option:first-child');
+                            if (firstOption) {
+                                firstOption.textContent = decision.replace(/_/g, ' ');
+                            }
                             dropdown.value = decision;
                             dropdown.style.backgroundColor = '#fef3c7';
                             dropdown.setAttribute('data-has-decision', 'true');
