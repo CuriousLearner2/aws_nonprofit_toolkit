@@ -91,9 +91,17 @@
                     <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
-                <!-- Read-only: Row Status -->
+                <!-- Row Status with Decision Dropdown -->
                 <td class="row-status-cell">
-                    <span class="row-status-badge" style="background-color: #e5e7eb; color: #374151; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">{{ record.row_status or 'No issues' }}</span>
+                    <select class="row-status-dropdown" data-raw-id="{{ record.raw_import_row_id }}"
+                            style="padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 11px; font-weight: 600; box-sizing: border-box; width: 95px;">
+                        <option value="">{{ record.row_status or 'No issues' }}</option>
+                        <option value="accept_as_is">Accept as-is</option>
+                        <option value="needs_follow_up">Needs follow-up</option>
+                        <option value="defer">Defer</option>
+                        <option value="reject_row">Reject row</option>
+                        <option value="clear_decision">Clear decision</option>
+                    </select>
                 </td>
 
                 <!-- Read-only: Issues -->
@@ -339,6 +347,74 @@ function updateRowFromAutosave(row, result) {
     }
 }
 
+// Row Status Decision Dropdown
+document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
+    dropdown.addEventListener('change', async function(e) {
+        const decision = this.value;
+        const rawId = parseInt(this.getAttribute('data-raw-id'));
+        const row = this.closest('tr');
+
+        if (!decision) {
+            // Reset dropdown
+            this.value = '';
+            return;
+        }
+
+        // Handle "Needs follow-up" - open Inspect modal
+        if (decision === 'needs_follow_up') {
+            // First, prevent immediate recording
+            this.value = '';
+
+            // Open Inspect modal for this record
+            const recordId = row.getAttribute('data-record-id');
+            const inspectLink = row.querySelector('[data-action="inspect-record"]');
+            if (inspectLink) {
+                inspectLink.click();
+            }
+
+            // Set a flag to know we should record follow-up decision
+            window.pendingFollowUpRawId = rawId;
+            return;
+        }
+
+        // For other decisions, record immediately
+        try {
+            const response = await fetch(`/imports/${batchId}/row-decision`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    raw_import_row_id: rawId,
+                    decision: decision
+                }),
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+
+                // Update dropdown to show selected decision
+                this.innerHTML = `<option value="${decision}" selected>${result.decision.replace(/_/g, ' ')}</option>`;
+                this.value = decision;
+
+                // Add visual indicator for non-system statuses
+                if (decision !== 'clear_decision') {
+                    this.style.backgroundColor = '#fef3c7';
+                } else {
+                    this.style.backgroundColor = 'white';
+                }
+
+                console.log(`Row ${rawId} decision recorded: ${decision}`);
+            } else {
+                const error = await response.json();
+                alert('Error: ' + (error.error || 'Failed to record decision'));
+                this.value = '';
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+            this.value = '';
+        }
+    });
+});
+
 // Inspect/Detail modal
 document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
     link.addEventListener('click', function(e) {
@@ -401,32 +477,115 @@ document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
             </div>
 
             <div style="margin-top: 20px;">
-                <h3>Record Decision</h3>
-                <form method="POST" action="/imports/${batchId}/validation/${recordId}/decision" style="margin: 0;">
+                <h3>Review Status Decision</h3>
+                <div id="decision-form-${recordId}" style="margin: 0;">
                     <div style="margin-bottom: 12px;">
-                        <label for="decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Decision:</label>
-                        <select id="decision-${recordId}" name="decision" required style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
-                            <option value="">-- Select Decision --</option>
-                            <option value="accept_issue">Accept Issue (data is valid)</option>
-                            <option value="dismiss_issue">Dismiss Issue (false positive)</option>
-                            <option value="defer">Defer (need more information)</option>
+                        <label for="row-decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Status:</label>
+                        <select id="row-decision-${recordId}" data-raw-id="${row.getAttribute('data-raw-id')}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+                            <option value="">-- Select Status --</option>
+                            <option value="accept_as_is">Accept as-is</option>
+                            <option value="needs_follow_up">Needs follow-up</option>
+                            <option value="defer">Defer</option>
+                            <option value="reject_row">Reject row</option>
+                            <option value="clear_decision">Clear decision</option>
                         </select>
                     </div>
 
                     <div style="margin-bottom: 12px;">
-                        <label for="notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Notes (optional):</label>
-                        <textarea id="notes-${recordId}" name="notes" placeholder="Any context for this decision..." style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; min-height: 60px; box-sizing: border-box;"></textarea>
+                        <label for="row-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Notes:</label>
+                        <textarea id="row-notes-${recordId}" placeholder="Notes required when Follow-up is chosen..." style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; min-height: 60px; box-sizing: border-box;"></textarea>
+                        <div id="notes-requirement-${recordId}" style="font-size: 12px; color: #ef4444; margin-top: 4px; display: none;">Notes required for Follow-up decision</div>
                     </div>
 
                     <div style="display: flex; gap: 8px; margin-top: 12px;">
-                        <button type="submit" class="btn btn-primary" style="flex: 1; padding: 8px; background-color: #3b82f6; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Record Decision</button>
+                        <button type="button" id="record-row-decision-${recordId}" class="btn btn-primary" style="flex: 1; padding: 8px; background-color: #3b82f6; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Record Decision</button>
                         <button type="button" onclick="closeModal('record-modal')" class="btn btn-secondary" style="flex: 1; padding: 8px; background-color: #6b7280; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Cancel</button>
                     </div>
-                </form>
+                </div>
             </div>
         `;
 
         openModal('record-modal');
+
+        // Handle row status decision form
+        const rowId = row.getAttribute('data-raw-id');
+        const decisionSelect = document.getElementById(`row-decision-${recordId}`);
+        const notesField = document.getElementById(`row-notes-${recordId}`);
+        const notesRequirement = document.getElementById(`notes-requirement-${recordId}`);
+        const recordBtn = document.getElementById(`record-row-decision-${recordId}`);
+
+        // If opened from dropdown with pending follow-up, pre-select it
+        if (window.pendingFollowUpRawId === rowId) {
+            decisionSelect.value = 'needs_follow_up';
+            notesField.focus();
+            notesRequirement.style.display = 'block';
+            window.pendingFollowUpRawId = null; // Clear the flag
+        }
+
+        // Handle decision dropdown change
+        decisionSelect.addEventListener('change', function() {
+            const decision = this.value;
+            if (decision === 'needs_follow_up') {
+                notesRequirement.style.display = 'block';
+                notesField.focus();
+            } else {
+                notesRequirement.style.display = 'none';
+            }
+        });
+
+        // Handle record decision button
+        recordBtn.addEventListener('click', async function() {
+            const decision = decisionSelect.value;
+            const notes = notesField.value.trim();
+
+            if (!decision) {
+                alert('Please select a status');
+                return;
+            }
+
+            // Validate notes for follow-up
+            if (decision === 'needs_follow_up' && !notes) {
+                alert('Notes are required when Needs follow-up is selected');
+                notesField.focus();
+                return;
+            }
+
+            try {
+                const response = await fetch(`/imports/${batchId}/row-decision`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        raw_import_row_id: rowId,
+                        decision: decision,
+                        notes: notes || null
+                    }),
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+
+                    // Update the dropdown in the table
+                    const dropdown = document.querySelector(`.row-status-dropdown[data-raw-id="${rowId}"]`);
+                    if (dropdown) {
+                        dropdown.innerHTML = `<option value="${decision}" selected>${decision.replace(/_/g, ' ')}</option>`;
+                        dropdown.value = decision;
+                        if (decision !== 'clear_decision') {
+                            dropdown.style.backgroundColor = '#fef3c7';
+                        } else {
+                            dropdown.style.backgroundColor = 'white';
+                        }
+                    }
+
+                    closeModal('record-modal');
+                    alert('Status recorded successfully');
+                } else {
+                    const error = await response.json();
+                    alert('Error: ' + (error.error || 'Failed to record decision'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
     });
 });
 

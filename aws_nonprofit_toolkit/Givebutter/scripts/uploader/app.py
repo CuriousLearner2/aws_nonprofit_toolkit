@@ -1096,6 +1096,61 @@ def autosave_row_corrections(import_id):
         return jsonify({'error': 'Autosave failed'}), 500
 
 
+@app.route('/imports/<import_id>/row-decision', methods=['POST'])
+def record_row_decision(import_id):
+    """Record a reviewer's row-level status decision (Accept, Follow-up, Defer, Reject, Clear).
+
+    Stores decision in ReviewDecision with reviewed_status and optional notes.
+    Does not mutate raw data - stored as audit trail only.
+
+    Expected JSON:
+    {
+        'raw_import_row_id': int,
+        'decision': 'accept_as_is' | 'needs_follow_up' | 'defer' | 'reject_row' | 'clear_decision',
+        'notes': str (required for 'needs_follow_up', optional for 'defer')
+    }
+
+    Returns:
+    {
+        'success': bool,
+        'decision_id': int,
+        'decision': str,
+        'timestamp': str (ISO),
+        'message': str
+    }
+    """
+    from householder.row_decision_service import record_row_decision as record_decision
+
+    data = request.get_json() or {}
+    raw_import_row_id = data.get('raw_import_row_id')
+    decision = data.get('decision', '').strip()
+    notes = data.get('notes', '').strip() if data.get('notes') else None
+    reviewer = request.headers.get('X-Reviewer-ID')
+
+    if not raw_import_row_id:
+        return jsonify({'error': 'raw_import_row_id required'}), 400
+
+    if not decision:
+        return jsonify({'error': 'decision required'}), 400
+
+    try:
+        result = record_decision(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id,
+            decision=decision,
+            notes=notes,
+            reviewer=reviewer
+        )
+        logger.info(f"Row {raw_import_row_id} decision recorded: {decision}")
+        return jsonify(result), 200
+    except ValueError as e:
+        logger.warning(f"Row decision validation error: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 400
+    except Exception as e:
+        logger.error(f"Error recording row decision: {str(e)}")
+        return jsonify({'error': 'Error recording decision', 'success': False}), 500
+
+
 @app.route('/imports/<import_id>/approve-batch', methods=['POST'])
 def approve_import_batch(import_id):
     """Approve batch with or without overrides (v1.1 Phase 2).

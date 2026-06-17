@@ -178,17 +178,18 @@ class TestValidationDecisionUI:
         """Form in modal posts to correct validation decision route."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
 
-        # Get validation page to verify form structure
+        # Get validation page to verify row status form structure
         response = client.get('/imports/IMP-2025-0101-A/validation')
         html = response.data.decode('utf-8')
 
-        # Verify form elements and decision route are present
-        # The form is built dynamically by JavaScript, so check for decision field
-        assert 'decision' in html
-        assert 'accept_issue' in html
-        assert 'dismiss_issue' in html
+        # Verify row status dropdown is present
+        # The form is built dynamically by JavaScript in the modal
+        assert 'row-decision' in html or 'row_decision' in html
+        assert 'needs_follow_up' in html or 'needs follow-up' in html
+        assert 'accept_as_is' in html or 'accept as-is' in html
         assert 'defer' in html
-        assert 'notes' in html
+        assert 'clear_decision' in html or 'clear decision' in html
+        assert 'notes' in html or 'Notes' in html
         # Verify the form action will be constructed with the batch ID
         assert 'IMP-2025-0101-A' in html
 
@@ -372,17 +373,19 @@ class TestValidationDecisionUI:
         session.close()
 
     def test_no_other_decision_types_in_form(self, flask_client_with_validation_items):
-        """Form only shows validation decision types, not duplicate/household/normalization."""
+        """Form only shows row-level decision types, not duplicate/household types."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
 
         response = client.get('/imports/IMP-2025-0101-A/validation')
         assert response.status_code == 200
         html = response.data.decode('utf-8')
 
-        # Verify only validation decision types in form
-        assert 'accept_issue' in html
-        assert 'dismiss_issue' in html
+        # Verify row-level decision types in form
+        assert 'accept_as_is' in html
+        assert 'needs_follow_up' in html
         assert 'defer' in html
+        assert 'reject_row' in html
+        assert 'clear_decision' in html
 
         # Verify no other decision types (future proof)
         # These should not appear in the validation form

@@ -213,7 +213,8 @@ def check_batch_remaining_issues(
     """
     Check for remaining unresolved issues in batch.
 
-    Returns list of rows with remaining issues for approval override modal.
+    Returns list of rows with remaining issues OR rows with follow-up/defer decisions
+    for approval override modal.
 
     Args:
         batch_id: Import batch ID
@@ -226,7 +227,8 @@ def check_batch_remaining_issues(
                 'raw_import_row_id': int,
                 'row_index': int,
                 'issues': [{...}, ...],
-                'row_status': str
+                'row_status': str,
+                'decision_warning': str (optional - for follow-up/defer rows)
             }
         ]
 
@@ -235,6 +237,7 @@ def check_batch_remaining_issues(
     """
     from .row_status_service import derive_row_status
     from .issue_recalculation_service import recalculate_row_issues
+    from .row_decision_service import get_rows_with_follow_up, get_rows_with_defer
 
     if database_url is None:
         database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
@@ -247,6 +250,10 @@ def check_batch_remaining_issues(
         batch = session.query(ImportBatch).filter_by(id=batch_id).first()
         if not batch:
             raise ValueError(f"Import batch '{batch_id}' not found")
+
+        # Get rows with pending decisions
+        follow_up_rows = set(get_rows_with_follow_up(batch_id=batch_id, database_url=database_url))
+        defer_rows = set(get_rows_with_defer(batch_id=batch_id, database_url=database_url))
 
         # Get all raw rows in batch
         rows = session.query(RawImportRow).filter_by(batch_id=batch_id).all()
@@ -264,12 +271,31 @@ def check_batch_remaining_issues(
                 database_url=database_url
             )
 
-            if issues:  # Only return rows with remaining issues
+            # Include row if it has validation issues
+            if issues:
                 remaining_issues_by_row.append({
                     'raw_import_row_id': row.id,
                     'row_index': row.row_index,
                     'issues': issues,
                     'row_status': row_status
+                })
+            # Or include if it has a pending follow-up decision
+            elif row.id in follow_up_rows:
+                remaining_issues_by_row.append({
+                    'raw_import_row_id': row.id,
+                    'row_index': row.row_index,
+                    'issues': [{'field': 'row_decision', 'reason': 'Marked as Needs follow-up'}],
+                    'row_status': row_status,
+                    'decision_warning': 'needs_follow_up'
+                })
+            # Or include if it has a pending defer decision
+            elif row.id in defer_rows:
+                remaining_issues_by_row.append({
+                    'raw_import_row_id': row.id,
+                    'row_index': row.row_index,
+                    'issues': [{'field': 'row_decision', 'reason': 'Deferred for later review'}],
+                    'row_status': row_status,
+                    'decision_warning': 'defer'
                 })
 
         return remaining_issues_by_row
