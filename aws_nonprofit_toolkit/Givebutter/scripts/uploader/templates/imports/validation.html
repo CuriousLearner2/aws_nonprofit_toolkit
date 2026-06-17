@@ -453,8 +453,11 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
                 if (response.ok) {
                     const result = await response.json();
 
-                    // Update dropdown - reset to show system status (empty value shows current status)
-                    this.innerHTML = '';
+                    // Update dropdown - reset to show system status (preserve dropdown, update first option)
+                    const firstOption = this.querySelector('option:first-child');
+                    if (firstOption) {
+                        firstOption.textContent = result.row_status || 'No issues';
+                    }
                     this.value = '';
                     this.style.backgroundColor = 'white';
                     this.setAttribute('data-has-decision', 'false');
@@ -511,8 +514,11 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
             if (response.ok) {
                 const result = await response.json();
 
-                // Update dropdown to show selected decision
-                this.innerHTML = `<option value="${decision}" selected>${result.decision.replace(/_/g, ' ')}</option>`;
+                // Update dropdown to show selected decision (preserve dropdown, update first option)
+                const firstOption = this.querySelector('option:first-child');
+                if (firstOption) {
+                    firstOption.textContent = result.decision.replace(/_/g, ' ');
+                }
                 this.value = decision;
 
                 // Add visual indicator for human dispositions

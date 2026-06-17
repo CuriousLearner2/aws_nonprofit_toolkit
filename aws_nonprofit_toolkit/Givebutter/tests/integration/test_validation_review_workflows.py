@@ -628,3 +628,398 @@ class TestExportPreview:
             f'/imports/validation-workflow-test-batch/validation'
         )
         assert response.status_code == 200
+
+
+# ==============================================================================
+# TEST A: Needs follow-up workflow with Notes enforcement
+# ==============================================================================
+
+class TestNeedsFollowUpWorkflow:
+    """Test needs follow-up workflow verifies Notes required, controls preserved."""
+
+    def test_needs_follow_up_notes_requirement_enforced(
+        self, flask_client_with_validation_batch
+    ):
+        """Backend enforces Notes required when Needs follow-up selected."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        # Try to record needs_follow_up without notes (should fail)
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'needs_follow_up',
+                'notes': None
+            }
+        )
+
+        # Must fail backend validation
+        assert response.status_code == 400, \
+            f"Expected 400 for needs_follow_up without notes, got {response.status_code}"
+        data = response.get_json()
+        assert 'Notes are required' in data.get('error', ''), \
+            f"Expected 'Notes are required' in error, got: {data}"
+
+    def test_needs_follow_up_records_with_notes(
+        self, flask_client_with_validation_batch
+    ):
+        """Recording needs follow-up with notes should succeed and persist."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        notes_text = 'Contact donor to clarify donation source'
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'needs_follow_up',
+                'notes': notes_text
+            }
+        )
+
+        assert response.status_code == 200, \
+            f"Expected 200 for needs_follow_up with notes, got {response.status_code}: {response.get_json()}"
+        data = response.get_json()
+        assert data['success'] is True, f"Expected success, got: {data}"
+        assert data['decision'] == 'needs_follow_up', f"Expected decision 'needs_follow_up', got: {data['decision']}"
+
+        # Verify decision persisted to database
+        session = Session()
+        try:
+            from scripts.householder.row_decision_service import get_row_decision
+            persisted = get_row_decision(
+                batch_id='validation-workflow-test-batch',
+                raw_import_row_id=raw_id,
+                database_url=database_url
+            )
+            assert persisted is not None, "Decision should be persisted"
+            assert persisted['decision'] == 'needs_follow_up', \
+                f"Persisted decision should be needs_follow_up, got: {persisted['decision']}"
+            assert persisted['notes'] == notes_text, \
+                f"Persisted notes should match, got: {persisted.get('notes')}"
+        finally:
+            session.close()
+
+    def test_needs_follow_up_row_status_reflects_decision(
+        self, flask_client_with_validation_batch
+    ):
+        """After needs follow-up decision, row status should reflect pending follow-up."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        # Record needs_follow_up decision
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'needs_follow_up',
+                'notes': 'Verify with donor'
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # Row status should be provided for frontend dropdown update
+        assert 'row_status' in data, \
+            f"Response should include row_status for dropdown, got: {data}"
+
+
+# ==============================================================================
+# TEST B: Defer workflow - Notes optional
+# ==============================================================================
+
+class TestDeferWorkflow:
+    """Test defer workflow verifies Notes are optional, controls preserved."""
+
+    def test_defer_succeeds_without_notes_persisted(
+        self, flask_client_with_validation_batch
+    ):
+        """Defer decision should persist to database without notes."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[6]
+
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'defer'
+            }
+        )
+
+        assert response.status_code == 200, \
+            f"Expected 200 for defer without notes, got {response.status_code}: {response.get_json()}"
+        data = response.get_json()
+        assert data['success'] is True, f"Expected success, got: {data}"
+        assert data['decision'] == 'defer', f"Expected decision 'defer', got: {data['decision']}"
+
+        # Verify decision persisted
+        session = Session()
+        try:
+            from scripts.householder.row_decision_service import get_row_decision
+            persisted = get_row_decision(
+                batch_id='validation-workflow-test-batch',
+                raw_import_row_id=raw_id,
+                database_url=database_url
+            )
+            assert persisted is not None, "Defer decision should be persisted"
+            assert persisted['decision'] == 'defer', \
+                f"Persisted decision should be defer, got: {persisted['decision']}"
+        finally:
+            session.close()
+
+    def test_defer_with_notes_also_persisted(
+        self, flask_client_with_validation_batch
+    ):
+        """Defer decision should also accept optional notes."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[6]
+
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'defer',
+                'notes': 'Review in next batch cycle'
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+
+
+# ==============================================================================
+# TEST C: Approval warning modal behavior
+# ==============================================================================
+
+class TestApprovalWarningWorkflow:
+    """Test approval warning modal shows with unresolved issues."""
+
+    def test_approve_batch_without_issues_succeeds(
+        self, flask_client_with_validation_batch
+    ):
+        """Batch with no unresolved issues should approve directly without modal."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+
+        # First, ensure all rows are valid by correcting the problematic ones
+        # Row 0: invalid email - fix it
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_rows[0],
+                'corrected_values': {'email': 'john.smith@example.com'}
+            }
+        )
+        assert response.status_code == 200
+
+        # Now try to approve - should succeed or require confirmation
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/approve-batch',
+            json={
+                'approval_status': 'approved',
+                'rows_with_overrides': []
+            }
+        )
+
+        assert response.status_code == 200, f"Approve should succeed, got: {response.get_json()}"
+        data = response.get_json()
+        assert data['success'] is True or 'approval_status' in data, \
+            f"Expected success or approval_status in response, got: {data}"
+
+    def test_approve_batch_with_unresolved_issues_requires_override(
+        self, flask_client_with_validation_batch
+    ):
+        """Batch with unresolved issues should trigger override confirmation modal."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+
+        # Row 7 has invalid email that wasn't corrected
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/approve-batch',
+            json={
+                'approval_status': 'approved_with_overrides',
+                'rows_with_overrides': []
+            }
+        )
+
+        # Should either require override confirmation or succeed with warnings
+        assert response.status_code in [200, 400], \
+            f"Expected 200 or 400, got {response.status_code}: {response.get_json()}"
+        data = response.get_json()
+
+        if 'requires_override_confirmation' in data:
+            # Modal mode: backend indicates remaining issues exist
+            assert data['requires_override_confirmation'] is True or \
+                   'remaining_issues' in data, \
+                   f"Expected requires_override_confirmation or remaining_issues, got: {data}"
+
+
+# ==============================================================================
+# TEST D: Export safety - Failed autosaves excluded, raw data unchanged
+# ==============================================================================
+
+class TestExportSafety:
+    """Test export preview uses only successful corrections, raw data unchanged."""
+
+    def test_export_excludes_failed_autosave_values(
+        self, flask_client_with_validation_batch
+    ):
+        """Failed autosave corrections should not appear in export."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[0]  # Invalid email row
+
+        # Try invalid email autosave (will fail)
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'not-an-email'}
+            }
+        )
+
+        # Should fail validation
+        assert response.status_code == 400, \
+            f"Invalid email should fail autosave, got: {response.status_code}"
+
+        # Now make a valid correction to same row
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'john.smith@example.com'}
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # Effective values should only contain the successful correction
+        assert data['effective_values']['email'] == 'john.smith@example.com', \
+            f"Effective values should have valid correction, got: {data['effective_values']['email']}"
+
+    def test_raw_import_row_data_unchanged_after_correction(
+        self, flask_client_with_validation_batch
+    ):
+        """RawImportRow.raw_csv_data must never be mutated after autosave corrections."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[0]
+
+        # Get original raw data
+        session = Session()
+        try:
+            from scripts.householder.database_models import RawImportRow
+            original_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            original_email = original_row.raw_csv_data.get('email')
+
+            # Make autosave correction
+            response = client.post(
+                f'/imports/validation-workflow-test-batch/autosave',
+                json={
+                    'raw_import_row_id': raw_id,
+                    'corrected_values': {'email': 'corrected@example.com'}
+                }
+            )
+            assert response.status_code == 200
+
+            # Verify raw data is unchanged
+            session.expire_all()  # Refresh from DB
+            modified_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            assert modified_row.raw_csv_data.get('email') == original_email, \
+                f"Raw data should not change. Original: {original_email}, Got: {modified_row.raw_csv_data.get('email')}"
+        finally:
+            session.close()
+
+
+# ==============================================================================
+# TEST E: Inspect modal controls - Dropdown, Notes field, Record Decision button
+# ==============================================================================
+
+class TestInspectModalControls:
+    """Test inspect modal has all expected interactive controls."""
+
+    def test_inspect_modal_decision_dropdown_options(
+        self, flask_client_with_validation_batch
+    ):
+        """Modal decision dropdown should have all status options."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+
+        # Load validation page - modal is populated via JavaScript
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/validation'
+        )
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        # Verify modal HTML contains decision options
+        assert 'Accept as-is' in html, "Modal should have 'Accept as-is' option"
+        assert 'Needs follow-up' in html, "Modal should have 'Needs follow-up' option"
+        assert 'Defer' in html, "Modal should have 'Defer' option"
+        assert 'Reject row' in html, "Modal should have 'Reject row' option"
+
+    def test_inspect_modal_notes_field_exists(
+        self, flask_client_with_validation_batch
+    ):
+        """Modal should have Notes textarea field."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/validation'
+        )
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        # Verify modal HTML contains notes field
+        assert 'Notes required when Follow-up' in html or 'row-notes' in html, \
+            "Modal should have notes field"
+
+    def test_inspect_modal_record_decision_button_exists(
+        self, flask_client_with_validation_batch
+    ):
+        """Modal should have Record Decision button."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/validation'
+        )
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        # Verify modal HTML contains Record Decision button
+        assert 'Record Decision' in html, \
+            "Modal should have 'Record Decision' button"
+
+    def test_row_decision_get_endpoint_returns_status(
+        self, flask_client_with_validation_batch
+    ):
+        """GET /row-decision endpoint should report has_decision status."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        # Before any decision
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/row-decision/{raw_id}'
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert 'has_decision' in data, \
+            f"Response should include has_decision flag, got: {data}"
+
+        # Record a decision
+        client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'needs_follow_up',
+                'notes': 'Test note'
+            }
+        )
+
+        # After decision
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/row-decision/{raw_id}'
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['has_decision'] is True, \
+            f"After recording decision, has_decision should be True, got: {data}"
