@@ -66,6 +66,7 @@ def recalculate_row_issues(
     batch_id: str,
     raw_import_row_id: int,
     database_url: Optional[str] = None,
+    proposed_values: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Recalculate validation issues for a row using effective values.
@@ -82,6 +83,7 @@ def recalculate_row_issues(
         batch_id: Import batch ID
         raw_import_row_id: RawImportRow.id
         database_url: Database connection URL (optional)
+        proposed_values: Optional proposed corrections to validate against (used when autosave validation fails)
 
     Returns:
         List of issues: [{"issue_id": int, "issue_type": str, "description": str, "severity": str}, ...]
@@ -107,7 +109,10 @@ def recalculate_row_issues(
             raise ValueError(f"Raw import row {raw_import_row_id} not found")
 
         # Get effective values (raw + corrections)
+        # If proposed_values provided, merge them in (for validation of unsaved corrections)
         effective_values = get_effective_values(batch_id, raw_import_row_id, database_url)
+        if proposed_values:
+            effective_values.update(proposed_values)
 
         # Get raw data for comparison
         raw_data = raw_row.raw_csv_data or {}
@@ -161,6 +166,16 @@ def recalculate_row_issues(
                     'severity': severity,
                     'overridden': _is_issue_overridden(batch, raw_import_row_id, issue_field)
                 })
+
+        # Additionally, validate effective values to detect NEW issues not in ReviewItems
+        # ONLY if proposed_values were provided (i.e., autosave with corrections)
+        # This catches validation errors introduced by autosave corrections
+        if proposed_values:
+            existing_fields = {issue.get('field') for issue in current_issues if issue.get('field')}
+            new_validation_issues = _validate_effective_values(effective_values)
+            for new_issue in new_validation_issues:
+                if new_issue.get('field') not in existing_fields:
+                    current_issues.append(new_issue)
 
         return current_issues
 
@@ -264,6 +279,122 @@ def is_issue_resolved(
             return True
     else:
         return False  # Unknown reason, don't auto-resolve
+
+
+def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Validate effective values to detect NEW validation issues.
+
+    This function runs validation rules on the effective values to catch
+    validation errors introduced by autosave corrections that don't have
+    pre-existing ReviewItems.
+
+    Args:
+        effective_values: Dictionary of effective field values (raw + corrections)
+
+    Returns:
+        List of new validation issues found: [{"field": str, "description": str, "severity": str}, ...]
+    """
+    issues = []
+    import re
+
+    # Validate email if present
+    if 'email' in effective_values:
+        email_value = effective_values.get('email')
+        if email_value:
+            email_str = str(email_value).strip()
+            email_issue = _validate_email(email_str)
+            if email_issue:
+                issues.append(email_issue)
+
+    # Validate phone if present
+    if 'phone' in effective_values:
+        phone_value = effective_values.get('phone')
+        if phone_value:
+            phone_str = str(phone_value).strip()
+            if phone_str and not is_valid_phone(phone_str):
+                issues.append({
+                    'field': 'phone',
+                    'description': 'Invalid phone format',
+                    'severity': 'error',
+                    'is_new': True
+                })
+
+    return issues
+
+
+def _validate_email(email: str) -> Optional[Dict[str, Any]]:
+    """
+    Validate email address and return issue if invalid.
+
+    Applies two-tier validation:
+    - Tier 1: Recognized domains - strict validation
+    - Tier 2: Unrecognized domains - lenient validation
+
+    Args:
+        email: Email address to validate
+
+    Returns:
+        Issue dict if invalid, None if valid
+    """
+    import re
+
+    if not email:
+        return None
+
+    email_lower = email.lower()
+
+    # Canonical format: something@something.something
+    email_pattern = r'^[^@]+@[^@]+\.[^@]+$'
+    if not re.match(email_pattern, email_lower):
+        return {
+            'field': 'email',
+            'description': 'Invalid email format',
+            'severity': 'error',
+            'is_new': True
+        }
+
+    # Extract domain
+    try:
+        domain = email_lower.rsplit('@', 1)[1]
+    except (IndexError, AttributeError):
+        return {
+            'field': 'email',
+            'description': 'Invalid email format',
+            'severity': 'error',
+            'is_new': True
+        }
+
+    # Check for common typo domains
+    if domain in COMMON_TYPO_DOMAINS:
+        return {
+            'field': 'email',
+            'description': f'Possible typo: did you mean {COMMON_TYPO_DOMAINS[domain]}?',
+            'severity': 'warning',
+            'is_new': True
+        }
+
+    # Two-tier validation for recognized domains
+    if domain in RECOGNIZED_EMAIL_DOMAINS:
+        # Strict validation: check for common typos
+        invalid_typos = [
+            r'gmial(?:\.com)?',   # gmail typo: gmial
+            r'gmal(?:\.com)?',    # gmail typo: gmal (missing i)
+            r'yahooo(?:\.com)?',  # yahoo typo: yahooo
+            r'hotmial(?:\.com)?', # hotmail typo: hotmial
+            r'\bgmai\b',          # gmai standalone
+        ]
+        has_invalid = any(re.search(pattern, email_lower) for pattern in invalid_typos)
+        if has_invalid:
+            return {
+                'field': 'email',
+                'description': 'Invalid email format',
+                'severity': 'error',
+                'is_new': True
+            }
+
+    # All validation passed
+    return None
 
 
 def _get_email_suggestion(email: str) -> Optional[str]:

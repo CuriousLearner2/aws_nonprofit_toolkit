@@ -180,10 +180,11 @@ class FixtureImportRepository:
                 phone=contact['phone'],
                 amount=contact['amount'],
                 address=contact['address'],
+                raw_import_row_id=idx + 1,  # Use 1-based index as row identifier for fixtures
                 issue_type=contact.get('issue_type'),
                 issue_description=contact.get('issue_description'),
             )
-            for contact in CONTACTS
+            for idx, contact in enumerate(CONTACTS)
         )
 
         return ValidationPageViewModel(

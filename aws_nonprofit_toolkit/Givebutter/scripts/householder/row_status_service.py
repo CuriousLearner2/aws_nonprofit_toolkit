@@ -7,7 +7,7 @@ Derives read-only Row Status column from:
 - Batch approval override state (was file approved with overrides?)
 """
 
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from sqlalchemy import create_engine
@@ -23,6 +23,7 @@ def derive_row_status(
     batch_id: str,
     raw_import_row_id: int,
     database_url: Optional[str] = None,
+    issues: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """
     Derive Row Status from review data and approval state.
@@ -39,6 +40,7 @@ def derive_row_status(
         batch_id: Import batch ID
         raw_import_row_id: RawImportRow.id
         database_url: Database connection URL (optional)
+        issues: Optional pre-calculated issues list (if not provided, will be recalculated)
 
     Returns:
         Status string: "No issues" | "Warning" | "Blocking" | "Overridden"
@@ -49,29 +51,36 @@ def derive_row_status(
     if database_url is None:
         database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
 
-    # Use issue_recalculation_service to get current issues
-    from .issue_recalculation_service import recalculate_row_issues
-
-    try:
-        # Get current issues using issue_recalculation_service
+    # Use provided issues or recalculate
+    if issues is None:
+        # Use issue_recalculation_service to get current issues
+        from .issue_recalculation_service import recalculate_row_issues
         current_issues = recalculate_row_issues(batch_id, raw_import_row_id, database_url)
+    else:
+        current_issues = issues
 
-        if not current_issues:
-            # No unresolved issues
-            return "No issues"
+    # Determine status based on issue types
+    has_blocking = False
+    has_warning = False
 
-        # Check for blocking issues
-        has_blocking = False
-        has_warning = False
+    for issue in current_issues:
+        severity = issue.get('severity', 'warning')
+        if severity == 'error':
+            has_blocking = True
+        else:
+            has_warning = True
 
-        for issue in current_issues:
-            severity = issue.get('severity', 'warning')
-            if severity == 'error':
-                has_blocking = True
-            else:
-                has_warning = True
+    # Priority: Blocking > Overridden > Warning > No issues
+    # First determine status from issues
+    if has_blocking:
+        base_status = "Blocking"
+    elif has_warning:
+        base_status = "Warning"
+    else:
+        base_status = "No issues"
 
-        # Check approval override state FIRST
+    # Then check approval override state (may override to "Overridden")
+    try:
         engine = create_engine(database_url, echo=False)
         SessionLocal = sessionmaker(bind=engine)
         session = SessionLocal()
@@ -89,18 +98,12 @@ def derive_row_status(
                             return "Overridden"
         finally:
             session.close()
-
-        # Determine status based on issue types (if not overridden)
-        if has_blocking:
-            return "Blocking"
-        elif has_warning:
-            return "Warning"
-        else:
-            return "No issues"
-
     except Exception as e:
-        # If issue recalculation fails, default to "No issues"
-        return "No issues"
+        # If we can't check approval state, return base status from issues
+        # Log the error but don't fail silently
+        pass
+
+    return base_status
 
 
 def is_row_overridden(

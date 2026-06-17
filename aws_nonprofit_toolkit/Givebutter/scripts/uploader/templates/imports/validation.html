@@ -39,7 +39,7 @@
         </thead>
         <tbody>
             {% for record in validation_issues %}
-            <tr data-record-id="{{ record.id }}" data-raw-id="{{ record.raw_import_row_id }}" class="validation-row">
+            <tr data-record-id="{{ record.id }}" data-raw-id="{{ record.raw_import_row_id }}" data-testid="row-{{ record.id }}" class="validation-row">
                 <!-- Read-only: Txn ID -->
                 <td style="font-weight: 500; background-color: #f9fafb;">{{ record.id }}</td>
 
@@ -61,18 +61,18 @@
 
                 <!-- Editable: Email -->
                 <td>
-                    <input type="text" class="inline-edit-field autosave-field" data-field="email" data-raw-id="{{ record.raw_import_row_id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="email" data-raw-id="{{ record.raw_import_row_id }}" data-testid="email-input-{{ record.id }}"
                            value="{{ record.email or '' }}" placeholder="email@example.com"
                            style="width: 105px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
-                    <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
+                    <span class="autosave-status" data-testid="email-status-{{ record.id }}" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
                 <!-- Editable: Phone -->
                 <td>
-                    <input type="text" class="inline-edit-field autosave-field" data-field="phone" data-raw-id="{{ record.raw_import_row_id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="phone" data-raw-id="{{ record.raw_import_row_id }}" data-testid="phone-input-{{ record.id }}"
                            value="{{ record.phone or '' }}" placeholder="(555) 555-5555"
                            style="width: 85px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
-                    <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
+                    <span class="autosave-status" data-testid="phone-status-{{ record.id }}" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
                 <!-- Editable: Amount -->
@@ -92,8 +92,8 @@
                 </td>
 
                 <!-- Row Status with Decision Dropdown -->
-                <td class="row-status-cell">
-                    <select class="row-status-dropdown" data-raw-id="{{ record.raw_import_row_id }}"
+                <td class="row-status-cell" data-testid="row-status-cell-{{ record.id }}">
+                    <select class="row-status-dropdown" data-raw-id="{{ record.raw_import_row_id }}" data-testid="row-status-dropdown-{{ record.id }}"
                             style="padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 11px; font-weight: 600; box-sizing: border-box; width: 95px;">
                         <option value="">{{ record.row_status or 'No issues' }}</option>
                         <option value="accept_as_is">Accept as-is</option>
@@ -105,7 +105,7 @@
                 </td>
 
                 <!-- Read-only: Issues -->
-                <td class="issues-cell" style="font-size: 11px;">
+                <td class="issues-cell" data-testid="issues-cell-{{ record.id }}" style="font-size: 11px;">
                     {% if record.issues %}
                         {% for issue in record.issues %}
                         <div style="margin-bottom: 4px;">

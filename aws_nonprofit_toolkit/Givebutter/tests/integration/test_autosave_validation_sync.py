@@ -125,6 +125,8 @@ class TestAutosaveValidationSync:
         # Must include row_status so UI can update dropdown
         assert 'row_status' in data
         assert data['row_status'] is not None
+        # Row status must NOT be "No issues" when validation error exists
+        assert data['row_status'] != 'No issues', "Row status should reflect validation error, not show 'No issues'"
 
     def test_autosave_error_includes_issues(self, flask_client_with_batch):
         """Autosave error response includes current issues list."""
@@ -144,6 +146,10 @@ class TestAutosaveValidationSync:
         # Must include issues so UI can update Issues column
         assert 'issues' in data
         assert isinstance(data['issues'], list)
+        # When validation error exists, issues list must not be empty
+        assert len(data['issues']) > 0, "Issues list should contain validation error"
+        # Verify the email issue is in the list
+        assert any(issue.get('field') == 'email' for issue in data['issues']), "Email issue should be in issues list"
 
     def test_autosave_success_response_consistent(self, flask_client_with_batch):
         """Success response includes same fields as error response."""
@@ -258,3 +264,92 @@ class TestAutosaveValidationSync:
         if error_issues:
             for issue in error_issues:
                 assert 'field' in issue or 'reason' in issue
+
+    def test_invalid_email_format_updates_row_status(self, flask_client_with_batch):
+        """Invalid email changes row status from 'No issues' to error status."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'john@example'}  # Missing TLD
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['row_status'] != 'No issues'
+        assert len(data['issues']) > 0
+        assert any(issue.get('field') == 'email' for issue in data['issues'])
+
+    def test_invalid_email_no_at_symbol(self, flask_client_with_batch):
+        """Email without @ symbol is caught as validation error."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'invalid-email'}
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        # Row status must reflect error
+        assert data['row_status'] != 'No issues'
+        assert len(data['issues']) > 0
+        email_issue = next((i for i in data['issues'] if i.get('field') == 'email'), None)
+        assert email_issue is not None
+
+    def test_invalid_phone_format_updates_row_status(self, flask_client_with_batch):
+        """Invalid phone changes row status from 'No issues' to error status."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'phone': '123'}  # Too short
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['row_status'] != 'No issues'
+        assert len(data['issues']) > 0
+        assert any(issue.get('field') == 'phone' for issue in data['issues'])
+
+    def test_correcting_invalid_email_clears_error(self, flask_client_with_batch):
+        """Correcting invalid email to valid format clears the error."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        # First: introduce invalid email
+        response_invalid = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'invalid'}
+            }
+        )
+        assert response_invalid.status_code == 400
+        assert response_invalid.get_json()['row_status'] != 'No issues'
+
+        # Second: correct to valid email
+        response_valid = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'john@example.com'}
+            }
+        )
+        assert response_valid.status_code == 200
+        data = response_valid.get_json()
+        # Row status should improve or show no issues
+        email_issues = [i for i in data['issues'] if i.get('field') == 'email']
+        assert len(email_issues) == 0, "Email validation error should be cleared after correction"

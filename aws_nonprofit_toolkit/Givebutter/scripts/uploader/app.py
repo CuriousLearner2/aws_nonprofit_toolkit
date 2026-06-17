@@ -1045,13 +1045,16 @@ def autosave_row_corrections(import_id):
 
         if not is_valid:
             # Get current row state to show validation issues in UI
-            row_status = derive_row_status(
-                batch_id=import_id,
-                raw_import_row_id=raw_import_row_id
-            )
+            # Pass proposed_values so validation catches errors in the unsaved corrections
             issues = recalculate_row_issues(
                 batch_id=import_id,
-                raw_import_row_id=raw_import_row_id
+                raw_import_row_id=raw_import_row_id,
+                proposed_values=corrected_values
+            )
+            row_status = derive_row_status(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id,
+                issues=issues
             )
 
             # Return validation error - don't save
