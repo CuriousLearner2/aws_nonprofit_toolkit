@@ -1057,6 +1057,16 @@ def autosave_row_corrections(import_id):
                 issues=issues
             )
 
+            # Map issues to template format: description -> reason for frontend consistency
+            formatted_issues = [
+                {
+                    'field': issue.get('field', 'unknown'),
+                    'reason': issue.get('description', 'Issue detected'),
+                    'severity': issue.get('severity', 'warning')
+                }
+                for issue in issues
+            ]
+
             # Return validation error - don't save
             logger.info(f"Row {raw_import_row_id} autosave validation failed: {errors}")
             return jsonify({
@@ -1065,7 +1075,7 @@ def autosave_row_corrections(import_id):
                 'validation_errors': errors,
                 'message': 'Corrections not saved - please fix validation errors',
                 'row_status': row_status,
-                'issues': issues
+                'issues': formatted_issues
             }), 400
 
         # Save corrections (only if validation passed)
@@ -1094,12 +1104,22 @@ def autosave_row_corrections(import_id):
 
         logger.info(f"Row {raw_import_row_id} autosave completed: {corrected_values}")
 
+        # Map issues to template format: description -> reason for frontend consistency
+        formatted_issues = [
+            {
+                'field': issue.get('field', 'unknown'),
+                'reason': issue.get('description', 'Issue detected'),
+                'severity': issue.get('severity', 'warning')
+            }
+            for issue in issues
+        ]
+
         return jsonify({
             'success': True,
             'decision_id': result.decision_id,
             'effective_values': effective_values,
             'row_status': row_status,
-            'issues': issues,
+            'issues': formatted_issues,
             'saved_at': datetime.utcnow().isoformat(),
             'message': 'Autosave completed successfully'
         }), 200
