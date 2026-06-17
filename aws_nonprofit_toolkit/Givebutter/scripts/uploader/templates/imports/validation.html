@@ -854,9 +854,15 @@ async function confirmApprovalWithOverrides(remainingIssues) {
             rowsWithOverrides.forEach(override => {
                 const row = document.querySelector(`tr[data-raw-id="${override.raw_import_row_id}"]`);
                 if (row) {
-                    const statusCell = row.querySelector('.row-status-cell');
-                    if (statusCell) {
-                        statusCell.innerHTML = `<span class="row-status-badge" style="background-color: #e0e7ff; color: #312e81; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">Overridden</span>`;
+                    // Update Row Status dropdown (preserve dropdown, update display)
+                    const dropdown = row.querySelector('.row-status-dropdown');
+                    if (dropdown) {
+                        const firstOption = dropdown.querySelector('option:first-child');
+                        if (firstOption) {
+                            firstOption.textContent = 'Overridden';
+                        }
+                        dropdown.value = '';
+                        dropdown.style.backgroundColor = '#e0e7ff';
                     }
 
                     const issuesCell = row.querySelector('.issues-cell');
