@@ -51,6 +51,9 @@ def record_duplicate_decision(
             f"Invalid decision '{decision}'. Must be one of: {', '.join(sorted(valid_decisions))}"
         )
 
+    # Validate notes required when conflicting evidence exists
+    _validate_notes_if_conflicting_evidence(review_item_id, notes, config)
+
     # Get write repository (database only; fixture mode must not accept writes)
     write_repo = _get_duplicate_decision_writer(config)
 
@@ -62,6 +65,74 @@ def record_duplicate_decision(
         notes=notes,
         reviewer=reviewer,
     )
+
+
+def _validate_notes_if_conflicting_evidence(
+    review_item_id: int,
+    notes: Optional[str],
+    config: Optional[Mapping[str, Any]],
+) -> None:
+    """
+    Validate that notes are provided when conflicting evidence exists.
+
+    Args:
+        review_item_id: ReviewItem.id to check
+        notes: Notes provided by reviewer (may be None or empty string)
+        config: Optional configuration mapping for database selection
+
+    Raises:
+        ValueError: If conflicting evidence exists but notes are missing or empty
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from .database_models import ReviewItem
+    import os
+
+    # Check if in explicit fixture mode (should skip validation)
+    repository_mode = os.environ.get('HOUSEHOLDER_REPOSITORY', 'database')
+    if config:
+        repository_mode = config.get('HOUSEHOLDER_REPOSITORY', repository_mode)
+
+    if repository_mode == 'fixture':
+        # Skip validation in explicit fixture mode
+        return
+
+    # Determine database URL
+    if config:
+        database_url = config.get('GIVEBUTTER_DATABASE_URL')
+    else:
+        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
+
+    if not database_url:
+        # Fail-safe: database URL is required for validation in production mode
+        raise ValueError(
+            "Duplicate decision validation requires database configuration. "
+            "Set GIVEBUTTER_DATABASE_URL environment variable or pass config."
+        )
+
+    engine = create_engine(database_url, echo=False)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+
+    try:
+        review_item = session.query(ReviewItem).filter_by(id=review_item_id).first()
+        if not review_item:
+            raise ValueError(f"ReviewItem {review_item_id} not found")
+
+        # Check if conflicting evidence exists in payload
+        conflicting_evidence = review_item.payload_json.get('conflicting_evidence', [])
+        has_conflicting_evidence = bool(conflicting_evidence and len(conflicting_evidence) > 0)
+
+        # If conflicting evidence exists, notes are required
+        if has_conflicting_evidence:
+            notes_present = notes and notes.strip()
+            if not notes_present:
+                raise ValueError(
+                    "Notes are required when conflicting evidence exists. "
+                    "Please provide an explanation for your decision."
+                )
+    finally:
+        session.close()
 
 
 def _get_duplicate_decision_writer(config: Optional[Mapping[str, Any]]):

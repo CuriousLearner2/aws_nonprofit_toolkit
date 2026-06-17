@@ -38,6 +38,9 @@ def flask_client_with_db(temp_db, monkeypatch):
 
     app.config['TESTING'] = True
 
+    # Set environment variable for database URL (used by validation functions)
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
     from scripts.householder import duplicate_decision_service, repository_provider
     from scripts.householder.database_write_repository import DatabaseDuplicateDecisionWriter
     from scripts.householder.database_repository import DatabaseImportRepository
@@ -130,7 +133,10 @@ class TestDuplicateDecisionUI:
 
         response = client.post(
             f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
-            data={'decision': 'same_person'},
+            data={
+                'decision': 'same_person',
+                'notes': 'Test decision',  # Required due to conflicting evidence
+            },
         )
 
         assert response.status_code == 302
@@ -150,7 +156,10 @@ class TestDuplicateDecisionUI:
 
         response = client.post(
             f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
-            data={'decision': 'different_people'},
+            data={
+                'decision': 'different_people',
+                'notes': 'Test decision',  # Required due to conflicting evidence
+            },
         )
 
         assert response.status_code == 302

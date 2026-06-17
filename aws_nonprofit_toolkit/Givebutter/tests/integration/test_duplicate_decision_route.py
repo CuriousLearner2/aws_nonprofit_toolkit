@@ -40,6 +40,9 @@ def flask_client_with_db(temp_db, monkeypatch):
 
     app.config['TESTING'] = True
 
+    # Set environment variable for database URL (used by validation functions)
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
     # Monkeypatch the duplicate_decision_service to use test database
     from scripts.householder import duplicate_decision_service
     from scripts.householder.database_write_repository import DatabaseDuplicateDecisionWriter
@@ -98,7 +101,7 @@ def flask_client_with_db(temp_db, monkeypatch):
     session.add(contact2)
     session.flush()
 
-    # Create duplicate review item
+    # Create duplicate review item WITH conflicting evidence
     duplicate_payload = {
         'contact_a': {'id': str(contact1.id), 'name': 'John Smith'},
         'contact_b': {'id': str(contact2.id), 'name': 'Jon Smith'},
@@ -113,6 +116,22 @@ def flask_client_with_db(temp_db, monkeypatch):
         payload_json=duplicate_payload,
     )
     session.add(dup_item)
+
+    # Create duplicate review item WITHOUT conflicting evidence
+    duplicate_payload_clean = {
+        'contact_a': {'id': str(contact1.id), 'name': 'John Smith'},
+        'contact_b': {'id': str(contact2.id), 'name': 'John Smith'},
+        'supporting_evidence': ['Same phone', 'Same name'],
+        'conflicting_evidence': [],
+    }
+
+    dup_item_clean = ReviewItem(
+        batch_id='IMP-2025-0101-A',
+        item_type='duplicate',
+        status='pending',
+        payload_json=duplicate_payload_clean,
+    )
+    session.add(dup_item_clean)
 
     # Create validation item for error testing
     val_item = ReviewItem(
@@ -137,7 +156,7 @@ class TestDuplicateDecisionRoute:
         """Test that valid decision creates ReviewDecision record."""
         client, database_url, engine, Session = flask_client_with_db
         session = Session()
-        
+
         dup_item = session.query(ReviewItem).filter(
             ReviewItem.item_type == 'duplicate'
         ).first()
@@ -146,7 +165,10 @@ class TestDuplicateDecisionRoute:
 
         response = client.post(
             f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
-            data={'decision': 'same_person'},
+            data={
+                'decision': 'same_person',
+                'notes': 'Test decision',  # Required due to conflicting evidence
+            },
         )
 
         assert response.status_code == 302
@@ -161,7 +183,7 @@ class TestDuplicateDecisionRoute:
         """Test that valid decision creates AuditLogRecord."""
         client, database_url, engine, Session = flask_client_with_db
         session = Session()
-        
+
         dup_item = session.query(ReviewItem).filter(
             ReviewItem.item_type == 'duplicate'
         ).first()
@@ -170,7 +192,10 @@ class TestDuplicateDecisionRoute:
 
         client.post(
             f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
-            data={'decision': 'different_people'},
+            data={
+                'decision': 'different_people',
+                'notes': 'Test decision',  # Required due to conflicting evidence
+            },
         )
 
         session = Session()
@@ -189,7 +214,10 @@ class TestDuplicateDecisionRoute:
 
         client.post(
             f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
-            data={'decision': 'same_person'},
+            data={
+                'decision': 'same_person',
+                'notes': 'Test decision',  # Required due to conflicting evidence
+            },
         )
 
         session = Session()
@@ -207,7 +235,10 @@ class TestDuplicateDecisionRoute:
 
         client.post(
             f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
-            data={'decision': 'different_people'},
+            data={
+                'decision': 'different_people',
+                'notes': 'Test decision',  # Required due to conflicting evidence
+            },
         )
 
         session = Session()
@@ -225,7 +256,10 @@ class TestDuplicateDecisionRoute:
 
         client.post(
             f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
-            data={'decision': 'defer'},
+            data={
+                'decision': 'defer',
+                'notes': 'Test decision',  # Required due to conflicting evidence
+            },
         )
 
         session = Session()
@@ -321,4 +355,105 @@ class TestDuplicateDecisionRoute:
         after_names = [(c.first_name, c.last_name) for c in session.query(ImportContact).all()]
         assert before_count == after_count
         assert before_names == after_names
+        session.close()
+
+    def test_notes_required_when_conflicting_evidence_present(self, flask_client_with_db):
+        """Test that notes are required when conflicting evidence exists (Bug #1)."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Get duplicate item which has conflicting_evidence
+        dup_item = session.query(ReviewItem).filter(
+            ReviewItem.item_type == 'duplicate'
+        ).first()
+        item_id = dup_item.id
+
+        # Verify the item has conflicting evidence
+        assert len(dup_item.payload_json.get('conflicting_evidence', [])) > 0
+        session.close()
+
+        # Submit decision WITHOUT notes - should be rejected (400)
+        response = client.post(
+            f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
+            data={
+                'decision': 'same_person',
+                'notes': '',  # Empty notes
+            },
+        )
+
+        # Should return 400 error
+        assert response.status_code == 400, f"Expected 400 but got {response.status_code}"
+
+        # Verify no decision was recorded
+        session = Session()
+        decision = session.query(ReviewDecision).filter_by(review_item_id=item_id).first()
+        assert decision is None, "Decision should not be recorded when notes are missing"
+        session.close()
+
+    def test_notes_persisted_in_decision_when_required(self, flask_client_with_db):
+        """Test that notes are persisted in ReviewDecision when conflicting evidence exists."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        dup_item = session.query(ReviewItem).filter(
+            ReviewItem.item_type == 'duplicate'
+        ).first()
+        item_id = dup_item.id
+        session.close()
+
+        # Submit decision WITH notes
+        response = client.post(
+            f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
+            data={
+                'decision': 'same_person',
+                'notes': 'These are same person despite different names',
+            },
+        )
+
+        # Should succeed
+        assert response.status_code == 302
+
+        # Verify notes are persisted in reviewed_values
+        session = Session()
+        decision = session.query(ReviewDecision).filter_by(review_item_id=item_id).first()
+        assert decision is not None
+        assert decision.reviewed_values is not None
+        assert decision.reviewed_values.get('notes') == 'These are same person despite different names'
+        session.close()
+
+    def test_notes_optional_when_no_conflicting_evidence(self, flask_client_with_db):
+        """Test that notes are NOT required when no conflicting evidence exists."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Get duplicate item WITHOUT conflicting evidence
+        all_dups = session.query(ReviewItem).filter(ReviewItem.item_type == 'duplicate').all()
+        dup_item_clean = None
+        for item in all_dups:
+            conflicting = item.payload_json.get('conflicting_evidence', [])
+            if not conflicting or len(conflicting) == 0:
+                dup_item_clean = item
+                break
+
+        assert dup_item_clean is not None, "Could not find duplicate item without conflicting evidence"
+        item_id = dup_item_clean.id
+        session.close()
+
+        # Submit decision WITHOUT notes - should succeed
+        response = client.post(
+            f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
+            data={
+                'decision': 'same_person',
+                'notes': '',  # Empty notes
+            },
+        )
+
+        # Should succeed (302) because no conflicting evidence
+        assert response.status_code == 302
+
+        # Verify decision was recorded
+        session = Session()
+        decision = session.query(ReviewDecision).filter_by(review_item_id=item_id).first()
+        assert decision is not None
+        assert decision.decision == 'same_person'
         session.close()
