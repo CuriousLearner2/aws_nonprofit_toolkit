@@ -1044,13 +1044,25 @@ def autosave_row_corrections(import_id):
         is_valid, errors = validate_corrected_values(corrected_values)
 
         if not is_valid:
+            # Get current row state to show validation issues in UI
+            row_status = derive_row_status(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id
+            )
+            issues = recalculate_row_issues(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id
+            )
+
             # Return validation error - don't save
             logger.info(f"Row {raw_import_row_id} autosave validation failed: {errors}")
             return jsonify({
                 'success': False,
                 'error': 'Validation failed',
                 'validation_errors': errors,
-                'message': 'Corrections not saved - please fix validation errors'
+                'message': 'Corrections not saved - please fix validation errors',
+                'row_status': row_status,
+                'issues': issues
             }), 400
 
         # Save corrections (only if validation passed)

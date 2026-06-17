@@ -326,6 +326,57 @@ async function autosaveField(input) {
             statusSpan.textContent = 'Error';
             statusSpan.style.color = '#ef4444';
             input.style.borderColor = '#ef4444';
+
+            // Update Row Status to show current validation state from error response
+            try {
+                const errorData = await response.json();
+                if (errorData.row_status || errorData.issues !== undefined) {
+                    // Update Row Status display
+                    const statusCell = row.querySelector('.row-status-cell');
+                    if (statusCell && errorData.row_status) {
+                        const statusMap = {
+                            'No issues': { bg: '#dcfce7', color: '#166534' },
+                            'Warning': { bg: '#fef3c7', color: '#78350f' },
+                            'Blocking': { bg: '#fee2e2', color: '#991b1b' },
+                            'Overridden': { bg: '#e0e7ff', color: '#312e81' }
+                        };
+                        const style = statusMap[errorData.row_status] || { bg: '#e5e7eb', color: '#374151' };
+                        statusCell.innerHTML = `<span class="row-status-badge" style="background-color: ${style.bg}; color: ${style.color}; padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px;">${errorData.row_status}</span>`;
+
+                        // Update dropdown option text
+                        const dropdown = row.querySelector('.row-status-dropdown');
+                        if (dropdown) {
+                            const firstOption = dropdown.querySelector('option:first-child');
+                            if (firstOption) {
+                                firstOption.textContent = errorData.row_status || 'No issues';
+                            }
+                            dropdown.value = '';
+                        }
+                    }
+
+                    // Update Issues display
+                    const issuesCell = row.querySelector('.issues-cell');
+                    if (issuesCell && errorData.issues !== undefined) {
+                        if (errorData.issues.length === 0) {
+                            issuesCell.innerHTML = '<span style="color: #9ca3af; font-style: italic;">None</span>';
+                        } else {
+                            let issuesHtml = '';
+                            errorData.issues.forEach(issue => {
+                                const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
+                                const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
+                                issuesHtml += `<div style="margin-bottom: 4px;">
+                                    <span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
+                                        ${issue.field || 'unknown'} — ${issue.reason || 'issue'}
+                                    </span>
+                                </div>`;
+                            });
+                            issuesCell.innerHTML = issuesHtml;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing validation response:', e);
+            }
         }
     } catch (error) {
         // Show error state
