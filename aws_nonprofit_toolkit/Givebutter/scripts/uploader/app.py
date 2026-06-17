@@ -1151,6 +1151,52 @@ def record_row_decision(import_id):
         return jsonify({'error': 'Error recording decision', 'success': False}), 500
 
 
+@app.route('/imports/<import_id>/row-decision/<int:raw_import_row_id>', methods=['GET'])
+def get_row_decision(import_id, raw_import_row_id):
+    """Get the current row-level decision for a specific row.
+
+    Returns the active human reviewer disposition if one exists.
+    Returns None/empty if the row only has system-derived status.
+
+    Returns:
+    {
+        'has_decision': bool,
+        'decision': str or null,
+        'notes': str or null,
+        'timestamp': str (ISO) or null
+    }
+    """
+    from householder.row_decision_service import get_row_decision as get_decision
+
+    try:
+        decision_data = get_decision(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id
+        )
+
+        if decision_data:
+            return jsonify({
+                'has_decision': True,
+                'decision': decision_data.get('decision'),
+                'notes': decision_data.get('notes'),
+                'timestamp': decision_data.get('timestamp')
+            }), 200
+        else:
+            return jsonify({
+                'has_decision': False,
+                'decision': None,
+                'notes': None,
+                'timestamp': None
+            }), 200
+
+    except ValueError as e:
+        logger.warning(f"Error fetching row decision: {str(e)}")
+        return jsonify({'error': str(e), 'has_decision': False}), 404
+    except Exception as e:
+        logger.error(f"Error fetching row decision: {str(e)}")
+        return jsonify({'error': 'Error fetching decision', 'has_decision': False}), 500
+
+
 @app.route('/imports/<import_id>/approve-batch', methods=['POST'])
 def approve_import_batch(import_id):
     """Approve batch with or without overrides (v1.1 Phase 2).
