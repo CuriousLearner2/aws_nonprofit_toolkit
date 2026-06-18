@@ -80,15 +80,19 @@
         <div class="form-group">
             <label class="form-label">Notes (optional)</label>
             <textarea id="reviewer-notes" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-family: inherit; font-size: 13px; height: 80px;" placeholder="Explain your decision..."></textarea>
+            <!-- Notes warning for defer decision -->
+            <div id="notes-warning-defer" style="display: none; margin-top: 8px; padding: 8px 12px; background-color: #fef3c7; border: 1px solid #fbbf24; border-radius: 3px; color: #78350f; font-size: 13px;">
+                Notes may help explain why this household is being deferred.
+            </div>
         </div>
 
         <!-- Hidden forms for each decision type -->
-        <form id="form-confirm-household-{{ current_household.id }}" method="POST" action="/imports/{{ batch.id }}/households/{{ current_household.id }}/decision" style="display: none;">
+        <form id="form-confirm_household-{{ current_household.id }}" method="POST" action="/imports/{{ batch.id }}/households/{{ current_household.id }}/decision" style="display: none;">
             <input type="hidden" name="decision" value="confirm_household">
             <textarea name="notes" id="notes-confirm-household" style="display: none;"></textarea>
         </form>
 
-        <form id="form-reject-household-{{ current_household.id }}" method="POST" action="/imports/{{ batch.id }}/households/{{ current_household.id }}/decision" style="display: none;">
+        <form id="form-reject_household-{{ current_household.id }}" method="POST" action="/imports/{{ batch.id }}/households/{{ current_household.id }}/decision" style="display: none;">
             <input type="hidden" name="decision" value="reject_household">
             <textarea name="notes" id="notes-reject-household" style="display: none;"></textarea>
         </form>
@@ -99,9 +103,9 @@
         </form>
 
         <div class="btn-group" style="margin-top: 16px;">
-            <button type="button" class="btn btn-primary" onclick="submitHouseholdDecision('confirm_household', '{{ current_household.id }}')">Confirm Household Suggestion</button>
-            <button type="button" class="btn btn-secondary" onclick="submitHouseholdDecision('reject_household', '{{ current_household.id }}')">Reject Household Suggestion</button>
-            <button type="button" class="btn btn-secondary" onclick="submitHouseholdDecision('defer', '{{ current_household.id }}')">Defer</button>
+            <button type="button" class="btn btn-primary" onclick="submitHouseholdDecision('confirm_household', '{{ current_household.id }}'); hideNotesWarning();">Confirm Household Suggestion</button>
+            <button type="button" class="btn btn-secondary" onclick="submitHouseholdDecision('reject_household', '{{ current_household.id }}'); hideNotesWarning();">Reject Household Suggestion</button>
+            <button type="button" class="btn btn-secondary" onclick="submitHouseholdDecision('defer', '{{ current_household.id }}'); showNotesWarning();">Defer</button>
         </div>
     </div>
 
@@ -121,8 +125,16 @@
 
 <!-- Navigation -->
 <div style="margin-top: 24px; display: flex; gap: 12px;">
-    <button class="btn btn-secondary" {% if current_household_index <= 1 %}disabled{% endif %}>← Previous Household</button>
-    <button class="btn btn-secondary" {% if current_household_index >= total_households %}disabled{% endif %}>Next Household →</button>
+    {% if current_household_index > 1 %}
+        <a href="/imports/{{ batch.id }}/households?index={{ current_household_index - 2 }}" class="btn btn-secondary" style="text-decoration: none;">← Previous Household</a>
+    {% else %}
+        <button class="btn btn-secondary" disabled>← Previous Household</button>
+    {% endif %}
+    {% if current_household_index < total_households %}
+        <a href="/imports/{{ batch.id }}/households?index={{ current_household_index }}" class="btn btn-secondary" style="text-decoration: none;">Next Household →</a>
+    {% else %}
+        <button class="btn btn-secondary" disabled>Next Household →</button>
+    {% endif %}
     <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
 </div>
 
@@ -148,6 +160,20 @@ function submitHouseholdDecision(decisionType, householdId) {
             notesInput.value = notes;
         }
         form.submit();
+    }
+}
+
+function showNotesWarning() {
+    const warningElement = document.getElementById('notes-warning-defer');
+    if (warningElement) {
+        warningElement.style.display = 'block';
+    }
+}
+
+function hideNotesWarning() {
+    const warningElement = document.getElementById('notes-warning-defer');
+    if (warningElement) {
+        warningElement.style.display = 'none';
     }
 }
 </script>

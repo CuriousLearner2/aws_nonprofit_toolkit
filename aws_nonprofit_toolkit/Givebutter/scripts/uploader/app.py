@@ -1351,7 +1351,7 @@ def record_duplicate_decision(import_id, review_item_id):
 
 @app.route('/imports/<import_id>/households/<int:review_item_id>/decision', methods=['POST'])
 def record_household_decision(import_id, review_item_id):
-    """Record a reviewer's household decision."""
+    """Record a reviewer's household decision and redirect to next unresolved household."""
     from scripts.householder import household_decision_service
 
     decision = request.form.get('decision', '').strip()
@@ -1367,7 +1367,20 @@ def record_household_decision(import_id, review_item_id):
             reviewer=reviewer,
         )
         logger.info(f"Household decision recorded: {result.decision} for item {review_item_id}")
-        return redirect(f'/imports/{import_id}/households')
+
+        # Find next unresolved household for redirect
+        next_index = household_decision_service.get_next_unresolved_household_index(
+            import_id=import_id,
+            current_review_item_id=review_item_id,
+        )
+
+        if next_index is not None:
+            # Redirect to next unresolved household
+            return redirect(f'/imports/{import_id}/households?index={next_index}')
+        else:
+            # All households resolved, redirect to exports page
+            return redirect(f'/imports/{import_id}/exports')
+
     except ValueError as e:
         logger.warning(f"Validation error recording household decision: {str(e)}")
         return jsonify({'error': str(e)}), 400
@@ -1377,8 +1390,13 @@ def record_household_decision(import_id, review_item_id):
 
 @app.route('/imports/<import_id>/households')
 def import_households(import_id):
-    """Household grouping confirmation."""
-    data = households_service.get_households_review(import_id)
+    """Household grouping confirmation with optional index-based navigation."""
+    # Get optional index parameter from query string, default to 0
+    index = request.args.get('index', default=0, type=int)
+    # Ensure index is non-negative (Flask type=int can be negative)
+    index = max(0, index)
+
+    data = households_service.get_households_review(import_id, index=index)
     return render_template('imports/households.html', **data)
 
 @app.route('/imports/<import_id>/audit')

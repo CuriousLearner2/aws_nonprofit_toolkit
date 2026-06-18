@@ -273,3 +273,147 @@ class TestHouseholdsRouteDataFidelity:
         response = client.get('/imports/IMP-2025-0101-A/households')
         html = response.get_data(as_text=True)
         assert '98%' in html or '98' in html
+
+
+class TestHouseholdsRouteNotesWarning:
+    """Tests for notes warning on defer decision."""
+
+    def test_notes_warning_element_present_in_page(self, client):
+        """Notes warning element is present in HTML."""
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.get_data(as_text=True)
+        assert 'notes-warning-defer' in html
+
+    def test_notes_warning_initially_hidden(self, client):
+        """Notes warning is initially hidden (display: none)."""
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.get_data(as_text=True)
+        # Should have the warning element with display: none
+        assert 'style="display: none;' in html or 'display: none' in html
+
+    def test_notes_warning_has_helpful_text(self, client):
+        """Notes warning includes helpful message for defer decision."""
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.get_data(as_text=True)
+        # Warning should include message about notes
+        assert 'Notes may help explain' in html or 'deferred' in html.lower()
+
+    def test_defer_button_onclick_includes_show_warning(self, client):
+        """Defer button onclick includes showNotesWarning() call."""
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.get_data(as_text=True)
+        # Defer button should call showNotesWarning
+        assert 'showNotesWarning()' in html
+
+    def test_confirm_button_onclick_includes_hide_warning(self, client):
+        """Confirm button onclick includes hideNotesWarning() call."""
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.get_data(as_text=True)
+        # Confirm button should call hideNotesWarning
+        assert 'hideNotesWarning()' in html
+
+    def test_reject_button_onclick_includes_hide_warning(self, client):
+        """Reject button onclick includes hideNotesWarning() call."""
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.get_data(as_text=True)
+        # Reject button should call hideNotesWarning
+        assert 'hideNotesWarning()' in html
+
+    def test_show_notes_warning_function_defined(self, client):
+        """JavaScript function showNotesWarning() is defined."""
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.get_data(as_text=True)
+        assert 'function showNotesWarning()' in html
+
+    def test_hide_notes_warning_function_defined(self, client):
+        """JavaScript function hideNotesWarning() is defined."""
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.get_data(as_text=True)
+        assert 'function hideNotesWarning()' in html
+
+
+class TestHouseholdsRouteIndexNavigation:
+    """Tests for index-based navigation of households."""
+
+    def test_index_zero_shows_first_household(self, client):
+        """GET /imports/<id>/households?index=0 shows first household (Smith)."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=0')
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert 'Smith Family' in html
+        assert 'HH-001' in html
+
+    def test_index_one_shows_second_household(self, client):
+        """GET /imports/<id>/households?index=1 shows second household (Williams)."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=1')
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert 'Williams Family' in html
+        assert 'HH-002' in html
+
+    def test_index_two_shows_third_household(self, client):
+        """GET /imports/<id>/households?index=2 shows third household (Johnson)."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=2')
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert 'Johnson Household' in html
+        assert 'HH-003' in html
+
+    def test_index_four_shows_fifth_household(self, client):
+        """GET /imports/<id>/households?index=4 shows fifth household (Brown)."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=4')
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert 'Brown Household' in html
+        assert 'HH-005' in html
+
+    def test_index_too_high_clamps_to_last(self, client):
+        """GET /imports/<id>/households?index=999 clamps to last household."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=999')
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        # Should show last household (Brown at index 4)
+        assert 'Brown Household' in html
+        assert 'HH-005' in html
+
+    def test_index_one_shows_correct_counter(self, client):
+        """GET /imports/<id>/households?index=1 shows counter '2 of 5'."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=1')
+        html = response.get_data(as_text=True)
+        # Should show "Suggestion 2 of 5"
+        assert '2' in html and '5' in html
+
+    def test_previous_link_at_first_household_disabled(self, client):
+        """GET /imports/<id>/households?index=0 shows disabled Previous button."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=0')
+        html = response.get_data(as_text=True)
+        # Previous button should be disabled (not an <a> tag)
+        assert 'disabled' in html
+
+    def test_previous_link_at_second_household_enabled(self, client):
+        """GET /imports/<id>/households?index=1 shows enabled Previous link."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=1')
+        html = response.get_data(as_text=True)
+        # Previous link should point to index=0
+        assert 'index=0' in html
+
+    def test_next_link_at_last_household_disabled(self, client):
+        """GET /imports/<id>/households?index=4 shows disabled Next button."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=4')
+        html = response.get_data(as_text=True)
+        # Next button should be disabled (not an <a> tag)
+        assert 'disabled' in html
+
+    def test_next_link_at_first_household_enabled(self, client):
+        """GET /imports/<id>/households?index=0 shows enabled Next link."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=0')
+        html = response.get_data(as_text=True)
+        # Next link should point to index=1
+        assert 'index=1' in html
+
+    def test_next_link_at_third_household_enabled(self, client):
+        """GET /imports/<id>/households?index=2 shows enabled Next link to index=3."""
+        response = client.get('/imports/IMP-2025-0101-A/households?index=2')
+        html = response.get_data(as_text=True)
+        # Next link should point to index=3
+        assert 'index=3' in html

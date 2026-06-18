@@ -197,7 +197,7 @@ class FixtureImportRepository:
         )
 
     @staticmethod
-    def get_households(import_id: str) -> HouseholdPageViewModel:
+    def get_households(import_id: str, index: int = 0) -> HouseholdPageViewModel:
         """
         Return households review page data as HouseholdPageViewModel.
 
@@ -206,13 +206,22 @@ class FixtureImportRepository:
 
         Args:
             import_id: Import ID (unused for fixture data, preserved for API consistency)
+            index: Zero-based index of household to display. Clamped to valid range.
 
         Returns:
             HouseholdPageViewModel with batch, current household, and navigation state.
         """
-        # Get first household or create empty one if none available
+        total = len(HOUSEHOLD_SUGGESTIONS)
+
+        # Clamp index to valid range
+        if total == 0:
+            clamped_index = 0
+        else:
+            clamped_index = max(0, min(index, total - 1))
+
+        # Get household at clamped index or create empty one if none available
         current_household_data = (
-            HOUSEHOLD_SUGGESTIONS[0] if HOUSEHOLD_SUGGESTIONS else None
+            HOUSEHOLD_SUGGESTIONS[clamped_index] if clamped_index < total else None
         )
 
         if not current_household_data:
@@ -244,8 +253,8 @@ class FixtureImportRepository:
             filename=IMPORT_BATCH['filename'],
             progress=IMPORT_BATCH['progress'],
             current_household=current_household,
-            current_household_index=1,
-            total_households=len(HOUSEHOLD_SUGGESTIONS),
+            current_household_index=clamped_index + 1,  # 1-based for display
+            total_households=total,
         )
 
     @staticmethod

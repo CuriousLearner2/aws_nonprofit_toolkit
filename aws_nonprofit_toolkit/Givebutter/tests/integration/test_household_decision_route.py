@@ -49,6 +49,9 @@ def flask_client_with_db(temp_db, monkeypatch):
 
     monkeypatch.setattr(household_decision_service, '_get_household_decision_writer', patched_get_writer)
 
+    # Also set environment variable for get_next_unresolved_household_index
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
     # Seed database with test data
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -391,3 +394,132 @@ class TestHouseholdDecisionRoute:
         assert len(decisions) == 2
         assert decisions[-1].decision == 'reject_household'
         session.close()
+
+
+class TestHouseholdDecisionRedirect:
+    """Test redirect behavior after household decision."""
+
+    def test_redirect_to_next_unresolved_household(self, flask_client_with_db):
+        """Test that decision redirects to next unresolved household."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Query all households (fixture has 1)
+        all_households = session.query(ReviewItem).filter(
+            ReviewItem.batch_id == 'IMP-2025-0101-A',
+            ReviewItem.item_type == 'household'
+        ).order_by(ReviewItem.created_at.asc()).all()
+
+        first_hh_id = all_households[0].id if all_households else None
+
+        # Create 3 additional households
+        for i in range(3):
+            hh = ReviewItem(
+                batch_id='IMP-2025-0101-A',
+                item_type='household',
+                status='pending',
+                payload_json={
+                    'id': f'HH-{i+2:03d}',
+                    'suggested_name': f'Household {i+2}',
+                }
+            )
+            session.add(hh)
+
+        session.commit()
+        session.close()
+
+        # Make decision on first household
+        # Should redirect to second household (index=1)
+        if first_hh_id:
+            response = client.post(
+                f'/imports/IMP-2025-0101-A/households/{first_hh_id}/decision',
+                data={'decision': 'confirm_household'},
+                follow_redirects=False,
+            )
+            # Should redirect to next household (index=1)
+            assert response.status_code == 302
+            assert 'index=1' in response.location
+
+    def test_redirect_to_exports_when_all_resolved(self, flask_client_with_db):
+        """Test that decision redirects to exports when all households resolved."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Get the one household from fixture
+        hh_item = session.query(ReviewItem).filter(
+            ReviewItem.item_type == 'household'
+        ).first()
+        item_id = hh_item.id
+        session.close()
+
+        # Make decision on the only household
+        response = client.post(
+            f'/imports/IMP-2025-0101-A/households/{item_id}/decision',
+            data={'decision': 'confirm_household'},
+            follow_redirects=False,
+        )
+
+        # Should redirect to exports page since no more households
+        assert response.status_code == 302
+        assert '/exports' in response.location
+
+    def test_redirect_skips_already_decided_households(self, flask_client_with_db):
+        """Test that redirect skips already-decided households."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Query all households first (fixture has 1)
+        all_households = session.query(ReviewItem).filter(
+            ReviewItem.batch_id == 'IMP-2025-0101-A',
+            ReviewItem.item_type == 'household'
+        ).order_by(ReviewItem.created_at.asc()).all()
+
+        fixture_hh_id = all_households[0].id if all_households else None
+
+        # Create 2 additional households
+        for i in range(2):
+            hh = ReviewItem(
+                batch_id='IMP-2025-0101-A',
+                item_type='household',
+                status='pending',
+                payload_json={
+                    'id': f'HH-{i+2:03d}',
+                    'suggested_name': f'Household {i+2}',
+                }
+            )
+            session.add(hh)
+
+        session.commit()
+
+        # Query all households again to get updated list
+        all_households = session.query(ReviewItem).filter(
+            ReviewItem.batch_id == 'IMP-2025-0101-A',
+            ReviewItem.item_type == 'household'
+        ).order_by(ReviewItem.created_at.asc()).all()
+
+        session.close()
+
+        # Household IDs in order: [fixture, new1, new2]
+        # Decide fixture household -> should go to new1 (index=1)
+        response1 = client.post(
+            f'/imports/IMP-2025-0101-A/households/{all_households[0].id}/decision',
+            data={'decision': 'confirm_household'},
+            follow_redirects=False,
+        )
+        assert 'index=1' in response1.location
+
+        # Decide new1 household -> should go to new2 (index=2)
+        response2 = client.post(
+            f'/imports/IMP-2025-0101-A/households/{all_households[1].id}/decision',
+            data={'decision': 'confirm_household'},
+            follow_redirects=False,
+        )
+        assert 'index=2' in response2.location
+
+        # Decide new2 household -> no more unresolved, redirect to exports
+        response3 = client.post(
+            f'/imports/IMP-2025-0101-A/households/{all_households[2].id}/decision',
+            data={'decision': 'confirm_household'},
+            follow_redirects=False,
+        )
+        assert '/exports' in response3.location

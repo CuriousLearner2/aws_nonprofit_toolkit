@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, Mapping
 from .repository_provider import get_import_repository
 
 
-def get_households_review(import_id: str, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+def get_households_review(import_id: str, index: int = 0, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """
     Get households review page data for a specific import.
 
@@ -21,6 +21,8 @@ def get_households_review(import_id: str, config: Optional[Mapping[str, Any]] = 
 
     Args:
         import_id: Import ID to fetch households data for
+        index: Zero-based index of household to display. Clamped to valid range.
+               Defaults to 0 (first household).
         config: Optional configuration mapping for repository selection.
                If None, defaults to FixtureImportRepository (fixture-backed).
                Can specify {'HOUSEHOLDER_REPOSITORY': 'database', 'GIVEBUTTER_DATABASE_URL': <url>}
@@ -34,5 +36,5 @@ def get_households_review(import_id: str, config: Optional[Mapping[str, Any]] = 
         ValueError: If database mode requested without required configuration.
     """
     repository = get_import_repository(config)
-    households_vm = repository.get_households(import_id)
+    households_vm = repository.get_households(import_id, index=index)
     return households_vm.to_template_dict()

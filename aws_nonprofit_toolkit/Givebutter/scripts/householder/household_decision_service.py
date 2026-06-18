@@ -133,3 +133,81 @@ def get_effective_status(review_item_id: int, database_url: str = 'sqlite:///./g
         return status_map.get(latest.decision, 'pending')
     finally:
         session.close()
+
+
+def get_next_unresolved_household_index(
+    import_id: str,
+    current_review_item_id: int,
+    database_url: str = 'sqlite:///./givebutter.db'
+) -> Optional[int]:
+    """
+    Find the index of the next unresolved (pending) household after current_review_item_id.
+
+    Used for post-decision redirect. After user decides a household, we find the next
+    one that has no decision (effective status is 'pending').
+
+    Args:
+        import_id: Import batch ID
+        current_review_item_id: ReviewItem.id of household just decided
+        database_url: Database connection URL
+
+    Returns:
+        Zero-based index of next unresolved household, or None if all are resolved.
+    """
+    import os
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from .database_models import ReviewItem, ReviewDecision
+
+    # Use environment variable if not explicitly provided
+    if database_url == 'sqlite:///./givebutter.db':
+        env_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
+        if env_url:
+            database_url = env_url
+
+    engine = create_engine(database_url, echo=False)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+
+    try:
+        # Get all household items ordered by creation
+        household_items = (
+            session.query(ReviewItem)
+            .filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'household'
+            )
+            .order_by(ReviewItem.created_at.asc())
+            .all()
+        )
+
+        # Find index of current item
+        current_index = None
+        for i, item in enumerate(household_items):
+            if item.id == current_review_item_id:
+                current_index = i
+                break
+
+        if current_index is None:
+            # Current item not found, return None
+            return None
+
+        # Search for next unresolved (pending) household after current_index
+        for i in range(current_index + 1, len(household_items)):
+            item = household_items[i]
+            # Check if this item has any decision
+            latest_decision = (
+                session.query(ReviewDecision)
+                .filter_by(review_item_id=item.id)
+                .order_by(ReviewDecision.created_at.desc())
+                .first()
+            )
+            # If no decision, this is unresolved (pending)
+            if not latest_decision:
+                return i
+
+        # No unresolved household found after current
+        return None
+
+    finally:
+        session.close()

@@ -481,7 +481,7 @@ class DatabaseImportRepository:
         finally:
             session.close()
 
-    def get_households(self, import_id: str) -> HouseholdPageViewModel:
+    def get_households(self, import_id: str, index: int = 0) -> HouseholdPageViewModel:
         """
         Return household review page data as HouseholdPageViewModel.
 
@@ -491,6 +491,7 @@ class DatabaseImportRepository:
 
         Args:
             import_id: Import batch ID to retrieve household data for.
+            index: Zero-based index of household to display. Clamped to valid range.
 
         Returns:
             HouseholdPageViewModel with batch metadata, current household, and index.
@@ -537,18 +538,25 @@ class DatabaseImportRepository:
                 progress = 0
 
             # Query all household items, ordered by creation
+            # Include all households (pending and decided), not just pending.
+            # Effective status is derived from latest ReviewDecision.
             household_items = session.query(ReviewItem).filter(
                 ReviewItem.batch_id == import_id,
-                ReviewItem.item_type == 'household',
-                ReviewItem.status == 'pending'
+                ReviewItem.item_type == 'household'
             ).order_by(ReviewItem.created_at.asc()).all()
 
             total_households = len(household_items)
 
-            # Get the first household as current household
-            if household_items:
-                first_item = household_items[0]
-                payload = first_item.payload_json or {}
+            # Clamp index to valid range
+            if total_households == 0:
+                clamped_index = 0
+            else:
+                clamped_index = max(0, min(index, total_households - 1))
+
+            # Get the household at clamped index as current household
+            if household_items and clamped_index < len(household_items):
+                current_item = household_items[clamped_index]
+                payload = current_item.payload_json or {}
 
                 # Extract proposed_members and convert to tuple
                 proposed_members = payload.get('proposed_members', [])
@@ -568,7 +576,7 @@ class DatabaseImportRepository:
                 # Derive effective status from latest ReviewDecision
                 latest_decision = (
                     session.query(ReviewDecision)
-                    .filter_by(review_item_id=first_item.id)
+                    .filter_by(review_item_id=current_item.id)
                     .order_by(ReviewDecision.created_at.desc())
                     .first()
                 )
@@ -582,7 +590,7 @@ class DatabaseImportRepository:
                     effective_status = status_map.get(latest_decision.decision, 'pending')
 
                 current_household = HouseholdRow(
-                    id=payload.get('id', str(first_item.id)),
+                    id=payload.get('id', str(current_item.id)),
                     suggested_name=payload.get('suggested_name', ''),
                     address=payload.get('address', ''),
                     confidence=payload.get('confidence', ''),
@@ -611,7 +619,7 @@ class DatabaseImportRepository:
                 filename=batch.filename,
                 progress=progress,
                 current_household=current_household,
-                current_household_index=1,
+                current_household_index=clamped_index + 1,  # 1-based for display
                 total_households=total_households,
             )
 

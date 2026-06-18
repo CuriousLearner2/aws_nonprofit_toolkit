@@ -192,6 +192,45 @@ class TestFixtureImportRepositoryHouseholds:
         result = FixtureImportRepository.get_households("IMP-2025-0101-A")
         assert isinstance(result, HouseholdPageViewModel)
 
+    def test_get_households_with_index_zero_returns_first(self):
+        """get_households(index=0) returns first household."""
+        result = FixtureImportRepository.get_households("IMP-2025-0101-A", index=0)
+        assert result.current_household_index == 1
+        assert result.current_household.id == "HH-001"
+        assert result.current_household.suggested_name == "Smith Family"
+
+    def test_get_households_with_index_one_returns_second(self):
+        """get_households(index=1) returns second household."""
+        result = FixtureImportRepository.get_households("IMP-2025-0101-A", index=1)
+        assert result.current_household_index == 2
+        assert result.current_household.id == "HH-002"
+        assert result.current_household.suggested_name == "Williams Family"
+
+    def test_get_households_with_index_four_returns_fifth(self):
+        """get_households(index=4) returns fifth household."""
+        result = FixtureImportRepository.get_households("IMP-2025-0101-A", index=4)
+        assert result.current_household_index == 5
+        assert result.current_household.id == "HH-005"
+        assert result.current_household.suggested_name == "Brown Household"
+
+    def test_get_households_with_index_too_high_clamps_to_last(self):
+        """get_households(index=999) clamps to last household."""
+        result = FixtureImportRepository.get_households("IMP-2025-0101-A", index=999)
+        assert result.current_household_index == result.total_households
+        assert result.current_household.id == "HH-005"
+
+    def test_get_households_with_negative_index_clamps_to_first(self):
+        """get_households(index=-5) clamps to first household."""
+        result = FixtureImportRepository.get_households("IMP-2025-0101-A", index=-5)
+        assert result.current_household_index == 1
+        assert result.current_household.id == "HH-001"
+
+    def test_get_households_total_count_unchanged_by_index(self):
+        """total_households is same regardless of index."""
+        result_0 = FixtureImportRepository.get_households("IMP-2025-0101-A", index=0)
+        result_2 = FixtureImportRepository.get_households("IMP-2025-0101-A", index=2)
+        assert result_0.total_households == result_2.total_households
+
     def test_get_households_batch_metadata(self):
         """get_households() includes correct batch metadata."""
         result = FixtureImportRepository.get_households("IMP-2025-0101-A")
@@ -255,6 +294,35 @@ class TestHouseholdsService:
         """get_households_review() returns dictionary."""
         result = households_service.get_households_review("IMP-2025-0101-A")
         assert isinstance(result, dict)
+
+    def test_get_households_review_with_index_zero(self):
+        """get_households_review(index=0) returns first household."""
+        result = households_service.get_households_review("IMP-2025-0101-A", index=0)
+        assert result["current_household_index"] == 1
+        assert result["current_household"]["id"] == "HH-001"
+
+    def test_get_households_review_with_index_one(self):
+        """get_households_review(index=1) returns second household."""
+        result = households_service.get_households_review("IMP-2025-0101-A", index=1)
+        assert result["current_household_index"] == 2
+        assert result["current_household"]["id"] == "HH-002"
+
+    def test_get_households_review_with_index_two(self):
+        """get_households_review(index=2) returns third household."""
+        result = households_service.get_households_review("IMP-2025-0101-A", index=2)
+        assert result["current_household_index"] == 3
+        assert result["current_household"]["id"] == "HH-003"
+
+    def test_get_households_review_with_index_clamping_high(self):
+        """get_households_review(index=999) clamps to last household."""
+        result = households_service.get_households_review("IMP-2025-0101-A", index=999)
+        assert result["current_household_index"] == result["total_households"]
+
+    def test_get_households_review_total_consistent_across_indices(self):
+        """total_households is same for all indices."""
+        result_0 = households_service.get_households_review("IMP-2025-0101-A", index=0)
+        result_2 = households_service.get_households_review("IMP-2025-0101-A", index=2)
+        assert result_0["total_households"] == result_2["total_households"]
 
     def test_get_households_review_has_batch_key(self):
         """get_households_review() includes 'batch' key."""
