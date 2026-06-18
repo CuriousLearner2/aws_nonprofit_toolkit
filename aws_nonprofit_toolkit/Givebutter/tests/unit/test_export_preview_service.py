@@ -703,3 +703,159 @@ class TestExportPreviewMalformedPayloads:
 
         # Original value should be preserved
         assert row.email == 'john@example.com'
+
+
+class TestExportPreviewDeferredHouseholds:
+    """Test deferred household counting and tracking."""
+
+    def test_deferred_household_count_zero_if_all_confirmed(self, seeded_batch, temp_db):
+        """Test that deferred_household_count is 0 when all household decisions are confirmed."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        # Create household review item
+        hh_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='household',
+            payload_json={'suggested_label': 'Smith Family', 'basis': 'shared_address'},
+        )
+        session.add(hh_item)
+        session.flush()
+
+        # Create confirm_household decision
+        decision = ReviewDecision(
+            batch_id=batch_id,
+            review_item_id=hh_item.id,
+            decision='confirm_household',
+            reviewed_values={'candidate_household_id': 'HH-001', 'candidate_contact_ids': [contact_id]},
+        )
+        session.add(decision)
+        session.commit()
+        session.close()
+
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+
+        assert result.deferred_household_count == 0
+
+    def test_deferred_household_count_matches_defer_decisions(self, seeded_batch, temp_db):
+        """Test that deferred_household_count counts household items with defer decisions."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        # Create household review item
+        hh_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='household',
+            payload_json={'suggested_label': 'Smith Family', 'basis': 'shared_address'},
+        )
+        session.add(hh_item)
+        session.flush()
+
+        # Create defer decision
+        decision = ReviewDecision(
+            batch_id=batch_id,
+            review_item_id=hh_item.id,
+            decision='defer',
+        )
+        session.add(decision)
+        session.commit()
+        session.close()
+
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+
+        assert result.deferred_household_count == 1
+
+    def test_deferred_household_count_with_no_decisions(self, seeded_batch, temp_db):
+        """Test that household items with no decisions count as deferred."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        # Create household review item without a decision
+        hh_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='household',
+            payload_json={'suggested_label': 'Smith Family', 'basis': 'shared_address'},
+        )
+        session.add(hh_item)
+        session.commit()
+        session.close()
+
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+
+        assert result.deferred_household_count == 1
+
+    def test_deferred_household_count_with_mixed_decisions(self, seeded_batch, temp_db):
+        """Test deferred count with mixed household decisions (confirmed, rejected, deferred)."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        # Create first household item with confirm decision (counts as 0)
+        hh_item1 = ReviewItem(
+            batch_id=batch_id,
+            item_type='household',
+            payload_json={'suggested_label': 'Smith Family', 'basis': 'shared_address'},
+        )
+        session.add(hh_item1)
+        session.flush()
+
+        decision1 = ReviewDecision(
+            batch_id=batch_id,
+            review_item_id=hh_item1.id,
+            decision='confirm_household',
+            reviewed_values={'candidate_household_id': 'HH-001', 'candidate_contact_ids': [contact_id]},
+        )
+        session.add(decision1)
+
+        # Create second household item with reject decision (counts as 0)
+        hh_item2 = ReviewItem(
+            batch_id=batch_id,
+            item_type='household',
+            payload_json={'suggested_label': 'Other Family', 'basis': 'shared_name'},
+        )
+        session.add(hh_item2)
+        session.flush()
+
+        decision2 = ReviewDecision(
+            batch_id=batch_id,
+            review_item_id=hh_item2.id,
+            decision='reject_household',
+        )
+        session.add(decision2)
+
+        # Create third household item with defer decision (counts as 1)
+        hh_item3 = ReviewItem(
+            batch_id=batch_id,
+            item_type='household',
+            payload_json={'suggested_label': 'Third Family', 'basis': 'shared_phone'},
+        )
+        session.add(hh_item3)
+        session.flush()
+
+        decision3 = ReviewDecision(
+            batch_id=batch_id,
+            review_item_id=hh_item3.id,
+            decision='defer',
+        )
+        session.add(decision3)
+
+        # Create fourth household item with no decision (counts as 1)
+        hh_item4 = ReviewItem(
+            batch_id=batch_id,
+            item_type='household',
+            payload_json={'suggested_label': 'Fourth Family', 'basis': 'shared_email'},
+        )
+        session.add(hh_item4)
+        session.commit()
+        session.close()
+
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+
+        assert result.deferred_household_count == 2  # One defer decision + one no decision

@@ -38,6 +38,14 @@ class ExportBlockedError(ExportError):
         super().__init__(self.message)
 
 
+class ExportUnresolvedHouseholdWarningError(ExportError):
+    """Export requires confirmation for unresolved households."""
+    def __init__(self, deferred_count: int):
+        self.deferred_count = deferred_count
+        self.message = f"Export has {deferred_count} unresolved household(s) — confirmation required"
+        super().__init__(self.message)
+
+
 class ExportIOError(ExportError):
     """File I/O error during export generation."""
     pass
@@ -241,6 +249,7 @@ def generate_export_file(
     output_dir: str,
     reviewer: Optional[str] = None,
     config: Optional[Mapping[str, Any]] = None,
+    confirmed_unresolved_households: bool = False,
 ) -> ExportFileResult:
     """
     Generate CSV export file from derived preview.
@@ -253,6 +262,7 @@ def generate_export_file(
         output_dir: Directory to write export file (must be configured, not user-provided)
         reviewer: Optional reviewer identifier for audit log
         config: Optional configuration for database selection
+        confirmed_unresolved_households: Whether user confirmed unresolved households
 
     Returns:
         ExportFileResult with file metadata and audit log reference
@@ -260,6 +270,7 @@ def generate_export_file(
     Raises:
         ValueError: If batch not found or database config invalid
         ExportBlockedError: If blockers exist in preview
+        ExportUnresolvedHouseholdWarningError: If unresolved households exist and not confirmed
         ExportIOError: For filesystem or other errors
     """
     if not config:
@@ -293,6 +304,10 @@ def generate_export_file(
             blockers=list(preview.blockers),
             blocked_count=preview.blocked_count
         )
+
+    # Check for unresolved households
+    if preview.deferred_household_count > 0 and not confirmed_unresolved_households:
+        raise ExportUnresolvedHouseholdWarningError(preview.deferred_household_count)
 
     # Ensure output directory exists
     _ensure_output_dir(output_dir)

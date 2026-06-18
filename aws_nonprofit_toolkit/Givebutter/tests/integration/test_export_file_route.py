@@ -525,3 +525,115 @@ def test_failed_export_creates_no_csv_file(client, tmp_path):
         assert response.status_code == 500
         # Verify no files were written to export directory
         assert len(os.listdir(export_dir)) == 0
+
+
+# Unresolved Households Tests
+
+def test_export_blocked_by_unresolved_households_if_not_confirmed(client, tmp_path):
+    """POST /imports/<id>/exports/generate returns 400 if deferred households exist and not confirmed."""
+    from scripts.uploader.app import app as flask_app
+    from scripts.householder.export_file_service import ExportUnresolvedHouseholdWarningError
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    error = ExportUnresolvedHouseholdWarningError(deferred_count=2)
+
+    with patch('scripts.householder.export_file_service.generate_export_file', side_effect=error):
+        # POST without confirmation
+        response = client.post('/imports/IMP-TEST-001/exports/generate', data={
+            'confirmed_unresolved_households': 'false'
+        })
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data['status'] == 'warning'
+        assert data['action_required'] == 'confirm_unresolved_households'
+        assert data['deferred_household_count'] == 2
+
+
+def test_export_succeeds_with_unresolved_households_if_confirmed(client, sample_export_result, tmp_path):
+    """POST /imports/<id>/exports/generate succeeds if deferred households exist and confirmed."""
+    from scripts.uploader.app import app as flask_app
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    with patch('scripts.householder.export_file_service.generate_export_file', return_value=sample_export_result):
+        # POST with confirmation
+        response = client.post('/imports/IMP-TEST-001/exports/generate', data={
+            'confirmed_unresolved_households': 'true'
+        })
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['status'] == 'success'
+
+
+def test_export_passes_confirmation_parameter_to_service(client, sample_export_result, tmp_path):
+    """Route passes confirmed_unresolved_households parameter to service."""
+    from scripts.uploader.app import app as flask_app
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    with patch('scripts.householder.export_file_service.generate_export_file', return_value=sample_export_result) as mock_gen:
+        # POST with confirmation
+        response = client.post('/imports/IMP-TEST-001/exports/generate', data={
+            'confirmed_unresolved_households': 'true'
+        })
+
+        # Verify parameter was passed to service
+        mock_gen.assert_called_once()
+        call_kwargs = mock_gen.call_args[1]
+        assert 'confirmed_unresolved_households' in call_kwargs
+        assert call_kwargs['confirmed_unresolved_households'] is True
+
+
+def test_export_treats_missing_confirmation_as_false(client, tmp_path):
+    """Route treats missing confirmation parameter as false."""
+    from scripts.uploader.app import app as flask_app
+    from scripts.householder.export_file_service import ExportUnresolvedHouseholdWarningError
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    error = ExportUnresolvedHouseholdWarningError(deferred_count=1)
+
+    with patch('scripts.householder.export_file_service.generate_export_file', side_effect=error) as mock_gen:
+        # POST without any confirmation parameter
+        response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+        # Verify parameter was passed as False
+        mock_gen.assert_called_once()
+        call_kwargs = mock_gen.call_args[1]
+        assert 'confirmed_unresolved_households' in call_kwargs
+        assert call_kwargs['confirmed_unresolved_households'] is False
+
+
+def test_unresolved_household_warning_response_json_format(client, tmp_path):
+    """Unresolved household warning response has correct JSON format."""
+    from scripts.uploader.app import app as flask_app
+    from scripts.householder.export_file_service import ExportUnresolvedHouseholdWarningError
+
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    error = ExportUnresolvedHouseholdWarningError(deferred_count=3)
+
+    with patch('scripts.householder.export_file_service.generate_export_file', side_effect=error):
+        response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert 'status' in data
+        assert 'action_required' in data
+        assert 'warning' in data
+        assert 'deferred_household_count' in data
+        assert 'message' in data
+        assert data['deferred_household_count'] == 3

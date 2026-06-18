@@ -1444,6 +1444,9 @@ def generate_export(import_id):
         reviewer = request.headers.get('X-Reviewer-ID')
         output_dir = current_app.config.get('EXPORT_OUTPUT_DIR', '/tmp/givebutter/exports')
 
+        # Extract confirmation parameter
+        confirmed_unresolved_households = request.form.get('confirmed_unresolved_households', 'false').lower() == 'true'
+
         # Validate export directory is configured and writable
         if not output_dir:
             raise ValueError("Export directory is not configured. Set EXPORT_OUTPUT_DIR environment variable.")
@@ -1458,6 +1461,7 @@ def generate_export(import_id):
             import_id=import_id,
             output_dir=output_dir,
             reviewer=reviewer,
+            confirmed_unresolved_households=confirmed_unresolved_households,
         )
 
         logger.info(f"Export file generated: {import_id} -> {result.filename}")
@@ -1478,6 +1482,16 @@ def generate_export(import_id):
             "action": "Go to Validation Review",
             "blockers": e.blockers,
             "blocked_count": e.blocked_count
+        }), 400
+
+    except export_file_service.ExportUnresolvedHouseholdWarningError as e:
+        logger.warning(f"Export requires household confirmation for {import_id}: {e.message}")
+        return jsonify({
+            "status": "warning",
+            "action_required": "confirm_unresolved_households",
+            "warning": e.message,
+            "deferred_household_count": e.deferred_count,
+            "message": f"Please confirm you acknowledge {e.deferred_count} unresolved household(s) before exporting."
         }), 400
 
     except ValueError as e:

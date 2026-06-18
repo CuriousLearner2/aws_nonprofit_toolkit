@@ -83,13 +83,33 @@
             Generate a preview first to verify export readiness.
         {% endif %}
     </p>
+
+    <!-- Unresolved Households Warning and Confirmation -->
+    {% if preview_available and preview.deferred_household_count > 0 %}
+    <div style="background-color: #fef3c7; padding: 12px; border-radius: 3px; margin-bottom: 16px;">
+        <p style="font-size: 12px; color: #78350f; margin: 0 0 12px 0; font-weight: 600;">
+            ⚠️ {{ preview.deferred_household_count }} household(s) are unresolved
+        </p>
+        <label style="display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 13px; color: #78350f;">
+            <input
+                type="checkbox"
+                id="confirm-unresolved-households-checkbox"
+                style="margin-top: 3px; cursor: pointer;"
+                onchange="updateExportButtonState()"
+            />
+            <span>I confirm {{ preview.deferred_household_count }} household(s) are unresolved and will review/resolve them in a follow-up</span>
+        </label>
+    </div>
+    {% endif %}
+
     <button
         type="button"
         class="btn btn-primary"
         id="generate-export-btn"
         onclick="generateExportFile()"
         {% if preview_available and preview.blocked_count > 0 %}disabled{% endif %}
-        style="font-size: 16px; padding: 12px 24px; {% if preview_available and preview.blocked_count > 0 %}opacity: 0.6; cursor: not-allowed;{% endif %}"
+        {% if preview_available and preview.deferred_household_count > 0 %}disabled{% endif %}
+        style="font-size: 16px; padding: 12px 24px; {% if preview_available and preview.blocked_count > 0 %}opacity: 0.6; cursor: not-allowed;{% elif preview_available and preview.deferred_household_count > 0 %}opacity: 0.6; cursor: not-allowed;{% endif %}"
     >
         Generate CSV Export
     </button>
@@ -199,20 +219,40 @@ document.querySelectorAll('[data-action="download-export"]').forEach(link => {
     });
 });
 
+function updateExportButtonState() {
+    const btn = document.getElementById('generate-export-btn');
+    const checkbox = document.getElementById('confirm-unresolved-households-checkbox');
+    {% if preview_available and preview %}
+    const preview = {{ preview | tojson }};
+    {% else %}
+    const preview = null;
+    {% endif %}
+
+    if (preview && preview.deferred_household_count > 0) {
+        // If there are deferred households, button is enabled only if checkbox is checked
+        btn.disabled = !checkbox.checked;
+        btn.style.opacity = checkbox.checked ? '1' : '0.6';
+        btn.style.cursor = checkbox.checked ? 'pointer' : 'not-allowed';
+    }
+}
+
 function generateExportFile() {
     const btn = document.getElementById('generate-export-btn');
+    const checkbox = document.getElementById('confirm-unresolved-households-checkbox');
     const batchId = '{{ batch.id }}';
+    const confirmedUnresolved = checkbox && checkbox.checked ? 'true' : 'false';
 
     // Show loading state
     btn.disabled = true;
     const originalText = btn.textContent;
     btn.textContent = 'Generating...';
 
+    const formData = new FormData();
+    formData.append('confirmed_unresolved_households', confirmedUnresolved);
+
     fetch(`/imports/${batchId}/exports/generate`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        body: formData,
     })
     .then(r => r.json())
     .then(data => {
@@ -222,6 +262,10 @@ function generateExportFile() {
             showToast(`✓ Export generated: ${file.filename}`);
             // Refresh page to show generated file
             setTimeout(() => window.location.reload(), 1500);
+        } else if (data.status === 'warning' && data.action_required === 'confirm_unresolved_households') {
+            alert(`Please confirm: ${data.message}`);
+            btn.disabled = false;
+            btn.textContent = originalText;
         } else if (data.status === 'blocked') {
             const blockerList = data.blockers.join('\n  • ');
             alert(`Export blocked:\n  • ${blockerList}`);
@@ -239,5 +283,10 @@ function generateExportFile() {
         btn.textContent = originalText;
     });
 }
+
+// Initialize button state on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateExportButtonState();
+});
 </script>
 {% endblock %}

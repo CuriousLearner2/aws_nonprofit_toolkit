@@ -503,3 +503,113 @@ def test_generate_safe_filename_format():
     filename = _generate_safe_filename(import_id, timestamp)
 
     assert filename == "IMP-TEST-001_export_20260612_143022.csv"
+
+
+# Unresolved Households Tests
+
+def test_unresolved_household_warning_error_imported():
+    """ExportUnresolvedHouseholdWarningError is properly imported and accessible."""
+    from scripts.householder.export_file_service import ExportUnresolvedHouseholdWarningError
+
+    error = ExportUnresolvedHouseholdWarningError(deferred_count=3)
+    assert error.deferred_count == 3
+    assert "3 unresolved household(s)" in error.message
+
+
+@patch('scripts.householder.export_file_service.build_export_preview')
+def test_export_raises_if_unresolved_and_not_confirmed(mock_preview, temp_export_dir, sample_export_row):
+    """Export raises ExportUnresolvedHouseholdWarningError if deferred households exist and not confirmed."""
+    from scripts.householder.export_file_service import ExportUnresolvedHouseholdWarningError
+
+    # Mock preview with deferred households
+    preview = ExportPreviewResult(
+        import_id="IMP-TEST-001",
+        export_rows=(sample_export_row,),
+        blockers=(),
+        warnings=(),
+        row_count=1,
+        blocked_count=0,
+        warning_count=0,
+        is_export_ready=True,
+        derived_at=datetime.utcnow(),
+        deferred_household_count=2,
+    )
+    mock_preview.return_value = preview
+
+    with pytest.raises(ExportUnresolvedHouseholdWarningError) as exc_info:
+        generate_export_file(
+            import_id="IMP-TEST-001",
+            output_dir=temp_export_dir,
+            reviewer="test@example.com",
+            config={'GIVEBUTTER_DATABASE_URL': 'sqlite:///:memory:'},
+            confirmed_unresolved_households=False,
+        )
+
+    assert exc_info.value.deferred_count == 2
+
+
+@patch('scripts.householder.export_file_service.build_export_preview')
+@patch('scripts.householder.export_file_service._create_audit_record')
+def test_export_succeeds_if_unresolved_and_confirmed(mock_audit, mock_preview, temp_export_dir, sample_export_row):
+    """Export succeeds if deferred households exist and user confirms."""
+    # Mock preview with deferred households
+    preview = ExportPreviewResult(
+        import_id="IMP-TEST-001",
+        export_rows=(sample_export_row,),
+        blockers=(),
+        warnings=(),
+        row_count=1,
+        blocked_count=0,
+        warning_count=0,
+        is_export_ready=True,
+        derived_at=datetime.utcnow(),
+        deferred_household_count=2,
+    )
+    mock_preview.return_value = preview
+    mock_audit.return_value = 42
+
+    result = generate_export_file(
+        import_id="IMP-TEST-001",
+        output_dir=temp_export_dir,
+        reviewer="test@example.com",
+        config={'GIVEBUTTER_DATABASE_URL': 'sqlite:///:memory:'},
+        confirmed_unresolved_households=True,
+    )
+
+    assert result.import_id == "IMP-TEST-001"
+    assert result.row_count == 1
+    assert os.path.exists(result.file_path)
+
+
+@patch('scripts.householder.export_file_service.build_export_preview')
+@patch('scripts.householder.export_file_service._create_audit_record')
+def test_export_succeeds_if_resolved_regardless_of_confirmation(mock_audit, mock_preview, temp_export_dir, sample_export_row):
+    """Export succeeds if all households are resolved, regardless of confirmation param."""
+    # Mock preview with NO deferred households
+    preview = ExportPreviewResult(
+        import_id="IMP-TEST-001",
+        export_rows=(sample_export_row,),
+        blockers=(),
+        warnings=(),
+        row_count=1,
+        blocked_count=0,
+        warning_count=0,
+        is_export_ready=True,
+        derived_at=datetime.utcnow(),
+        deferred_household_count=0,
+    )
+    mock_preview.return_value = preview
+    mock_audit.return_value = 42
+
+    # Should succeed even with confirmed_unresolved_households=False
+    result = generate_export_file(
+        import_id="IMP-TEST-001",
+        output_dir=temp_export_dir,
+        reviewer="test@example.com",
+        config={'GIVEBUTTER_DATABASE_URL': 'sqlite:///:memory:'},
+        confirmed_unresolved_households=False,
+    )
+
+    assert result.import_id == "IMP-TEST-001"
+    assert result.row_count == 1
+    assert os.path.exists(result.file_path)

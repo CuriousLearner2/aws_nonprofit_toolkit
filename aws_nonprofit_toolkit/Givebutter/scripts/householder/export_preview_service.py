@@ -134,6 +134,19 @@ def build_export_preview(
                 elif decision.created_at > household_decisions[decision.review_item_id].created_at:
                     household_decisions[decision.review_item_id] = decision
 
+        # Count deferred households
+        deferred_household_count = 0
+        for hh_item in session.query(ReviewItem).filter(
+            ReviewItem.batch_id == import_id,
+            ReviewItem.item_type == 'household'
+        ).all():
+            hh_decision = household_decisions.get(hh_item.id)
+            if hh_decision is None:
+                # No decision - counts as unresolved
+                deferred_household_count += 1
+            elif hh_decision.decision == 'defer':
+                deferred_household_count += 1
+
         # Build preview rows
         rows = []
         blockers = []
@@ -370,6 +383,7 @@ def build_export_preview(
             warning_count=warning_count,
             is_export_ready=is_export_ready,
             derived_at=datetime.utcnow(),
+            deferred_household_count=deferred_household_count,
         )
 
         return result
