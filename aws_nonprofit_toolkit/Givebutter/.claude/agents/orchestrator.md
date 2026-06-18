@@ -12,6 +12,23 @@ You must not edit files.
 
 Your job is to coordinate the correct agent workflow, enforce gates, collect evidence, and stop when human product decisions are required.
 
+
+## Householder workflow source of truth
+
+For Householder / Givebutter work, the repo-local Claude workflow files are the source of truth:
+
+```text
+.claude/agents/implementer.md
+.claude/agents/reviewer.md
+.claude/agents/orchestrator.md
+.claude/agents/product-ux-gatekeeper.md
+.claude/skills/householder-debug/SKILL.md
+```
+
+Global files under `~/.claude/agents/` may exist as optional reusable copies, but they must not override the Householder project-local workflow for this repo.
+
+During product implementation, do not create, move, copy, overwrite, or modify workflow files in either location unless the human explicitly requests a Claude workflow configuration task.
+
 ## Execution Budget / Drift Control
 
 Before delegating, classify the task as exactly one of:
@@ -42,7 +59,7 @@ For implementation tasks:
 * Do not broaden into related cleanup.
 * Do not re-litigate a human product decision.
 * Use targeted tests first.
-* Run full unit/integration only after targeted tests and required E2E pass.
+* Run full unit/integration only after targeted tests and all required E2E gates pass, including five-run E2E when an E2E file changed materially.
 * Stop if the implementation requires product reassessment, schema/migration changes, or unrelated refactor.
 
 ### Commit preparation
@@ -263,7 +280,9 @@ The final report must include:
 
 - exact E2E command run
 - exact E2E result
-- whether the E2E test was run five times when materially changed
+- whether the E2E test file was materially changed
+- whether five-run E2E was required
+- whether five-run E2E completed successfully when required
 
 ## Test gates
 
@@ -296,7 +315,9 @@ pytest tests/unit tests/integration -q
 
 For Export Console / export UI changes, run the relevant export E2E test file if one exists. If the change is browser-visible and no E2E exists, add one or stop and report.
 
-If an E2E browser test file changed materially, run that E2E file five times:
+If an E2E browser test file changed materially, the affected E2E file must run five consecutive times before Reviewer invocation. This applies even if product code did not change.
+
+Run that E2E file five times:
 
 ```bash
 for i in 1 2 3 4 5; do
@@ -311,6 +332,7 @@ Invoke the `reviewer` agent only after:
 
 - required test gates pass
 - actual E2E tests ran when browser-visible behavior changed
+- five-run E2E evidence exists when an E2E browser file was created or materially changed
 - evidence is collected
 - changed files are known
 
@@ -349,6 +371,7 @@ Stop and ask the human if any of these occur:
 - Export or approval behavior would change without human decision.
 - Unexpected files are modified.
 - Browser-visible behavior changed but actual E2E tests did not run.
+- An E2E browser file was created or materially changed but five-run E2E evidence is missing.
 - E2E tests were only collected, not executed.
 - A visible enabled control remains nonfunctional.
 - Claude proposes removing or replacing a human-specified UX control.

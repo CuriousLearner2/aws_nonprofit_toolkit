@@ -56,6 +56,7 @@ Reject any implementation plan or completed change where Claude:
 - changed export/approval behavior without explicit approval
 - changed notes-required behavior without explicit approval
 - left visible enabled controls that do nothing
+- used browser-visible workflow changes without adequate browser/E2E proof
 - claimed a product decision was “obvious” without evidence
 - used passing tests to justify an unapproved UX choice
 - implemented a fallback UX because it was simpler without asking the human
@@ -71,6 +72,7 @@ When reviewing a task, answer these questions:
 5. Are any visible enabled controls nonfunctional?
 6. Are unfinished controls hidden, disabled, or clearly marked unavailable?
 7. Do browser tests verify both what the user sees and what the user can still do?
+   If an E2E/browser file changed materially, did the workflow require five consecutive successful runs before review?
 8. Are navigation actions clearly distinct from reviewer decisions?
 9. Are reviewer decisions audit-visible and append-only?
 10. Does raw source data remain unchanged?

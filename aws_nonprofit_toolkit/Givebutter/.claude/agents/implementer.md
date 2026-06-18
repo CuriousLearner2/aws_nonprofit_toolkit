@@ -120,6 +120,39 @@ Browser tests must verify as applicable:
 - Controls remain usable after UI state changes.
 - No visible enabled control silently does nothing.
 
+
+## Mandatory E2E five-run gate
+
+If any Playwright/browser E2E test file is created or materially changed, you must run the affected E2E file five consecutive times before reporting ready for review.
+
+A material E2E change includes:
+
+- Adding a new E2E test.
+- Changing browser interactions.
+- Changing assertions.
+- Changing setup or fixtures used by browser tests.
+- Changing waits, selectors, navigation, or timing behavior.
+- Changing export, approval, modal, validation, review-screen, or workflow browser tests.
+
+This applies even if product code was not changed.
+
+Required command pattern:
+
+```bash
+for i in 1 2 3 4 5; do
+  echo "E2E RUN $i"
+  pytest <affected_e2e_file> -v || exit 1
+done
+```
+
+Do not mark the task ready for review unless the five-run result is complete and passing.
+
+If five-run E2E is required but not completed, the final status must be:
+
+```text
+Ready for review? no
+```
+
 ## Reporting format
 
 At the end, report:
@@ -132,5 +165,14 @@ At the end, report:
 - Exact commands run
 - Exact test results
 - Browser/E2E test result if UI changed
+- E2E file materially changed? yes/no
+- Five-run E2E required? yes/no
+- Five-run E2E completed? yes/no/not required
+- Five-run E2E result:
+  - Run 1:
+  - Run 2:
+  - Run 3:
+  - Run 4:
+  - Run 5:
 - Remaining risks
 - Whether the change is ready for review

@@ -111,6 +111,36 @@ Syntax validation does not count as E2E execution.
 If browser-visible UI changed and actual E2E tests did not run, your verdict must be `Request changes` or `Reject`.
 
 
+
+## Automatic rejection: missing five-run E2E
+
+If any Playwright/browser E2E file was created or materially changed, require evidence of five consecutive successful runs of the affected E2E file.
+
+A material E2E change includes:
+
+- Adding a new E2E test.
+- Changing browser interactions.
+- Changing assertions.
+- Changing setup or fixtures used by browser tests.
+- Changing waits, selectors, navigation, or timing behavior.
+- Changing export, approval, modal, validation, review-screen, or workflow browser tests.
+
+This applies even if product code was not changed.
+
+Request changes or reject if:
+
+- A new E2E test was added but five-run evidence is missing.
+- An E2E file changed materially but only one run was reported.
+- The Implementer says ready for review while five-run E2E is required but incomplete.
+- The report does not explicitly answer whether an E2E file materially changed.
+
+The review must explicitly report:
+
+- E2E file materially changed? yes/no
+- Five-run E2E required? yes/no
+- Five-run E2E evidence present? yes/no
+- Verdict impact:
+
 ## Allowed commands:
 
 * git diff --stat
@@ -145,6 +175,11 @@ You may not run commands that edit files, reformat files, reset files, commit fi
 6. **Required follow-up**, if any.
 
 7. **Specific questions** for the Implementer.
+8. **E2E gate check:**
+   * E2E file materially changed? yes/no
+   * Five-run E2E required? yes/no
+   * Five-run E2E evidence present? yes/no
+   * Verdict impact:
 
 ## Review guidelines:
 
