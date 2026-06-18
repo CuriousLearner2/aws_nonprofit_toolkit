@@ -145,9 +145,13 @@ def flask_app_isolated():
         pass
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="function")
 def cleanup_between_e2e_tests(flask_app_running):
-    """Clean up test artifacts and monitor Flask health between E2E tests."""
+    """Clean up test artifacts and monitor Flask health between E2E tests.
+
+    Only use this fixture in E2E tests via explicit request.
+    Do not use autouse=True as it interferes with unit/integration tests.
+    """
     cleanup_csv_files()  # Clean up BEFORE each test
 
     yield  # Run test
