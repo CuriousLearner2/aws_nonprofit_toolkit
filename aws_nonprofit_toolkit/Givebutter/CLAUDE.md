@@ -74,10 +74,11 @@ source .venv/bin/activate
 ### Running Tests
 
 **Development Strategy:**
-- **Default (daily use):** Unit + Integration tests (1263 tests, ~11 seconds)
-- **Quality Gate (fast validation):** Review Screen regression suite (15 tests, ~2.4 seconds)
+- **Default (daily use):** Unit + Integration tests (1317 tests, ~12 seconds)
+- **Quality Gate (fast validation):** Households/Validation Review regression suites (~2-3 seconds)
 - **Browser Interaction:** Playwright DOM tests (automatic Flask startup, ~5 seconds per test)
-- **Full suite:** All unit + integration + E2E (~25 seconds total)
+- **Full suite:** All unit + integration + E2E (~30 seconds total)
+- **Households workflows:** 5 E2E browser tests covering navigation, decisions, and redirects
 
 ```bash
 # Standard: Unit + Integration only (RECOMMENDED for development)
@@ -92,11 +93,20 @@ pytest tests/unit tests/integration -n auto
 # Quality gate: Fast regression tests for Validation Review
 bash scripts/dev/quality_gate_review_screen.sh
 
-# E2E browser test (starts Flask automatically with database mode)
+# E2E browser test - Validation Review (starts Flask automatically with database mode)
 pytest tests/e2e/test_validation_review_dom.py -v
+
+# E2E browser test - Households workflows (navigation, decisions, redirects)
+pytest tests/e2e/test_households_workflows.py -v
 
 # E2E test with 5-run reliability check
 bash scripts/dev/ux_gate_validation_review.sh
+
+# Households E2E with 5-run reliability check
+for i in 1 2 3 4 5; do
+  echo "=== Households E2E run $i ==="
+  pytest tests/e2e/test_households_workflows.py -q || exit 1
+done
 
 # Single test with debugging
 pytest tests/e2e/test_validation_review_dom.py::test_invalid_email_updates_visible_row_status_and_issues -vv -s
@@ -250,5 +260,18 @@ Before you start working on tests in this project:
 
 ---
 
+## Households Screen Hardening Status
+
+**Completed (2026-06-17):**
+- Phase 1-2: Previous/Next navigation + Defer-without-notes warning (commit `55bfb99`)
+- Phase 4: Post-decision redirect to next unresolved household
+- E2E browser coverage: 5 critical workflows with 100% reliability (5-run verification)
+- All 1317 tests pass with zero regressions
+
+**Pending:**
+- Phase 3: Export warning + confirmation checkbox for deferred/unresolved households
+
+---
+
 **Last updated:** 2026-06-17  
-**Status:** Active (E2E infrastructure and browser DOM tests added)
+**Status:** Active (Households Phase 1-2 + Phase 4 hardening complete, E2E tests added)
