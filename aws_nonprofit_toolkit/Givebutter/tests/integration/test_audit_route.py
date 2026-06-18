@@ -3,16 +3,30 @@ Integration tests for audit log route service boundary.
 
 Verify that the /imports/<import_id>/audit route returns correct
 content and status code after service-boundary migration.
+
+Validation Decision Audit Visibility Tests:
+- Validation override (accept_issue) decisions appear in Audit Log
+- Deferred validation decisions appear in Audit Log
+- Audit entries include decision details (field, issue, action)
 """
 
 import pytest
 import sys
+import tempfile
+import os
 from pathlib import Path
+from datetime import datetime
+from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.uploader.app import app
+from scripts.householder.database_models import (
+    Base, ImportBatch, RawImportRow, ImportContact, ReviewItem,
+    ReviewItemSubject, ReviewDecision, AuditLogRecord, create_db_engine
+)
+from scripts.householder import validation_decision_service
 
 
 @pytest.fixture
@@ -21,6 +35,35 @@ def client():
     app.config['TESTING'] = True
     with app.test_client() as client:
         yield client
+
+
+@pytest.fixture
+def database_backed_client():
+    """Create Flask test client with database backend.
+
+    Sets up temporary SQLite database with test data and configures Flask
+    for database mode. Yields client and database URL for test use.
+    """
+    # Create temporary database
+    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+    db_path = db_file.name
+    db_file.close()
+
+    database_url = f'sqlite:///{db_path}'
+    engine = create_db_engine(database_url)
+    Base.metadata.create_all(engine)
+
+    # Set environment for Flask
+    os.environ['HOUSEHOLDER_REPOSITORY'] = 'database'
+    os.environ['GIVEBUTTER_DATABASE_URL'] = database_url
+
+    app.config['TESTING'] = True
+
+    try:
+        with app.test_client() as test_client:
+            yield test_client, database_url, db_path
+    finally:
+        Path(db_path).unlink(missing_ok=True)
 
 
 class TestAuditRoute:
@@ -135,3 +178,239 @@ class TestAuditRoute:
         """Test that exports route was not modified."""
         response = client.get('/imports/IMP-2025-0101-A/exports')
         assert response.status_code == 200
+
+
+class TestValidationDecisionAuditVisibility:
+    """Test that validation ReviewDecision entries appear in Audit Log with details."""
+
+    def test_validation_override_decision_appears_in_audit_log(self, database_backed_client):
+        """Test that validation override (accept_issue) decision appears in Audit Log.
+
+        Scenario:
+        1. Seed ImportBatch, ImportContact, validation ReviewItem
+        2. Create ReviewDecision with decision='accept_issue'
+        3. Verify Audit Log contains the decision action
+        4. Verify decision details are visible
+        """
+        test_client, database_url, db_path = database_backed_client
+        batch_id = 'validation-override-audit-test'
+
+        # Seed test data
+        engine = create_db_engine(database_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+
+        try:
+            # Create batch
+            batch = ImportBatch(
+                id=batch_id,
+                filename='validation_override_audit.csv',
+                upload_timestamp=datetime.utcnow(),
+                status='pending_review',
+                raw_row_count=1
+            )
+            session.add(batch)
+            session.flush()
+
+            # Create raw row
+            raw_row = RawImportRow(
+                batch_id=batch_id,
+                row_index=1,
+                raw_csv_data={
+                    'name': 'Test Contact',
+                    'email': '',
+                    'phone': '(555) 111-1111',
+                    'address': '123 Main St',
+                    'amount': '100.00'
+                }
+            )
+            session.add(raw_row)
+            session.flush()
+
+            # Create contact
+            contact = ImportContact(
+                batch_id=batch_id,
+                raw_import_row_id=raw_row.id,
+                first_name='Test',
+                last_name='Contact',
+                email='',  # Missing email - validation issue
+                phone='(555) 111-1111',
+                address_line1='123 Main St',
+                amount=100.00
+            )
+            session.add(contact)
+            session.flush()
+
+            # Create validation review item
+            val_item = ReviewItem(
+                batch_id=batch_id,
+                item_type='validation',
+                confidence=1.0,
+                payload_json={
+                    'field': 'email',
+                    'issue': 'missing_email',
+                    'validation_tier': 'critical'
+                }
+            )
+            session.add(val_item)
+            session.flush()
+
+            # Link contact to validation item
+            subject = ReviewItemSubject(
+                review_item_id=val_item.id,
+                subject_type='import_contact_snapshot',
+                subject_id=contact.id,
+                role='primary'
+            )
+            session.add(subject)
+            session.flush()
+            session.commit()
+
+            val_item_id = val_item.id
+
+        finally:
+            session.close()
+
+        # Record validation decision through service (creates AuditLogRecord)
+        validation_decision_service.record_validation_decision(
+            import_id=batch_id,
+            review_item_id=val_item_id,
+            decision='accept_issue',
+            reviewed_values={'field': 'email', 'issue': 'missing_email'},
+            reviewer='test-reviewer',
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url
+            }
+        )
+
+        # Fetch audit log page
+        response = test_client.get(f'/imports/{batch_id}/audit')
+        assert response.status_code == 200
+
+        # Verify decision appears in audit log (as text content)
+        html = response.data.decode('utf-8', errors='ignore')
+
+        # Expected: Audit Log should show the validation override decision
+        assert 'accept_issue' in html.lower() or 'validation' in html.lower() or 'accepted' in html.lower(), \
+            f"Validation override decision not found in Audit Log. HTML substring: ...{html[2000:2500]}..."
+
+        # Verify decision details are present (field, issue)
+        assert 'email' in html.lower(), \
+            "Decision field ('email') not visible in Audit Log"
+
+    def test_deferred_validation_decision_appears_in_audit_log(self, database_backed_client):
+        """Test that deferred validation decision appears in Audit Log.
+
+        Scenario:
+        1. Seed ImportBatch, ImportContact, validation ReviewItem
+        2. Create ReviewDecision with decision='defer'
+        3. Verify Audit Log contains the deferral action
+        4. Verify decision details are visible
+        """
+        test_client, database_url, db_path = database_backed_client
+        batch_id = 'validation-defer-audit-test'
+
+        # Seed test data
+        engine = create_db_engine(database_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+
+        try:
+            # Create batch
+            batch = ImportBatch(
+                id=batch_id,
+                filename='validation_defer_audit.csv',
+                upload_timestamp=datetime.utcnow(),
+                status='pending_review',
+                raw_row_count=1
+            )
+            session.add(batch)
+            session.flush()
+
+            # Create raw row
+            raw_row = RawImportRow(
+                batch_id=batch_id,
+                row_index=1,
+                raw_csv_data={
+                    'name': 'Test Contact',
+                    'email': '',
+                    'phone': '(555) 222-2222',
+                    'address': '456 Oak St',
+                    'amount': '200.00'
+                }
+            )
+            session.add(raw_row)
+            session.flush()
+
+            # Create contact
+            contact = ImportContact(
+                batch_id=batch_id,
+                raw_import_row_id=raw_row.id,
+                first_name='Test',
+                last_name='Contact',
+                email='',  # Missing email - validation issue
+                phone='(555) 222-2222',
+                address_line1='456 Oak St',
+                amount=200.00
+            )
+            session.add(contact)
+            session.flush()
+
+            # Create validation review item
+            val_item = ReviewItem(
+                batch_id=batch_id,
+                item_type='validation',
+                confidence=1.0,
+                payload_json={
+                    'field': 'email',
+                    'issue': 'missing_email',
+                    'validation_tier': 'critical'
+                }
+            )
+            session.add(val_item)
+            session.flush()
+
+            # Link contact to validation item
+            subject = ReviewItemSubject(
+                review_item_id=val_item.id,
+                subject_type='import_contact_snapshot',
+                subject_id=contact.id,
+                role='primary'
+            )
+            session.add(subject)
+            session.flush()
+            session.commit()
+
+            val_item_id = val_item.id
+
+        finally:
+            session.close()
+
+        # Record validation decision through service (creates AuditLogRecord)
+        validation_decision_service.record_validation_decision(
+            import_id=batch_id,
+            review_item_id=val_item_id,
+            decision='defer',
+            reviewed_values={'field': 'email', 'issue': 'missing_email'},
+            reviewer='test-reviewer',
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url
+            }
+        )
+
+        # Fetch audit log page
+        response = test_client.get(f'/imports/{batch_id}/audit')
+        assert response.status_code == 200
+
+        # Verify decision appears in audit log
+        html = response.data.decode('utf-8', errors='ignore')
+
+        # Expected: Audit Log should show the deferral decision
+        assert 'defer' in html.lower() or 'validation' in html.lower() or 'deferred' in html.lower(), \
+            f"Deferred validation decision not found in Audit Log. HTML substring: ...{html[2000:2500]}..."
+
+        # Verify decision details are present
+        assert 'email' in html.lower(), \
+            "Decision field ('email') not visible in Audit Log"

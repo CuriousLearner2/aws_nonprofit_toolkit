@@ -827,11 +827,20 @@ class DatabaseImportRepository:
             # Build audit entries from records
             audit_entries = []
             for record in audit_records:
+                # Format details: handle dict, string, or None
+                if isinstance(record.details, dict):
+                    import json
+                    details_str = json.dumps(record.details)
+                elif isinstance(record.details, str):
+                    details_str = record.details
+                else:
+                    details_str = ''
+
                 entry = AuditLogEntry(
                     timestamp=str(record.action_timestamp) if record.action_timestamp else '',
                     reviewer=record.actor or 'System',
                     action=record.action_type or '',
-                    details=record.details or '' if isinstance(record.details, str) else '',
+                    details=details_str,
                 )
                 audit_entries.append(entry)
 
