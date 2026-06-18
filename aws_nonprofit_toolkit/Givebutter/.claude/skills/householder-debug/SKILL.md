@@ -89,6 +89,34 @@ done
 
 If five-run E2E is required but missing, the missing verification is **BLOCKING**.
 
+## Failed first-fix stop policy
+
+If the first attempted fix fails, do not continue silently.
+
+Stop after the first failed targeted verification unless the human explicitly authorizes another implementation attempt.
+
+A failed first fix is not a reason to broaden scope. It is a reason to report:
+
+- failed test or command
+- exact failure
+- changed files
+- whether the failure is the same or different
+- whether partial edits remain
+- recommended cleanup or next narrow diagnostic task
+
+Do not continue into a second root-cause theory, selector redesign, fixture redesign, product behavior changes, broad test repair, or unrelated cleanup in the same task unless the human explicitly authorizes it.
+
+If the human instructed that failed edits should be reverted, revert only those edits and report the clean state.
+
+If failed edits remain, final status must be:
+
+```text
+Ready for commit? no
+Ready for commit prep? no
+```
+
+and the failed verification must be marked **BLOCKING**.
+
 ## Project guardrails
 
 * Do not commit directly to main.

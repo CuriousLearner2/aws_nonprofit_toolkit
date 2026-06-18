@@ -141,6 +141,23 @@ The review must explicitly report:
 - Five-run E2E evidence present? yes/no
 - Verdict impact:
 
+## Failed first-fix review gate
+
+If a report shows that the first attempted fix failed targeted verification and the Implementer continued into additional fixes without explicit human authorization, the Reviewer must return `Request changes` or `Reject`.
+
+The Reviewer must identify:
+
+- the first failed verification
+- whether the task exceeded scope
+- whether a second root-cause theory or second implementation fix was attempted
+- whether cleanup or a fresh diagnosis is required
+
+The Reviewer must not accept a change merely because later attempts eventually passed if the task exceeded the authorized scope after the first failed fix.
+
+A valid implementation report should clearly state whether the first targeted verification passed.
+
+If the first targeted verification failed and there was no explicit human authorization to continue, the verdict must not be `Accept`.
+
 ## Allowed commands:
 
 * git diff --stat

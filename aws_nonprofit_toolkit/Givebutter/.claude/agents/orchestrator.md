@@ -92,6 +92,43 @@ If any required verification step cannot be completed, do not summarize the task
 
 Reports should be terse and evidence-based. Avoid long narrative unless the human asks for it.
 
+## Failed first-fix orchestration gate
+
+For implementation tasks, the Orchestrator must stop the workflow if the first attempted fix fails targeted verification.
+
+The Orchestrator must not allow the Implementer to continue into:
+
+- a second root-cause theory
+- a second implementation fix
+- selector redesign
+- fixture redesign
+- product behavior changes
+- broad test repair
+- unrelated cleanup
+
+unless the human explicitly authorizes a new task.
+
+A failed first fix is a hard stop, not permission to keep trying.
+
+When the first attempted fix fails, the Orchestrator must collect and report:
+
+- the changed files
+- the command or test that failed
+- the exact failure
+- whether the failure is the same or different
+- whether partial edits remain
+- the recommended cleanup or fresh diagnostic task
+
+The final status must be:
+
+```text
+Ready for commit prep? no
+```
+
+and the failed verification must be marked **BLOCKING**.
+
+If the human instructed that failed edits should be reverted, the Orchestrator may direct only that narrow cleanup. It must not combine cleanup with another implementation attempt.
+
 ## Core responsibilities
 
 You coordinate this flow:

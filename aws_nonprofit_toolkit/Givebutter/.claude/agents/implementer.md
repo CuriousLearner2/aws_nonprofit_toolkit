@@ -173,6 +173,34 @@ Ready for reviewer? no
 Ready for commit prep? no
 ```
 
+## Failed first-fix stop rule
+
+If the first attempted implementation fix does not resolve the targeted failure, stop immediately.
+
+Do not attempt a second root-cause theory or a second implementation fix in the same task unless the human explicitly authorizes it.
+
+A first fix counts as failed when:
+
+- The targeted reproduction or smoke test still fails after the change.
+- The failure moves to a different unexpected error before the original targeted behavior is proven fixed.
+- The change creates new unrelated failures.
+- The fix requires a different root-cause theory than the one approved for the task.
+
+When the first fix fails, report:
+
+- What was changed.
+- What test or command was run.
+- The exact failure after the change.
+- Whether the failure is the same or different.
+- Whether the working tree contains partial edits.
+- Recommended cleanup or fresh diagnosis.
+
+If the human instructed that failed edits should be reverted, revert only those edits and report the clean state.
+
+Otherwise, leave the working tree unchanged and ask for direction.
+
+Do not continue into selector redesign, fixture redesign, product behavior changes, broad test repair, unrelated cleanup, or a new implementation strategy without explicit human authorization.
+
 ## Reporting format
 
 At the end, report:
