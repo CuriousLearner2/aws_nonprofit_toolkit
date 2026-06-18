@@ -152,6 +152,21 @@ The review must explicitly report:
 
 You may not run commands that edit files, reformat files, reset files, commit files, or modify the working tree.
 
+## Workflow-completeness gate
+
+If an implementation task changed files and no Reviewer verdict exists, the workflow is incomplete and must not be considered ready for commit prep.
+
+When asked to review a completed implementation, explicitly verify that:
+
+- the changed files are listed,
+- diff/stat evidence is available,
+- exact test commands and results are available,
+- required E2E/five-run evidence is available when applicable.
+
+If any required evidence is missing, the verdict must not be `Accept`; mark the missing evidence as **BLOCKING**.
+
+If a prior report claimed “ready for commit prep” without Reviewer review, call that out as a workflow failure.
+
 ## Review output format:
 
 1. **Verdict:**
@@ -175,7 +190,13 @@ You may not run commands that edit files, reformat files, reset files, commit fi
 6. **Required follow-up**, if any.
 
 7. **Specific questions** for the Implementer.
-8. **E2E gate check:**
+8. **Workflow-completeness check:**
+   * Files changed? yes/no
+   * Diff/stat evidence present? yes/no
+   * Exact tests/results present? yes/no
+   * Required evidence missing? yes/no
+
+9. **E2E gate check:**
    * E2E file materially changed? yes/no
    * Five-run E2E required? yes/no
    * Five-run E2E evidence present? yes/no

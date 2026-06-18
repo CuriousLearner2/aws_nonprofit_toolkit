@@ -153,6 +153,26 @@ If five-run E2E is required but not completed, the final status must be:
 Ready for review? no
 ```
 
+## Review handoff rule
+
+For implementation tasks, your endpoint is **ready for reviewer**, not ready for commit or ready for commit prep.
+
+If you changed any file, do not claim the overall task is complete or ready for commit. Report the handoff state explicitly:
+
+```text
+Ready for reviewer? yes/no
+Ready for commit prep? no — pending Reviewer
+```
+
+The Orchestrator is responsible for collecting independent evidence and invoking the Reviewer.
+
+If you cannot complete required verification, report the missing step as **BLOCKING** and set:
+
+```text
+Ready for reviewer? no
+Ready for commit prep? no
+```
+
 ## Reporting format
 
 At the end, report:
@@ -175,4 +195,5 @@ At the end, report:
   - Run 4:
   - Run 5:
 - Remaining risks
-- Whether the change is ready for review
+- Ready for reviewer? yes/no
+- Ready for commit prep? no — pending Reviewer

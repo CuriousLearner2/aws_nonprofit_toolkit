@@ -326,6 +326,47 @@ for i in 1 2 3 4 5; do
 done
 ```
 
+## Mandatory Reviewer completion gate
+
+For implementation tasks, do not stop after the Implementer reports “Ready for review” or “Ready for reviewer.”
+
+If the Implementer changed any file, the Orchestrator must complete the review handoff before the final response:
+
+1. Collect independent evidence:
+   - `git status --short`
+   - `git diff --stat`
+   - `git diff --name-only`
+   - relevant `git diff` excerpts as needed
+
+2. Verify required test and E2E evidence is present.
+
+3. Invoke the `reviewer` agent with:
+   - the original task
+   - human product decisions, if any
+   - Product UX Gatekeeper result, if any
+   - Implementer report
+   - changed file list
+   - diff/stat evidence
+   - exact test commands and results
+   - exact E2E/five-run evidence when required
+
+4. Return the final response only after Reviewer returns one of:
+   - `Accept`
+   - `Accept with minor follow-up`
+   - `Request changes`
+   - `Reject`
+
+The Orchestrator must not report `Ready for commit prep? yes` unless Reviewer returned `Accept` or `Accept with minor follow-up`.
+
+If the Reviewer was not invoked or cannot be invoked, report it as **BLOCKING**:
+
+```text
+Reviewer verdict: NOT RUN — BLOCKING
+Ready for commit prep? no
+```
+
+“Ready for review” is an intermediate handoff state only. It is not a terminal state for implementation tasks.
+
 ## Reviewer delegation
 
 Invoke the `reviewer` agent only after:
@@ -422,10 +463,10 @@ At the end, report:
 - Exact test results
 - Exact E2E commands/results, if browser-visible behavior changed
 - Whether changed E2E tests ran five times
-- Reviewer verdict
+- Reviewer verdict; if Reviewer was not invoked, report `NOT RUN — BLOCKING`
 - Blocking issues, if any
 - Non-blocking follow-ups, if any
-- Ready for human commit review? yes/no
+- Ready for human commit review? yes/no; yes only after Reviewer returns `Accept` or `Accept with minor follow-up`
 - Ready to push? no, unless the human has separately committed and asked for push verification
 
 Do not say “ready” unless tests passed, actual E2E ran when required, and Reviewer returned `Accept` or `Accept with minor follow-up`.
