@@ -22,7 +22,12 @@ venv/
 
 # OS
 .DS_Store
+.claude/.DS_Store
+.claude/**/.DS_Store
 Thumbs.db
+
+# Claude local state
+.claude/scheduled_tasks.lock
 
 # Testing
 .pytest_cache/
