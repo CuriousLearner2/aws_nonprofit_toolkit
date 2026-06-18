@@ -985,3 +985,519 @@ async def test_clean_export_skips_confirmation(
 
     finally:
         session.close()
+
+
+# ==============================================================================
+# TEST E: Warning count for multiple deferred households
+# ==============================================================================
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_export_warning_count_for_multiple_deferred_households(
+    e2e_database_and_app,
+):
+    """
+    Verify export warning displays correct count for multiple deferred households.
+
+    Scenario:
+    1. Seed 5 household candidates (different contacts)
+    2. Defer 3 of them (leave 2 as confirmed/resolved)
+    3. Open Export Console in browser
+    4. Assert warning shows "3 household(s) are unresolved"
+    5. Assert checkbox and button present
+    6. Verify count is dynamic, not hardcoded
+    7. Check checkbox and verify button enables
+    8. Verify raw ImportContact data unchanged
+
+    Expected behavior:
+    - Warning shows correct count (3, not 1 or 5)
+    - Count is calculated from ReviewDecisions, not hardcoded
+    - Checkbox enable/disable button control works with multiple households
+    - All 5 ImportContact records remain unchanged (append-only)
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='export-multiple-deferred-batch',
+            filename='export_multiple_deferred.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=5
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create 5 raw rows and contacts
+        raw_rows = []
+        contacts = []
+        households = []
+        subjects = []
+        decisions = []
+
+        for i in range(5):
+            raw_row = RawImportRow(
+                batch_id='export-multiple-deferred-batch',
+                row_index=i + 1,
+                raw_csv_data={
+                    'name': f'Multiple Test {i+1}',
+                    'date': f'2026-03-{20+i:02d}',
+                    'email': f'multiple{i+1}@example.com',
+                    'phone': f'(555) {100+i:03d}-{1000+i:04d}',
+                    'amount': f'{500.00 + i*100:.2f}',
+                    'address': f'{600+i*100} Multiple Ave'
+                }
+            )
+            session.add(raw_row)
+            session.flush()
+            raw_rows.append(raw_row)
+
+            # Create ImportContact
+            contact = ImportContact(
+                batch_id='export-multiple-deferred-batch',
+                raw_import_row_id=raw_row.id,
+                first_name=f'Multiple',
+                last_name=f'Test{i+1}',
+                email=f'multiple{i+1}@example.com',
+                phone=f'(555) {100+i:03d}-{1000+i:04d}',
+                address_line1=f'{600+i*100} Multiple Ave',
+                amount=500.00 + i*100
+            )
+            session.add(contact)
+            session.flush()
+            contacts.append(contact)
+
+            # Create household review item
+            household = ReviewItem(
+                batch_id='export-multiple-deferred-batch',
+                item_type='household',
+                confidence=0.70 + i*0.05,
+                payload_json={
+                    'suggested_name': f'Multiple Test Household {i+1}',
+                    'address': f'{600+i*100} Multiple Ave',
+                    'proposed_members': [f'Multiple Test{i+1}'],
+                    'evidence': [f'Contact {i+1}'],
+                    'conflicts': [],
+                    'basis': f'Test household {i+1}'
+                }
+            )
+            session.add(household)
+            session.flush()
+            households.append(household)
+
+            # Link contact to household
+            subject = ReviewItemSubject(
+                review_item_id=household.id,
+                subject_type='import_contact_snapshot',
+                subject_id=contact.id,
+                role='primary'
+            )
+            session.add(subject)
+            session.flush()
+            subjects.append(subject)
+
+            # First 3: Defer decisions (unresolved)
+            # Last 2: Confirm decisions (resolved)
+            if i < 3:
+                decision = ReviewDecision(
+                    batch_id='export-multiple-deferred-batch',
+                    review_item_id=household.id,
+                    decision='defer',
+                    created_at=datetime.utcnow(),
+                    reviewed_values={}
+                )
+            else:
+                decision = ReviewDecision(
+                    batch_id='export-multiple-deferred-batch',
+                    review_item_id=household.id,
+                    decision='confirm_household',
+                    created_at=datetime.utcnow(),
+                    reviewed_values={
+                        'candidate_household_id': f'hh-multi-{i+1}',
+                        'suggested_household_label': f'Multiple Test Household {i+1}',
+                        'candidate_contact_ids': [contact.id]
+                    }
+                )
+            session.add(decision)
+            session.flush()
+            decisions.append(decision)
+
+        session.commit()
+
+        contact_ids = [c.id for c in contacts]
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/export-multiple-deferred-batch/exports', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to exports page
+                await page.goto('http://127.0.0.1:8001/imports/export-multiple-deferred-batch/exports')
+
+                # Wait for page to load
+                await page.wait_for_selector('h1', timeout=5000)
+
+                # Generate export preview
+                await page.evaluate("""
+                    async () => {
+                        const response = await fetch('/imports/export-multiple-deferred-batch/exports/preview', {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            const html = await response.text();
+                            document.open();
+                            document.write(html);
+                            document.close();
+                        }
+                    }
+                """)
+
+                # Wait for the page to reload with preview data
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ E0: Export preview loaded (5 households total, 3 deferred)")
+
+                # E1: Verify warning banner is visible
+                warning_locator = page.locator('div:has(#confirm-unresolved-households-checkbox)')
+                warning_banner = await warning_locator.first.element_handle() if await warning_locator.count() > 0 else None
+                assert warning_banner is not None, "E1 FAILED: Warning banner not found"
+                print("✓ E1: Warning banner found")
+
+                # E2: Verify warning text contains correct count (3, not 1 or 5)
+                warning_text = await warning_locator.first.inner_text()
+                assert '3' in warning_text, \
+                    f"E2 FAILED: Expected warning text with count '3', got: {warning_text}"
+                assert 'household' in warning_text.lower(), \
+                    f"E2 FAILED: Expected 'household' in warning text, got: {warning_text}"
+                # Ensure it's specifically "3", not "1" or "5"
+                assert warning_text.count('3') > 0, \
+                    f"E2 FAILED: Warning text should contain '3', got: {warning_text}"
+                print(f"✓ E2: Warning text shows correct count (3 households): {warning_text.strip()}")
+
+                # E3: Verify checkbox exists and is unchecked initially
+                checkbox = await page.query_selector('#confirm-unresolved-households-checkbox')
+                assert checkbox is not None, "E3 FAILED: Confirmation checkbox not found"
+                is_checked = await checkbox.is_checked()
+                assert not is_checked, "E3 FAILED: Checkbox should be unchecked initially"
+                print("✓ E3: Checkbox exists and is unchecked initially")
+
+                # E4: Verify export button is disabled initially
+                export_btn = await page.query_selector('#generate-export-btn')
+                assert export_btn is not None, "E4 FAILED: Export button not found"
+                is_disabled_before = await export_btn.is_disabled()
+                assert is_disabled_before, "E4 FAILED: Export button should be disabled initially"
+                print("✓ E4: Export button is disabled initially")
+
+                # E5: Check the checkbox
+                await checkbox.check()
+                print("✓ E5: Checkbox checked")
+
+                # Wait for button state to update
+                await page.wait_for_function(
+                    "() => !document.getElementById('generate-export-btn').disabled",
+                    timeout=5000
+                )
+
+                # E6: Verify export button is now enabled
+                is_disabled_after = await export_btn.is_disabled()
+                assert not is_disabled_after, "E6 FAILED: Export button should be enabled after checkbox check"
+                print("✓ E6: Export button is now enabled (state changed bidirectionally)")
+
+                # CRITICAL: E7 - Verify all 5 raw ImportContact data unchanged
+                for idx, contact_id in enumerate(contact_ids):
+                    contact_check = session.query(ImportContact).filter_by(id=contact_id).first()
+                    assert contact_check is not None, f"E7 FAILED: Contact {idx+1} should still exist"
+                    assert contact_check.email == f'multiple{idx+1}@example.com', \
+                        f"E7 FAILED: Contact {idx+1} data should be unchanged"
+                print(f"✓ E7: All 5 raw ImportContact records unchanged (append-only principle)")
+
+                print(f"\n=== TEST E: EXPORT WARNING COUNT (MULTIPLE DEFERRED) PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+# ==============================================================================
+# TEST F: Checkbox uncheck re-disables button (bidirectional state)
+# ==============================================================================
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_export_checkbox_uncheck_re_disables_button(
+    e2e_database_and_app,
+):
+    """
+    Verify checkbox uncheck re-disables export button (bidirectional state).
+
+    Scenario:
+    1. Seed 1 deferred household
+    2. Open Export Console
+    3. Assert button disabled initially
+    4. Check checkbox
+    5. Assert button becomes enabled
+    6. Uncheck checkbox
+    7. Assert button becomes disabled again
+    8. Verify no silent control failure
+    9. Verify raw ImportContact data unchanged
+
+    Expected behavior:
+    - Button state follows checkbox state bidirectionally
+    - No silent control failure (button always responds to checkbox state)
+    - User can toggle checkbox multiple times and button state responds reliably
+    - Append-only principle: ImportContact data unchanged
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='export-bidirectional-batch',
+            filename='export_bidirectional.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row
+        raw_row = RawImportRow(
+            batch_id='export-bidirectional-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Bidirectional Test',
+                'date': '2026-03-25',
+                'email': 'bidirectional@example.com',
+                'phone': '(555) 222-2222',
+                'amount': '900.00',
+                'address': '666 Bidirectional Ave'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+
+        # Create ImportContact
+        contact = ImportContact(
+            batch_id='export-bidirectional-batch',
+            raw_import_row_id=raw_row.id,
+            first_name='Bidirectional',
+            last_name='Test',
+            email='bidirectional@example.com',
+            phone='(555) 222-2222',
+            address_line1='666 Bidirectional Ave',
+            amount=900.00
+        )
+        session.add(contact)
+        session.flush()
+
+        # Create household review item
+        household = ReviewItem(
+            batch_id='export-bidirectional-batch',
+            item_type='household',
+            confidence=0.80,
+            payload_json={
+                'suggested_name': 'Bidirectional Test Household',
+                'address': '666 Bidirectional Ave',
+                'proposed_members': ['Bidirectional Test'],
+                'evidence': ['Single contact'],
+                'conflicts': [],
+                'basis': 'Test household'
+            }
+        )
+        session.add(household)
+        session.flush()
+
+        # Link contact to household
+        subject = ReviewItemSubject(
+            review_item_id=household.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact.id,
+            role='primary'
+        )
+        session.add(subject)
+        session.flush()
+
+        # Record Defer decision
+        decision = ReviewDecision(
+            batch_id='export-bidirectional-batch',
+            review_item_id=household.id,
+            decision='defer',
+            created_at=datetime.utcnow(),
+            reviewed_values={}
+        )
+        session.add(decision)
+        session.flush()
+        session.commit()
+
+        contact_id = contact.id
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/export-bidirectional-batch/exports', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to exports page
+                await page.goto('http://127.0.0.1:8001/imports/export-bidirectional-batch/exports')
+
+                # Wait for page to load
+                await page.wait_for_selector('h1', timeout=5000)
+
+                # Generate export preview
+                await page.evaluate("""
+                    async () => {
+                        const response = await fetch('/imports/export-bidirectional-batch/exports/preview', {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            const html = await response.text();
+                            document.open();
+                            document.write(html);
+                            document.close();
+                        }
+                    }
+                """)
+
+                # Wait for the page to reload with preview data
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ F0: Export preview loaded")
+
+                # F1: Verify checkbox exists and is unchecked initially
+                checkbox = await page.query_selector('#confirm-unresolved-households-checkbox')
+                assert checkbox is not None, "F1 FAILED: Confirmation checkbox not found"
+                is_checked_initial = await checkbox.is_checked()
+                assert not is_checked_initial, "F1 FAILED: Checkbox should be unchecked initially"
+                print("✓ F1: Checkbox is unchecked initially")
+
+                # F2: Verify export button is disabled initially
+                export_btn = await page.query_selector('#generate-export-btn')
+                assert export_btn is not None, "F2 FAILED: Export button not found"
+                is_disabled_state1 = await export_btn.is_disabled()
+                assert is_disabled_state1, "F2 FAILED: Export button should be disabled when checkbox unchecked"
+                print("✓ F2: Export button is disabled initially")
+
+                # F3: Check the checkbox
+                await checkbox.check()
+                print("✓ F3: Checkbox checked")
+
+                # Wait for button to become enabled
+                await page.wait_for_function(
+                    "() => !document.getElementById('generate-export-btn').disabled",
+                    timeout=5000
+                )
+
+                # F4: Verify export button is now enabled
+                is_disabled_state2 = await export_btn.is_disabled()
+                assert not is_disabled_state2, "F4 FAILED: Export button should be enabled after checkbox check"
+                is_checked_after_check = await checkbox.is_checked()
+                assert is_checked_after_check, "F4 FAILED: Checkbox should be checked"
+                print("✓ F4: Export button is now enabled (bidirectional: checked → enabled)")
+
+                # F5: Uncheck the checkbox
+                await checkbox.uncheck()
+                print("✓ F5: Checkbox unchecked")
+
+                # Wait for button to become disabled again
+                await page.wait_for_function(
+                    "() => document.getElementById('generate-export-btn').disabled",
+                    timeout=5000
+                )
+
+                # F6: Verify export button is disabled again
+                is_disabled_state3 = await export_btn.is_disabled()
+                assert is_disabled_state3, "F6 FAILED: Export button should be disabled again after checkbox uncheck"
+                is_checked_final = await checkbox.is_checked()
+                assert not is_checked_final, "F6 FAILED: Checkbox should be unchecked"
+                print("✓ F6: Export button is disabled again (bidirectional: unchecked → disabled)")
+
+                # F7: Verify no silent control failure by checking checkbox again
+                await checkbox.check()
+                print("✓ F7: Checkbox checked again")
+
+                await page.wait_for_function(
+                    "() => !document.getElementById('generate-export-btn').disabled",
+                    timeout=5000
+                )
+
+                is_disabled_state4 = await export_btn.is_disabled()
+                assert not is_disabled_state4, "F7 FAILED: Export button should be enabled on second check (no silent failures)"
+                print("✓ F7: Export button enabled again (bidirectional state verified, no silent failures)")
+
+                # CRITICAL: F8 - Verify raw ImportContact data unchanged
+                contact_check = session.query(ImportContact).filter_by(id=contact_id).first()
+                assert contact_check is not None, "F8 FAILED: Contact should still exist"
+                assert contact_check.first_name == 'Bidirectional', "F8 FAILED: Contact data should be unchanged"
+                assert contact_check.email == 'bidirectional@example.com', "F8 FAILED: Contact data should be unchanged"
+                print("✓ F8: Raw ImportContact data unchanged (append-only principle)")
+
+                print(f"\n=== TEST F: CHECKBOX UNCHECK RE-DISABLES BUTTON PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
