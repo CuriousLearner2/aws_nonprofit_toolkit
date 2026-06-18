@@ -177,6 +177,78 @@ Do not update a table cell or row with destructive `innerHTML` replacement if th
 
 Browser tests should fail if a visual update accidentally destroys an interactive control.
 
+## Interactive control requirements
+
+No visible enabled control may be nonfunctional.
+
+If a button, dropdown, link, form control, or action appears enabled, browser tests must verify that it actually works.
+
+For any visible enabled control, verify as applicable:
+
+* The control exists.
+* The control is visible.
+* The control is enabled.
+* The control has a defined action or handler.
+* The control produces the expected state change, navigation, modal, submission, or validation result.
+* The control does not silently do nothing.
+* The control does not fail only in the browser while backend tests pass.
+
+If a control is not implemented yet, it must not appear as an enabled working control. Instead, choose one of:
+
+* hide it,
+* disable it,
+* label it clearly as unavailable,
+* or implement it fully with tests.
+
+Examples:
+
+* If `Next Pair` and `Previous Pair` buttons are visible and enabled, they must navigate between duplicate pairs.
+* If navigation is not implemented, those buttons must be disabled, hidden, or clearly marked unavailable.
+* If `Approve with Overrides` is visible and enabled, it must complete the approval-with-overrides workflow or show a clear error.
+* If `Record Decision` is visible and enabled, it must persist the reviewer decision or show a clear validation error.
+
+Reviewer rule:
+
+The Reviewer must reject changes that leave visible enabled controls with no working behavior, unless the control is explicitly disabled or clearly marked as unavailable.
+
+## Product UX decision authority
+
+Claude must not independently decide product UX when multiple reasonable workflows exist.
+
+If a UX behavior is ambiguous, Claude must stop and ask the human before implementing.
+
+Examples of ambiguous UX decisions:
+
+* Whether Duplicates should use forced decision-queue progression or free Previous/Next browsing.
+* Whether `Skip for now` is distinct from `Defer`.
+* Whether unresolved duplicates block export or only warn.
+* Whether approval with overrides should be allowed for a given issue type.
+* Whether a visible control should be removed, disabled, labeled unavailable, or fully implemented.
+* Whether notes are required, optional, or conditionally required.
+* Whether status should reflect system state, human disposition, or both.
+
+Claude may present options with tradeoffs, but must not choose the product behavior unless the human has already specified it.
+
+Required pattern:
+
+1. Identify the product ambiguity.
+2. Present the smallest reasonable options.
+3. Recommend one option if useful.
+4. Stop and ask for the human's decision.
+5. Only implement after the human chooses.
+
+Do not convert a product question into an engineering assumption.
+
+For visible controls:
+
+* If a control appears enabled, it must work.
+* If a control is not implemented, Claude must ask whether to hide it, disable it, label it unavailable, or implement it.
+* Claude must not remove or replace a visible workflow control if that changes the intended reviewer workflow without human approval.
+
+Reviewer rule:
+
+The Reviewer must reject changes where Claude made an unapproved UX/product decision, even if tests pass.
+
 ## Implementation discipline
 
 The Implementer must not start by editing code.
@@ -214,6 +286,8 @@ The Reviewer must explicitly check:
 * Do browser tests verify both visible state and control preservation?
 * Do required controls remain present, visible, enabled, and usable after UI state changes?
 * Do browser tests avoid accepting text-only/static replacements when the workflow requires continued interaction?
+* Is every visible enabled control functional, or explicitly disabled/hidden/marked unavailable if not implemented?
+* Did Claude avoid making unapproved UX/product decisions when multiple reasonable workflows existed?
 Reviewer verdict must be one of:
 
 * `Accept`

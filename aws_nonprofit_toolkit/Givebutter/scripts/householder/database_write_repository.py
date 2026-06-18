@@ -448,10 +448,11 @@ class DatabaseDuplicateDecisionWriter:
         2. Extract contact/evidence details from ReviewItem.payload_json
         3. Begin transaction
         4. Insert ReviewDecision
-        5. Insert AuditLogRecord
-        6. Commit transaction
-        7. Derive effective status
-        8. Return result
+        5. Update ReviewItem.status to 'decided' for workflow progression
+        6. Insert AuditLogRecord
+        7. Commit transaction
+        8. Derive effective status
+        9. Return result
 
         Args:
             batch_id: Import batch ID
@@ -530,6 +531,10 @@ class DatabaseDuplicateDecisionWriter:
 
             decision_id = decision_record.id
             now = datetime.utcnow()
+
+            # Update ReviewItem status to 'decided' so duplicates list moves to next pending pair
+            item.status = 'decided'
+            session.add(item)
 
             # Create AuditLogRecord
             # Determine prior status (from latest previous decision)

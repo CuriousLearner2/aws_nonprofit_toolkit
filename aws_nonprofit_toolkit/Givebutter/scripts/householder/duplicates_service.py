@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional, Mapping
 from .repository_provider import get_import_repository
 
 
-def get_duplicates_review(import_id: str, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+def get_duplicates_review(import_id: str, index: int = 0, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """
     Get duplicates review page data for a specific import.
 
@@ -23,18 +23,20 @@ def get_duplicates_review(import_id: str, config: Optional[Mapping[str, Any]] = 
 
     Args:
         import_id: Import ID to fetch duplicate data for
+        index: Zero-based index of duplicate pair to display. Clamped to valid range.
+               Defaults to 0 (first pair).
         config: Optional configuration mapping for repository selection.
                If None, defaults to FixtureImportRepository (fixture-backed).
                Can specify {'HOUSEHOLDER_REPOSITORY': 'database', 'GIVEBUTTER_DATABASE_URL': <url>}
                for database-backed duplicates.
 
     Returns:
-        Dictionary with 'batch', 'candidate', and navigation keys,
+        Dictionary with 'batch', 'candidate', navigation, and index keys,
         ready for template
 
     Raises:
         ValueError: If database mode requested without required configuration.
     """
     repository = get_import_repository(config)
-    duplicates_vm = repository.get_duplicates(import_id)
+    duplicates_vm = repository.get_duplicates(import_id, index=index)
     return duplicates_vm.to_template_dict()

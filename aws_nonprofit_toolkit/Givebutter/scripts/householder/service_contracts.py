@@ -358,6 +358,8 @@ class DuplicatePageViewModel:
                 "progress": self.progress,
             },
             "candidate": self.current_candidate.to_dict(),
+            "current_candidate_index": self.current_candidate_index,
+            "total_candidates": self.total_candidates,
         }
 
 

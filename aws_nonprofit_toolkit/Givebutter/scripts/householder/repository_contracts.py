@@ -158,18 +158,21 @@ class ImportRepositoryProtocol(Protocol):
         """
         ...
 
-    def get_duplicates(self, import_id: str) -> DuplicatePageViewModel:
+    def get_duplicates(self, import_id: str, index: int = 0) -> DuplicatePageViewModel:
         """
         Return duplicate review page data.
 
         Args:
             import_id: Import batch ID.
+            index: Zero-based index of duplicate pair to display. Clamped to valid range.
+                  Defaults to 0 (first pair).
 
         Returns:
             DuplicatePageViewModel frozen dataclass with:
             - batch metadata
             - current duplicate candidate pair
             - current candidate index and total count
+            - navigation metadata (has_previous, has_next, previous_index, next_index)
             Data is ready for /imports/<import_id>/duplicates template.
 
         Constraints:

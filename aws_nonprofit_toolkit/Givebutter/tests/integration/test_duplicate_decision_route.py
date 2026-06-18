@@ -457,3 +457,32 @@ class TestDuplicateDecisionRoute:
         assert decision is not None
         assert decision.decision == 'same_person'
         session.close()
+
+    def test_review_item_status_updated_to_decided(self, flask_client_with_db):
+        """Test that ReviewItem status is updated to 'decided' after decision recorded."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        dup_item = session.query(ReviewItem).filter(
+            ReviewItem.item_type == 'duplicate'
+        ).first()
+        item_id = dup_item.id
+
+        # Verify initial status is 'pending'
+        assert dup_item.status == 'pending'
+        session.close()
+
+        # Submit decision
+        client.post(
+            f'/imports/IMP-2025-0101-A/duplicates/{item_id}/decision',
+            data={
+                'decision': 'same_person',
+                'notes': 'Test decision',
+            },
+        )
+
+        # Verify status was updated to 'decided'
+        session = Session()
+        dup_item_after = session.query(ReviewItem).filter_by(id=item_id).first()
+        assert dup_item_after.status == 'decided', f"Expected 'decided' but got '{dup_item_after.status}'"
+        session.close()

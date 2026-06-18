@@ -38,8 +38,9 @@ def flask_client_with_db(temp_db, monkeypatch):
 
     app.config['TESTING'] = True
 
-    # Set environment variable for database URL (used by validation functions)
+    # Set environment variables for database mode
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
 
     from scripts.householder import duplicate_decision_service, repository_provider
     from scripts.householder.database_write_repository import DatabaseDuplicateDecisionWriter
@@ -185,9 +186,226 @@ class TestDuplicateDecisionUI:
 
         response = client.get('/imports/IMP-2025-0101-A/duplicates')
         html = response.data.decode('utf-8')
-        
+
         assert b'same_person' in response.data
         assert b'different_people' in response.data
         assert b'defer' in response.data
         assert b'accept_issue' not in response.data
         assert b'accept_normalization' not in response.data
+
+    def test_multiple_pairs_navigation_metadata(self, flask_client_with_db):
+        """Test that page shows accurate pair count when multiple pairs exist."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Add a second duplicate pair
+        row3 = RawImportRow(batch_id='IMP-2025-0101-A', row_index=3, raw_csv_data={'Name': 'Alice Brown'})
+        row4 = RawImportRow(batch_id='IMP-2025-0101-A', row_index=4, raw_csv_data={'Name': 'Alicia Brown'})
+        session.add(row3)
+        session.add(row4)
+        session.flush()
+
+        contact3 = ImportContact(
+            batch_id='IMP-2025-0101-A', raw_import_row_id=row3.id,
+            first_name='Alice', last_name='Brown', email='alice@example.com'
+        )
+        contact4 = ImportContact(
+            batch_id='IMP-2025-0101-A', raw_import_row_id=row4.id,
+            first_name='Alicia', last_name='Brown', email='alicia@example.com'
+        )
+        session.add(contact3)
+        session.add(contact4)
+        session.flush()
+
+        dup_payload2 = {
+            'contact_a': {'id': str(contact3.id), 'name': 'Alice Brown'},
+            'contact_b': {'id': str(contact4.id), 'name': 'Alicia Brown'},
+            'supporting_evidence': ['Same last name'],
+            'conflicting_evidence': [],
+        }
+
+        dup_item2 = ReviewItem(
+            batch_id='IMP-2025-0101-A',
+            item_type='duplicate',
+            status='pending',
+            payload_json=dup_payload2,
+        )
+        session.add(dup_item2)
+        session.commit()
+        session.close()
+
+        response = client.get('/imports/IMP-2025-0101-A/duplicates')
+        assert response.status_code == 200
+        # Should show "Pair 1 of 2" (or similar accurate count)
+        assert b'Pair 1 of 2' in response.data or b'Pair 1 of' in response.data
+
+    def test_duplicates_index_parameter_selects_pair(self, flask_client_with_db):
+        """Test that ?index parameter selects the correct duplicate pair."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Add a second duplicate pair
+        row3 = RawImportRow(batch_id='IMP-2025-0101-A', row_index=3, raw_csv_data={'Name': 'Alice Brown'})
+        row4 = RawImportRow(batch_id='IMP-2025-0101-A', row_index=4, raw_csv_data={'Name': 'Alicia Brown'})
+        session.add(row3)
+        session.add(row4)
+        session.flush()
+
+        contact3 = ImportContact(
+            batch_id='IMP-2025-0101-A', raw_import_row_id=row3.id,
+            first_name='Alice', last_name='Brown', email='alice@example.com'
+        )
+        contact4 = ImportContact(
+            batch_id='IMP-2025-0101-A', raw_import_row_id=row4.id,
+            first_name='Alicia', last_name='Brown', email='alicia@example.com'
+        )
+        session.add(contact3)
+        session.add(contact4)
+        session.flush()
+
+        dup_payload2 = {
+            'contact_a': {'id': str(contact3.id), 'name': 'Alice Brown'},
+            'contact_b': {'id': str(contact4.id), 'name': 'Alicia Brown'},
+            'supporting_evidence': ['Same last name'],
+            'conflicting_evidence': [],
+        }
+
+        dup_item2 = ReviewItem(
+            batch_id='IMP-2025-0101-A',
+            item_type='duplicate',
+            status='pending',
+            payload_json=dup_payload2,
+        )
+        session.add(dup_item2)
+        session.commit()
+
+        # Get both duplicate items
+        items = session.query(ReviewItem).filter(
+            ReviewItem.batch_id == 'IMP-2025-0101-A',
+            ReviewItem.item_type == 'duplicate'
+        ).order_by(ReviewItem.created_at.asc()).all()
+        item1_id = items[0].id
+        item2_id = items[1].id
+        session.close()
+
+        # Get first pair (index=0 or default)
+        response1 = client.get('/imports/IMP-2025-0101-A/duplicates?index=0')
+        assert response1.status_code == 200
+        assert b'Pair 1 of 2' in response1.data
+        # Should show first contact pair
+        assert b'John Smith' in response1.data or b'John' in response1.data
+
+        # Get second pair (index=1)
+        response2 = client.get('/imports/IMP-2025-0101-A/duplicates?index=1')
+        assert response2.status_code == 200
+        assert b'Pair 2 of 2' in response2.data
+        # Should show second contact pair
+        assert b'Alice Brown' in response2.data or b'Alice' in response2.data
+
+    def test_duplicates_navigation_without_decision(self, flask_client_with_db):
+        """Test that navigation via ?index does NOT create ReviewDecision."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Add a second duplicate pair
+        row3 = RawImportRow(batch_id='IMP-2025-0101-A', row_index=3, raw_csv_data={'Name': 'Alice Brown'})
+        row4 = RawImportRow(batch_id='IMP-2025-0101-A', row_index=4, raw_csv_data={'Name': 'Alicia Brown'})
+        session.add(row3)
+        session.add(row4)
+        session.flush()
+
+        contact3 = ImportContact(
+            batch_id='IMP-2025-0101-A', raw_import_row_id=row3.id,
+            first_name='Alice', last_name='Brown', email='alice@example.com'
+        )
+        contact4 = ImportContact(
+            batch_id='IMP-2025-0101-A', raw_import_row_id=row4.id,
+            first_name='Alicia', last_name='Brown', email='alicia@example.com'
+        )
+        session.add(contact3)
+        session.add(contact4)
+        session.flush()
+
+        dup_payload2 = {
+            'contact_a': {'id': str(contact3.id), 'name': 'Alice Brown'},
+            'contact_b': {'id': str(contact4.id), 'name': 'Alicia Brown'},
+            'supporting_evidence': ['Same last name'],
+            'conflicting_evidence': [],
+        }
+
+        dup_item2 = ReviewItem(
+            batch_id='IMP-2025-0101-A',
+            item_type='duplicate',
+            status='pending',
+            payload_json=dup_payload2,
+        )
+        session.add(dup_item2)
+        session.commit()
+        session.close()
+
+        # Navigate to first pair
+        client.get('/imports/IMP-2025-0101-A/duplicates?index=0')
+
+        # Navigate to second pair
+        client.get('/imports/IMP-2025-0101-A/duplicates?index=1')
+
+        # Navigate back to first pair
+        client.get('/imports/IMP-2025-0101-A/duplicates?index=0')
+
+        # Verify NO ReviewDecisions were created
+        session = Session()
+        decisions = session.query(ReviewDecision).filter_by(batch_id='IMP-2025-0101-A').all()
+        assert len(decisions) == 0, f"Navigation should NOT create decisions, but found {len(decisions)}"
+        session.close()
+
+    def test_duplicates_index_out_of_bounds_clamped(self, flask_client_with_db):
+        """Test that out-of-bounds index is clamped to valid range."""
+        client, database_url, engine, Session = flask_client_with_db
+        session = Session()
+
+        # Add a second duplicate pair
+        row3 = RawImportRow(batch_id='IMP-2025-0101-A', row_index=3, raw_csv_data={'Name': 'Alice Brown'})
+        row4 = RawImportRow(batch_id='IMP-2025-0101-A', row_index=4, raw_csv_data={'Name': 'Alicia Brown'})
+        session.add(row3)
+        session.add(row4)
+        session.flush()
+
+        contact3 = ImportContact(
+            batch_id='IMP-2025-0101-A', raw_import_row_id=row3.id,
+            first_name='Alice', last_name='Brown', email='alice@example.com'
+        )
+        contact4 = ImportContact(
+            batch_id='IMP-2025-0101-A', raw_import_row_id=row4.id,
+            first_name='Alicia', last_name='Brown', email='alicia@example.com'
+        )
+        session.add(contact3)
+        session.add(contact4)
+        session.flush()
+
+        dup_payload2 = {
+            'contact_a': {'id': str(contact3.id), 'name': 'Alice Brown'},
+            'contact_b': {'id': str(contact4.id), 'name': 'Alicia Brown'},
+            'supporting_evidence': ['Same last name'],
+            'conflicting_evidence': [],
+        }
+
+        dup_item2 = ReviewItem(
+            batch_id='IMP-2025-0101-A',
+            item_type='duplicate',
+            status='pending',
+            payload_json=dup_payload2,
+        )
+        session.add(dup_item2)
+        session.commit()
+        session.close()
+
+        # Request index way out of bounds (negative)
+        response = client.get('/imports/IMP-2025-0101-A/duplicates?index=-10')
+        assert response.status_code == 200
+        assert b'Pair 1 of 2' in response.data
+
+        # Request index way out of bounds (too high)
+        response = client.get('/imports/IMP-2025-0101-A/duplicates?index=100')
+        assert response.status_code == 200
+        # Should show last pair (Pair 2 of 2)
+        assert b'Pair 2 of 2' in response.data

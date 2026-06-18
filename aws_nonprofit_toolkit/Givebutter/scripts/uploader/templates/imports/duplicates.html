@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>Possible Duplicates</h1>
-<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Pair 1 of 3</strong></p>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Pair {{ current_candidate_index }} of {{ total_candidates }}</strong></p>
 
 <div class="safety-strip">Side-by-side comparison. "Mark as Same Person" records a reviewer decision only. Raw import rows remain unchanged.</div>
 
@@ -131,8 +131,19 @@ function submitDuplicateDecision(decisionType, candidateId) {
 
 <!-- Navigation -->
 <div style="margin-top: 24px; display: flex; gap: 12px;">
-    <button class="btn btn-secondary">← Previous Pair</button>
-    <button class="btn btn-secondary">Next Pair →</button>
+    {% if total_candidates > 1 %}
+        {% if current_candidate_index > 1 %}
+        <a href="/imports/{{ batch.id }}/duplicates?index={{ current_candidate_index - 2 }}" class="btn btn-secondary" style="text-decoration: none;">← Previous Pair</a>
+        {% else %}
+        <button class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">← Previous Pair</button>
+        {% endif %}
+
+        {% if current_candidate_index < total_candidates %}
+        <a href="/imports/{{ batch.id }}/duplicates?index={{ current_candidate_index }}" class="btn btn-secondary" style="text-decoration: none;">Next Pair →</a>
+        {% else %}
+        <button class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">Next Pair →</button>
+        {% endif %}
+    {% endif %}
     <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
 </div>
 {% endblock %}

@@ -249,7 +249,7 @@ class FixtureImportRepository:
         )
 
     @staticmethod
-    def get_duplicates(import_id: str) -> DuplicatePageViewModel:
+    def get_duplicates(import_id: str, index: int = 0) -> DuplicatePageViewModel:
         """
         Return duplicates review page data as DuplicatePageViewModel.
 
@@ -258,13 +258,22 @@ class FixtureImportRepository:
 
         Args:
             import_id: Import ID (unused for fixture data, preserved for API consistency)
+            index: Zero-based index of duplicate pair to display. Clamped to valid range.
 
         Returns:
             DuplicatePageViewModel with batch, current candidate, and navigation state.
         """
-        # Get first candidate or create empty one if none available
+        total = len(DUPLICATE_CANDIDATES)
+
+        # Clamp index to valid range
+        if total == 0:
+            clamped_index = 0
+        else:
+            clamped_index = max(0, min(index, total - 1))
+
+        # Get candidate at clamped index or create empty one if none available
         current_candidate_data = (
-            DUPLICATE_CANDIDATES[0] if DUPLICATE_CANDIDATES else None
+            DUPLICATE_CANDIDATES[clamped_index] if clamped_index < total else None
         )
 
         if not current_candidate_data:
@@ -306,8 +315,8 @@ class FixtureImportRepository:
             filename=IMPORT_BATCH['filename'],
             progress=IMPORT_BATCH['progress'],
             current_candidate=current_candidate,
-            current_candidate_index=1,
-            total_candidates=len(DUPLICATE_CANDIDATES),
+            current_candidate_index=clamped_index + 1,  # 1-based for display
+            total_candidates=total,
         )
 
     @staticmethod

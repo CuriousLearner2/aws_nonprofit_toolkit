@@ -618,7 +618,7 @@ class DatabaseImportRepository:
         finally:
             session.close()
 
-    def get_duplicates(self, import_id: str) -> DuplicatePageViewModel:
+    def get_duplicates(self, import_id: str, index: int = 0) -> DuplicatePageViewModel:
         """
         Return duplicate review page data as DuplicatePageViewModel.
 
@@ -628,6 +628,7 @@ class DatabaseImportRepository:
 
         Args:
             import_id: Import batch ID to retrieve duplicate data for.
+            index: Zero-based index of duplicate pair to display. Clamped to valid range.
 
         Returns:
             DuplicatePageViewModel with batch metadata, current candidate, and index.
@@ -679,10 +680,16 @@ class DatabaseImportRepository:
 
             total_candidates = len(duplicate_items)
 
-            # Get the first duplicate as current candidate
-            if duplicate_items:
-                first_item = duplicate_items[0]
-                payload = first_item.payload_json or {}
+            # Clamp index to valid range
+            if total_candidates == 0:
+                clamped_index = 0
+            else:
+                clamped_index = max(0, min(index, total_candidates - 1))
+
+            # Get the duplicate candidate at clamped index
+            if duplicate_items and clamped_index < len(duplicate_items):
+                current_item = duplicate_items[clamped_index]
+                payload = current_item.payload_json or {}
 
                 # Extract contact data from payload
                 contact_a_data = payload.get('contact_a', {})
@@ -716,7 +723,7 @@ class DatabaseImportRepository:
                 # Derive effective status from latest ReviewDecision
                 latest_decision = (
                     session.query(ReviewDecision)
-                    .filter_by(review_item_id=first_item.id)
+                    .filter_by(review_item_id=current_item.id)
                     .order_by(ReviewDecision.created_at.desc())
                     .first()
                 )
@@ -730,7 +737,7 @@ class DatabaseImportRepository:
                     effective_status = status_map.get(latest_decision.decision, 'pending')
 
                 current_candidate = DuplicateCandidate(
-                    id=payload.get('id', str(first_item.id)),
+                    id=payload.get('id', str(current_item.id)),
                     contact_a=contact_a,
                     contact_b=contact_b,
                     supporting_evidence=supporting_evidence,
@@ -755,7 +762,7 @@ class DatabaseImportRepository:
                 filename=batch.filename,
                 progress=progress,
                 current_candidate=current_candidate,
-                current_candidate_index=1,
+                current_candidate_index=clamped_index + 1,  # 1-based for display
                 total_candidates=total_candidates,
             )
 

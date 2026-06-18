@@ -903,8 +903,13 @@ def import_readiness(import_id):
 
 @app.route('/imports/<import_id>/duplicates')
 def import_duplicates(import_id):
-    """Possible duplicates review."""
-    data = duplicates_service.get_duplicates_review(import_id)
+    """Possible duplicates review with optional index-based pair navigation."""
+    # Get optional index parameter from query string, default to 0
+    index = request.args.get('index', default=0, type=int)
+    # Ensure index is non-negative (Flask type=int can be negative)
+    index = max(0, index)
+
+    data = duplicates_service.get_duplicates_review(import_id, index=index)
     return render_template('imports/duplicates.html', **data)
 
 @app.route('/imports/<import_id>/validation')
