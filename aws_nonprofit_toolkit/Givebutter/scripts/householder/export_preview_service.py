@@ -20,6 +20,31 @@ from .database_models import (
 from .service_contracts import ExportRow, ExportPreviewResult
 
 
+def _get_validation_issue_type(payload):
+    """
+    Get issue type from validation payload, supporting both real and legacy formats.
+
+    Real ingestion creates payloads with 'issue' field.
+    Tests/legacy payloads use 'issue_type' field.
+    This function normalizes the lookup to support both.
+
+    Args:
+        payload: Validation review item payload (dict or None)
+
+    Returns:
+        Issue type string or 'unknown' if field not found
+    """
+    if not payload:
+        return 'unknown'
+
+    # Real ingestion format
+    if 'issue' in payload:
+        return payload.get('issue')
+
+    # Legacy/test format
+    return payload.get('issue_type', 'unknown')
+
+
 def build_export_preview(
     import_id: str,
     config: Optional[Mapping[str, Any]] = None,
@@ -255,7 +280,7 @@ def build_export_preview(
                 payload = val_item.payload_json or {}
                 if isinstance(payload, str):
                     payload = json.loads(payload)
-                issue_type = payload.get('issue_type', 'unknown')
+                issue_type = _get_validation_issue_type(payload)
 
                 if val_decision:
                     if val_decision.decision == 'accept_issue':

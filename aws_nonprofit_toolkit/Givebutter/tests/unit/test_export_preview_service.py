@@ -859,3 +859,121 @@ class TestExportPreviewDeferredHouseholds:
         result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
 
         assert result.deferred_household_count == 2  # One defer decision + one no decision
+
+
+class TestExportPreviewValidationPayloadFormats:
+    """Test validation blocker detection with real and legacy payload formats."""
+
+    def test_validation_blocker_detected_with_real_ingestion_payload(self, seeded_batch, temp_db):
+        """Real ingestion format with 'issue' field should be detected as blocker."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        # Real ingestion format with 'issue' field (not 'issue_type')
+        val_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='validation',
+            payload_json={
+                'field': 'email',
+                'issue': 'missing_email',  # Real ingestion format
+                'suggestion': None,
+                'validation_tier': 'critical'
+            },
+        )
+        session.add(val_item)
+        session.commit()
+        session.close()
+
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        row = result.export_rows[0]
+
+        assert row.validation_status == 'blocked'
+        assert row.export_blocked
+        assert len(result.blockers) > 0
+
+    def test_validation_resolved_with_real_ingestion_payload(self, seeded_batch, temp_db):
+        """Real ingestion format with decision should not block."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        val_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='validation',
+            payload_json={
+                'field': 'email',
+                'issue': 'missing_email',  # Real ingestion format
+                'suggestion': None,
+                'validation_tier': 'critical'
+            },
+        )
+        session.add(val_item)
+        session.flush()
+
+        # Accept the issue
+        decision = ReviewDecision(
+            batch_id=batch_id,
+            review_item_id=val_item.id,
+            decision='accept_issue',
+        )
+        session.add(decision)
+        session.commit()
+        session.close()
+
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        row = result.export_rows[0]
+
+        assert row.validation_status == 'accepted'
+        assert not row.export_blocked
+
+    def test_validation_blocker_detected_with_legacy_format(self, seeded_batch, temp_db):
+        """Legacy test format with 'issue_type' field still works (backward compat)."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        # Legacy format with 'issue_type' field
+        val_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='validation',
+            payload_json={'issue_type': 'invalid_email'},  # Legacy format
+        )
+        session.add(val_item)
+        session.commit()
+        session.close()
+
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        row = result.export_rows[0]
+
+        assert row.validation_status == 'blocked'
+        assert row.export_blocked
+        assert len(result.blockers) > 0
+
+    def test_validation_unknown_payload_handled_safely(self, seeded_batch, temp_db):
+        """Unknown payload format should not crash."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        # Empty/unknown payload
+        val_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='validation',
+            payload_json={},  # No issue or issue_type field
+        )
+        session.add(val_item)
+        session.commit()
+        session.close()
+
+        # Should not crash
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        row = result.export_rows[0]
+
+        # Unknown issue type should not be treated as critical blocker
+        assert row.validation_status == 'pending'
+        assert not row.export_blocked
