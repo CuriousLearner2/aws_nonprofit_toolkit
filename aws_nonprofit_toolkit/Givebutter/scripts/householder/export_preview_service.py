@@ -147,6 +147,19 @@ def build_export_preview(
             elif hh_decision.decision == 'defer':
                 deferred_household_count += 1
 
+        # Count unresolved/deferred duplicates (mirror household pattern)
+        deferred_duplicate_count = 0
+        for dup_item in session.query(ReviewItem).filter(
+            ReviewItem.batch_id == import_id,
+            ReviewItem.item_type == 'duplicate'
+        ).all():
+            dup_decision = duplicate_decisions.get(dup_item.id)
+            if dup_decision is None:
+                # No decision - counts as unresolved
+                deferred_duplicate_count += 1
+            elif dup_decision.decision == 'defer':
+                deferred_duplicate_count += 1
+
         # Build preview rows
         rows = []
         blockers = []
@@ -384,6 +397,7 @@ def build_export_preview(
             is_export_ready=is_export_ready,
             derived_at=datetime.utcnow(),
             deferred_household_count=deferred_household_count,
+            deferred_duplicate_count=deferred_duplicate_count,
         )
 
         return result

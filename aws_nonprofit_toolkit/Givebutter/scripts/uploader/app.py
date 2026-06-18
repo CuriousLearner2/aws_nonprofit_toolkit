@@ -1444,8 +1444,9 @@ def generate_export(import_id):
         reviewer = request.headers.get('X-Reviewer-ID')
         output_dir = current_app.config.get('EXPORT_OUTPUT_DIR', '/tmp/givebutter/exports')
 
-        # Extract confirmation parameter
+        # Extract confirmation parameters
         confirmed_unresolved_households = request.form.get('confirmed_unresolved_households', 'false').lower() == 'true'
+        confirmed_unresolved_duplicates = request.form.get('confirmed_unresolved_duplicates', 'false').lower() == 'true'
 
         # Validate export directory is configured and writable
         if not output_dir:
@@ -1462,6 +1463,7 @@ def generate_export(import_id):
             output_dir=output_dir,
             reviewer=reviewer,
             confirmed_unresolved_households=confirmed_unresolved_households,
+            confirmed_unresolved_duplicates=confirmed_unresolved_duplicates,
         )
 
         logger.info(f"Export file generated: {import_id} -> {result.filename}")
@@ -1492,6 +1494,16 @@ def generate_export(import_id):
             "warning": e.message,
             "deferred_household_count": e.deferred_count,
             "message": f"Please confirm you acknowledge {e.deferred_count} unresolved household(s) before exporting."
+        }), 400
+
+    except export_file_service.ExportUnresolvedDuplicateWarningError as e:
+        logger.warning(f"Export requires duplicate confirmation for {import_id}: {e.message}")
+        return jsonify({
+            "status": "warning",
+            "action_required": "confirm_unresolved_duplicates",
+            "warning": e.message,
+            "deferred_duplicate_count": e.deferred_count,
+            "message": f"Please confirm you acknowledge {e.deferred_count} unresolved duplicate pair(s) before exporting."
         }), 400
 
     except ValueError as e:
