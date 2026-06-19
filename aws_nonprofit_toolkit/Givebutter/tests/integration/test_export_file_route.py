@@ -637,3 +637,76 @@ def test_unresolved_household_warning_response_json_format(client, tmp_path):
         assert 'deferred_household_count' in data
         assert 'message' in data
         assert data['deferred_household_count'] == 3
+
+
+def test_export_audit_record_includes_confirmation_flags_and_deferred_counts(tmp_path, monkeypatch):
+    """Audit record persists confirmation flags and deferred counts from export."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from scripts.householder.database_models import init_db, ImportBatch, ImportContact, AuditLogRecord
+    from scripts.householder.export_preview_service import build_export_preview
+    from scripts.householder.export_file_service import generate_export_file
+
+    # Setup database
+    db_path = tmp_path / "test.db"
+    db_url = f"sqlite:///{db_path}"
+    init_db(db_url)
+
+    # Create import batch and contact
+    Session = sessionmaker(bind=create_engine(db_url))
+    session = Session()
+
+    batch = ImportBatch(
+        id='IMP-AUDIT-001',
+        filename='test.csv',
+        upload_timestamp=datetime.utcnow(),
+        status='pending'
+    )
+    session.add(batch)
+    session.commit()
+
+    # Create export directory
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', db_url)
+
+    # Generate export with specific confirmations
+    result = generate_export_file(
+        'IMP-AUDIT-001',
+        export_dir,
+        reviewer='test_reviewer@example.com',
+        config={'GIVEBUTTER_DATABASE_URL': db_url},
+        confirmed_unresolved_validations=True,
+        confirmed_unresolved_households=True,
+        confirmed_unresolved_duplicates=False,
+    )
+
+    # Query audit record from database
+    session = Session()
+    try:
+        audit = session.query(AuditLogRecord).filter_by(
+            batch_id='IMP-AUDIT-001',
+            action_type='export_generated'
+        ).first()
+
+        assert audit is not None, "Audit record should be created"
+        assert audit.actor == 'test_reviewer@example.com'
+        assert audit.details is not None
+
+        # Verify confirmations are in audit details
+        assert 'confirmations' in audit.details
+        confirmations = audit.details['confirmations']
+        assert confirmations['confirmed_unresolved_validations'] is True
+        assert confirmations['confirmed_unresolved_households'] is True
+        assert confirmations['confirmed_unresolved_duplicates'] is False
+
+        # Verify deferred counts are in audit details
+        assert 'deferred_counts' in audit.details
+        deferred = audit.details['deferred_counts']
+        assert isinstance(deferred['deferred_validation_count'], int)
+        assert isinstance(deferred['deferred_household_count'], int)
+        assert isinstance(deferred['deferred_duplicate_count'], int)
+
+    finally:
+        session.close()

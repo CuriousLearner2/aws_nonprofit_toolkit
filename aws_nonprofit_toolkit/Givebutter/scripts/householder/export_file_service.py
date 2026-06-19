@@ -221,6 +221,9 @@ def _create_audit_record(
     file_path: str,
     preview,
     reviewer: Optional[str],
+    confirmed_unresolved_validations: bool = False,
+    confirmed_unresolved_households: bool = False,
+    confirmed_unresolved_duplicates: bool = False,
 ) -> int:
     """Create audit log record for export generation."""
     # Build details JSON
@@ -241,6 +244,16 @@ def _create_audit_record(
         },
         "generated_by": reviewer or "system",
         "generated_at": datetime.utcnow().isoformat(),
+        "confirmations": {
+            "confirmed_unresolved_validations": confirmed_unresolved_validations,
+            "confirmed_unresolved_households": confirmed_unresolved_households,
+            "confirmed_unresolved_duplicates": confirmed_unresolved_duplicates,
+        },
+        "deferred_counts": {
+            "deferred_validation_count": getattr(preview, 'deferred_validation_count', 0),
+            "deferred_household_count": getattr(preview, 'deferred_household_count', 0),
+            "deferred_duplicate_count": getattr(preview, 'deferred_duplicate_count', 0),
+        },
     }
 
     # Create audit record
@@ -363,7 +376,15 @@ def generate_export_file(
     try:
         # Create audit record
         audit_log_id = _create_audit_record(
-            session, import_id, filename, file_path, preview, reviewer
+            session,
+            import_id,
+            filename,
+            file_path,
+            preview,
+            reviewer,
+            confirmed_unresolved_validations,
+            confirmed_unresolved_households,
+            confirmed_unresolved_duplicates,
         )
     finally:
         session.close()

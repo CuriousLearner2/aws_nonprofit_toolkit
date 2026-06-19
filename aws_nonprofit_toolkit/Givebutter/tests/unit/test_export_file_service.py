@@ -465,6 +465,95 @@ def test_audit_log_includes_decision_summary(mock_preview_ready, temp_export_dir
             assert preview_arg.import_id == "IMP-TEST-001"
 
 
+@patch('scripts.householder.export_file_service.build_export_preview')
+@patch('scripts.householder.export_file_service._create_audit_record')
+def test_audit_includes_confirmation_flags(mock_audit, mock_preview, temp_export_dir, sample_export_row, monkeypatch):
+    """Audit record includes confirmation flags."""
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', 'sqlite:///:memory:')
+
+    # Mock preview with deferred items
+    preview = ExportPreviewResult(
+        import_id="IMP-TEST-001",
+        export_rows=(sample_export_row,),
+        blockers=(),
+        warnings=(),
+        row_count=1,
+        blocked_count=0,
+        warning_count=0,
+        is_export_ready=True,
+        derived_at=datetime.utcnow(),
+        deferred_validation_count=1,
+        deferred_household_count=2,
+        deferred_duplicate_count=0,
+    )
+    mock_preview.return_value = preview
+    mock_audit.return_value = 999
+
+    generate_export_file(
+        "IMP-TEST-001",
+        temp_export_dir,
+        reviewer="test_reviewer",
+        config={'GIVEBUTTER_DATABASE_URL': 'sqlite:///:memory:'},
+        confirmed_unresolved_validations=True,
+        confirmed_unresolved_households=True,
+        confirmed_unresolved_duplicates=False,
+    )
+
+    # Verify audit called with confirmation flags
+    mock_audit.assert_called_once()
+    call_args = mock_audit.call_args
+
+    # Extract positional arguments
+    assert call_args[0][6] is True, "confirmed_unresolved_validations should be True"
+    assert call_args[0][7] is True, "confirmed_unresolved_households should be True"
+    assert call_args[0][8] is False, "confirmed_unresolved_duplicates should be False"
+
+
+@patch('scripts.householder.export_file_service.build_export_preview')
+@patch('scripts.householder.export_file_service._create_audit_record')
+def test_audit_includes_deferred_counts(mock_audit, mock_preview, temp_export_dir, sample_export_row, monkeypatch):
+    """Audit record includes deferred counts from preview."""
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', 'sqlite:///:memory:')
+
+    # Mock preview with deferred items
+    preview = ExportPreviewResult(
+        import_id="IMP-TEST-002",
+        export_rows=(sample_export_row,),
+        blockers=(),
+        warnings=(),
+        row_count=1,
+        blocked_count=0,
+        warning_count=0,
+        is_export_ready=True,
+        derived_at=datetime.utcnow(),
+        deferred_validation_count=3,
+        deferred_household_count=2,
+        deferred_duplicate_count=1,
+    )
+    mock_preview.return_value = preview
+    mock_audit.return_value = 999
+
+    generate_export_file(
+        "IMP-TEST-002",
+        temp_export_dir,
+        reviewer="test_reviewer",
+        config={'GIVEBUTTER_DATABASE_URL': 'sqlite:///:memory:'},
+        confirmed_unresolved_validations=True,
+        confirmed_unresolved_households=True,
+        confirmed_unresolved_duplicates=True,
+    )
+
+    # Verify audit called with preview containing deferred counts
+    mock_audit.assert_called_once()
+    call_args = mock_audit.call_args
+    preview_arg = call_args[0][4]
+
+    # Verify deferred counts are in preview
+    assert preview_arg.deferred_validation_count == 3
+    assert preview_arg.deferred_household_count == 2
+    assert preview_arg.deferred_duplicate_count == 1
+
+
 # Encoding Tests
 
 def test_encode_csv_field_none():
