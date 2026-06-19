@@ -1049,17 +1049,31 @@ def autosave_row_corrections(import_id):
         is_valid, errors = validate_corrected_values(corrected_values)
 
         if not is_valid:
-            # Get current row state to show validation issues in UI
-            # Pass proposed_values so validation catches errors in the unsaved corrections
-            issues = recalculate_row_issues(
+            # Convert validation errors into synthetic issue objects for row_status calculation
+            # This ensures row_status reflects the validation errors even though they haven't been saved
+            validation_issues = [
+                {
+                    'field': field,
+                    'description': error_msg,
+                    'severity': 'error',  # Validation errors are always blocking
+                    'is_validation_error': True
+                }
+                for field, error_msg in errors.items()
+            ]
+
+            # Also get any existing issues from database (may include pre-existing problems)
+            existing_issues = recalculate_row_issues(
                 batch_id=import_id,
-                raw_import_row_id=raw_import_row_id,
-                proposed_values=corrected_values
+                raw_import_row_id=raw_import_row_id
             )
+
+            # Merge validation errors with existing issues (validation errors take precedence for their fields)
+            all_issues = validation_issues + existing_issues
+
             row_status = derive_row_status(
                 batch_id=import_id,
                 raw_import_row_id=raw_import_row_id,
-                issues=issues
+                issues=all_issues
             )
 
             # Map issues to template format: description -> reason for frontend consistency
@@ -1069,7 +1083,7 @@ def autosave_row_corrections(import_id):
                     'reason': issue.get('description', 'Issue detected'),
                     'severity': issue.get('severity', 'warning')
                 }
-                for issue in issues
+                for issue in all_issues
             ]
 
             # Return validation error - don't save
