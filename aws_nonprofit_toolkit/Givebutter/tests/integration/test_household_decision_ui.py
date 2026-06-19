@@ -40,6 +40,11 @@ def flask_client_with_db(temp_db, monkeypatch):
 
     app.config['TESTING'] = True
 
+    # IMPORTANT: Configure environment for database mode
+    # This ensures all services use the test database
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
     # Monkeypatch the household_decision_service to use test database
     from scripts.householder import household_decision_service
     from scripts.householder.database_write_repository import DatabaseHouseholdDecisionWriter

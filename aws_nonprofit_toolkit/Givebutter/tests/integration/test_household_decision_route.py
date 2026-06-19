@@ -49,7 +49,9 @@ def flask_client_with_db(temp_db, monkeypatch):
 
     monkeypatch.setattr(household_decision_service, '_get_household_decision_writer', patched_get_writer)
 
-    # Also set environment variable for get_next_unresolved_household_index
+    # IMPORTANT: Configure environment for database mode
+    # This ensures all services use the test database
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
 
     # Seed database with test data

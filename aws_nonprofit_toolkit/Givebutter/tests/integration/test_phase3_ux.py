@@ -58,7 +58,9 @@ def flask_client_phase3(temp_db_phase3, monkeypatch):
 
     app.config['TESTING'] = True
 
-    # Set database URL in environment so autosave_service can find it
+    # IMPORTANT: Configure environment for database mode
+    # This ensures all services use the test database
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
 
     # Monkeypatch repository_provider to use test database

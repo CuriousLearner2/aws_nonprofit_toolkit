@@ -51,6 +51,11 @@ def flask_client_with_validation_items(temp_db, monkeypatch):
 
     app.config['TESTING'] = True
 
+    # IMPORTANT: Configure environment for database mode
+    # This ensures all services use the test database
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
     # Monkeypatch repository_provider to use test database
     from scripts.householder import repository_provider
     from scripts.householder.database_repository import DatabaseImportRepository

@@ -30,14 +30,6 @@ from scripts.householder import validation_decision_service
 
 
 @pytest.fixture
-def client():
-    """Create Flask test client."""
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client
-
-
-@pytest.fixture
 def database_backed_client():
     """Create Flask test client with database backend.
 
@@ -69,69 +61,69 @@ def database_backed_client():
 class TestAuditRoute:
     """Test audit log route integration."""
 
-    def test_audit_route_returns_200(self, client):
+    def test_audit_route_returns_200(self, client_with_fixture):
         """Test that audit route returns 200 status."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert response.status_code == 200
 
-    def test_audit_contains_title(self, client):
+    def test_audit_contains_title(self, client_with_fixture):
         """Test that audit page contains title."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'Audit Log' in response.data
 
-    def test_audit_contains_batch_id(self, client):
+    def test_audit_contains_batch_id(self, client_with_fixture):
         """Test that audit page displays batch ID."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'IMP-2025-0101-A' in response.data
 
-    def test_audit_contains_batch_metadata(self, client):
+    def test_audit_contains_batch_metadata(self, client_with_fixture):
         """Test that audit page displays batch metadata."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'Batch:' in response.data
         assert b'Total Entries:' in response.data
 
-    def test_audit_contains_safety_strip(self, client):
+    def test_audit_contains_safety_strip(self, client_with_fixture):
         """Test that audit page contains safety messaging."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'immutable' in response.data or b'compliance' in response.data
 
-    def test_audit_contains_filter_control(self, client):
+    def test_audit_contains_filter_control(self, client_with_fixture):
         """Test that audit page contains filter dropdown."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'action-filter' in response.data
 
-    def test_audit_contains_export_button(self, client):
+    def test_audit_contains_export_button(self, client_with_fixture):
         """Test that audit page contains export button."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'Export' in response.data
 
-    def test_audit_contains_table_headers(self, client):
+    def test_audit_contains_table_headers(self, client_with_fixture):
         """Test that audit page contains table headers."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'Timestamp' in response.data
         assert b'Action' in response.data
         assert b'Details' in response.data
         assert b'Reviewer' in response.data
 
-    def test_audit_contains_audit_entries(self, client):
+    def test_audit_contains_audit_entries(self, client_with_fixture):
         """Test that audit page contains audit entries."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         # Should have entries with reviewer names
         assert b'Sarah Lee' in response.data or b'James Martinez' in response.data
 
-    def test_audit_contains_navigation_back_to_dashboard(self, client):
+    def test_audit_contains_navigation_back_to_dashboard(self, client_with_fixture):
         """Test that audit page has back to dashboard link."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'/imports/IMP-2025-0101-A/dashboard' in response.data
 
-    def test_audit_contains_navigation_back_to_imports(self, client):
+    def test_audit_contains_navigation_back_to_imports(self, client_with_fixture):
         """Test that audit page has back to imports link."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'Back to Imports' in response.data
 
-    def test_audit_no_forbidden_vocabulary(self, client):
+    def test_audit_no_forbidden_vocabulary(self, client_with_fixture):
         """Test that audit page does not contain forbidden vocabulary."""
-        response = client.get('/imports/IMP-2025-0101-A/audit')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         html = response.data.decode('utf-8', errors='ignore').lower()
 
         forbidden = [
@@ -146,37 +138,37 @@ class TestAuditRoute:
         for word in forbidden:
             assert word not in html, f"Forbidden vocabulary '{word}' found in response"
 
-    def test_imports_route_still_works(self, client):
+    def test_imports_route_still_works(self, client_with_fixture):
         """Test that /imports route still works (Step 1 regression check)."""
-        response = client.get('/imports')
+        response = client_with_fixture.get('/imports')
         assert response.status_code == 200
         assert b'Imports' in response.data
 
-    def test_dashboard_route_still_works(self, client):
+    def test_dashboard_route_still_works(self, client_with_fixture):
         """Test that /dashboard route still works (Step 2 regression check)."""
-        response = client.get('/imports/IMP-2025-0101-A/dashboard')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/dashboard')
         assert response.status_code == 200
         assert b'Import Dashboard' in response.data
 
-    def test_validation_route_still_works(self, client):
+    def test_validation_route_still_works(self, client_with_fixture):
         """Test that /validation route still works (Step 3 regression check)."""
-        response = client.get('/imports/IMP-2025-0101-A/validation')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
         assert response.status_code == 200
         assert b'Validation' in response.data
 
-    def test_households_route_still_works(self, client):
+    def test_households_route_still_works(self, client_with_fixture):
         """Test that /households route still works (Step 5 regression check)."""
-        response = client.get('/imports/IMP-2025-0101-A/households')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/households')
         assert response.status_code == 200
 
-    def test_duplicates_route_still_works(self, client):
+    def test_duplicates_route_still_works(self, client_with_fixture):
         """Test that /duplicates route still works (Step 6 regression check)."""
-        response = client.get('/imports/IMP-2025-0101-A/duplicates')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/duplicates')
         assert response.status_code == 200
 
-    def test_exports_route_untouched(self, client):
+    def test_exports_route_untouched(self, client_with_fixture):
         """Test that exports route was not modified."""
-        response = client.get('/imports/IMP-2025-0101-A/exports')
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/exports')
         assert response.status_code == 200
 
 

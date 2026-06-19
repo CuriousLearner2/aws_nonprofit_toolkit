@@ -40,7 +40,9 @@ def flask_client_with_db(temp_db, monkeypatch):
 
     app.config['TESTING'] = True
 
-    # Set environment variable for database URL (used by validation functions)
+    # IMPORTANT: Configure environment for database mode
+    # This ensures all services use the test database
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
 
     # Monkeypatch the duplicate_decision_service to use test database

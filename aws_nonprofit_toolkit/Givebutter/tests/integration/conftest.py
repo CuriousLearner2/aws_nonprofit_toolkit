@@ -53,9 +53,54 @@ def initialized_test_db(test_db_path):
 
 
 @pytest.fixture
+def client_with_fixture(monkeypatch):
+    """Create Flask test client with fixture mode configured.
+
+    Function-scoped fixture that configures repository mode to use in-memory
+    fixture data (not database). Uses monkeypatch for environment cleanup
+    that reverts after test.
+    """
+    # IMPORTANT: Reset Flask app state and environment first
+    # This ensures we don't inherit configuration from previous tests
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'fixture')
+    monkeypatch.delenv('GIVEBUTTER_DATABASE_URL', raising=False)
+
+    # Create app in test mode
+    app.config['TESTING'] = True
+
+    with app.test_client() as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def client_with_database(monkeypatch, initialized_test_db):
+    """Create Flask test client with database mode configured.
+
+    Function-scoped fixture that configures repository mode to use a seeded
+    SQLite database. Uses monkeypatch for environment cleanup that reverts
+    after test.
+    """
+    # IMPORTANT: Configure database mode via environment variables
+    # This resets any previous fixture mode configuration
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', initialized_test_db)
+
+    # Create app in test mode
+    app.config['TESTING'] = True
+
+    with app.test_client() as test_client:
+        yield test_client
+
+
+@pytest.fixture
 def client(monkeypatch, initialized_test_db):
-    """Create Flask test client with database mode configured."""
-    # Configure database mode via environment variables
+    """Create Flask test client with database mode configured.
+
+    Deprecated: Use client_with_database or client_with_fixture instead.
+    This fixture exists for backward compatibility with existing tests.
+    """
+    # IMPORTANT: Reset environment to database mode
+    # This ensures proper cleanup from previous tests
     monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', initialized_test_db)
 
