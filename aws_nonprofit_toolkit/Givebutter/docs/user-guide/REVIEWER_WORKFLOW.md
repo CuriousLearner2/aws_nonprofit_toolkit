@@ -18,11 +18,13 @@
 **Decision types:**
 - **Mark as Valid** — Override validation error, include in export
 - **Mark as Invalid** — Confirm error is real, exclude from export
+- **Defer** — Not sure; re-visit later
 
 **Tips:**
 - Invalid records are flagged; you must decide what to do
 - Validation is about data format, not business logic
 - Use notes to explain why you're overriding (e.g., "Email is legacy, customer confirmed valid")
+- Defer is useful when uncertain; deferred issues may require confirmation before export
 - Invalid records still appear in audit trail; not deleted
 
 **Exit condition:** All validation items decided
