@@ -266,12 +266,25 @@ Before you start working on tests in this project:
 - Phase 1-2: Previous/Next navigation + Defer-without-notes warning (commit `55bfb99`)
 - Phase 4: Post-decision redirect to next unresolved household
 - E2E browser coverage: 5 critical workflows with 100% reliability (5-run verification)
-- All 1317 tests pass with zero regressions
+- Pre-commit hook simplification: 8 min → 9 sec (unit + integration tests only)
+- Transaction ID display in validation review (commit `cf5f669`)
+- All 1337 tests pass with zero regressions
+
+**Completed (2026-06-18):**
+- Export golden-file test coverage for reviewed values (commit `04a7dce`)
+  - Verifies reviewed normalization values appear in exported CSV
+  - Locks down exact CSV header order and column positions
+  - Validates raw source data immutability through export
+- Required-test failure gates in Claude workflow (commit `32b9790`)
+  - Blocks "ready" status when required verification tests fail
+  - Enforces reviewer rejection for failing required tests
+  - Documents fast pre-commit gate as required verification
 
 **Pending:**
 - Phase 3: Export warning + confirmation checkbox for deferred/unresolved households
+- Additional golden-file tests for multiple rows and mixed scenarios
 
 ---
 
-**Last updated:** 2026-06-17  
-**Status:** Active (Households Phase 1-2 + Phase 4 hardening complete, E2E tests added)
+**Last updated:** 2026-06-18  
+**Status:** Active (Export golden-file test baseline added, workflow gates enforced)
