@@ -396,3 +396,197 @@ def test_downloaded_csv_matches_generated_content(flask_client_with_db_for_expor
 
     # Cleanup
     session.close()
+
+
+# Export Lifecycle Tests
+
+def test_repeated_exports_create_separate_files_and_audit_records(flask_client_with_db_for_export):
+    """Repeated exports for same import create separate files and separate audit records."""
+    client, database_url, engine, export_dir = flask_client_with_db_for_export
+
+    # Seed database with test data
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch
+    batch = ImportBatch(
+        id='IMP-LIFECYCLE-001',
+        filename='test_upload.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Create raw import row
+    row = RawImportRow(
+        batch_id='IMP-LIFECYCLE-001',
+        row_index=1,
+        raw_csv_data={
+            'transaction_id': 'TXN-001',
+            'first_name': 'John',
+            'last_name': 'Smith',
+            'email': 'john@example.com',
+            'phone': '555-1234',
+            'amount': '100.00'
+        },
+    )
+    session.add(row)
+    session.flush()
+
+    # Create import contact
+    contact = ImportContact(
+        batch_id='IMP-LIFECYCLE-001',
+        raw_import_row_id=row.id,
+        first_name='John',
+        last_name='Smith',
+        email='john@example.com',
+        phone='555-1234',
+        amount=100.00,
+    )
+    session.add(contact)
+    session.commit()
+
+    # Generate first export
+    from scripts.householder.export_file_service import generate_export_file
+
+    result1 = generate_export_file(
+        import_id='IMP-LIFECYCLE-001',
+        output_dir=export_dir,
+        reviewer='test_user',
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+    )
+
+    # Verify first export created
+    assert os.path.exists(result1.file_path), f"First export file not found: {result1.file_path}"
+    assert result1.audit_log_id is not None
+
+    # Generate second export (same batch, should create separate file)
+    result2 = generate_export_file(
+        import_id='IMP-LIFECYCLE-001',
+        output_dir=export_dir,
+        reviewer='test_user',
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+    )
+
+    # Verify second export created as separate file
+    assert os.path.exists(result2.file_path), f"Second export file not found: {result2.file_path}"
+    assert result2.audit_log_id is not None
+
+    # Verify files are different (not overwritten)
+    assert result1.file_path != result2.file_path, (
+        f"Repeated exports should create separate files, but got same path: {result1.file_path}"
+    )
+
+    # Verify both files exist on disk
+    assert os.path.exists(result1.file_path), f"First export file deleted or moved: {result1.file_path}"
+    assert os.path.exists(result2.file_path), f"Second export file not created: {result2.file_path}"
+
+    # Verify both audit records exist in database
+    from scripts.householder.database_models import AuditLogRecord
+
+    record1 = session.query(AuditLogRecord).filter_by(id=result1.audit_log_id).first()
+    record2 = session.query(AuditLogRecord).filter_by(id=result2.audit_log_id).first()
+
+    assert record1 is not None, f"First audit record not found: id={result1.audit_log_id}"
+    assert record2 is not None, f"Second audit record not found: id={result2.audit_log_id}"
+    assert record1.id != record2.id, "Audit records should be different"
+    assert record1.details['file_path'] != record2.details['file_path'], (
+        "Audit records should point to different files"
+    )
+
+    # Verify both can be downloaded
+    response1 = client.get(f'/imports/IMP-LIFECYCLE-001/exports/download/{result1.audit_log_id}')
+    response2 = client.get(f'/imports/IMP-LIFECYCLE-001/exports/download/{result2.audit_log_id}')
+
+    assert response1.status_code == 200, f"First export download failed: {response1.status_code}"
+    assert response2.status_code == 200, f"Second export download failed: {response2.status_code}"
+
+    session.close()
+
+
+def test_deleted_export_file_returns_404_audit_persists(flask_client_with_db_for_export):
+    """If generated file is deleted, download returns 404 while audit record persists."""
+    client, database_url, engine, export_dir = flask_client_with_db_for_export
+
+    # Seed database with test data
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch
+    batch = ImportBatch(
+        id='IMP-DELETE-001',
+        filename='test_upload.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Create raw import row
+    row = RawImportRow(
+        batch_id='IMP-DELETE-001',
+        row_index=1,
+        raw_csv_data={
+            'transaction_id': 'TXN-001',
+            'first_name': 'Jane',
+            'last_name': 'Doe',
+            'email': 'jane@example.com',
+            'phone': '555-5678',
+            'amount': '250.00'
+        },
+    )
+    session.add(row)
+    session.flush()
+
+    # Create import contact
+    contact = ImportContact(
+        batch_id='IMP-DELETE-001',
+        raw_import_row_id=row.id,
+        first_name='Jane',
+        last_name='Doe',
+        email='jane@example.com',
+        phone='555-5678',
+        amount=250.00,
+    )
+    session.add(contact)
+    session.commit()
+
+    # Generate export
+    from scripts.householder.export_file_service import generate_export_file
+
+    result = generate_export_file(
+        import_id='IMP-DELETE-001',
+        output_dir=export_dir,
+        reviewer='test_user',
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+    )
+
+    # Verify export file exists
+    assert os.path.exists(result.file_path), f"Export file not found: {result.file_path}"
+
+    # Verify download works before deletion
+    response_before = client.get(f'/imports/IMP-DELETE-001/exports/download/{result.audit_log_id}')
+    assert response_before.status_code == 200, f"Download should succeed before deletion"
+
+    # Delete the export file from disk
+    os.remove(result.file_path)
+    assert not os.path.exists(result.file_path), f"File deletion failed: {result.file_path}"
+
+    # Verify download now returns 404
+    response_after = client.get(f'/imports/IMP-DELETE-001/exports/download/{result.audit_log_id}')
+    assert response_after.status_code == 404, (
+        f"Download should return 404 when file missing, got {response_after.status_code}"
+    )
+
+    # Verify audit record still exists in database
+    from scripts.householder.database_models import AuditLogRecord
+
+    record = session.query(AuditLogRecord).filter_by(id=result.audit_log_id).first()
+    assert record is not None, (
+        f"Audit record should persist after file deletion: id={result.audit_log_id}"
+    )
+    assert record.action_type == 'export_generated', "Audit record should still be export_generated"
+    assert record.details['file_path'] == result.file_path, (
+        "Audit record should still point to deleted file path (immutable)"
+    )
+
+    session.close()

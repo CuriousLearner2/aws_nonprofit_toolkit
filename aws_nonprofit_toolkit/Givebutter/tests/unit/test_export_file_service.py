@@ -727,6 +727,54 @@ def test_export_raises_if_unresolved_and_not_confirmed(mock_preview, temp_export
     assert exc_info.value.deferred_count == 2
 
 
+# Export Lifecycle Tests
+
+def test_collision_handling_appends_suffixes(temp_export_dir):
+    """Filename collision handling appends _01, _02 suffixes when file exists."""
+    from scripts.householder.export_file_service import _get_safe_file_path
+
+    # Create first file
+    filename = "test_export_20260619_143022.csv"
+    filepath1 = _get_safe_file_path(temp_export_dir, filename)
+
+    # Create the first file
+    Path(filepath1).touch()
+    assert os.path.exists(filepath1)
+
+    # Request same filename again; should get _01 suffix
+    filepath2 = _get_safe_file_path(temp_export_dir, filename)
+
+    assert filepath2 != filepath1, "Collision handling should return different path"
+    assert "_01.csv" in filepath2, f"Expected _01 suffix, got: {filepath2}"
+    assert not os.path.exists(filepath2), "Collision path should not exist yet"
+
+    # Create the _01 file
+    Path(filepath2).touch()
+    assert os.path.exists(filepath2)
+
+    # Request same filename third time; should get _02 suffix
+    filepath3 = _get_safe_file_path(temp_export_dir, filename)
+
+    assert filepath3 != filepath1 and filepath3 != filepath2, "Third path should be different"
+    assert "_02.csv" in filepath3, f"Expected _02 suffix, got: {filepath3}"
+    assert not os.path.exists(filepath3), "Collision path _02 should not exist yet"
+
+
+def test_collision_handling_preserves_extension(temp_export_dir):
+    """Collision suffix appends before extension, preserving .csv."""
+    from scripts.householder.export_file_service import _get_safe_file_path
+
+    filename = "export_data.csv"
+    filepath1 = _get_safe_file_path(temp_export_dir, filename)
+    Path(filepath1).touch()
+
+    filepath2 = _get_safe_file_path(temp_export_dir, filename)
+
+    # Verify suffix is before .csv, not after
+    assert filepath2.endswith(".csv"), f"Expected .csv extension, got: {filepath2}"
+    assert "_01.csv" in filepath2, f"Expected _01.csv pattern, got: {filepath2}"
+
+
 @patch('scripts.householder.export_file_service.build_export_preview')
 @patch('scripts.householder.export_file_service._create_audit_record')
 def test_export_succeeds_if_unresolved_and_confirmed(mock_audit, mock_preview, temp_export_dir, sample_export_row):
