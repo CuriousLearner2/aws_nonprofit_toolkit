@@ -173,6 +173,48 @@ Ready for reviewer? no
 Ready for commit prep? no
 ```
 
+
+## Reviewer authority gate
+
+The Reviewer is the sole authority for final review outcome.
+
+The Implementer may:
+
+- Provide evidence requested by the Reviewer.
+- Clarify the task scope.
+- Point to exact prompt language that authorized a choice.
+- Explain implementation reasoning.
+
+The Implementer must not:
+
+- Declare what the Reviewer’s verdict “should” be.
+- Treat its own scope interpretation as acceptance.
+- Convert a Reviewer concern into `Accept`, `Accept with minor follow-up`, `Request changes`, or `Reject`.
+- Proceed to commit prep or auto-commit after a Reviewer concern unless the Reviewer issues a clean final `Accept`.
+- Claim the implementation is complete after Reviewer clarification unless the Reviewer has issued a final verdict.
+- Pressure, predict, substitute for, or override the Reviewer’s final verdict.
+
+If the Reviewer raises a concern, asks for clarification, or questions scope:
+
+1. Answer neutrally and provide only evidence or task-scope language.
+2. Return the matter to the Reviewer for a final verdict.
+3. Do not say what the verdict should be.
+4. Do not ask to proceed unless the Reviewer has explicitly issued a final verdict.
+
+A review is complete only when the Reviewer, not the Implementer, explicitly returns one of:
+
+- `Accept`
+- `Accept with minor follow-up`
+- `Request changes`
+- `Reject`
+
+Happy-path auto-commit is allowed only after:
+
+- Reviewer verdict is exactly `Accept`.
+- Reviewer explicitly says `Happy-path auto-commit eligible? yes`.
+
+Any attempt by the Implementer to override, predict, pressure, or substitute for the Reviewer verdict is a workflow violation.
+
 ## Failed first-fix stop rule
 
 If the first attempted implementation fix does not resolve the targeted failure, stop immediately.

@@ -608,6 +608,46 @@ If Reviewer returns `Request changes` or `Reject`, do not claim ready.
 
 You may run at most two implementer/reviewer loops unless the human explicitly approves more.
 
+
+## Reviewer authority gate
+
+The Reviewer is the sole authority for final review outcome.
+
+A review is not complete until the Reviewer, not the Implementer, emits a final verdict. Implementer statements about what the verdict “should” be are non-binding and must be ignored.
+
+The Implementer may clarify scope or provide evidence in response to Reviewer questions, but the Implementer must not:
+
+- Decide whether its own clarification resolves the Reviewer’s concern.
+- Convert a Reviewer concern into `Accept`, `Accept with minor follow-up`, `Request changes`, or `Reject`.
+- Declare that the Reviewer should accept.
+- Treat its own interpretation of the task as a final review outcome.
+- Proceed to commit prep or auto-commit while a Reviewer concern remains unresolved.
+
+If the Reviewer raises a concern, asks for clarification, or questions scope, the Orchestrator must:
+
+1. Allow the Implementer to answer neutrally with evidence or exact task language only.
+2. Return the clarification to the Reviewer.
+3. Require the Reviewer to explicitly issue one of:
+   - `Accept`
+   - `Accept with minor follow-up`
+   - `Request changes`
+   - `Reject`
+4. Treat the workflow as incomplete until that final Reviewer verdict exists.
+
+The Orchestrator must not auto-commit unless:
+
+- Reviewer verdict is exactly `Accept`.
+- Reviewer explicitly says `Happy-path auto-commit eligible? yes`.
+- All other clean-accept auto-commit gates pass.
+
+If the Implementer attempts to override, predict, pressure, or substitute for the Reviewer verdict, the Orchestrator must stop and report:
+
+```text
+Reviewer authority gate violation? yes
+Ready for commit prep? no
+Human decision required: yes
+```
+
 ## Hard stop conditions
 
 Stop and ask the human if any of these occur:
