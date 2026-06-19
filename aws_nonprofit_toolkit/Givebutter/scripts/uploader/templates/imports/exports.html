@@ -120,6 +120,24 @@
     </div>
     {% endif %}
 
+    <!-- Unresolved Validation Warning and Confirmation -->
+    {% if preview_available and preview.deferred_validation_count > 0 %}
+    <div style="background-color: #fef3c7; padding: 12px; border-radius: 3px; margin-bottom: 16px;">
+        <p style="font-size: 12px; color: #78350f; margin: 0 0 12px 0; font-weight: 600;">
+            ⚠️ {{ preview.deferred_validation_count }} validation issue(s) are deferred
+        </p>
+        <label style="display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 13px; color: #78350f;">
+            <input
+                type="checkbox"
+                id="confirm-unresolved-validations-checkbox"
+                style="margin-top: 3px; cursor: pointer;"
+                onchange="updateExportButtonState()"
+            />
+            <span>I confirm {{ preview.deferred_validation_count }} validation issue(s) are deferred and will review/resolve them in a follow-up</span>
+        </label>
+    </div>
+    {% endif %}
+
     <button
         type="button"
         class="btn btn-primary"
@@ -128,7 +146,8 @@
         {% if preview_available and preview.blocked_count > 0 %}disabled{% endif %}
         {% if preview_available and preview.deferred_household_count > 0 %}disabled{% endif %}
         {% if preview_available and preview.deferred_duplicate_count > 0 %}disabled{% endif %}
-        style="font-size: 16px; padding: 12px 24px; {% if preview_available and (preview.blocked_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0) %}opacity: 0.6; cursor: not-allowed;{% endif %}"
+        {% if preview_available and preview.deferred_validation_count > 0 %}disabled{% endif %}
+        style="font-size: 16px; padding: 12px 24px; {% if preview_available and (preview.blocked_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0) %}opacity: 0.6; cursor: not-allowed;{% endif %}"
     >
         Generate CSV Export
     </button>
@@ -242,6 +261,7 @@ function updateExportButtonState() {
     const btn = document.getElementById('generate-export-btn');
     const householdCheckbox = document.getElementById('confirm-unresolved-households-checkbox');
     const duplicateCheckbox = document.getElementById('confirm-unresolved-duplicates-checkbox');
+    const validationCheckbox = document.getElementById('confirm-unresolved-validations-checkbox');
     {% if preview_available and preview %}
     const preview = {{ preview | tojson }};
     {% else %}
@@ -261,8 +281,14 @@ function updateExportButtonState() {
             duplicateConfirmed = duplicateCheckbox && duplicateCheckbox.checked;
         }
 
-        // Both must be confirmed (or not required) for export to be enabled
-        const canExport = householdConfirmed && duplicateConfirmed;
+        // If validations are deferred, require validation confirmation
+        let validationConfirmed = true;
+        if (preview.deferred_validation_count > 0) {
+            validationConfirmed = validationCheckbox && validationCheckbox.checked;
+        }
+
+        // All must be confirmed (or not required) for export to be enabled
+        const canExport = householdConfirmed && duplicateConfirmed && validationConfirmed;
         btn.disabled = !canExport;
         btn.style.opacity = canExport ? '1' : '0.6';
         btn.style.cursor = canExport ? 'pointer' : 'not-allowed';
@@ -273,9 +299,11 @@ function generateExportFile() {
     const btn = document.getElementById('generate-export-btn');
     const householdCheckbox = document.getElementById('confirm-unresolved-households-checkbox');
     const duplicateCheckbox = document.getElementById('confirm-unresolved-duplicates-checkbox');
+    const validationCheckbox = document.getElementById('confirm-unresolved-validations-checkbox');
     const batchId = '{{ batch.id }}';
     const confirmedHouseholds = householdCheckbox && householdCheckbox.checked ? 'true' : 'false';
     const confirmedDuplicates = duplicateCheckbox && duplicateCheckbox.checked ? 'true' : 'false';
+    const confirmedValidations = validationCheckbox && validationCheckbox.checked ? 'true' : 'false';
 
     // Show loading state
     btn.disabled = true;
@@ -285,6 +313,7 @@ function generateExportFile() {
     const formData = new FormData();
     formData.append('confirmed_unresolved_households', confirmedHouseholds);
     formData.append('confirmed_unresolved_duplicates', confirmedDuplicates);
+    formData.append('confirmed_unresolved_validations', confirmedValidations);
 
     fetch(`/imports/${batchId}/exports/generate`, {
         method: 'POST',
@@ -303,6 +332,10 @@ function generateExportFile() {
             btn.disabled = false;
             btn.textContent = originalText;
         } else if (data.status === 'warning' && data.action_required === 'confirm_unresolved_duplicates') {
+            alert(`Please confirm: ${data.message}`);
+            btn.disabled = false;
+            btn.textContent = originalText;
+        } else if (data.status === 'warning' && data.action_required === 'confirm_unresolved_validations') {
             alert(`Please confirm: ${data.message}`);
             btn.disabled = false;
             btn.textContent = originalText;

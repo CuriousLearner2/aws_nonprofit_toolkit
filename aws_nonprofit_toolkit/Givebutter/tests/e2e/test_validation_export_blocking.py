@@ -1023,3 +1023,676 @@ async def test_deferred_validation_remains_export_relevant(e2e_database_and_app)
 
     finally:
         session.close()
+
+
+# ==============================================================================
+# TEST G: Export warning appears for deferred validation issues
+# ==============================================================================
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_export_warning_appears_for_deferred_validation(e2e_database_and_app):
+    """
+    Verify export warning and confirmation checkbox appear when deferred validation issues exist.
+
+    Scenario:
+    1. Seed ImportBatch with deferred validation issue
+    2. Navigate to /imports/{batch_id}/exports in browser
+    3. Generate export preview
+    4. Verify warning banner appears for deferred validation
+    5. Verify confirmation checkbox is present
+    6. Verify export button is initially disabled
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='validation-deferred-export-warning-g',
+            filename='validation_deferred_export_g.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row with missing email
+        raw_row = RawImportRow(
+            batch_id='validation-deferred-export-warning-g',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Deferred Export Test',
+                'date': '2026-06-18',
+                'email': '',  # Missing email
+                'phone': '(555) 777-7777',
+                'amount': '450.00',
+                'address': '111 Export Warning Ave G',
+                'transaction_id': 'TXN-EXPORT-WARN-G'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+
+        # Create ImportContact
+        contact = ImportContact(
+            batch_id='validation-deferred-export-warning-g',
+            raw_import_row_id=raw_row.id,
+            first_name='Export',
+            last_name='WarningG',
+            email='',  # Missing email
+            phone='(555) 777-7777',
+            address_line1='111 Export Warning Ave G',
+            amount=450.00
+        )
+        session.add(contact)
+        session.flush()
+
+        # Create validation item
+        val_item = ReviewItem(
+            batch_id='validation-deferred-export-warning-g',
+            item_type='validation',
+            confidence=1.0,
+            payload_json={
+                'field': 'email',
+                'issue': 'missing_email',
+                'suggestion': None,
+                'validation_tier': 'critical'
+            }
+        )
+        session.add(val_item)
+        session.flush()
+
+        # Add subject
+        subject = ReviewItemSubject(
+            review_item_id=val_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact.id,
+            role='primary'
+        )
+        session.add(subject)
+        session.flush()
+
+        # Create deferred decision
+        defer_decision = ReviewDecision(
+            batch_id='validation-deferred-export-warning-g',
+            review_item_id=val_item.id,
+            decision='defer',
+            reviewed_values={'field': 'email', 'issue': 'missing_email'},
+            reviewer='test-reviewer'
+        )
+        session.add(defer_decision)
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/validation-deferred-export-warning-g/exports', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # G1: Navigate to exports page
+                await page.goto('http://127.0.0.1:8001/imports/validation-deferred-export-warning-g/exports')
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ G1: Export console page loaded")
+
+                # G2: Generate preview
+                await page.evaluate("""
+                    async () => {
+                        const response = await fetch('/imports/validation-deferred-export-warning-g/exports/preview', {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            const html = await response.text();
+                            document.open();
+                            document.write(html);
+                            document.close();
+                        }
+                    }
+                """)
+
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ G2: Export preview loaded")
+
+                # G3: Verify deferred validation warning appears
+                deferred_validation_warning = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                assert deferred_validation_warning is not None, \
+                    "G3 FAILED: Validation confirmation checkbox should appear for deferred issues"
+                print("✓ G3: Validation confirmation checkbox present")
+
+                # G4: Verify export button is initially disabled
+                export_btn = await page.query_selector('#generate-export-btn')
+                is_disabled = await export_btn.is_disabled() if export_btn else False
+                assert is_disabled, "G4 FAILED: Export button should be disabled until confirmation checked"
+                print("✓ G4: Export button initially disabled (deferred validation warning)")
+
+                print("\n=== TEST G: EXPORT WARNING APPEARS FOR DEFERRED VALIDATION PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+# ==============================================================================
+# TEST H: Export blocked when deferred validation confirmation unchecked
+# ==============================================================================
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_export_blocked_when_validation_confirmation_unchecked(e2e_database_and_app):
+    """
+    Verify export is blocked when deferred validation confirmation is not checked.
+
+    Scenario:
+    1. Seed ImportBatch with deferred validation issue
+    2. Navigate to export console and generate preview
+    3. Verify confirmation checkbox is present but unchecked
+    4. Verify export button is disabled
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='validation-unchecked-h',
+            filename='validation_unchecked_h.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row and contact
+        raw_row = RawImportRow(
+            batch_id='validation-unchecked-h',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Unchecked Test',
+                'date': '2026-06-18',
+                'email': '',
+                'phone': '(555) 888-8888',
+                'amount': '500.00',
+                'address': '222 Unchecked Ave H',
+                'transaction_id': 'TXN-UNCHECKED-H'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id='validation-unchecked-h',
+            raw_import_row_id=raw_row.id,
+            first_name='Unchecked',
+            last_name='TestH',
+            email='',
+            phone='(555) 888-8888',
+            address_line1='222 Unchecked Ave H',
+            amount=500.00
+        )
+        session.add(contact)
+        session.flush()
+
+        # Create validation item and deferred decision
+        val_item = ReviewItem(
+            batch_id='validation-unchecked-h',
+            item_type='validation',
+            confidence=1.0,
+            payload_json={
+                'field': 'email',
+                'issue': 'missing_email',
+                'suggestion': None,
+                'validation_tier': 'critical'
+            }
+        )
+        session.add(val_item)
+        session.flush()
+
+        subject = ReviewItemSubject(
+            review_item_id=val_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact.id,
+            role='primary'
+        )
+        session.add(subject)
+        session.flush()
+
+        defer_decision = ReviewDecision(
+            batch_id='validation-unchecked-h',
+            review_item_id=val_item.id,
+            decision='defer',
+            reviewed_values={'field': 'email', 'issue': 'missing_email'},
+            reviewer='test-reviewer'
+        )
+        session.add(defer_decision)
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/validation-unchecked-h/exports', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # H1: Navigate to exports page
+                await page.goto('http://127.0.0.1:8001/imports/validation-unchecked-h/exports')
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ H1: Export console loaded")
+
+                # H2: Generate preview
+                await page.evaluate("""
+                    async () => {
+                        const response = await fetch('/imports/validation-unchecked-h/exports/preview', {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            const html = await response.text();
+                            document.open();
+                            document.write(html);
+                            document.close();
+                        }
+                    }
+                """)
+
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ H2: Export preview loaded")
+
+                # H3: Verify validation confirmation checkbox exists
+                validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                assert validation_checkbox is not None, \
+                    "H3 FAILED: Validation confirmation checkbox should exist"
+                print("✓ H3: Validation confirmation checkbox exists")
+
+                # H4: Verify checkbox is unchecked initially
+                is_checked = await validation_checkbox.is_checked()
+                assert not is_checked, "H4 FAILED: Checkbox should be unchecked initially"
+                print("✓ H4: Checkbox is unchecked initially")
+
+                # H5: Verify export button is disabled
+                export_btn = await page.query_selector('#generate-export-btn')
+                is_disabled = await export_btn.is_disabled() if export_btn else False
+                assert is_disabled, "H5 FAILED: Export button should be disabled when confirmation unchecked"
+                print("✓ H5: Export button is disabled (confirmation unchecked)")
+
+                print("\n=== TEST H: EXPORT BLOCKED WHEN VALIDATION CONFIRMATION UNCHECKED PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+# ==============================================================================
+# TEST I: Export button enabled when deferred validation confirmation checked
+# ==============================================================================
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_export_button_enabled_when_validation_confirmation_checked(e2e_database_and_app):
+    """
+    Verify export button becomes enabled when deferred validation confirmation is checked.
+
+    Scenario:
+    1. Seed ImportBatch with deferred validation issue
+    2. Navigate to export console
+    3. Verify checkbox and button are present
+    4. Check the confirmation checkbox
+    5. Verify export button becomes enabled
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='validation-checked-i',
+            filename='validation_checked_i.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row and contact
+        raw_row = RawImportRow(
+            batch_id='validation-checked-i',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Checked Test',
+                'date': '2026-06-18',
+                'email': '',
+                'phone': '(555) 999-9999',
+                'amount': '600.00',
+                'address': '333 Checked Ave I',
+                'transaction_id': 'TXN-CHECKED-I'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id='validation-checked-i',
+            raw_import_row_id=raw_row.id,
+            first_name='Checked',
+            last_name='TestI',
+            email='',
+            phone='(555) 999-9999',
+            address_line1='333 Checked Ave I',
+            amount=600.00
+        )
+        session.add(contact)
+        session.flush()
+
+        # Create validation item and deferred decision
+        val_item = ReviewItem(
+            batch_id='validation-checked-i',
+            item_type='validation',
+            confidence=1.0,
+            payload_json={
+                'field': 'email',
+                'issue': 'missing_email',
+                'suggestion': None,
+                'validation_tier': 'critical'
+            }
+        )
+        session.add(val_item)
+        session.flush()
+
+        subject = ReviewItemSubject(
+            review_item_id=val_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact.id,
+            role='primary'
+        )
+        session.add(subject)
+        session.flush()
+
+        defer_decision = ReviewDecision(
+            batch_id='validation-checked-i',
+            review_item_id=val_item.id,
+            decision='defer',
+            reviewed_values={'field': 'email', 'issue': 'missing_email'},
+            reviewer='test-reviewer'
+        )
+        session.add(defer_decision)
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/validation-checked-i/exports', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # I1: Navigate to exports page
+                await page.goto('http://127.0.0.1:8001/imports/validation-checked-i/exports')
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ I1: Export console loaded")
+
+                # I2: Generate preview
+                await page.evaluate("""
+                    async () => {
+                        const response = await fetch('/imports/validation-checked-i/exports/preview', {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            const html = await response.text();
+                            document.open();
+                            document.write(html);
+                            document.close();
+                        }
+                    }
+                """)
+
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ I2: Export preview loaded")
+
+                # I3: Verify button is initially disabled
+                export_btn = await page.query_selector('#generate-export-btn')
+                is_initially_disabled = await export_btn.is_disabled()
+                assert is_initially_disabled, "I3 FAILED: Export button should be initially disabled"
+                print("✓ I3: Export button initially disabled")
+
+                # I4: Check the validation confirmation checkbox
+                validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                await validation_checkbox.check()
+                print("✓ I4: Validation confirmation checkbox checked")
+
+                # I5: Verify button becomes enabled
+                is_enabled = not await export_btn.is_disabled()
+                assert is_enabled, "I5 FAILED: Export button should be enabled after checkbox checked"
+                print("✓ I5: Export button enabled after confirmation checked")
+
+                print("\n=== TEST I: EXPORT BUTTON ENABLED WHEN VALIDATION CONFIRMATION CHECKED PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+# ==============================================================================
+# TEST J: Clean validation export skips confirmation
+# ==============================================================================
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_clean_validation_export_skips_confirmation(e2e_database_and_app):
+    """
+    Verify export with clean validation (no deferred issues) skips confirmation requirement.
+
+    Scenario:
+    1. Seed ImportBatch with no validation issues
+    2. Navigate to export console
+    3. Verify NO confirmation checkbox appears
+    4. Verify export button is enabled
+    5. Generate export without any confirmations
+    6. Verify export succeeds
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch with clean data
+        batch = ImportBatch(
+            id='clean-validation-export-j',
+            filename='clean_validation_export_j.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row with valid data (no issues)
+        raw_row = RawImportRow(
+            batch_id='clean-validation-export-j',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Clean Export Test',
+                'date': '2026-06-18',
+                'email': 'clean@example.com',  # Valid
+                'phone': '(555) 111-2222',
+                'amount': '700.00',
+                'address': '444 Clean Export Ave J',
+                'transaction_id': 'TXN-CLEAN-EXPORT-J'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id='clean-validation-export-j',
+            raw_import_row_id=raw_row.id,
+            first_name='Clean',
+            last_name='ExportJ',
+            email='clean@example.com',  # Valid
+            phone='(555) 111-2222',
+            address_line1='444 Clean Export Ave J',
+            amount=700.00
+        )
+        session.add(contact)
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/clean-validation-export-j/exports', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # J1: Navigate to exports page
+                await page.goto('http://127.0.0.1:8001/imports/clean-validation-export-j/exports')
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ J1: Export console loaded (clean validation)")
+
+                # J2: Generate preview
+                await page.evaluate("""
+                    async () => {
+                        const response = await fetch('/imports/clean-validation-export-j/exports/preview', {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            const html = await response.text();
+                            document.open();
+                            document.write(html);
+                            document.close();
+                        }
+                    }
+                """)
+
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ J2: Export preview loaded (clean validation)")
+
+                # J3: Verify NO validation confirmation checkbox appears
+                validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                assert validation_checkbox is None, \
+                    "J3 FAILED: Validation confirmation checkbox should NOT appear for clean validation"
+                print("✓ J3: No validation confirmation checkbox (clean validation)")
+
+                # J4: Verify export button is enabled
+                export_btn = await page.query_selector('#generate-export-btn')
+                is_disabled = await export_btn.is_disabled() if export_btn else False
+                assert not is_disabled, "J4 FAILED: Export button should be enabled for clean validation"
+                print("✓ J4: Export button enabled (no confirmation required for clean validation)")
+
+                print("\n=== TEST J: CLEAN VALIDATION EXPORT SKIPS CONFIRMATION PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()

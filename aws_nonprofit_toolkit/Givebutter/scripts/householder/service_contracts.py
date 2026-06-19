@@ -566,6 +566,7 @@ class ExportPreviewResult:
     derived_at: 'datetime'
     deferred_household_count: int = 0
     deferred_duplicate_count: int = 0
+    deferred_validation_count: int = 0
 
     def to_template_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -582,4 +583,5 @@ class ExportPreviewResult:
             "derived_at": self.derived_at.isoformat() if isinstance(self.derived_at, datetime) else self.derived_at,
             "deferred_household_count": self.deferred_household_count,
             "deferred_duplicate_count": self.deferred_duplicate_count,
+            "deferred_validation_count": self.deferred_validation_count,
         }

@@ -185,6 +185,16 @@ def build_export_preview(
             elif dup_decision.decision == 'defer':
                 deferred_duplicate_count += 1
 
+        # Count deferred validation items (mirror household/duplicate pattern)
+        deferred_validation_count = 0
+        for val_item in session.query(ReviewItem).filter(
+            ReviewItem.batch_id == import_id,
+            ReviewItem.item_type == 'validation'
+        ).all():
+            val_decision = validation_decisions.get(val_item.id)
+            if val_decision and val_decision.decision == 'defer':
+                deferred_validation_count += 1
+
         # Build preview rows
         rows = []
         blockers = []
@@ -423,6 +433,7 @@ def build_export_preview(
             derived_at=datetime.utcnow(),
             deferred_household_count=deferred_household_count,
             deferred_duplicate_count=deferred_duplicate_count,
+            deferred_validation_count=deferred_validation_count,
         )
 
         return result

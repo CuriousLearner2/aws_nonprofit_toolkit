@@ -1447,6 +1447,7 @@ def generate_export(import_id):
         # Extract confirmation parameters
         confirmed_unresolved_households = request.form.get('confirmed_unresolved_households', 'false').lower() == 'true'
         confirmed_unresolved_duplicates = request.form.get('confirmed_unresolved_duplicates', 'false').lower() == 'true'
+        confirmed_unresolved_validations = request.form.get('confirmed_unresolved_validations', 'false').lower() == 'true'
 
         # Validate export directory is configured and writable
         if not output_dir:
@@ -1464,6 +1465,7 @@ def generate_export(import_id):
             reviewer=reviewer,
             confirmed_unresolved_households=confirmed_unresolved_households,
             confirmed_unresolved_duplicates=confirmed_unresolved_duplicates,
+            confirmed_unresolved_validations=confirmed_unresolved_validations,
         )
 
         logger.info(f"Export file generated: {import_id} -> {result.filename}")
@@ -1504,6 +1506,16 @@ def generate_export(import_id):
             "warning": e.message,
             "deferred_duplicate_count": e.deferred_count,
             "message": f"Please confirm you acknowledge {e.deferred_count} unresolved duplicate pair(s) before exporting."
+        }), 400
+
+    except export_file_service.ExportUnresolvedValidationWarningError as e:
+        logger.warning(f"Export requires validation confirmation for {import_id}: {e.message}")
+        return jsonify({
+            "status": "warning",
+            "action_required": "confirm_unresolved_validations",
+            "warning": e.message,
+            "deferred_validation_count": e.deferred_count,
+            "message": f"Please confirm you acknowledge {e.deferred_count} deferred validation issue(s) before exporting."
         }), 400
 
     except ValueError as e:

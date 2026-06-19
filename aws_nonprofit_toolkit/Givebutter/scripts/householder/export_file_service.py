@@ -54,6 +54,14 @@ class ExportUnresolvedDuplicateWarningError(ExportError):
         super().__init__(self.message)
 
 
+class ExportUnresolvedValidationWarningError(ExportError):
+    """Export requires confirmation for deferred validation issues."""
+    def __init__(self, deferred_count: int):
+        self.deferred_count = deferred_count
+        self.message = f"Export has {deferred_count} deferred validation issue(s) — confirmation required"
+        super().__init__(self.message)
+
+
 class ExportIOError(ExportError):
     """File I/O error during export generation."""
     pass
@@ -259,6 +267,7 @@ def generate_export_file(
     config: Optional[Mapping[str, Any]] = None,
     confirmed_unresolved_households: bool = False,
     confirmed_unresolved_duplicates: bool = False,
+    confirmed_unresolved_validations: bool = False,
 ) -> ExportFileResult:
     """
     Generate CSV export file from derived preview.
@@ -273,6 +282,7 @@ def generate_export_file(
         config: Optional configuration for database selection
         confirmed_unresolved_households: Whether user confirmed unresolved households
         confirmed_unresolved_duplicates: Whether user confirmed unresolved duplicates
+        confirmed_unresolved_validations: Whether user confirmed deferred validations
 
     Returns:
         ExportFileResult with file metadata and audit log reference
@@ -282,6 +292,7 @@ def generate_export_file(
         ExportBlockedError: If blockers exist in preview
         ExportUnresolvedHouseholdWarningError: If unresolved households exist and not confirmed
         ExportUnresolvedDuplicateWarningError: If unresolved duplicates exist and not confirmed
+        ExportUnresolvedValidationWarningError: If deferred validations exist and not confirmed
         ExportIOError: For filesystem or other errors
     """
     if not config:
@@ -323,6 +334,10 @@ def generate_export_file(
     # Check for unresolved duplicates
     if preview.deferred_duplicate_count > 0 and not confirmed_unresolved_duplicates:
         raise ExportUnresolvedDuplicateWarningError(preview.deferred_duplicate_count)
+
+    # Check for deferred validations
+    if preview.deferred_validation_count > 0 and not confirmed_unresolved_validations:
+        raise ExportUnresolvedValidationWarningError(preview.deferred_validation_count)
 
     # Ensure output directory exists
     _ensure_output_dir(output_dir)
