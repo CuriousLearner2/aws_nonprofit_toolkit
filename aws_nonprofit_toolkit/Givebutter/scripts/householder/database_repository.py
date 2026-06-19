@@ -21,7 +21,7 @@ from datetime import datetime
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker, Session
 
-from .database_models import Base, ImportBatch, ImportContact, ReviewItem, ReviewDecision, ReviewItemSubject, AuditLogRecord
+from .database_models import Base, ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewDecision, ReviewItemSubject, AuditLogRecord
 from .service_contracts import (
     ImportSummary, ImportDashboardViewModel, DashboardQueueCard,
     ValidationRow, ValidationPageViewModel,
@@ -368,6 +368,11 @@ class DatabaseImportRepository:
             # Build validation rows from contacts
             validation_rows = []
             for contact in contacts:
+                # Fetch transaction_id from raw import row
+                raw_row = session.query(RawImportRow).filter_by(id=contact.raw_import_row_id).first()
+                raw_csv_data = raw_row.raw_csv_data if raw_row else {}
+                transaction_id = raw_csv_data.get('transaction_id', '')
+
                 # Construct full name
                 full_name = ''
                 if contact.first_name and contact.last_name:
@@ -454,6 +459,7 @@ class DatabaseImportRepository:
                 # Create ValidationRow (using contact.id as string for consistency)
                 row = ValidationRow(
                     id=str(contact.id),
+                    transaction_id=transaction_id,
                     date='',  # Date not available in ImportContact; would come from raw_import_row
                     name=full_name,
                     email=effective_email,

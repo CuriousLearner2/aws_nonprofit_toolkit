@@ -101,6 +101,7 @@ class ValidationRow:
     phone: str
     amount: str
     address: str
+    transaction_id: str = ""
     raw_import_row_id: Optional[int] = None
     issue_type: Optional[str] = None
     issue_description: Optional[str] = None
@@ -112,6 +113,7 @@ class ValidationRow:
         """Convert to dictionary for template rendering."""
         return {
             "id": self.id,
+            "transaction_id": self.transaction_id,
             "date": self.date,
             "name": self.name,
             "email": self.email,
