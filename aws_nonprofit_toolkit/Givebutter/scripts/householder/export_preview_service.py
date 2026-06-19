@@ -129,10 +129,21 @@ def build_export_preview(
         normalization_decisions = {}
         duplicate_decisions = {}
         household_decisions = {}
+        row_level_autosave_decisions = {}
 
         for decision in session.query(ReviewDecision).filter_by(
             batch_id=import_id
-        ).all():
+        ).order_by(ReviewDecision.created_at.asc(), ReviewDecision.id.asc()).all():
+            # Handle row-level autosave decisions (review_item_id=None)
+            if decision.review_item_id is None:
+                raw_row_id = decision.raw_import_row_id
+                if raw_row_id not in row_level_autosave_decisions:
+                    row_level_autosave_decisions[raw_row_id] = {}
+                # Merge all reviewed_values for this row (later decisions override earlier)
+                if decision.reviewed_values:
+                    row_level_autosave_decisions[raw_row_id].update(decision.reviewed_values)
+                continue
+
             # Get the latest decision for each review item
             item = review_items.get(decision.review_item_id)
             if not item:
@@ -234,6 +245,11 @@ def build_export_preview(
                 'postal_code': contact.postal_code,
                 'amount': str(contact.amount) if contact.amount else None,
             }
+
+            # Apply row-level autosave corrections (merged reviewed_values from all autosaves for this row)
+            row_autosave_values = row_level_autosave_decisions.get(contact.raw_import_row_id)
+            if row_autosave_values:
+                field_values.update(row_autosave_values)
 
             # Apply normalization decisions
             for norm_item in review_items.values():
