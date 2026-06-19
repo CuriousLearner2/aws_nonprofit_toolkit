@@ -488,6 +488,10 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
             // First, prevent immediate recording
             this.value = '';
 
+            // Set a flag to know we should record follow-up decision
+            // IMPORTANT: Set this BEFORE clicking inspect link, as click handler is synchronous
+            window.pendingFollowUpRawId = rawId;
+
             // Open Inspect modal for this record
             const recordId = row.getAttribute('data-record-id');
             const inspectLink = row.querySelector('[data-action="inspect-record"]');
@@ -495,8 +499,6 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
                 inspectLink.click();
             }
 
-            // Set a flag to know we should record follow-up decision
-            window.pendingFollowUpRawId = rawId;
             return;
         }
 
@@ -637,7 +639,7 @@ document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
         openModal('record-modal');
 
         // Handle row status decision form
-        const rowId = row.getAttribute('data-raw-id');
+        const rowId = parseInt(row.getAttribute('data-raw-id'));
         const decisionSelect = document.getElementById(`row-decision-${recordId}`);
         const notesField = document.getElementById(`row-notes-${recordId}`);
         const notesRequirement = document.getElementById(`notes-requirement-${recordId}`);

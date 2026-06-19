@@ -1453,3 +1453,176 @@ async def test_inspect_modal_controls_comprehensive(
 
     finally:
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
+    """
+    GOAL: Verify that selecting "Needs follow-up" from main table defaults modal Status.
+
+    When a user selects "Needs follow-up" from the row status dropdown in the main
+    validation table, the modal should open with:
+    1. Status dropdown pre-selected to "Needs follow-up"
+    2. Notes textarea focused (ready for input)
+    3. Notes requirement error visible
+    4. All other data from the row displayed correctly
+
+    This tests the fix for the modal default status initialization bug.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='follow-up-test-batch',
+            filename='follow_up_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row
+        raw_row = RawImportRow(
+            batch_id='follow-up-test-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Alice Johnson',
+                'date': '2026-02-10',
+                'email': 'alice@example.com',
+                'phone': '(555) 234-5678',
+                'amount': '250.00',
+                'address': '456 Oak Ave'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        # Create ImportContact
+        import_contact = ImportContact(
+            batch_id='follow-up-test-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='Alice',
+            last_name='Johnson',
+            email='alice@example.com',
+            phone='(555) 234-5678',
+            address_line1='456 Oak Ave',
+            amount=250.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8002, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8002/imports/follow-up-test-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8002/imports/follow-up-test-batch/validation')
+
+                # Wait for table to load
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # F1: Verify row status dropdown exists
+                status_dropdown = await page.query_selector('select.row-status-dropdown')
+                assert status_dropdown is not None, "F1 FAILED: Status dropdown not found in main table"
+                print("✓ F1: Row status dropdown exists in main table")
+
+                # F2: Select "Needs follow-up" from main table dropdown
+                await status_dropdown.select_option('needs_follow_up')
+                print("✓ F2: Selected 'Needs follow-up' from main table dropdown")
+
+                # F3: Wait for modal to open
+                await page.wait_for_selector('#record-modal', timeout=5000)
+                modal = await page.query_selector('#record-modal')
+                assert modal is not None, "F3 FAILED: Modal should open when Follow-up is selected"
+                print("✓ F3: Modal opened after Follow-up selection")
+
+                # F4: Verify modal Status dropdown is set to "Needs follow-up"
+                modal_status_dropdown = await page.query_selector('select[id^="row-decision-"]')
+                assert modal_status_dropdown is not None, "F4 FAILED: Modal status dropdown not found"
+                selected_value = await modal_status_dropdown.input_value()
+                assert selected_value == 'needs_follow_up', \
+                    f"F4 FAILED: Modal status should be 'needs_follow_up', got: {selected_value}"
+                print(f"✓ F4: Modal Status dropdown defaulted to 'needs_follow_up'")
+
+                # F5: Verify Notes textarea is focused
+                notes_field = await page.query_selector('textarea[id^="row-notes-"]')
+                assert notes_field is not None, "F5 FAILED: Notes textarea not found"
+                focused_element = await page.evaluate("() => document.activeElement.id")
+                notes_id = await notes_field.get_attribute('id')
+                assert focused_element == notes_id, \
+                    f"F5 FAILED: Notes field should be focused, focused element: {focused_element}"
+                print("✓ F5: Notes textarea is focused (ready for input)")
+
+                # F6: Verify Notes requirement message is visible
+                notes_requirement = await page.query_selector('div[id^="notes-requirement-"]')
+                assert notes_requirement is not None, "F6 FAILED: Notes requirement div not found"
+                visibility = await notes_requirement.evaluate("el => window.getComputedStyle(el).display")
+                assert visibility != 'none', \
+                    f"F6 FAILED: Notes requirement should be visible, got display: {visibility}"
+                print("✓ F6: Notes requirement message is visible")
+
+                # F7: Verify row data is displayed in modal
+                modal_body = await page.query_selector('#modal-record-content')
+                modal_text = await modal_body.inner_text()
+                assert 'Alice Johnson' in modal_text, "F7 FAILED: Name not in modal"
+                assert 'alice@example.com' in modal_text, "F7 FAILED: Email not in modal"
+                print("✓ F7: Row data displayed correctly in modal")
+
+                # F8: Type notes and verify Record Decision button works
+                await notes_field.fill('Follow up on pending verification')
+                current_notes = await notes_field.input_value()
+                assert current_notes == 'Follow up on pending verification', \
+                    "F8 FAILED: Notes should accept input"
+                print("✓ F8: Notes field accepts input")
+
+                # F9: Verify Record Decision button exists and is clickable
+                record_btn = await page.query_selector('button[id^="record-row-decision-"]')
+                assert record_btn is not None, "F9 FAILED: Record Decision button not found"
+                is_enabled = await record_btn.evaluate("el => !el.disabled")
+                assert is_enabled, "F9 FAILED: Record Decision button should be enabled"
+                print("✓ F9: Record Decision button is present and clickable")
+
+                print(f"\n=== FOLLOW-UP STATUS DEFAULT E2E PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
