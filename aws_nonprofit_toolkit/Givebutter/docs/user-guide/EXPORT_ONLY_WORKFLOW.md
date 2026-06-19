@@ -92,9 +92,13 @@ Householder v1.1 is an **export-only** tool for nonprofit donor import managemen
 **Route:** Export Console
 
 1. Review what will be exported (preview)
-2. Click **Generate CSV** (creates local file)
-3. Click **Download** (retrieves to your computer)
-4. Import to your CRM manually (separate process)
+2. **If deferred items exist:** Read warning banner and confirm deferred items by checking the box
+   - Warning shows count of validation, duplicate, or household items deferred
+   - You acknowledge these items are unresolved and will be handled later
+   - Export button remains disabled until all required confirmations are checked
+3. Click **Generate CSV** (creates local file)
+4. Click **Download** (retrieves to your computer)
+5. Import to your CRM manually (separate process)
 
 ### Step 8: Track Export History
 **Route:** Recent Exports
@@ -107,11 +111,13 @@ Householder v1.1 is an **export-only** tool for nonprofit donor import managemen
 
 ## Key Concepts
 
-### **Blockers vs. Warnings**
+### **Blockers vs. Warnings vs. Deferred**
 
-- **Blockers** prevent export (e.g., invalid data that can't be resolved)
+- **Blockers** prevent export until resolved (e.g., invalid data that can't be resolved)
 - **Warnings** are informational (e.g., unusual but valid phone number)
-- Warnings don't block export; blockers do
+- **Deferred** issues require explicit confirmation before export (e.g., validation issues deferred for follow-up)
+- Blockers must be resolved; warnings don't block; deferred items need confirmation to export
+- You can defer validation issues to handle later while still exporting the batch
 
 ### **Batch**
 A single import file and all associated decisions (validation, normalizations, duplicates, households).
@@ -128,8 +134,13 @@ Complete record of who decided what, when, and why. Helps explain export results
 ### **Export Readiness**
 Batch is ready for export when:
 - All blockers are resolved (or batch has zero blockers)
-- All validation issues are decided
+- All validation issues are decided (resolved, accepted, deferred, or dismissed)
 - Duplicate, normalization, and household reviews are complete
+- **For deferred items:** If validation issues are deferred, you must confirm before export:
+  - Export console shows warning count for deferred validation issues
+  - You must check confirmation box acknowledging deferred items
+  - This allows exporting while tracking items for follow-up
+  - Deferred status appears in export CSV for later reference
 
 ### **CSV Export**
 Final output file containing:

@@ -280,11 +280,24 @@ Before you start working on tests in this project:
   - Enforces reviewer rejection for failing required tests
   - Documents fast pre-commit gate as required verification
 
+**Completed (2026-06-19):**
+- Clean-accept auto-commit workflow gate (commit `97c0f90`)
+  - Opt-in auto-commit policy with 14+ safety conditions per path
+  - Reviewer eligibility signaling for happy-path decisions
+  - Prevents auto-commit for non-Accept verdicts
+  - No auto-push (requires separate opt-in)
+- Validation deferred/follow-up export warning + confirmation (commit `baf67de`)
+  - Export warning banner when validation issues deferred
+  - Confirmation checkbox requirement before export (matching households/duplicates)
+  - Deferred validation items counted separately in export preview
+  - 4 new E2E tests with 100% reliability across 5 runs
+  - CSV semantics preserved (validation_status field updated)
+
 **Pending:**
-- Phase 3: Export warning + confirmation checkbox for deferred/unresolved households
-- Additional golden-file tests for multiple rows and mixed scenarios
+- Phase 3: Additional golden-file tests for multiple rows and mixed scenarios
+- Householder v2 planning: Cross-import identity linking
 
 ---
 
-**Last updated:** 2026-06-18  
-**Status:** Active (Export golden-file test baseline added, workflow gates enforced)
+**Last updated:** 2026-06-19  
+**Status:** Active (Validation export confirmation and auto-commit gates deployed)

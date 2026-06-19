@@ -1,9 +1,55 @@
 # Changelog
 ## Givebutter Donation Processor Version History
 
-**Current Version:** 3.0 | **Last Updated:** June 1, 2026
+**Current Version:** 3.0.1 | **Last Updated:** June 19, 2026
 
 All notable changes to this project will be documented in this file.
+
+---
+
+## [3.0.1] — Export Hardening & Consistency (June 19, 2026)
+
+**Status:** Released | **Type:** Enhancement
+
+### What's New
+
+Export workflow improvements for consistency and safety:
+
+- **Validation Deferred/Follow-up Export Confirmation** — Match households/duplicates pattern for export warnings
+  - Show warning when validation issues are deferred
+  - Require explicit confirmation checkbox before export
+  - Allow export after confirmation with deferred status in CSV
+  - Deferred items tracked in audit trail for follow-up
+
+### Added
+
+#### Export Features
+- Export warning banner for deferred validation items
+- Confirmation checkbox requirement for export (validation, duplicates, households)
+- Separate tracking of deferred_validation_count in export preview
+- E2E tests for validation export confirmation workflow (4 new tests, 100% reliability)
+
+### Changed
+
+#### Export Behavior
+- Export console now shows validation deferred warning (matching duplicates/households pattern)
+- Export button disabled until all deferred confirmations checked
+- ExportPreviewResult now includes deferred_validation_count field
+- App route validates confirmed_unresolved_validations parameter before export
+
+### Fixed
+
+- **Consistency Issue** — Validation deferred decisions now require confirmation before export, matching households/duplicates UX
+- Export preview now consistently counts deferred items across all decision types
+
+### Tests Added
+
+- `test_export_warning_appears_for_deferred_validation` — Warning banner displays correctly
+- `test_export_blocked_when_validation_confirmation_unchecked` — Button disabled without confirmation
+- `test_export_button_enabled_when_validation_confirmation_checked` — Button enabled after confirmation
+- `test_clean_validation_export_skips_confirmation` — No confirmation for clean data
+
+All tests pass with 100% reliability across 5 consecutive runs.
 
 ---
 
