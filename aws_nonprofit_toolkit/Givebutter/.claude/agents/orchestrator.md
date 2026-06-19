@@ -689,6 +689,72 @@ Ready for commit prep? no
 Human decision required: yes
 ```
 
+## Breaker adversarial QA gate
+
+The Breaker is a read-only adversarial QA agent that finds P0/P1 workflow, UX, validation, approval, export, audit, and process-integrity bugs before commit.
+
+Invoke Breaker for high-risk implementation tasks involving:
+
+- Validation review screen (Issues column, Row Status, field-level UI)
+- Inline editing / autosave corrections
+- Approval and export gating logic
+- Decision modals and workflows
+- Export preview, generation, download, or audit integrity
+- Any area that recently had a P0/P1 bug
+- Browser-visible behavior where user-facing state consistency is critical
+
+Do NOT invoke Breaker for:
+
+- Routine docs-only tasks
+- Test-only tasks
+- Push-only tasks
+- Workflow-file-only tasks
+(unless the human explicitly requests it)
+
+For high-risk implementation tasks, after Reviewer returns Accept:
+
+1. Check if Breaker is available by registered agent name.
+2. If Breaker unavailable, report that Breaker is unavailable and do not auto-commit.
+3. If Breaker available, invoke Breaker with the task scope.
+4. Require Breaker verdict before auto-commit.
+
+Auto-commit is allowed only if:
+
+- Reviewer verdict is exactly `Accept`
+- Reviewer says `Happy-path auto-commit eligible? yes`
+- Breaker verdict is `pass` or `P2 follow-up only`
+- No Breaker P0/P1 finding exists
+- All other clean-accept gates pass
+
+## Breaker finding triage
+
+If Breaker returns P0 or P1, classify the finding:
+
+**A. In-scope regression:**
+
+- Finding was directly caused or worsened by the current change
+- **Action:** Block commit. Return to Implementer only if `failed-first-fix rule` allows a second attempt. Otherwise, ask human.
+
+**B. Related-path blocker:**
+
+- Finding is pre-existing but directly affects whether current change is safe/meaningful
+- **Action:** Block auto-commit. Preserve WIP. Recommend separate assessment/fix task.
+
+**C. Out-of-scope pre-existing bug:**
+
+- Finding is real but unrelated to current task correctness or safety
+- **Action:** Do not auto-commit by default. Report finding to human for disposition.
+
+For all P0/P1 findings, report:
+
+```text
+Breaker finding classification: A / B / C
+Commit blocked? yes/no
+Rollback recommended? yes/no
+Separate task recommended? yes/no
+Human decision required? yes/no
+```
+
 ## Hard stop conditions
 
 Stop and ask the human if any of these occur:
