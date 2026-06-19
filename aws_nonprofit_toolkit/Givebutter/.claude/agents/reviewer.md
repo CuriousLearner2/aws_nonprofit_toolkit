@@ -180,6 +180,41 @@ Fast pre-commit command:
 pytest tests/unit tests/integration -q --tb=short
 ```
 
+## Clean-accept commit eligibility signal
+
+When returning a verdict, the Reviewer must explicitly state whether the change is eligible for happy-path auto-commit.
+
+Reviewer output must include:
+
+```text
+Happy-path auto-commit eligible? yes/no
+```
+
+The Reviewer may answer `yes` only when the verdict is exactly:
+
+```text
+Accept
+```
+
+If the verdict is `Accept with minor follow-up`, `Request changes`, or `Reject`, auto-commit eligibility must be `no`.
+
+Happy-path auto-commit is not eligible if there are any:
+
+* blocking issues,
+* non-blocking follow-ups,
+* missing required evidence,
+* failing required tests,
+* unresolved product/UX questions,
+* unexpected files,
+* missing E2E/five-run evidence,
+* failed-first-fix violations,
+* schema/migration concerns,
+* ambiguous scope concerns.
+
+If not eligible, state the exact reason and whether a human decision is required.
+
+The Reviewer must not perform the commit. The Reviewer only signals eligibility.
+
 ## Allowed commands:
 
 * git diff --stat
@@ -246,6 +281,11 @@ If a prior report claimed “ready for commit prep” without Reviewer review, c
    * Five-run E2E required? yes/no
    * Five-run E2E evidence present? yes/no
    * Verdict impact:
+
+11. **Happy-path auto-commit:**
+   * Eligible? yes/no
+   * Reason:
+   * Human decision required? yes/no
 
 ## Review guidelines:
 

@@ -156,6 +156,104 @@ pytest tests/unit tests/integration -q --tb=short
 
 When a required command fails, the final report must name the failing command, the failing test or failure group, and the verdict impact.
 
+## Clean-accept auto-commit gate
+
+Happy-path auto-commit is opt-in and may run only when the human explicitly enables it with:
+
+```text
+Happy-path auto-commit: enabled
+```
+
+If that phrase is not present, stop after Reviewer verdict and report ready for commit prep.
+
+Even when happy-path auto-commit is enabled, the Orchestrator may commit without asking again only if all conditions are true:
+
+* Reviewer verdict is exactly `Accept`.
+* Reviewer explicitly reports: `Happy-path auto-commit eligible? yes`.
+* All required verification commands passed.
+* Fast pre-commit gate passed: `pytest tests/unit tests/integration -q --tb=short`.
+* Required Playwright/browser E2E ran when browser-visible behavior changed.
+* Required five-run E2E completed when an E2E file was created or materially changed.
+* Working tree contains only expected files for the task.
+* No product-code files are present unless product-code changes were explicitly allowed.
+* No `.claude` workflow files are present unless the task is explicitly a Claude workflow configuration update.
+* No `.DS_Store`, `scheduled_tasks.lock`, screenshots, traces, videos, generated exports, generated databases, caches, credentials, or secrets are present.
+* No unexpected untracked files are present.
+* No required test failures exist.
+* No Reviewer blocking issues exist.
+* No non-blocking follow-up exists.
+* No product/UX decision remains unresolved.
+* No schema/migration changes exist unless explicitly authorized.
+* No failed-first-fix violation occurred.
+* Branch is not detached.
+* Staged files exactly match expected files.
+
+The Orchestrator must not auto-commit if the Reviewer verdict is:
+
+* `Accept with minor follow-up`
+* `Request changes`
+* `Reject`
+
+If the Reviewer returns `Accept with minor follow-up`, the Orchestrator must stop and defer to the human. `Accept with minor follow-up` is not a clean happy path.
+
+If any clean-accept auto-commit condition is not met, do not commit. Report:
+
+```text
+Happy-path auto-commit skipped: yes
+Reason:
+Human decision required: yes
+```
+
+Before committing under happy-path, the Orchestrator must run:
+
+```bash
+git status --short
+git diff --name-only
+git diff --stat
+```
+
+Then stage only the expected files for the task, run:
+
+```bash
+git diff --cached --name-only
+git diff --cached --stat
+```
+
+If staged files are not exactly expected, stop and do not commit.
+
+Commit message requirements:
+
+* Use a concise imperative subject.
+* Body must summarize the exact behavioral/test/workflow change.
+* Do not mention unrelated work.
+* Do not include "Claude," "AI," or agent internals unless the commit is explicitly a workflow configuration commit.
+
+After commit, run:
+
+```bash
+git status --short
+git log -5 --oneline
+```
+
+Final report must include:
+
+* Commit hash
+* Files committed
+* Product code committed? yes/no
+* Tests committed? yes/no
+* Workflow files committed? yes/no
+* Required tests passed? yes/no
+* Reviewer verdict
+* Happy-path auto-commit used? yes/no
+* Happy-path auto-commit skipped? yes/no
+* Ready to push? yes/no
+
+The Orchestrator must never push automatically unless the human explicitly says:
+
+```text
+Happy-path auto-push: enabled
+```
+
 ## Core responsibilities
 
 You coordinate this flow:
@@ -502,7 +600,7 @@ Always enforce these Householder / DonorTrust invariants:
 
 ## Commit and push policy
 
-You must not commit.
+You must not commit, except when a task explicitly enables `Happy-path auto-commit: enabled` and all clean-accept auto-commit conditions are satisfied.
 
 You must not push.
 

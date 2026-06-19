@@ -168,6 +168,34 @@ Ready for commit prep? no
 
 The Implementer may report “Ready for reviewer,” but only the Reviewer verdict can make the change ready for commit prep.
 
+## Happy-path auto-commit policy
+
+Happy-path auto-commit is opt-in per task.
+
+The workflow may automatically commit after Reviewer Accept only when the human explicitly includes:
+
+```
+Happy-path auto-commit: enabled
+```
+
+Without that phrase, stop after Reviewer Accept and report ready for commit prep.
+
+Happy-path auto-commit never includes push unless the human explicitly includes:
+
+```
+Happy-path auto-push: enabled
+```
+
+Do not use happy-path auto-commit for:
+
+* schema/migration changes,
+* product/UX ambiguous changes,
+* changes with any failing required test,
+* changes involving secrets/credentials,
+* changes involving unexpected files,
+* changes where Reviewer did not return Accept or Accept with minor follow-up,
+* changes where the human asked for assessment only, review only, commit prep only, or push only.
+
 ## Final report format
 
 At the end, report:
