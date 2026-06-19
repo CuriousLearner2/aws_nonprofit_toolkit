@@ -17,6 +17,8 @@ from scripts.householder.export_file_service import (
     ExportError,
     ExportBlockedError,
     ExportIOError,
+    ExportUnresolvedValidationWarningError,
+    ExportUnresolvedHouseholdWarningError,
     _sanitize_filename,
     _generate_safe_filename,
     _encode_csv_field,
@@ -699,5 +701,87 @@ def test_export_succeeds_if_resolved_regardless_of_confirmation(mock_audit, mock
     )
 
     assert result.import_id == "IMP-TEST-001"
+    assert result.row_count == 1
+    assert os.path.exists(result.file_path)
+
+
+# Mixed Confirmation Enforcement Tests
+
+@patch('scripts.householder.export_file_service.build_export_preview')
+def test_mixed_validation_household_deferred_rejects_without_both_confirmations(mock_preview, temp_export_dir, sample_export_row):
+    """Export with both deferred validation and households rejects if confirmations incomplete."""
+    # Mock preview with both deferred validation and deferred households
+    preview = ExportPreviewResult(
+        import_id="IMP-MIXED-001",
+        export_rows=(sample_export_row,),
+        blockers=(),
+        warnings=(),
+        row_count=1,
+        blocked_count=0,
+        warning_count=0,
+        is_export_ready=True,
+        derived_at=datetime.utcnow(),
+        deferred_validation_count=1,
+        deferred_household_count=1,
+    )
+    mock_preview.return_value = preview
+
+    # Test 1: Only household confirmed (validation not confirmed) → reject
+    with pytest.raises(ExportUnresolvedValidationWarningError) as exc_info:
+        generate_export_file(
+            import_id="IMP-MIXED-001",
+            output_dir=temp_export_dir,
+            reviewer="test@example.com",
+            config={'GIVEBUTTER_DATABASE_URL': 'sqlite:///:memory:'},
+            confirmed_unresolved_households=True,
+            confirmed_unresolved_validations=False,
+        )
+    assert exc_info.value.deferred_count == 1
+
+    # Test 2: Only validation confirmed (household not confirmed) → reject
+    with pytest.raises(ExportUnresolvedHouseholdWarningError) as exc_info:
+        generate_export_file(
+            import_id="IMP-MIXED-001",
+            output_dir=temp_export_dir,
+            reviewer="test@example.com",
+            config={'GIVEBUTTER_DATABASE_URL': 'sqlite:///:memory:'},
+            confirmed_unresolved_households=False,
+            confirmed_unresolved_validations=True,
+        )
+    assert exc_info.value.deferred_count == 1
+
+
+@patch('scripts.householder.export_file_service.build_export_preview')
+@patch('scripts.householder.export_file_service._create_audit_record')
+def test_mixed_validation_household_deferred_succeeds_with_both_confirmations(mock_audit, mock_preview, temp_export_dir, sample_export_row):
+    """Export with both deferred validation and households succeeds when both confirmed."""
+    # Mock preview with both deferred validation and deferred households
+    preview = ExportPreviewResult(
+        import_id="IMP-MIXED-002",
+        export_rows=(sample_export_row,),
+        blockers=(),
+        warnings=(),
+        row_count=1,
+        blocked_count=0,
+        warning_count=0,
+        is_export_ready=True,
+        derived_at=datetime.utcnow(),
+        deferred_validation_count=1,
+        deferred_household_count=1,
+    )
+    mock_preview.return_value = preview
+    mock_audit.return_value = 42
+
+    # Export with both confirmations should succeed
+    result = generate_export_file(
+        import_id="IMP-MIXED-002",
+        output_dir=temp_export_dir,
+        reviewer="test@example.com",
+        config={'GIVEBUTTER_DATABASE_URL': 'sqlite:///:memory:'},
+        confirmed_unresolved_households=True,
+        confirmed_unresolved_validations=True,
+    )
+
+    assert result.import_id == "IMP-MIXED-002"
     assert result.row_count == 1
     assert os.path.exists(result.file_path)
