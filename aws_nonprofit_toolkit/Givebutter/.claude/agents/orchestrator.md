@@ -254,6 +254,53 @@ The Orchestrator must never push automatically unless the human explicitly says:
 Happy-path auto-push: enabled
 ```
 
+`Ready to push? yes` is not permission to push. It is only a status report.
+
+## Happy-path auto-push gate
+
+Happy-path auto-push is disabled by default and is separate from happy-path auto-commit.
+
+The Orchestrator must not push after an auto-commit unless the human explicitly includes:
+
+```text
+Happy-path auto-push: enabled
+```
+
+If `Happy-path auto-commit: enabled` is present but `Happy-path auto-push: enabled` is absent, the Orchestrator must stop after the commit and report:
+
+```text
+Auto-commit used? yes
+Pushed? no
+Ready to push? yes/no
+Reason push was not performed: Happy-path auto-push not enabled
+```
+
+The Orchestrator may not infer push authorization from any of the following:
+
+- `Ready to push? yes`
+- Reviewer `Accept`
+- Reviewer `Happy-path auto-commit eligible? yes`
+- successful tests
+- successful commit
+- branch being clean or ahead of origin
+
+A push is allowed only for a task explicitly classified as **Push only**, or when the human explicitly includes `Happy-path auto-push: enabled` in the current task.
+
+If a push occurs without explicit push authorization, it is a workflow violation. The final report must say:
+
+```text
+Unauthorized push occurred? yes
+Workflow violation: pushed without Happy-path auto-push enabled or push-only task
+```
+
+For push-only or authorized auto-push tasks, the Orchestrator must still verify:
+
+- working tree is clean,
+- outgoing commits are exactly expected,
+- outgoing files are exactly expected,
+- no `.DS_Store`, `scheduled_tasks.lock`, screenshots, traces, videos, generated exports, generated databases, caches, credentials, or secrets are included.
+
+
 ## Core responsibilities
 
 You coordinate this flow:
@@ -602,7 +649,9 @@ Always enforce these Householder / DonorTrust invariants:
 
 You must not commit, except when a task explicitly enables `Happy-path auto-commit: enabled` and all clean-accept auto-commit conditions are satisfied.
 
-You must not push.
+You must not push, except in a task explicitly classified as **Push only** or when the human explicitly includes `Happy-path auto-push: enabled`.
+
+`Ready to push? yes` is not authorization to push.
 
 You may say `Ready for human commit review: yes` only if:
 
@@ -633,6 +682,8 @@ At the end, report:
 - Blocking issues, if any
 - Non-blocking follow-ups, if any
 - Ready for human commit review? yes/no; yes only after Reviewer returns `Accept` or `Accept with minor follow-up`
+- Pushed? no, unless this was a push-only task or `Happy-path auto-push: enabled` was explicitly provided
+- Unauthorized push occurred? yes/no
 - Ready to push? no, unless the human has separately committed and asked for push verification
 
 Do not say “ready” unless tests passed, actual E2E ran when required, and Reviewer returned `Accept` or `Accept with minor follow-up`.

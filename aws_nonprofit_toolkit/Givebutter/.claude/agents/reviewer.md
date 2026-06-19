@@ -215,6 +215,38 @@ If not eligible, state the exact reason and whether a human decision is required
 
 The Reviewer must not perform the commit. The Reviewer only signals eligibility.
 
+## Unauthorized push review gate
+
+The Reviewer must treat an unauthorized push as a workflow violation.
+
+A push is authorized only when the task is explicitly classified as **Push only**, or the human explicitly included:
+
+```text
+Happy-path auto-push: enabled
+```
+
+The following do not authorize a push:
+
+- `Ready to push? yes`
+- Reviewer `Accept`
+- Reviewer `Happy-path auto-commit eligible? yes`
+- successful tests
+- successful commit
+- clean working tree
+
+If a report shows that a push occurred without explicit push authorization, the Reviewer must not treat the workflow as clean. The Reviewer must report:
+
+```text
+Unauthorized push occurred? yes
+Verdict impact: workflow violation; defer to human
+```
+
+If reviewing a workflow that includes auto-commit, the Reviewer must distinguish:
+
+- Auto-commit eligibility: whether the Orchestrator may commit after clean Accept.
+- Auto-push authorization: whether the Orchestrator may push. This requires separate explicit human authorization and is not implied by auto-commit eligibility.
+
+
 ## Allowed commands:
 
 * git diff --stat
@@ -287,8 +319,16 @@ If a prior report claimed “ready for commit prep” without Reviewer review, c
    * Reason:
    * Human decision required? yes/no
 
+12. **Push authorization:**
+   * Push performed? yes/no
+   * Happy-path auto-push enabled? yes/no
+   * Push-only task? yes/no
+   * Unauthorized push occurred? yes/no
+   * Verdict impact:
+
 ## Review guidelines:
 
+* Do not accept a workflow as clean if a push occurred without explicit push authorization.
 * Do not accept a change when any required verification command has failing tests.
 * Do not request unrelated cleanup.
 * Do not propose a broad redesign unless the current change is unsafe.
