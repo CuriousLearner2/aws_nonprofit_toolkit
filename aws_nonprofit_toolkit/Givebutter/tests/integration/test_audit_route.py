@@ -406,3 +406,89 @@ class TestValidationDecisionAuditVisibility:
         # Verify decision details are present
         assert 'email' in html.lower(), \
             "Decision field ('email') not visible in Audit Log"
+
+
+class TestExportAuditVisibility:
+    """Test that export_generated audit entries show confirmation details."""
+
+    def test_export_confirmation_details_visible_in_audit_log(self, database_backed_client):
+        """Test that export confirmation flags appear in Audit Log page.
+
+        Scenario:
+        1. Create ImportBatch and export directory
+        2. Call generate_export_file() with specific confirmation flags
+        3. Fetch Audit Log page
+        4. Verify confirmation flags and deferred counts are visible
+        """
+        test_client, database_url, db_path = database_backed_client
+        batch_id = 'export-audit-visibility-test'
+        export_dir = str(Path(db_path).parent / "exports")
+        os.makedirs(export_dir, exist_ok=True)
+
+        # Create test batch
+        engine = create_db_engine(database_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+
+        try:
+            batch = ImportBatch(
+                id=batch_id,
+                filename='export_test.csv',
+                upload_timestamp=datetime.utcnow(),
+                status='export_ready',
+                raw_row_count=0
+            )
+            session.add(batch)
+            session.commit()
+        finally:
+            session.close()
+
+        # Import here to avoid circular imports
+        from scripts.householder.export_file_service import generate_export_file
+        from scripts.householder.service_contracts import ExportPreviewResult, ExportRow
+
+        # Create a mock export (with no data rows, just to test audit)
+        result = generate_export_file(
+            batch_id,
+            export_dir,
+            reviewer='export-tester',
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url
+            },
+            confirmed_unresolved_validations=True,
+            confirmed_unresolved_households=False,
+            confirmed_unresolved_duplicates=True,
+        )
+
+        # Fetch audit log page
+        response = test_client.get(f'/imports/{batch_id}/audit')
+        assert response.status_code == 200
+
+        # Verify export entry appears in audit log
+        html = response.data.decode('utf-8', errors='ignore')
+
+        # Verify export_generated action is present
+        assert 'export' in html.lower(), \
+            "Export action not found in Audit Log"
+
+        # Verify confirmation flags are visible in readable format
+        # Should show formatted text like "✓ Validation", "✗ Households", etc.
+        # OR raw JSON if formatting fails gracefully
+        assert 'Export Confirmations' in html or 'confirmed_unresolved_validations' in html, \
+            "Export confirmation details not visible in Audit Log"
+
+        # Verify at least one confirmation indicator is present
+        # ✓ indicates confirmed, ✗ indicates not confirmed
+        assert ('Validation' in html or 'validation' in html) and \
+               ('Households' in html or 'households' in html), \
+            "Confirmation flags (Validation/Households) not visible in Audit Log"
+
+        # Verify deferred counts are present
+        assert ('Deferred Items' in html or 'deferred' in html.lower()) and \
+               ('Validation' in html or 'validation' in html), \
+            "Deferred counts not visible in Audit Log"
+
+        # Verify reviewer name is present
+        assert 'export-tester' in html.lower(), \
+            "Export reviewer name not visible in Audit Log"
