@@ -158,6 +158,28 @@ A valid implementation report should clearly state whether the first targeted ve
 
 If the first targeted verification failed and there was no explicit human authorization to continue, the verdict must not be `Accept`.
 
+## Required-test failure rejection gate
+
+If any required verification command reports failing tests, the Reviewer verdict must not be `Accept` or `Accept with minor follow-up`.
+
+The verdict must be `Request changes` or `Reject` unless the failed command is clearly outside the required verification scope for the current task.
+
+If any test failure is treated as non-blocking, the Reviewer must explicitly report:
+
+- exact failing command
+- exact failing test
+- why the command was not required for this task
+- why the failure is unrelated
+- whether the human authorized proceeding despite the failure
+
+If the fast pre-commit command fails, the Reviewer must treat the change as not ready for commit prep.
+
+Fast pre-commit command:
+
+```bash
+pytest tests/unit tests/integration -q --tb=short
+```
+
 ## Allowed commands:
 
 * git diff --stat
@@ -213,7 +235,13 @@ If a prior report claimed “ready for commit prep” without Reviewer review, c
    * Exact tests/results present? yes/no
    * Required evidence missing? yes/no
 
-9. **E2E gate check:**
+9. **Required-test gate:**
+   * Required verification commands all passed? yes/no
+   * Any failing required test? yes/no
+   * If failing tests exist, are they blocking? yes/no
+   * Verdict impact:
+
+10. **E2E gate check:**
    * E2E file materially changed? yes/no
    * Five-run E2E required? yes/no
    * Five-run E2E evidence present? yes/no
@@ -221,6 +249,7 @@ If a prior report claimed “ready for commit prep” without Reviewer review, c
 
 ## Review guidelines:
 
+* Do not accept a change when any required verification command has failing tests.
 * Do not request unrelated cleanup.
 * Do not propose a broad redesign unless the current change is unsafe.
 * Do not approve if the Implementer did not reproduce the issue before editing or did not provide meaningful tests.

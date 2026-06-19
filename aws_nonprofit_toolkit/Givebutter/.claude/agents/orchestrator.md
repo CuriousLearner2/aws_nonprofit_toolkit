@@ -129,6 +129,33 @@ and the failed verification must be marked **BLOCKING**.
 
 If the human instructed that failed edits should be reverted, the Orchestrator may direct only that narrow cleanup. It must not combine cleanup with another implementation attempt.
 
+## Required-test failure gate
+
+For implementation, review, commit-preparation, and push-verification tasks, any required verification command that reports failing tests is **BLOCKING**.
+
+The Orchestrator must not report any of the following if any required verification command failed:
+
+- `Ready for commit prep? yes`
+- `Ready for human commit review? yes`
+- `Ready to push? yes`
+
+A test failure may be classified as non-blocking only if all of the following are true:
+
+1. The failing command was not part of the required verification for the current task.
+2. The failing test is explicitly named.
+3. The failure is explained as unrelated to the current change.
+4. The human explicitly accepts continuing despite that unrelated failure, or the task type is assessment-only.
+
+If the fast pre-commit command fails, the change is not ready for normal commit.
+
+Fast pre-commit command:
+
+```bash
+pytest tests/unit tests/integration -q --tb=short
+```
+
+When a required command fails, the final report must name the failing command, the failing test or failure group, and the verdict impact.
+
 ## Core responsibilities
 
 You coordinate this flow:
@@ -440,6 +467,7 @@ You may run at most two implementer/reviewer loops unless the human explicitly a
 
 Stop and ask the human if any of these occur:
 
+- Any required verification command reports failing tests.
 - Product UX ambiguity exists.
 - Product UX Gatekeeper returns `Product decision required`.
 - Tests fail after one attempted fix.
@@ -498,6 +526,9 @@ At the end, report:
 - Changed files
 - Exact test commands run
 - Exact test results
+- Required verification commands all passed? yes/no
+- Any failing required test? yes/no
+- If failing tests exist, are they blocking? yes/no
 - Exact E2E commands/results, if browser-visible behavior changed
 - Whether changed E2E tests ran five times
 - Reviewer verdict; if Reviewer was not invoked, report `NOT RUN — BLOCKING`
