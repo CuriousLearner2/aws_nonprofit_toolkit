@@ -7,20 +7,69 @@ Tests route behavior, streaming, and workflows.
 import pytest
 import json
 import os
-from io import BytesIO
+import sys
+import csv
+import tempfile
+from pathlib import Path
+from io import BytesIO, StringIO
+from datetime import datetime
 from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.householder.export_download_service import (
     ExportNotFoundError,
     ExportAccessError,
     ExportPathError,
 )
+from scripts.householder.database_models import (
+    Base, ImportBatch, RawImportRow, ImportContact, create_db_engine
+)
+from scripts.uploader.app import app
+from sqlalchemy.orm import sessionmaker
 
 
 @pytest.fixture
 def sample_csv_content():
     """Sample CSV content."""
     return "name,email,phone\nJohn,john@example.com,555-1234\nJane,jane@example.com,555-5678\n"
+
+
+@pytest.fixture
+def temp_db():
+    """Create temporary SQLite database for testing."""
+    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+    db_path = db_file.name
+    db_file.close()
+
+    database_url = f'sqlite:///{db_path}'
+    engine = create_db_engine(database_url)
+    Base.metadata.create_all(engine)
+
+    yield database_url, engine
+
+    # Cleanup
+    Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.fixture
+def flask_client_with_db_for_export(temp_db, monkeypatch, tmp_path):
+    """Flask client with database backend for export testing."""
+    database_url, engine = temp_db
+
+    app.config['TESTING'] = True
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    # Configure environment for database mode
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
+    yield app.test_client(), database_url, engine, export_dir
+
+    # Cleanup
+    app.config['EXPORT_OUTPUT_DIR'] = '/tmp/givebutter/exports'
 
 
 # Route Behavior Tests
@@ -205,3 +254,145 @@ def test_exports_from_different_batches_isolated(client, tmp_path, sample_csv_co
         response = client.get('/imports/IMP-DIFFERENT/exports/download/12345')
 
         assert response.status_code in (400, 403)
+
+
+# Content Equivalence Tests
+
+def test_downloaded_csv_matches_generated_content(flask_client_with_db_for_export):
+    """Downloaded CSV content matches generated file byte-for-byte."""
+    client, database_url, engine, export_dir = flask_client_with_db_for_export
+
+    # Seed database with test data
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch
+    batch = ImportBatch(
+        id='IMP-EQUIV-001',
+        filename='test_upload.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Create raw import rows with deterministic data
+    row1 = RawImportRow(
+        batch_id='IMP-EQUIV-001',
+        row_index=1,
+        raw_csv_data={
+            'transaction_id': 'TXN-001',
+            'first_name': 'John',
+            'last_name': 'Smith',
+            'email': 'john@example.com',
+            'phone': '555-1234',
+            'amount': '100.00'
+        },
+    )
+    row2 = RawImportRow(
+        batch_id='IMP-EQUIV-001',
+        row_index=2,
+        raw_csv_data={
+            'transaction_id': 'TXN-002',
+            'first_name': 'Jané',
+            'last_name': 'Döé',
+            'email': 'jane@example.com',
+            'phone': '555-5678',
+            'amount': '250.50'
+        },
+    )
+    session.add(row1)
+    session.add(row2)
+    session.flush()
+
+    # Create import contacts
+    contact1 = ImportContact(
+        batch_id='IMP-EQUIV-001',
+        raw_import_row_id=row1.id,
+        first_name='John',
+        last_name='Smith',
+        email='john@example.com',
+        phone='555-1234',
+        amount=100.00,
+    )
+    contact2 = ImportContact(
+        batch_id='IMP-EQUIV-001',
+        raw_import_row_id=row2.id,
+        first_name='Jané',
+        last_name='Döé',
+        email='jane@example.com',
+        phone='555-5678',
+        amount=250.50,
+    )
+    session.add(contact1)
+    session.add(contact2)
+    session.commit()
+
+    # Generate export using the service
+    from scripts.householder.export_file_service import generate_export_file
+
+    result = generate_export_file(
+        import_id='IMP-EQUIV-001',
+        output_dir=export_dir,
+        reviewer='test_user',
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+        confirmed_unresolved_households=False,
+        confirmed_unresolved_duplicates=False,
+        confirmed_unresolved_validations=False,
+    )
+
+    # Read generated file from disk
+    with open(result.file_path, 'r', encoding='utf-8') as f:
+        generated_content = f.read()
+
+    # Download via Flask route
+    response = client.get(f'/imports/IMP-EQUIV-001/exports/download/{result.audit_log_id}')
+
+    # Verify response status
+    assert response.status_code == 200
+    assert 'text/csv' in response.content_type
+
+    # Decode response content
+    downloaded_content = response.data.decode('utf-8')
+
+    # Verify CSV structure via row comparison (handles platform-specific line endings)
+    generated_rows = list(csv.reader(StringIO(generated_content)))
+    downloaded_rows = list(csv.reader(StringIO(downloaded_content)))
+
+    assert len(generated_rows) == len(downloaded_rows), (
+        f"Row count mismatch: {len(generated_rows)} vs {len(downloaded_rows)}"
+    )
+
+    # Verify headers match
+    assert generated_rows[0] == downloaded_rows[0], (
+        "CSV headers do not match"
+    )
+
+    # Verify headers are non-empty and include transaction_id
+    assert 'transaction_id' in generated_rows[0], (
+        "Expected transaction_id in header"
+    )
+
+    # Verify all data rows match exactly (byte-for-byte after line ending normalization)
+    for idx in range(1, len(generated_rows)):
+        assert generated_rows[idx] == downloaded_rows[idx], (
+            f"Row {idx} mismatch:\n  Generated: {generated_rows[idx]}\n  Downloaded: {downloaded_rows[idx]}"
+        )
+
+    # Verify UTF-8 names are preserved (non-ASCII test)
+    assert 'Jané' in downloaded_content, (
+        "UTF-8 character 'é' not preserved in downloaded content"
+    )
+    assert 'Döé' in downloaded_content, (
+        "UTF-8 character 'ö' not preserved in downloaded content"
+    )
+
+    # Verify data integrity: amount values preserved
+    assert '100.0' in downloaded_content, (
+        "Amount 100.0 not found in downloaded content"
+    )
+    assert '250.5' in downloaded_content, (
+        "Amount 250.5 not found in downloaded content"
+    )
+
+    # Cleanup
+    session.close()
