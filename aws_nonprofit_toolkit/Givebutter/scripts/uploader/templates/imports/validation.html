@@ -77,7 +77,7 @@
 
                 <!-- Editable: Amount -->
                 <td>
-                    <input type="text" class="inline-edit-field autosave-field" data-field="amount" data-raw-id="{{ record.raw_import_row_id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="amount" data-raw-id="{{ record.raw_import_row_id }}" data-testid="amount-input-{{ record.id }}"
                            value="{{ record.amount or '' }}" placeholder="0.00"
                            style="width: 65px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; text-align: right; box-sizing: border-box;">
                     <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>

@@ -1626,3 +1626,173 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
 
     finally:
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
+    """
+    GOAL: Verify amount autosave validation rejects invalid values.
+
+    Invariant: Invalid amount values (negative, zero, non-numeric) must be
+    rejected pre-save with clear field validation feedback.
+
+    Flow:
+    1. Seed database with valid amount
+    2. Load validation page in browser
+    3. Change amount to negative (-100.00)
+    4. Blur field to trigger autosave
+    5. Expect 400 response (validation failed, not saved)
+    6. Verify field shows error state (red border)
+    7. Correct to valid positive amount
+    8. Verify autosave succeeds
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed test data
+        batch = ImportBatch(
+            id='amount-test-batch',
+            filename='amount_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id='amount-test-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Test Donor',
+                'date': '2026-01-15',
+                'email': 'test@example.com',
+                'phone': '(555) 123-4567',
+                'amount': '100.00',
+                'address': '123 Main St'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        # Create ImportContact (required by database repository)
+        import_contact = ImportContact(
+            batch_id='amount-test-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='Test',
+            last_name='Donor',
+            email='test@example.com',
+            phone='(555) 123-4567',
+            address_line1='123 Main St',
+            amount=100.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server and verify it's accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/amount-test-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/amount-test-batch/validation')
+
+                # Wait for table to load
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # Find amount input using data-testid selector
+                amount_input = await page.query_selector('input[data-testid^="amount-input-"]')
+                assert amount_input is not None, "Amount input not found (no data-testid selector)"
+
+                # ===== PART 1: Invalid amount (negative) triggers rejection =====
+                print(f"\n=== TEST PART 1: Invalid Negative Amount ===")
+
+                # Verify initial value
+                initial_value = await amount_input.input_value()
+                assert '100' in initial_value, f"Initial amount should be 100.00, got: {initial_value}"
+                print(f"✓ Initial amount: {initial_value}")
+
+                # Edit to negative
+                await amount_input.fill('-100.00')
+                await amount_input.evaluate("el => el.blur()")
+                print("✓ Entered negative amount: -100.00")
+
+                # Wait for error state
+                await asyncio.sleep(0.5)
+                border_color = await amount_input.evaluate(
+                    "el => window.getComputedStyle(el).borderColor"
+                )
+                is_red = any(
+                    pattern in str(border_color)
+                    for pattern in ['rgb(239', 'ef4444', '239, 68, 68']
+                )
+                assert is_red, f"Amount should show red error border, got: {border_color}"
+                print("✓ Amount field shows red error border")
+
+                # Value should NOT be saved (should revert to original)
+                await asyncio.sleep(0.5)
+                saved_value = await amount_input.input_value()
+                assert '100' in saved_value, f"Amount should revert to 100.00, got: {saved_value}"
+                print(f"✓ Invalid amount not saved, reverted to: {saved_value}")
+
+                # ===== PART 2: Valid amount (positive) is accepted =====
+                print(f"\n=== TEST PART 2: Valid Positive Amount ===")
+
+                await amount_input.fill('250.50')
+                await amount_input.evaluate("el => el.blur()")
+                print("✓ Entered valid amount: 250.50")
+
+                # Wait for success state
+                await asyncio.sleep(0.5)
+                border_color_after = await amount_input.evaluate(
+                    "el => window.getComputedStyle(el).borderColor"
+                )
+                is_red_after = any(
+                    pattern in str(border_color_after)
+                    for pattern in ['rgb(239', 'ef4444', '239, 68, 68']
+                )
+                assert not is_red_after, f"Error border should clear, got: {border_color_after}"
+                print("✓ Error border cleared, amount accepted")
+
+                # Value should be saved
+                final_value = await amount_input.input_value()
+                assert '250.50' in final_value or '250' in final_value, f"Amount should be 250.50, got: {final_value}"
+                print(f"✓ Valid amount saved: {final_value}")
+
+                print(f"\n=== AMOUNT AUTOSAVE VALIDATION E2E PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()

@@ -224,7 +224,14 @@ def validate_corrected_values(
             if not is_valid_phone(value_str, 'US'):
                 errors['phone'] = 'Invalid phone format (require: 10+ digit US number)'
 
-        # Add more field validations as needed
+        # Validate amount field
+        elif field == 'amount':
+            try:
+                amount_val = float(value_str.replace('$', '').replace(',', '').strip())
+                if amount_val <= 0:
+                    errors['amount'] = 'Amount must be greater than 0'
+            except ValueError:
+                errors['amount'] = 'Invalid amount format'
 
     if errors:
         return False, errors

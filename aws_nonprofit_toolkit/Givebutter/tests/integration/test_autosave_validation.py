@@ -363,3 +363,153 @@ class TestAutosaveValidation:
         effective = get_effective_values(batch_id, raw_row_id, database_url)
         assert effective['email'] == 'jane.smith@gmial.com', \
             "Invalid correction should not appear in effective values"
+
+    def test_autosave_negative_amount_validation(self, client_with_db):
+        """CRITICAL: Negative amount autosave is REJECTED (not saved)."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Try to autosave negative amount
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'amount': '-100.00'}
+            }
+        )
+
+        # Should be rejected (pre-save validation)
+        assert response.status_code == 400
+        result = response.get_json()
+        assert result['success'] is False
+        assert 'validation_errors' in result
+        assert 'amount' in result['validation_errors']
+
+        # Verify NOT saved to database
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).all()
+            # Should have no decisions (not saved)
+            assert len(decisions) == 0, f"Negative amount was saved! {decisions}"
+        finally:
+            session.close()
+
+    def test_autosave_zero_amount_validation(self, client_with_db):
+        """CRITICAL: Zero amount autosave is REJECTED (not saved)."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Try to autosave zero amount
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'amount': '0'}
+            }
+        )
+
+        # Should be rejected (pre-save validation)
+        assert response.status_code == 400
+        result = response.get_json()
+        assert result['success'] is False
+        assert 'validation_errors' in result
+        assert 'amount' in result['validation_errors']
+
+        # Verify NOT saved to database
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).all()
+            assert len(decisions) == 0, f"Zero amount was saved! {decisions}"
+        finally:
+            session.close()
+
+    def test_autosave_non_numeric_amount_validation(self, client_with_db):
+        """CRITICAL: Non-numeric amount autosave is REJECTED (not saved)."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Try to autosave non-numeric amount
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'amount': 'abc'}
+            }
+        )
+
+        # Should be rejected (pre-save validation)
+        assert response.status_code == 400
+        result = response.get_json()
+        assert result['success'] is False
+        assert 'validation_errors' in result
+        assert 'amount' in result['validation_errors']
+
+        # Verify NOT saved to database
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).all()
+            assert len(decisions) == 0, f"Non-numeric amount was saved! {decisions}"
+        finally:
+            session.close()
+
+    def test_valid_amount_no_issue(self, client_with_db):
+        """Valid positive amount should not create amount issue."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Autosave valid amount
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'amount': '150.50'}
+            }
+        )
+
+        assert response.status_code == 200
+
+        # Verify no amount issue is created
+        from scripts.householder.issue_recalculation_service import recalculate_row_issues
+        issues = recalculate_row_issues(batch_id, raw_row_id, database_url)
+        amount_issues = [i for i in issues if i.get('field') == 'amount']
+        assert len(amount_issues) == 0, "Valid amount should not create issue"
+
+    def test_autosave_amount_with_formatting(self, client_with_db):
+        """Valid amount with dollar sign and commas should be accepted and normalized."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        # Autosave amount with dollar sign and commas
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'amount': '$1,250.50'}
+            }
+        )
+
+        # Should succeed
+        assert response.status_code == 200
+        result = response.get_json()
+        assert result['success'] is True
+
+        # Verify saved to database
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decision = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).first()
+            assert decision is not None
+            assert decision.reviewed_values['amount'] == '$1,250.50'
+        finally:
+            session.close()
