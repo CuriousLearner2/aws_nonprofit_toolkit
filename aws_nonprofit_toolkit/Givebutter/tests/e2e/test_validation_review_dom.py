@@ -188,8 +188,8 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
-                # Find email input
-                email_input = await page.query_selector('input[data-testid="email-input-1"]')
+                # Find email input (use attribute prefix selector to avoid hardcoding record ID)
+                email_input = await page.query_selector('input[data-testid^="email-input-"]')
                 assert email_input is not None, "Email input not found"
 
                 # ===== PART 1: Invalid email triggers error state =====
@@ -391,8 +391,8 @@ async def test_validation_error_preserves_review_status_dropdown(
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
-                # Find email input
-                email_input = await page.query_selector('input[data-testid="email-input-1"]')
+                # Find email input (use attribute prefix selector to avoid hardcoding record ID)
+                email_input = await page.query_selector('input[data-testid^="email-input-"]')
                 assert email_input is not None, "Email input not found"
 
                 # ===== TRIGGER INVALID EMAIL ERROR =====
