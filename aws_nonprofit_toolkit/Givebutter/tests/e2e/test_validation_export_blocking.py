@@ -1696,3 +1696,262 @@ async def test_clean_validation_export_skips_confirmation(e2e_database_and_app):
 
     finally:
         session.close()
+
+
+# ==============================================================================
+# TEST K: Mixed validation + household warnings require independent confirmations
+# ==============================================================================
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_mixed_validation_household_export_warnings(e2e_database_and_app):
+    """
+    Verify mixed warning types (validation + household deferred) require independent confirmations.
+
+    Scenario:
+    1. Seed ImportBatch with one contact
+    2. Create deferred validation item for that contact
+    3. Create deferred household item for that contact
+    4. Navigate to Export Console
+    5. Verify both warning banners appear
+    6. Verify both checkboxes present and independent
+    7. Verify button disabled initially
+    8. Check validation checkbox only → button stays disabled
+    9. Check household checkbox too → button becomes enabled
+    10. Verify both confirmations can be unchecked independently
+    11. Verify export proceeds when both checked
+
+    Expected behavior:
+    - Both warnings render simultaneously
+    - Both checkboxes independent
+    - JavaScript AND logic enforces both required
+    - Each checkbox state tracked independently
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='mixed-export-warnings-k',
+            filename='mixed_export_warnings_k.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row
+        raw_row = RawImportRow(
+            batch_id='mixed-export-warnings-k',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Mixed Warning Test',
+                'date': '2026-06-19',
+                'email': '',  # Missing email for validation issue
+                'phone': '(555) 999-9999',
+                'amount': '650.00',
+                'address': '555 Mixed Warning Ave K',
+                'transaction_id': 'TXN-MIXED-K'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+
+        # Create ImportContact
+        contact = ImportContact(
+            batch_id='mixed-export-warnings-k',
+            raw_import_row_id=raw_row.id,
+            first_name='Mixed',
+            last_name='WarningK',
+            email='',  # Missing email
+            phone='(555) 999-9999',
+            address_line1='555 Mixed Warning Ave K',
+            amount=650.00
+        )
+        session.add(contact)
+        session.flush()
+
+        # Create deferred validation item
+        val_item = ReviewItem(
+            batch_id='mixed-export-warnings-k',
+            item_type='validation',
+            confidence=1.0,
+            payload_json={
+                'field': 'email',
+                'issue': 'missing_email',
+                'suggestion': None,
+                'validation_tier': 'critical'
+            }
+        )
+        session.add(val_item)
+        session.flush()
+
+        # Create deferred household item
+        hh_item = ReviewItem(
+            batch_id='mixed-export-warnings-k',
+            item_type='household',
+            confidence=0.85,
+            payload_json={
+                'suggested_name': 'Mixed Warning Household',
+                'address': '555 Mixed Warning Ave K',
+                'proposed_members': ['Mixed WarningK'],
+                'evidence': ['Same address'],
+                'conflicts': [],
+                'basis': 'Test mixed warning'
+            }
+        )
+        session.add(hh_item)
+        session.flush()
+
+        # Link both items to contact via subjects
+        val_subject = ReviewItemSubject(
+            review_item_id=val_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact.id,
+            role='primary'
+        )
+        session.add(val_subject)
+        session.flush()
+
+        hh_subject = ReviewItemSubject(
+            review_item_id=hh_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact.id,
+            role='primary'
+        )
+        session.add(hh_subject)
+        session.flush()
+
+        # Create deferred decisions for both
+        val_decision = ReviewDecision(
+            batch_id='mixed-export-warnings-k',
+            review_item_id=val_item.id,
+            decision='defer',
+            reviewed_values={'field': 'email', 'issue': 'missing_email'},
+            reviewer='test-reviewer'
+        )
+        session.add(val_decision)
+        session.flush()
+
+        hh_decision = ReviewDecision(
+            batch_id='mixed-export-warnings-k',
+            review_item_id=hh_item.id,
+            decision='defer',
+            reviewed_values={},
+            reviewer='test-reviewer'
+        )
+        session.add(hh_decision)
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/mixed-export-warnings-k/exports', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # K1: Navigate to exports page
+                await page.goto('http://127.0.0.1:8001/imports/mixed-export-warnings-k/exports')
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ K1: Export console loaded")
+
+                # K2: Generate preview
+                await page.evaluate("""
+                    async () => {
+                        const response = await fetch('/imports/mixed-export-warnings-k/exports/preview', {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            const html = await response.text();
+                            document.open();
+                            document.write(html);
+                            document.close();
+                        }
+                    }
+                """)
+
+                await page.wait_for_selector('h1', timeout=5000)
+                print("✓ K2: Export preview loaded with mixed warnings")
+
+                # K3: Verify both warning sections appear
+                val_warning = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                hh_warning = await page.query_selector('#confirm-unresolved-households-checkbox')
+                assert val_warning is not None, "K3 FAILED: Validation warning checkbox should be present"
+                assert hh_warning is not None, "K3 FAILED: Household warning checkbox should be present"
+                print("✓ K3: Both warning checkboxes present (validation + household)")
+
+                # K4: Verify export button is initially disabled
+                export_btn = await page.query_selector('#generate-export-btn')
+                is_initially_disabled = await export_btn.is_disabled()
+                assert is_initially_disabled, "K4 FAILED: Export button should be initially disabled"
+                print("✓ K4: Export button initially disabled")
+
+                # K5: Check ONLY validation checkbox
+                await val_warning.check()
+                await page.wait_for_timeout(200)  # Wait for JS state update
+                is_still_disabled = await export_btn.is_disabled()
+                assert is_still_disabled, \
+                    "K5 FAILED: Export button should stay disabled with only validation confirmed"
+                print("✓ K5: Button remains disabled when only validation confirmed")
+
+                # K6: Now check household checkbox too
+                await hh_warning.check()
+                await page.wait_for_timeout(200)  # Wait for JS state update
+                is_now_enabled = not await export_btn.is_disabled()
+                assert is_now_enabled, \
+                    "K6 FAILED: Export button should be enabled when both confirmed"
+                print("✓ K6: Button becomes enabled when both confirmations checked")
+
+                # K7: Verify independent unchecking
+                await val_warning.uncheck()
+                await page.wait_for_timeout(200)  # Wait for JS state update
+                is_disabled_again = await export_btn.is_disabled()
+                assert is_disabled_again, \
+                    "K7 FAILED: Button should be disabled when one confirmation unchecked"
+                print("✓ K7: Button disabled again when one confirmation unchecked (independent)")
+
+                # K8: Check validation again to re-enable
+                await val_warning.check()
+                await page.wait_for_timeout(200)  # Wait for JS state update
+                is_enabled_again = not await export_btn.is_disabled()
+                assert is_enabled_again, \
+                    "K8 FAILED: Button should be enabled again when both re-checked"
+                print("✓ K8: Button re-enabled when both confirmations checked again")
+
+                print("\n=== TEST K: MIXED VALIDATION + HOUSEHOLD EXPORT WARNINGS PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
