@@ -104,6 +104,37 @@ A browser-visible change is acceptable only if the report includes:
 * evidence that the test executed real browser behavior
 * a five-run E2E result when an E2E file changed materially
 
+## Five-run E2E evidence standard
+
+Five-run E2E evidence is valid only if the material reviewed includes exact command/output evidence. Do not accept summary claims.
+
+Valid evidence must include:
+
+- The exact loop command or five separate commands.
+- The affected E2E file path.
+- A numbered result for each run.
+- Pass/fail output for each run.
+- Evidence that the entire affected E2E file ran, unless the human explicitly authorized a narrower targeted test.
+
+Invalid evidence examples:
+
+```text
+5 runs passed
+Five consecutive passes demonstrated
+All E2E tests passed repeatedly
+```
+
+If an E2E file was created or materially changed and exact five-run command/output evidence is absent, you must report:
+
+```text
+Five-run E2E evidence present? no
+Required evidence missing? yes
+Verdict: Request changes
+Happy-path auto-commit eligible? no
+```
+
+You must not mark `Five-run E2E evidence present? yes` unless the exact command/output evidence is included in the material you reviewed.
+
 Collection-only commands do not count as E2E execution.
 
 Syntax validation does not count as E2E execution.
@@ -138,7 +169,8 @@ The review must explicitly report:
 
 - E2E file materially changed? yes/no
 - Five-run E2E required? yes/no
-- Five-run E2E evidence present? yes/no
+- Exact five-run command/output evidence present? yes/no
+- Entire affected E2E file ran five times? yes/no, unless human authorized a narrower targeted test
 - Verdict impact:
 
 ## Failed first-fix review gate
@@ -206,7 +238,7 @@ Happy-path auto-commit is not eligible if there are any:
 * failing required tests,
 * unresolved product/UX questions,
 * unexpected files,
-* missing E2E/five-run evidence,
+* missing exact E2E/five-run command/output evidence,
 * failed-first-fix violations,
 * schema/migration concerns,
 * ambiguous scope concerns.
@@ -245,6 +277,10 @@ If reviewing a workflow that includes auto-commit, the Reviewer must distinguish
 
 - Auto-commit eligibility: whether the Orchestrator may commit after clean Accept.
 - Auto-push authorization: whether the Orchestrator may push. This requires separate explicit human authorization and is not implied by auto-commit eligibility.
+
+If a report says `Pushed? yes` after an auto-commit and there was no Push-only task or `Happy-path auto-push: enabled`, treat that as an unauthorized-push workflow violation even if the code/tests are technically acceptable.
+
+Auto-commit eligibility never implies auto-push authorization.
 
 
 ## Allowed commands:
@@ -348,7 +384,8 @@ Then issue your actual final verdict.
 10. **E2E gate check:**
    * E2E file materially changed? yes/no
    * Five-run E2E required? yes/no
-   * Five-run E2E evidence present? yes/no
+   * Exact five-run E2E command/output evidence present? yes/no
+   * Entire affected E2E file ran five times? yes/no, unless human authorized a narrower targeted test
    * Verdict impact:
 
 11. **Happy-path auto-commit:**

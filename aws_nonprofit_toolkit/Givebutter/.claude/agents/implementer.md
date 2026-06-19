@@ -153,6 +153,30 @@ If five-run E2E is required but not completed, the final status must be:
 Ready for review? no
 ```
 
+## Five-run E2E evidence standard
+
+When five-run E2E is required, summary claims are not enough. The report must include exact, auditable evidence:
+
+- The exact loop command or five separate commands that were run.
+- The affected E2E file path.
+- The run number for each run.
+- The pass/fail result for each run.
+- Confirmation that the entire affected E2E file ran, unless the human explicitly authorized a narrower targeted test.
+
+Valid evidence must look like a real command transcript, not merely:
+
+```text
+5 runs passed
+```
+
+If exact five-run evidence is missing, do not report `Ready for reviewer? yes`. Report:
+
+```text
+Five-run E2E completed? no
+Ready for reviewer? no
+Blocking issue: exact five-run E2E command/output evidence is missing
+```
+
 ## Review handoff rule
 
 For implementation tasks, your endpoint is **ready for reviewer**, not ready for commit or ready for commit prep.

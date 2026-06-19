@@ -173,7 +173,8 @@ Even when happy-path auto-commit is enabled, the Orchestrator may commit without
 * All required verification commands passed.
 * Fast pre-commit gate passed: `pytest tests/unit tests/integration -q --tb=short`.
 * Required Playwright/browser E2E ran when browser-visible behavior changed.
-* Required five-run E2E completed when an E2E file was created or materially changed.
+* Required five-run E2E completed when an E2E file was created or materially changed, with exact command/output evidence captured.
+* Reviewer acceptance does not rely on missing, inferred, or summarized five-run evidence.
 * Working tree contains only expected files for the task.
 * No product-code files are present unless product-code changes were explicitly allowed.
 * No `.claude` workflow files are present unless the task is explicitly a Claude workflow configuration update.
@@ -233,6 +234,16 @@ After commit, run:
 ```bash
 git status --short
 git log -5 --oneline
+```
+
+Auto-commit must never include `git push`. After an auto-commit, only status/log verification commands are allowed unless the current task explicitly includes `Happy-path auto-push: enabled`.
+
+If any command sequence for auto-commit includes `git push` without explicit auto-push authorization, stop before running it and report:
+
+```text
+Happy-path auto-commit skipped: yes
+Reason: auto-commit command attempted to include unauthorized push
+Human decision required: yes
 ```
 
 Final report must include:
@@ -493,6 +504,36 @@ The final report must include:
 - whether five-run E2E was required
 - whether five-run E2E completed successfully when required
 
+## Five-run E2E evidence standard
+
+Five-run E2E evidence is valid only when the Orchestrator has exact command/output evidence, not a summary claim.
+
+Valid five-run evidence must include:
+
+- The exact loop command or five separate commands.
+- The affected E2E file path.
+- A numbered result for each run.
+- Pass/fail output for each run.
+- Evidence that the entire affected E2E file ran, unless the human explicitly authorized a narrower targeted test.
+
+Invalid evidence examples:
+
+```text
+5 runs passed
+Five consecutive passes demonstrated
+All E2E tests passed repeatedly
+```
+
+For browser-visible changes, if an E2E file was created or materially changed and exact five-run command/output evidence is missing, the Orchestrator must not invoke Reviewer and must report:
+
+```text
+Five-run E2E evidence present? no
+Reviewer verdict: NOT RUN — BLOCKING
+Ready for commit prep? no
+```
+
+The Orchestrator must not allow happy-path auto-commit when Reviewer acceptance depends on missing, inferred, or summarized five-run evidence.
+
 ## Test gates
 
 Run the test gates required by the task.
@@ -557,7 +598,7 @@ If the Implementer changed any file, the Orchestrator must complete the review h
    - changed file list
    - diff/stat evidence
    - exact test commands and results
-   - exact E2E/five-run evidence when required
+   - exact E2E/five-run command and output evidence when required
 
 4. Return the final response only after Reviewer returns one of:
    - `Accept`
@@ -582,7 +623,7 @@ Invoke the `reviewer` agent only after:
 
 - required test gates pass
 - actual E2E tests ran when browser-visible behavior changed
-- five-run E2E evidence exists when an E2E browser file was created or materially changed
+- exact five-run E2E command/output evidence exists when an E2E browser file was created or materially changed
 - evidence is collected
 - changed files are known
 
@@ -662,7 +703,7 @@ Stop and ask the human if any of these occur:
 - Export or approval behavior would change without human decision.
 - Unexpected files are modified.
 - Browser-visible behavior changed but actual E2E tests did not run.
-- An E2E browser file was created or materially changed but five-run E2E evidence is missing.
+- An E2E browser file was created or materially changed but exact five-run E2E command/output evidence is missing.
 - E2E tests were only collected, not executed.
 - A visible enabled control remains nonfunctional.
 - Claude proposes removing or replacing a human-specified UX control.
