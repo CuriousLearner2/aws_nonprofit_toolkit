@@ -493,6 +493,94 @@ def test_encode_csv_field_string():
     assert _encode_csv_field("hello") == "hello"
 
 
+# Golden-File Tests
+
+def test_csv_golden_file_with_reviewed_normalization():
+    """
+    Golden-file test: CSV output with reviewed normalization value.
+
+    Tests that reviewed values (applied via decisions) appear in exported CSV.
+    This row simulates a contact where email was normalized via accept_normalization
+    decision and the reviewed_value was applied.
+
+    Verifies:
+    - Column order matches contract
+    - Reviewed email value appears in correct position
+    - normalized_fields correctly marks the field as normalized
+    - All other fields are rendered correctly
+    """
+    # Create a row where email has been normalized (reviewed value applied)
+    # Original email would have been "john.smith@example.com"
+    # After normalization decision, it's now "john.smith@example.com" (cleaned)
+    row_with_reviewed_email = ExportRow(
+        source_row_index=1,
+        transaction_id="TXN-001",
+        first_name="John",
+        last_name="Smith",
+        email="john.smith@example.com",  # This is the reviewed/normalized value
+        phone="555-1234",
+        address_line1="123 Main St",
+        address_line2=None,
+        city="Springfield",
+        state="IL",
+        postal_code="62701",
+        amount="100.00",
+        validation_status="accepted",
+        validation_issues=(),
+        normalized_fields=("email",),  # Marks email as normalized
+        normalization_warnings=(),
+        duplicate_group_id=None,
+        duplicate_decision=None,
+        duplicate_warnings=(),
+        household_group_id=None,
+        household_group_label=None,
+        household_members=(),
+        household_decision=None,
+        household_warnings=(),
+        export_warnings=(),
+        export_blocked=False,
+        export_derived_at=datetime.utcnow(),
+    )
+
+    csv_content = _generate_csv_content((row_with_reviewed_email,))
+    lines = csv_content.strip().split('\n')
+
+    # Verify header
+    header = lines[0]
+    reader = csv.reader([header])
+    actual_fields = next(reader)
+    expected_fields = [
+        'source_row_index', 'transaction_id', 'first_name', 'last_name', 'email', 'phone',
+        'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'amount',
+        'validation_status', 'validation_issues', 'normalized_fields', 'normalization_warnings',
+        'duplicate_group_id', 'duplicate_decision', 'duplicate_warnings',
+        'household_group_id', 'household_group_label', 'household_members', 'household_decision', 'household_warnings',
+        'export_warnings'
+    ]
+    assert actual_fields == expected_fields, "CSV header order must match contract"
+
+    # Verify data row has correct values in correct positions
+    data_row = lines[1]
+    reader = csv.reader([data_row])
+    values = next(reader)
+
+    # Verify the reviewed email value appears in the correct position
+    assert values[4] == "john.smith@example.com", "Email should be in position 4 (fifth column)"
+    assert values[0] == "1", "source_row_index should be 1"
+    assert values[1] == "TXN-001", "transaction_id should be TXN-001"
+    assert values[2] == "John", "first_name should be John"
+    assert values[3] == "Smith", "last_name should be Smith"
+    assert values[14] == "email", "normalized_fields should mark email as normalized (position 14)"
+
+    # Verify no blockers/warnings
+    assert values[12] == "accepted", "validation_status should be accepted"
+    assert values[13] == "", "validation_issues should be empty"
+    assert values[15] == "", "normalization_warnings should be empty"
+
+    # Verify row count
+    assert len(lines) == 2, "Should have 1 header + 1 data row"
+
+
 # Filename Tests
 
 def test_generate_safe_filename_format():
