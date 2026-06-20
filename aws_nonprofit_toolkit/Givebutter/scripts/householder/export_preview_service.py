@@ -293,6 +293,30 @@ def build_export_preview(
                     except Exception:
                         pass
 
+            # Apply household/duplicate decision reviewed field values
+            # (household confirmed or duplicate same_person may include field corrections)
+            for hh_item in review_items.values():
+                if hh_item.item_type != 'household' or hh_item.batch_id != import_id:
+                    continue
+                hh_decision = household_decisions.get(hh_item.id)
+                if hh_decision and hh_decision.decision == 'confirm_household':
+                    payload = hh_decision.reviewed_values or {}
+                    # Apply any field corrections stored in reviewed_values (e.g., 'last_name', 'email', etc.)
+                    for field_key in field_values.keys():
+                        if field_key in payload:
+                            field_values[field_key] = payload[field_key]
+
+            for dup_item in review_items.values():
+                if dup_item.item_type != 'duplicate' or dup_item.batch_id != import_id:
+                    continue
+                dup_decision = duplicate_decisions.get(dup_item.id)
+                if dup_decision and dup_decision.decision == 'same_person':
+                    payload = dup_decision.reviewed_values or {}
+                    # Apply any field corrections stored in reviewed_values (e.g., 'email', 'first_name', etc.)
+                    for field_key in field_values.keys():
+                        if field_key in payload:
+                            field_values[field_key] = payload[field_key]
+
             # Collect validation decision affecting this contact
             validation_status = 'pending'
             validation_issues = []

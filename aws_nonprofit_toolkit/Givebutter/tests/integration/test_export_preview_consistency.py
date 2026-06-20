@@ -598,3 +598,252 @@ def test_generated_csv_includes_row_level_reviewed_values(preview_consistency_db
     )
 
     session.close()
+
+
+def test_household_decision_effective_values_in_generated_csv(preview_consistency_db):
+    """Generated CSV uses household ReviewItem decision effective values."""
+    database_url, engine, export_dir = preview_consistency_db
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch with 2 rows (for household grouping)
+    batch = ImportBatch(
+        id='IMP-HH-EFFECTIVE-001',
+        filename='test_household_effective.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Create two raw import rows (to form a household pair)
+    raw_data_1 = {
+        'transaction_id': 'TXN-HH-1',
+        'first_name': 'John',
+        'last_name': 'Doe',
+        'email': 'john.doe@example.com',
+        'amount': '100.00',
+    }
+    raw_row_1 = RawImportRow(
+        batch_id='IMP-HH-EFFECTIVE-001',
+        row_index=1,
+        raw_csv_data=raw_data_1,
+    )
+    session.add(raw_row_1)
+
+    raw_data_2 = {
+        'transaction_id': 'TXN-HH-2',
+        'first_name': 'Jane',
+        'last_name': 'Doe',
+        'email': 'jane.doe@example.com',
+        'amount': '150.00',
+    }
+    raw_row_2 = RawImportRow(
+        batch_id='IMP-HH-EFFECTIVE-001',
+        row_index=2,
+        raw_csv_data=raw_data_2,
+    )
+    session.add(raw_row_2)
+    session.flush()
+
+    # Create import contacts
+    contact_1 = ImportContact(
+        batch_id='IMP-HH-EFFECTIVE-001',
+        raw_import_row_id=raw_row_1.id,
+        first_name=raw_data_1['first_name'],
+        last_name=raw_data_1['last_name'],
+        email=raw_data_1['email'],
+        amount=float(raw_data_1['amount']),
+    )
+    session.add(contact_1)
+
+    contact_2 = ImportContact(
+        batch_id='IMP-HH-EFFECTIVE-001',
+        raw_import_row_id=raw_row_2.id,
+        first_name=raw_data_2['first_name'],
+        last_name=raw_data_2['last_name'],
+        email=raw_data_2['email'],
+        amount=float(raw_data_2['amount']),
+    )
+    session.add(contact_2)
+    session.flush()
+
+    # Create a household review item linking both contacts
+    hh_item = ReviewItem(
+        batch_id='IMP-HH-EFFECTIVE-001',
+        item_type='household',
+        confidence=0.95,
+        payload_json={'contact_ids': [contact_1.id, contact_2.id]},
+    )
+    session.add(hh_item)
+    session.flush()
+
+    # Create household decision with reviewed value (confirmed household with different name)
+    reviewed_last_name = 'Smith'  # Different from raw 'Doe'
+    hh_decision = ReviewDecision(
+        batch_id='IMP-HH-EFFECTIVE-001',
+        review_item_id=hh_item.id,
+        raw_import_row_id=None,
+        decision='confirm_household',
+        reviewed_values={'last_name': reviewed_last_name},
+    )
+    session.add(hh_decision)
+    session.commit()
+
+    # Generate export
+    result = generate_export_file(
+        import_id='IMP-HH-EFFECTIVE-001',
+        output_dir=export_dir,
+        reviewer='test_user',
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+    )
+
+    # Read generated CSV
+    with open(result.file_path, 'r', encoding='utf-8') as f:
+        csv_content = f.read()
+
+    csv_rows = list(csv.reader(StringIO(csv_content)))
+    headers = csv_rows[0]
+
+    # Verify household decision last_name effective value appears in export
+    last_name_idx = headers.index('last_name') if 'last_name' in headers else headers.index('Last Name')
+    for data_row in csv_rows[1:]:  # Check both contact rows in the household
+        assert data_row[last_name_idx] == reviewed_last_name, (
+            f"CSV should contain reviewed last_name '{reviewed_last_name}', got '{data_row[last_name_idx]}'"
+        )
+
+    # Verify raw data is unchanged
+    modified_row_1 = session.query(RawImportRow).filter_by(id=raw_row_1.id).first()
+    assert modified_row_1.raw_csv_data.get('last_name') == raw_data_1.get('last_name'), (
+        "Raw data should not be modified"
+    )
+
+    session.close()
+
+
+def test_duplicate_decision_effective_values_in_generated_csv(preview_consistency_db):
+    """Generated CSV uses duplicate ReviewItem decision effective values."""
+    database_url, engine, export_dir = preview_consistency_db
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch with 2 rows (for duplicate grouping)
+    batch = ImportBatch(
+        id='IMP-DUP-EFFECTIVE-001',
+        filename='test_duplicate_effective.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Create two raw import rows (potential duplicates)
+    raw_data_1 = {
+        'transaction_id': 'TXN-DUP-1',
+        'first_name': 'Alice',
+        'last_name': 'Johnson',
+        'email': 'alice.j@example.com',
+        'amount': '250.00',
+    }
+    raw_row_1 = RawImportRow(
+        batch_id='IMP-DUP-EFFECTIVE-001',
+        row_index=1,
+        raw_csv_data=raw_data_1,
+    )
+    session.add(raw_row_1)
+
+    raw_data_2 = {
+        'transaction_id': 'TXN-DUP-2',
+        'first_name': 'Alice',
+        'last_name': 'Jonson',  # Typo: Jonson vs Johnson
+        'email': 'alice.jonson@example.com',
+        'amount': '250.00',
+    }
+    raw_row_2 = RawImportRow(
+        batch_id='IMP-DUP-EFFECTIVE-001',
+        row_index=2,
+        raw_csv_data=raw_data_2,
+    )
+    session.add(raw_row_2)
+    session.flush()
+
+    # Create import contacts
+    contact_1 = ImportContact(
+        batch_id='IMP-DUP-EFFECTIVE-001',
+        raw_import_row_id=raw_row_1.id,
+        first_name=raw_data_1['first_name'],
+        last_name=raw_data_1['last_name'],
+        email=raw_data_1['email'],
+        amount=float(raw_data_1['amount']),
+    )
+    session.add(contact_1)
+
+    contact_2 = ImportContact(
+        batch_id='IMP-DUP-EFFECTIVE-001',
+        raw_import_row_id=raw_row_2.id,
+        first_name=raw_data_2['first_name'],
+        last_name=raw_data_2['last_name'],
+        email=raw_data_2['email'],
+        amount=float(raw_data_2['amount']),
+    )
+    session.add(contact_2)
+    session.flush()
+
+    # Create a duplicate review item linking both contacts
+    dup_item = ReviewItem(
+        batch_id='IMP-DUP-EFFECTIVE-001',
+        item_type='duplicate',
+        confidence=0.88,
+        payload_json={
+            'contact_a': {'id': contact_1.id, 'name': raw_data_1['first_name']},
+            'contact_b': {'id': contact_2.id, 'name': raw_data_2['first_name']},
+        },
+    )
+    session.add(dup_item)
+    session.flush()
+
+    # Create duplicate decision marking them as same person with corrected email
+    reviewed_email = 'alice.johnson@example.com'  # Corrected unified email
+    dup_decision = ReviewDecision(
+        batch_id='IMP-DUP-EFFECTIVE-001',
+        review_item_id=dup_item.id,
+        raw_import_row_id=None,
+        decision='same_person',
+        reviewed_values={'email': reviewed_email},
+    )
+    session.add(dup_decision)
+    session.commit()
+
+    # Generate export
+    result = generate_export_file(
+        import_id='IMP-DUP-EFFECTIVE-001',
+        output_dir=export_dir,
+        reviewer='test_user',
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+    )
+
+    # Read generated CSV
+    with open(result.file_path, 'r', encoding='utf-8') as f:
+        csv_content = f.read()
+
+    csv_rows = list(csv.reader(StringIO(csv_content)))
+    headers = csv_rows[0]
+
+    # Verify duplicate decision email effective value appears in export
+    email_idx = headers.index('email') if 'email' in headers else headers.index('Email')
+    for data_row in csv_rows[1:]:  # Check both rows in the duplicate
+        assert data_row[email_idx] == reviewed_email, (
+            f"CSV should contain reviewed email '{reviewed_email}', got '{data_row[email_idx]}'"
+        )
+
+    # Verify raw data is unchanged
+    modified_row_1 = session.query(RawImportRow).filter_by(id=raw_row_1.id).first()
+    assert modified_row_1.raw_csv_data.get('email') == raw_data_1['email'], (
+        "Raw data should not be modified"
+    )
+    modified_row_2 = session.query(RawImportRow).filter_by(id=raw_row_2.id).first()
+    assert modified_row_2.raw_csv_data.get('email') == raw_data_2['email'], (
+        "Raw data should not be modified"
+    )
+
+    session.close()
