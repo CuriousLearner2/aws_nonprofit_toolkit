@@ -373,43 +373,53 @@ class DatabaseImportRepository:
                 raw_csv_data = raw_row.raw_csv_data if raw_row else {}
                 transaction_id = raw_csv_data.get('transaction_id', '')
 
-                # Construct full name
-                full_name = ''
-                if contact.first_name and contact.last_name:
-                    full_name = f'{contact.first_name} {contact.last_name}'
-                elif contact.first_name:
-                    full_name = contact.first_name
-                elif contact.last_name:
-                    full_name = contact.last_name
-
-                # Construct full address
-                address_parts = []
-                if contact.address_line1:
-                    address_parts.append(contact.address_line1)
-                if contact.address_line2:
-                    address_parts.append(contact.address_line2)
-                if contact.city:
-                    address_parts.append(contact.city)
-                if contact.state:
-                    address_parts.append(contact.state)
-                if contact.postal_code:
-                    address_parts.append(contact.postal_code)
-                full_address = ', '.join(address_parts) if address_parts else ''
-
-                # Get effective values (raw + corrections)
+                # Get effective values (raw + corrections) first
                 try:
                     effective = get_effective_values(import_id, contact.raw_import_row_id, self.database_url)
                 except Exception:
                     # Fall back to raw values if effective values can't be computed
                     effective = {}
 
+                # Use effective name, fall back to contact values if not in corrections
+                effective_name = effective.get('name', '')
+                if not effective_name:
+                    if contact.first_name and contact.last_name:
+                        effective_name = f'{contact.first_name} {contact.last_name}'
+                    elif contact.first_name:
+                        effective_name = contact.first_name
+                    elif contact.last_name:
+                        effective_name = contact.last_name
+
+                # Use effective address, fall back to contact values if not in corrections
+                effective_address = effective.get('address', '')
+                if not effective_address:
+                    address_parts = []
+                    if contact.address_line1:
+                        address_parts.append(contact.address_line1)
+                    if contact.address_line2:
+                        address_parts.append(contact.address_line2)
+                    if contact.city:
+                        address_parts.append(contact.city)
+                    if contact.state:
+                        address_parts.append(contact.state)
+                    if contact.postal_code:
+                        address_parts.append(contact.postal_code)
+                    effective_address = ', '.join(address_parts) if address_parts else ''
+
                 # Use effective email and phone, fall back to contact values if not in corrections
                 effective_email = effective.get('email', contact.email or '')
                 effective_phone = effective.get('phone', contact.phone or '')
 
-                # Format amount
+                # Format amount from effective values, fall back to contact amount
                 amount_str = ''
-                if contact.amount is not None:
+                effective_amount = effective.get('amount')
+                if effective_amount is not None:
+                    try:
+                        amount_val = float(str(effective_amount).replace('$', '').replace(',', '').strip())
+                        amount_str = f'${amount_val:,.2f}'
+                    except (ValueError, AttributeError):
+                        amount_str = ''
+                elif contact.amount is not None:
                     amount_str = f'${contact.amount:,.2f}'
 
                 # Get current validation issues (recalculated based on effective values)
@@ -457,15 +467,16 @@ class DatabaseImportRepository:
                         effective_status = status_map.get(latest_decision.decision, 'pending')
 
                 # Create ValidationRow (using contact.id as string for consistency)
+                # Use effective values for all editable fields (show corrections/reviewed_values)
                 row = ValidationRow(
                     id=str(contact.id),
                     transaction_id=transaction_id,
-                    date='',  # Date not available in ImportContact; would come from raw_import_row
-                    name=full_name,
-                    email=effective_email,
-                    phone=effective_phone,
-                    amount=amount_str,
-                    address=full_address,
+                    date=effective.get('date', ''),  # Effective date from corrections if any
+                    name=effective_name,  # Effective name (corrected or raw)
+                    email=effective_email,  # Effective email (corrected or raw)
+                    phone=effective_phone,  # Effective phone (corrected or raw)
+                    amount=amount_str,  # Effective amount (corrected or raw)
+                    address=effective_address,  # Effective address (corrected or raw)
                     raw_import_row_id=contact.raw_import_row_id,
                     issue_type=issue_type,
                     issue_description=issue_description,

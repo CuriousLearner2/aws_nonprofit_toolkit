@@ -38,6 +38,7 @@ from sqlalchemy.orm import sessionmaker
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.householder.database_models import (
+    ReviewDecision,
     Base,
     ImportBatch,
     RawImportRow,
