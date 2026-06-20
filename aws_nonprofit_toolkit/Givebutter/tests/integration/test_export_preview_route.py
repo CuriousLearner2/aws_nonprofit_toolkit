@@ -478,3 +478,58 @@ class TestExportPreviewRoute:
 
         # Should not create audit records
         assert audit_count_before == audit_count_after
+
+    def test_export_preview_includes_row_level_reviewed_values(self, flask_client_with_export_db):
+        """Route-level test: export preview output uses row-level ReviewDecision effective values."""
+        client, database_url, engine, Session, ids = flask_client_with_export_db
+
+        session = Session()
+        row1 = session.query(RawImportRow).first()
+        row1_id = row1.id
+        original_email = row1.raw_csv_data.get('Email')
+        original_amount = row1.raw_csv_data.get('Amount')
+
+        # Create row-level ReviewDecision (autosave corrections without review_item_id)
+        # This represents user corrections made through autosave validation workflow
+        reviewed_email = 'corrected.email@example.com'
+        reviewed_amount = 350.75
+        row_decision = ReviewDecision(
+            batch_id='IMP-2025-0101-A',
+            raw_import_row_id=row1_id,
+            review_item_id=None,  # Row-level decision, not item-level
+            decision='accept',
+            reviewed_values={'email': reviewed_email, 'amount': reviewed_amount}
+        )
+        session.add(row_decision)
+        session.commit()
+        session.close()
+
+        # Call export preview route
+        response = client.post(
+            '/imports/IMP-2025-0101-A/exports/preview',
+        )
+
+        assert response.status_code == 200
+        response_text = response.get_data(as_text=True)
+
+        # Route-level assertion: Verify effective reviewed values appear in preview output.
+        # Export preview service merges raw + reviewed_values into export rows.
+        # Verify the corrected email appears in the rendered preview output.
+        assert reviewed_email in response_text, \
+            f"Export preview output should contain reviewed email '{reviewed_email}'"
+
+        # Verify the corrected amount appears in the rendered preview output.
+        assert str(reviewed_amount) in response_text, \
+            f"Export preview output should contain reviewed amount '{reviewed_amount}'"
+
+        # Verify raw data was not modified
+        session = Session()
+        try:
+            modified_row = session.query(RawImportRow).filter_by(id=row1_id).first()
+            assert modified_row is not None
+            assert modified_row.raw_csv_data.get('Email') == original_email, \
+                f"Raw data should not be modified. Original: {original_email}, Got: {modified_row.raw_csv_data.get('Email')}"
+            assert modified_row.raw_csv_data.get('Amount') == original_amount, \
+                f"Raw data should not be modified. Original: {original_amount}, Got: {modified_row.raw_csv_data.get('Amount')}"
+        finally:
+            session.close()
