@@ -144,10 +144,7 @@
         id="generate-export-btn"
         onclick="generateExportFile()"
         {% if preview_available and preview.blocked_count > 0 %}disabled{% endif %}
-        {% if preview_available and preview.deferred_household_count > 0 %}disabled{% endif %}
-        {% if preview_available and preview.deferred_duplicate_count > 0 %}disabled{% endif %}
-        {% if preview_available and preview.deferred_validation_count > 0 %}disabled{% endif %}
-        style="font-size: 16px; padding: 12px 24px; {% if preview_available and (preview.blocked_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0) %}opacity: 0.6; cursor: not-allowed;{% endif %}"
+        style="font-size: 16px; padding: 12px 24px; {% if preview_available and preview.blocked_count > 0 %}opacity: 0.6; cursor: not-allowed;{% endif %}"
     >
         Generate CSV Export
     </button>
@@ -269,26 +266,9 @@ function updateExportButtonState() {
     {% endif %}
 
     if (preview) {
-        // If households are deferred, require household confirmation
-        let householdConfirmed = true;
-        if (preview.deferred_household_count > 0) {
-            householdConfirmed = householdCheckbox && householdCheckbox.checked;
-        }
-
-        // If duplicates are deferred, require duplicate confirmation
-        let duplicateConfirmed = true;
-        if (preview.deferred_duplicate_count > 0) {
-            duplicateConfirmed = duplicateCheckbox && duplicateCheckbox.checked;
-        }
-
-        // If validations are deferred, require validation confirmation
-        let validationConfirmed = true;
-        if (preview.deferred_validation_count > 0) {
-            validationConfirmed = validationCheckbox && validationCheckbox.checked;
-        }
-
-        // All must be confirmed (or not required) for export to be enabled
-        const canExport = householdConfirmed && duplicateConfirmed && validationConfirmed;
+        // Button is only disabled if there are BLOCKING issues, not deferred issues
+        // Deferred issues require confirmation checkboxes, but do not disable the button
+        const canExport = preview.blocked_count === 0;
         btn.disabled = !canExport;
         btn.style.opacity = canExport ? '1' : '0.6';
         btn.style.cursor = canExport ? 'pointer' : 'not-allowed';

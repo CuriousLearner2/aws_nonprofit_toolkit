@@ -1189,11 +1189,11 @@ async def test_export_warning_appears_for_deferred_validation(e2e_database_and_a
                     "G3 FAILED: Validation confirmation checkbox should appear for deferred issues"
                 print("✓ G3: Validation confirmation checkbox present")
 
-                # G4: Verify export button is initially disabled
+                # G4: Verify export button is enabled (deferred doesn't block)
                 export_btn = await page.query_selector('#generate-export-btn')
                 is_disabled = await export_btn.is_disabled() if export_btn else False
-                assert is_disabled, "G4 FAILED: Export button should be disabled until confirmation checked"
-                print("✓ G4: Export button initially disabled (deferred validation warning)")
+                assert not is_disabled, "G4 FAILED: Export button should be enabled (deferred issues do not block)"
+                print("✓ G4: Export button enabled (deferred issues do not block)")
 
                 print("\n=== TEST G: EXPORT WARNING APPEARS FOR DEFERRED VALIDATION PASSED ===")
 
@@ -1366,11 +1366,11 @@ async def test_export_blocked_when_validation_confirmation_unchecked(e2e_databas
                 assert not is_checked, "H4 FAILED: Checkbox should be unchecked initially"
                 print("✓ H4: Checkbox is unchecked initially")
 
-                # H5: Verify export button is disabled
+                # H5: Verify export button is enabled (deferred doesn't block)
                 export_btn = await page.query_selector('#generate-export-btn')
                 is_disabled = await export_btn.is_disabled() if export_btn else False
-                assert is_disabled, "H5 FAILED: Export button should be disabled when confirmation unchecked"
-                print("✓ H5: Export button is disabled (confirmation unchecked)")
+                assert not is_disabled, "H5 FAILED: Export button should be enabled (deferred issues do not block)"
+                print("✓ H5: Export button is enabled (deferred issues do not block)")
 
                 print("\n=== TEST H: EXPORT BLOCKED WHEN VALIDATION CONFIRMATION UNCHECKED PASSED ===")
 
@@ -1533,21 +1533,21 @@ async def test_export_button_enabled_when_validation_confirmation_checked(e2e_da
                 await page.wait_for_selector('h1', timeout=5000)
                 print("✓ I2: Export preview loaded")
 
-                # I3: Verify button is initially disabled
+                # I3: Verify button is enabled (deferred doesn't block)
                 export_btn = await page.query_selector('#generate-export-btn')
                 is_initially_disabled = await export_btn.is_disabled()
-                assert is_initially_disabled, "I3 FAILED: Export button should be initially disabled"
-                print("✓ I3: Export button initially disabled")
+                assert not is_initially_disabled, "I3 FAILED: Export button should be enabled (deferred issues do not block)"
+                print("✓ I3: Export button enabled (deferred issues do not block)")
 
                 # I4: Check the validation confirmation checkbox
                 validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
                 await validation_checkbox.check()
                 print("✓ I4: Validation confirmation checkbox checked")
 
-                # I5: Verify button becomes enabled
+                # I5: Verify button remains enabled
                 is_enabled = not await export_btn.is_disabled()
-                assert is_enabled, "I5 FAILED: Export button should be enabled after checkbox checked"
-                print("✓ I5: Export button enabled after confirmation checked")
+                assert is_enabled, "I5 FAILED: Export button should remain enabled"
+                print("✓ I5: Export button remains enabled")
 
                 print("\n=== TEST I: EXPORT BUTTON ENABLED WHEN VALIDATION CONFIRMATION CHECKED PASSED ===")
 
@@ -1910,35 +1910,35 @@ async def test_mixed_validation_household_export_warnings(e2e_database_and_app):
                 assert hh_warning is not None, "K3 FAILED: Household warning checkbox should be present"
                 print("✓ K3: Both warning checkboxes present (validation + household)")
 
-                # K4: Verify export button is initially disabled
+                # K4: Verify export button is enabled (deferred issues don't block)
                 export_btn = await page.query_selector('#generate-export-btn')
                 is_initially_disabled = await export_btn.is_disabled()
-                assert is_initially_disabled, "K4 FAILED: Export button should be initially disabled"
-                print("✓ K4: Export button initially disabled")
+                assert not is_initially_disabled, "K4 FAILED: Export button should be enabled (deferred issues do not block)"
+                print("✓ K4: Export button enabled (deferred issues do not block)")
 
                 # K5: Check ONLY validation checkbox
                 await val_warning.check()
                 await page.wait_for_timeout(200)  # Wait for JS state update
                 is_still_disabled = await export_btn.is_disabled()
-                assert is_still_disabled, \
-                    "K5 FAILED: Export button should stay disabled with only validation confirmed"
-                print("✓ K5: Button remains disabled when only validation confirmed")
+                assert not is_still_disabled, \
+                    "K5 FAILED: Export button should remain enabled (deferred doesn't block)"
+                print("✓ K5: Button remains enabled (deferred doesn't block)")
 
                 # K6: Now check household checkbox too
                 await hh_warning.check()
                 await page.wait_for_timeout(200)  # Wait for JS state update
                 is_now_enabled = not await export_btn.is_disabled()
                 assert is_now_enabled, \
-                    "K6 FAILED: Export button should be enabled when both confirmed"
-                print("✓ K6: Button becomes enabled when both confirmations checked")
+                    "K6 FAILED: Export button should remain enabled"
+                print("✓ K6: Button remains enabled")
 
                 # K7: Verify independent unchecking
                 await val_warning.uncheck()
                 await page.wait_for_timeout(200)  # Wait for JS state update
                 is_disabled_again = await export_btn.is_disabled()
-                assert is_disabled_again, \
-                    "K7 FAILED: Button should be disabled when one confirmation unchecked"
-                print("✓ K7: Button disabled again when one confirmation unchecked (independent)")
+                assert not is_disabled_again, \
+                    "K7 FAILED: Button should remain enabled (deferred doesn't block)"
+                print("✓ K7: Button remains enabled (deferred doesn't block)")
 
                 # K8: Check validation again to re-enable
                 await val_warning.check()
