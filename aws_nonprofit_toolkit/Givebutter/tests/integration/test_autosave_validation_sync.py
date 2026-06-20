@@ -501,3 +501,72 @@ class TestAutosaveValidationSync:
         # Should not have amount issue in issues list
         amount_issues = [i for i in data['issues'] if i.get('field') == 'amount']
         assert len(amount_issues) == 0, f"Valid amount should not have issues, got: {amount_issues}"
+
+
+    def test_multi_field_falsy_amount_zero_with_invalid_email(self, flask_client_with_batch):
+        """Regression: amount=0 plus invalid email must report BOTH errors, not skip amount due to falsy."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {
+                    'amount': 0,  # Falsy numeric zero
+                    'email': 'invalid-no-domain'  # Invalid email
+                }
+            }
+        )
+
+        # Both corrections are invalid
+        assert response.status_code == 400
+        data = response.get_json()
+        issues = data.get('issues', [])
+        
+        # INVARIANT: Both errors must be reported
+        assert len(issues) >= 2, f"Expected 2+ errors, got {len(issues)}: {issues}"
+        
+        # Amount error must be present (not skipped due to falsy 0)
+        amount_error = next((i for i in issues if i.get('field') == 'amount'), None)
+        assert amount_error is not None, f"Amount error missing from {issues}"
+        assert 'greater than 0' in amount_error['reason']
+        
+        # Email error must be present
+        email_error = next((i for i in issues if i.get('field') == 'email'), None)
+        assert email_error is not None, f"Email error missing from {issues}"
+        
+        # Row status must reflect blocking
+        assert data['row_status'] == 'Blocking', f"Status should be Blocking, got {data['row_status']}"
+
+    def test_multi_field_falsy_amount_empty_string_with_invalid_phone(self, flask_client_with_batch):
+        """Regression: amount='' (empty string) plus invalid phone must report BOTH errors."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {
+                    'amount': '',  # Empty string (falsy)
+                    'phone': '123'  # Too short
+                }
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        issues = data.get('issues', [])
+        
+        # INVARIANT: Both errors must be reported
+        assert len(issues) >= 2, f"Expected 2+ errors, got {len(issues)}: {issues}"
+        
+        # Amount error (required field)
+        amount_error = next((i for i in issues if i.get('field') == 'amount'), None)
+        assert amount_error is not None
+        assert 'required' in amount_error['reason'].lower()
+        
+        # Phone error
+        phone_error = next((i for i in issues if i.get('field') == 'phone'), None)
+        assert phone_error is not None
