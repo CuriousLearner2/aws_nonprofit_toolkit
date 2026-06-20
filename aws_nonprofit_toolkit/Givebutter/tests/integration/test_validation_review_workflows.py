@@ -932,6 +932,129 @@ class TestExportSafety:
 
 
 # ==============================================================================
+# TEST D: ReviewDecision Persistence - Effective value retrieval layer testing
+# ==============================================================================
+
+class TestReviewDecisionEffectiveValueRetrieval:
+    """Verify reviewed values persist in row-level ReviewDecision records and are correctly retrieved by get_effective_values()."""
+
+    def test_autosave_reviewed_values_persist_in_decision(
+        self, flask_client_with_validation_batch
+    ):
+        """After autosave correction, reviewed value persists in ReviewDecision and is retrievable by get_effective_values()."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[3]  # Use a row that has a valid initial amount
+
+        # Make a successful correction
+        autosave_response = client.post(
+            f'/imports/validation-workflow-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': 250.50}
+            }
+        )
+        assert autosave_response.status_code == 200
+        autosave_data = autosave_response.get_json()
+
+        # Verify autosave returned effective amount
+        effective_amount = autosave_data.get('effective_values', {}).get('amount')
+        assert effective_amount is not None, "Autosave should return effective_values"
+
+        # Fetch validation review page (HTTP 200 verification only, not HTML parsing)
+        review_response = client.get(
+            f'/imports/validation-workflow-test-batch/validation'
+        )
+        assert review_response.status_code == 200
+
+        # Layer test: Verify persistence and retrieval at database level
+        # This does NOT test whether validation review HTML actually displays the effective value
+        # (that would be an E2E test or route-level HTML parsing test)
+        session = Session()
+        try:
+            from scripts.householder.database_models import ReviewDecision, RawImportRow
+            from scripts.householder.autosave_service import get_effective_values
+
+            # Verify ReviewDecision was persisted with the corrected value
+            decision = session.query(ReviewDecision).filter(
+                ReviewDecision.raw_import_row_id == raw_id,
+                ReviewDecision.batch_id == 'validation-workflow-test-batch'
+            ).first()
+
+            assert decision is not None, "ReviewDecision should be persisted after autosave"
+            assert decision.reviewed_values.get('amount') == 250.50, \
+                f"ReviewDecision should contain corrected amount, got: {decision.reviewed_values}"
+
+            # Verify get_effective_values reflects the correction
+            effective = get_effective_values('validation-workflow-test-batch', raw_id, database_url)
+            assert effective.get('amount') == 250.50, \
+                f"Effective values should include correction, got: {effective}"
+        finally:
+            session.close()
+
+    def test_effective_values_retrieval_merges_reviewed_corrections(
+        self, flask_client_with_validation_batch
+    ):
+        """Multiple reviewed value corrections persist and merge correctly in get_effective_values() retrieval."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[3]  # Use a row that has a valid initial amount
+
+        # Make a successful correction
+        autosave_response = client.post(
+            f'/imports/validation-workflow-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'corrected.email@example.com', 'amount': 350.75}
+            }
+        )
+        assert autosave_response.status_code == 200
+        autosave_data = autosave_response.get_json()
+
+        # Verify autosave returned the effective values
+        effective_values = autosave_data.get('effective_values', {})
+        assert effective_values.get('email') == 'corrected.email@example.com'
+        assert effective_values.get('amount') == 350.75
+
+        # Layer test: Verify persistence and retrieval at database level
+        # This tests the shared underlying mechanism (get_effective_values) both validation review and export use
+        # Does NOT directly test whether validation review HTML or export preview route display effective values
+        # (those are route-level or E2E tests)
+        session = Session()
+        try:
+            from scripts.householder.database_models import ReviewDecision, RawImportRow
+            from scripts.householder.autosave_service import get_effective_values
+
+            # Verify ReviewDecision was persisted
+            decision = session.query(ReviewDecision).filter(
+                ReviewDecision.raw_import_row_id == raw_id,
+                ReviewDecision.batch_id == 'validation-workflow-test-batch'
+            ).first()
+
+            assert decision is not None, "ReviewDecision should be persisted"
+            assert decision.reviewed_values.get('email') == 'corrected.email@example.com'
+            assert decision.reviewed_values.get('amount') == 350.75
+
+            # Verify get_effective_values (used by export) includes the corrections
+            effective = get_effective_values('validation-workflow-test-batch', raw_id, database_url)
+            assert effective.get('email') == 'corrected.email@example.com', \
+                f"Export should use corrected email, got: {effective}"
+            assert effective.get('amount') == 350.75, \
+                f"Export should use corrected amount, got: {effective}"
+
+            # Verify raw data is unchanged
+            raw_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            original_email = raw_row.raw_csv_data.get('email')
+            original_amount = raw_row.raw_csv_data.get('amount')
+
+            # Raw data should NOT contain the corrected values
+            assert original_email != 'corrected.email@example.com', \
+                "Raw data must not be modified by autosave"
+            assert original_amount != 350.75, \
+                "Raw data must not be modified by autosave"
+        finally:
+            session.close()
+
+
+# ==============================================================================
 # TEST E: Inspect modal controls - Dropdown, Notes field, Record Decision button
 # ==============================================================================
 
