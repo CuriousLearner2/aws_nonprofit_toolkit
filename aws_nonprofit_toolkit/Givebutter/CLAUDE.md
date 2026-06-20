@@ -293,11 +293,19 @@ Before you start working on tests in this project:
   - 4 new E2E tests with 100% reliability across 5 runs
   - CSV semantics preserved (validation_status field updated)
 
+**Completed (2026-06-20):**
+- Validation review reload effective values fix (commit `abc3746`)
+  - Fixed: Page now displays persisted reviewed corrections on initial load/reload
+  - All editable fields use effective values (date, name, email, phone, amount, address)
+  - Raw import data remains immutable; autosave and export semantics unchanged
+  - Verified: Reviewer ACCEPT, Breaker PASS, 1373 tests pass
+  - UI now consistent with export behavior (both show effective values)
+
 **Pending:**
 - Phase 3: Additional golden-file tests for multiple rows and mixed scenarios
 - Householder v2 planning: Cross-import identity linking
 
 ---
 
-**Last updated:** 2026-06-19  
-**Status:** Active (Validation export confirmation and auto-commit gates deployed)
+**Last updated:** 2026-06-20  
+**Status:** Active (Validation review reload and multi-error evidence complete)
