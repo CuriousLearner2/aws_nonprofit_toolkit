@@ -845,9 +845,17 @@ class DatabaseImportRepository:
             audit_entries = []
             for record in audit_records:
                 # Format details: handle dict, string, or None
+                # Prefer displaying notes if available; fall back to full details
+                details_str = ''
                 if isinstance(record.details, dict):
                     import json
-                    details_str = json.dumps(record.details)
+                    # Extract notes if present (displayed for Follow Up, Defer, etc.)
+                    notes = record.details.get('notes')
+                    if notes:
+                        details_str = notes
+                    else:
+                        # Fall back to full details if no notes
+                        details_str = json.dumps(record.details)
                 elif isinstance(record.details, str):
                     details_str = record.details
                 else:

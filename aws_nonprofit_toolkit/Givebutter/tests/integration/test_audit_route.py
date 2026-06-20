@@ -492,3 +492,83 @@ class TestExportAuditVisibility:
         # Verify reviewer name is present
         assert 'export-tester' in html.lower(), \
             "Export reviewer name not visible in Audit Log"
+
+
+class TestFollowUpNotesInAuditDisplay:
+    """Test that Follow Up decision notes are visible in Audit Log UI."""
+
+    def test_follow_up_notes_visible_in_audit_html(self, database_backed_client):
+        """Test that Follow Up notes appear in audit log HTML output.
+
+        Scenario:
+        1. Create ImportBatch and RawImportRow
+        2. Record a row-level decision with notes via row_decision_service
+        3. Verify audit log HTML contains the notes text
+        """
+        from scripts.householder.row_decision_service import record_row_decision
+
+        test_client, database_url, db_path = database_backed_client
+        batch_id = 'follow-up-notes-test'
+
+        # Seed test data
+        engine = create_db_engine(database_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+
+        try:
+            # Create batch
+            batch = ImportBatch(
+                id=batch_id,
+                filename='follow_up_notes.csv',
+                upload_timestamp=datetime.utcnow(),
+                status='pending_review',
+                raw_row_count=1
+            )
+            session.add(batch)
+            session.flush()
+
+            # Create raw row
+            raw_row = RawImportRow(
+                batch_id=batch_id,
+                row_index=1,
+                raw_csv_data={
+                    'name': 'Contact with Follow Up',
+                    'email': 'test@example.com',
+                    'phone': '(555) 222-2222',
+                }
+            )
+            session.add(raw_row)
+            session.flush()
+
+            row_id = raw_row.id
+            session.commit()
+            session.close()
+
+            # Record Follow Up decision with notes
+            unique_notes = f"Awaiting phone confirmation - {datetime.utcnow().isoformat()}"
+            result = record_row_decision(
+                batch_id=batch_id,
+                raw_import_row_id=row_id,
+                decision='needs_follow_up',
+                notes=unique_notes,
+                reviewer='test-reviewer',
+                database_url=database_url
+            )
+
+            assert result['success'], f"Decision recording failed: {result}"
+
+            # Fetch audit log page
+            response = test_client.get(f'/imports/{batch_id}/audit')
+            assert response.status_code == 200
+            html = response.data.decode('utf-8', errors='ignore')
+
+            # Verify notes appear in Details column
+            assert unique_notes in html, \
+                f"Follow Up notes not found in audit HTML: {unique_notes}"
+
+            # Verify the page structure is intact
+            assert 'Audit Log' in html, "Audit log title missing"
+            assert 'Details' in html, "Details column header missing"
+
+        finally:
+            session.close()

@@ -2592,32 +2592,22 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
                 # Step 5: Verify audit trail is coherent (audit log loads and shows activity)
                 page_text = await page.content()
 
-                # The audit page should at least show that an action occurred
-                # Notes visibility varies by decision type; check structural coherence instead
-                audit_entries_exist = 'audit' in page_text.lower() or 'activity' in page_text.lower()
-
-                # Check if the unique notes appear in audit (if displayed)
-                notes_visible = unique_notes in page_text
-                if notes_visible:
-                    print("✓ Notes visible in audit trail (cross-screen coherence verified)")
-                else:
-                    # If notes not displayed, audit trail is still coherent as long as
-                    # decision state is visible and page loads successfully
-                    print("✓ Audit trail coherent (decision state reflects across screens)")
-                    print("  Note: Follow Up notes not visible in audit UI (may require feature enhancement)")
-
                 # Verify audit table structure
                 audit_table = await page.query_selector('table')
                 assert audit_table is not None, "Audit page should have table"
                 print("✓ Audit table present")
+
+                # Verify notes are visible in audit table (now displayed in Details column)
+                notes_visible = unique_notes in page_text
+                assert notes_visible, f"Follow Up notes should be visible in audit UI: {unique_notes}"
+                print("✓ Notes visible in audit table Details column")
 
                 print("\n=== CROSS-SCREEN AUDIT TRAIL E2E TEST PASSED ===")
                 print("✓ Follow Up decision with notes coherent across screens:")
                 print(f"  - Decision created in validation review: YES")
                 print(f"  - Decision state visible in validation review table: YES")
                 print(f"  - Decision type visible in audit trail: YES")
-                notes_status = "YES" if notes_visible else "NO — stored in backend, not currently displayed in audit UI"
-                print(f"  - Notes visible in audit trail: {notes_status}")
+                print(f"  - Notes visible in audit trail: YES")
                 print(f"  - Audit table rendered: YES")
 
             finally:

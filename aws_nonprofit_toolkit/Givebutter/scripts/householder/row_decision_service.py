@@ -17,7 +17,7 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from .database_models import ReviewDecision, ImportBatch, RawImportRow
+from .database_models import ReviewDecision, ImportBatch, RawImportRow, AuditLogRecord
 
 
 def record_row_decision(
@@ -112,6 +112,26 @@ def record_row_decision(
             reviewer=reviewer
         )
         session.add(row_decision)
+        session.flush()
+
+        # Create audit log record for this decision
+        now = datetime.utcnow()
+        audit_details = {
+            'decision_value': decision,
+        }
+        if notes:
+            audit_details['notes'] = notes
+
+        audit_record = AuditLogRecord(
+            batch_id=batch_id,
+            action_type='decision_recorded',
+            action_timestamp=now,
+            actor=reviewer,
+            decision_id=row_decision.id,
+            details=audit_details,
+            created_at=now,
+        )
+        session.add(audit_record)
         session.commit()
 
         # Calculate current row status for frontend dropdown update
