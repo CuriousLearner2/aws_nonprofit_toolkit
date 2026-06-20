@@ -516,18 +516,33 @@ Valid five-run evidence must include:
 - Pass/fail output for each run.
 - Evidence that the entire affected E2E file ran, unless the human explicitly authorized a narrower targeted test.
 
+The exact command must name the E2E file, not a selected `::test_name` target.
+
+Valid command pattern:
+
+```bash
+for i in 1 2 3 4 5; do
+  echo "=== E2E FILE RUN $i ==="
+  pytest <affected_e2e_file.py> -v --tb=short || exit 1
+done
+```
+
 Invalid evidence examples:
 
 ```text
 5 runs passed
 Five consecutive passes demonstrated
 All E2E tests passed repeatedly
+pytest tests/e2e/test_file.py::test_new_case -v --tb=short  # run five times
 ```
 
-For browser-visible changes, if an E2E file was created or materially changed and exact five-run command/output evidence is missing, the Orchestrator must not invoke Reviewer and must report:
+Running only the new or changed test five times does not satisfy the full-file five-run requirement unless the human explicitly authorizes isolated-test evidence for the current task.
+
+For browser-visible changes, if an E2E file was created or materially changed and exact five-run command/output evidence is missing, or if the five-run evidence uses only a selected `::test_name` target without explicit human authorization, the Orchestrator must not invoke Reviewer and must report:
 
 ```text
 Five-run E2E evidence present? no
+Full affected E2E file ran five times? no
 Reviewer verdict: NOT RUN — BLOCKING
 Ready for commit prep? no
 ```
@@ -567,12 +582,12 @@ For Export Console / export UI changes, run the relevant export E2E test file if
 
 If an E2E browser test file changed materially, the affected E2E file must run five consecutive times before Reviewer invocation. This applies even if product code did not change.
 
-Run that E2E file five times:
+Run the full affected E2E file five times. Do not use a `::test_name` selector for this gate unless the human explicitly authorized isolated-test evidence:
 
 ```bash
 for i in 1 2 3 4 5; do
-  echo "=== E2E run $i ==="
-  pytest <changed_e2e_test_file> -q || exit 1
+  echo "=== E2E FILE RUN $i ==="
+  pytest <changed_e2e_test_file> -v --tb=short || exit 1
 done
 ```
 

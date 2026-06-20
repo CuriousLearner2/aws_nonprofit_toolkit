@@ -116,18 +116,33 @@ Valid evidence must include:
 - Pass/fail output for each run.
 - Evidence that the entire affected E2E file ran, unless the human explicitly authorized a narrower targeted test.
 
+The exact command must name the E2E file, not a selected `::test_name` target.
+
+Valid command pattern:
+
+```bash
+for i in 1 2 3 4 5; do
+  echo "=== E2E FILE RUN $i ==="
+  pytest <affected_e2e_file.py> -v --tb=short || exit 1
+done
+```
+
 Invalid evidence examples:
 
 ```text
 5 runs passed
 Five consecutive passes demonstrated
 All E2E tests passed repeatedly
+pytest tests/e2e/test_file.py::test_new_case -v --tb=short  # run five times
 ```
 
-If an E2E file was created or materially changed and exact five-run command/output evidence is absent, you must report:
+Running only the new or changed test five times does not satisfy the full-file five-run requirement unless the human explicitly authorized isolated-test evidence for the current task.
+
+If an E2E file was created or materially changed and exact five-run command/output evidence is absent, or if the evidence uses only a selected `::test_name` target without explicit human authorization, you must report:
 
 ```text
 Five-run E2E evidence present? no
+Entire affected E2E file ran five times? no
 Required evidence missing? yes
 Verdict: Request changes
 Happy-path auto-commit eligible? no
@@ -162,6 +177,7 @@ Request changes or reject if:
 
 - A new E2E test was added but five-run evidence is missing.
 - An E2E file changed materially but only one run was reported.
+- Five-run evidence ran only `::test_name` instead of the entire affected E2E file, without explicit human authorization.
 - The Implementer says ready for review while five-run E2E is required but incomplete.
 - The report does not explicitly answer whether an E2E file materially changed.
 

@@ -82,12 +82,22 @@ Required command pattern:
 
 ```bash
 for i in 1 2 3 4 5; do
-  echo "E2E RUN $i"
-  pytest <affected_e2e_file> -v || exit 1
+  echo "=== E2E FILE RUN $i ==="
+  pytest <affected_e2e_file.py> -v --tb=short || exit 1
 done
 ```
 
-If five-run E2E is required but missing, the missing verification is **BLOCKING**.
+The command must run the full affected E2E file. Do not use a `::test_name` selector for the five-run gate unless the human explicitly authorizes isolated-test evidence for the current task.
+
+Invalid five-run evidence:
+
+```bash
+pytest <affected_e2e_file.py>::test_new_or_changed_test -v --tb=short
+```
+
+Do not report five-run E2E reliability unless the exact command/output evidence shows the full affected E2E file ran five consecutive times.
+
+If five-run E2E is required but missing, incomplete, summarized only, or limited to a selected test without authorization, the missing verification is **BLOCKING**.
 
 ## Failed first-fix stop policy
 
@@ -209,6 +219,6 @@ At the end, report:
 * **Exact test results** — stdout/stderr from tests
 * **E2E file materially changed?** — yes/no
 * **Five-run E2E required?** — yes/no
-* **Five-run E2E completed?** — yes/no/not required, with Run 1 through Run 5 results when required
+* **Five-run E2E completed?** — yes/no/not required, with exact full-file command and Run 1 through Run 5 results when required
 * **Unresolved risks** — any gaps or concerns
 * **Ready for commit?** — yes/no with justification; yes only after Reviewer returns Accept or Accept with minor follow-up

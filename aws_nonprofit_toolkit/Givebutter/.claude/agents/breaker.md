@@ -111,6 +111,31 @@ For at least one scenario with two simultaneous problems, verify or report missi
 2. Exact five-run E2E evidence must exist when required.
 3. Auto-commit must not push.
 4. Push requires Push-only task or explicit Happy-path auto-push authorization.
+5. Full-file five-run E2E evidence is required when any E2E file is created, modified, or materially affected.
+6. Five isolated runs of a new or changed `::test_name` do not satisfy the full-file five-run requirement unless the human explicitly authorizes isolated-test evidence.
+
+## Full-file five-run E2E rule
+
+When any Playwright/browser E2E file is added, modified, or materially affected, the five-run reliability evidence must run the entire affected E2E file.
+
+Running only the new or changed test with a `::test_name` target does not satisfy the five-run requirement unless the human explicitly authorizes isolated-test evidence for the current task.
+
+Valid command pattern:
+
+```bash
+for i in 1 2 3 4 5; do
+  echo "=== E2E FILE RUN $i ==="
+  pytest <affected_e2e_file.py> -v --tb=short || exit 1
+done
+```
+
+Invalid command pattern for the five-run requirement:
+
+```bash
+pytest <affected_e2e_file.py>::test_new_or_changed_test -v --tb=short
+```
+
+Do not report five-run E2E reliability unless the exact command/output evidence shows the full affected E2E file ran five consecutive times.
 
 ## Severity
 
@@ -152,6 +177,13 @@ If stable selectors are missing, report that as a testability gap. Do not rewrit
 
 When running E2E, run only the targeted file/test requested by the task. Do not run broad E2E suites unless explicitly requested.
 
+For five-run reliability evidence on a material E2E change, Breaker must verify that the full affected E2E file ran five times. If the evidence uses `::test_name`, Breaker must report:
+
+```text
+Full-file five-run evidence present? no
+Should this block commit? yes
+```
+
 ## Output format
 
 Final report only:
@@ -169,6 +201,7 @@ Recommended smallest fix:
 Recommended test:
 Multi-error scenario checked? yes/no
 If no, why not:
+Full-file five-run evidence present when required? yes/no/not required
 Should this block commit? yes/no
 Human product decision needed? yes/no
 Unexpected files:
