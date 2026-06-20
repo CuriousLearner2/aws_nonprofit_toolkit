@@ -353,3 +353,151 @@ class TestAutosaveValidationSync:
         # Row status should improve or show no issues
         email_issues = [i for i in data['issues'] if i.get('field') == 'email']
         assert len(email_issues) == 0, "Email validation error should be cleared after correction"
+
+    def test_invalid_amount_format_appears_in_issues(self, flask_client_with_batch):
+        """Invalid amount format appears in Issues column after autosave."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': 'not-a-number'}
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        # Row status must reflect the error
+        assert data['row_status'] != 'No issues'
+        # Issues list must include amount error
+        assert len(data['issues']) > 0
+        amount_issue = next((i for i in data['issues'] if i.get('field') == 'amount'), None)
+        assert amount_issue is not None
+        assert 'Invalid amount format' in amount_issue['reason']
+
+    def test_invalid_amount_zero_appears_in_issues(self, flask_client_with_batch):
+        """Zero amount appears in Issues column after autosave."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': '0'}
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        # Row status must reflect the error
+        assert data['row_status'] != 'No issues'
+        # Issues list must include amount error
+        assert len(data['issues']) > 0
+        amount_issue = next((i for i in data['issues'] if i.get('field') == 'amount'), None)
+        assert amount_issue is not None
+        assert 'greater than 0' in amount_issue['reason']
+
+    def test_invalid_amount_negative_appears_in_issues(self, flask_client_with_batch):
+        """Negative amount appears in Issues column after autosave."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': '-50.00'}
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        # Row status must reflect the error
+        assert data['row_status'] != 'No issues'
+        # Issues list must include amount error
+        assert len(data['issues']) > 0
+        amount_issue = next((i for i in data['issues'] if i.get('field') == 'amount'), None)
+        assert amount_issue is not None
+        assert 'greater than 0' in amount_issue['reason']
+
+    def test_zero_numeric_amount_produces_issue(self, flask_client_with_batch):
+        """Zero numeric amount (0) must not be skipped by falsy check."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': 0}  # Numeric zero (falsy)
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert len(data['issues']) > 0
+        amount_issue = next((i for i in data['issues'] if i.get('field') == 'amount'), None)
+        assert amount_issue is not None
+        assert 'greater than 0' in amount_issue['reason']
+
+    def test_zero_string_amount_produces_issue(self, flask_client_with_batch):
+        """Zero string amount ('0') must produce validation error."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': '0'}  # String zero
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert len(data['issues']) > 0
+        amount_issue = next((i for i in data['issues'] if i.get('field') == 'amount'), None)
+        assert amount_issue is not None
+        assert 'greater than 0' in amount_issue['reason']
+
+    def test_empty_string_amount_produces_issue(self, flask_client_with_batch):
+        """Empty string amount ('') must produce validation error."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': ''}  # Empty string
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert len(data['issues']) > 0
+        amount_issue = next((i for i in data['issues'] if i.get('field') == 'amount'), None)
+        assert amount_issue is not None
+        assert 'required' in amount_issue['reason'].lower() or 'invalid' in amount_issue['reason'].lower()
+
+    def test_valid_positive_amount_has_no_issue(self, flask_client_with_batch):
+        """Valid positive amount should not produce validation error."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': '100.00'}  # Valid positive
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        # Should not have amount issue in issues list
+        amount_issues = [i for i in data['issues'] if i.get('field') == 'amount']
+        assert len(amount_issues) == 0, f"Valid amount should not have issues, got: {amount_issues}"

@@ -320,6 +320,14 @@ def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[st
                     'is_new': True
                 })
 
+    # Validate amount if present (must validate even if falsy like 0, "", etc.)
+    if 'amount' in effective_values:
+        amount_value = effective_values.get('amount')
+        amount_str = '' if amount_value is None else str(amount_value).strip()
+        amount_issue = _validate_amount(amount_str)
+        if amount_issue:
+            issues.append(amount_issue)
+
     return issues
 
 
@@ -394,6 +402,50 @@ def _validate_email(email: str) -> Optional[Dict[str, Any]]:
             }
 
     # All validation passed
+    return None
+
+
+def _validate_amount(amount: str) -> Optional[Dict[str, Any]]:
+    """
+    Validate amount field and return issue if invalid.
+
+    Checks for:
+    - Empty/missing values
+    - Non-numeric values (after removing $ and ,)
+    - Amount <= 0
+
+    Args:
+        amount: Amount value to validate (string, may be empty)
+
+    Returns:
+        Issue dict if invalid, None if valid
+    """
+    # Empty or whitespace-only amount is invalid
+    if not amount or not amount.strip():
+        return {
+            'field': 'amount',
+            'description': 'Amount is required',
+            'severity': 'error',
+            'is_new': True
+        }
+
+    try:
+        amount_val = float(amount.replace('$', '').replace(',', '').strip())
+        if amount_val <= 0:
+            return {
+                'field': 'amount',
+                'description': 'Amount must be greater than 0',
+                'severity': 'error',
+                'is_new': True
+            }
+    except ValueError:
+        return {
+            'field': 'amount',
+            'description': 'Invalid amount format',
+            'severity': 'error',
+            'is_new': True
+        }
+
     return None
 
 

@@ -184,6 +184,107 @@
 <script>
 const batchId = '{{ batch.id }}';
 
+// Track active failed-autosave validation errors per row+field
+// Structure: { rawId: { fieldName: { field, reason, severity }, ... }, ... }
+const activeValidationErrors = {};
+
+// Add a failed-autosave validation error to the active map
+function addActiveError(rawId, field, reason, severity) {
+    if (!activeValidationErrors[rawId]) {
+        activeValidationErrors[rawId] = {};
+    }
+    activeValidationErrors[rawId][field] = { field, reason, severity: severity || 'error' };
+}
+
+// Remove a failed-autosave validation error from the active map
+function removeActiveError(rawId, field) {
+    if (activeValidationErrors[rawId]) {
+        delete activeValidationErrors[rawId][field];
+        if (Object.keys(activeValidationErrors[rawId]).length === 0) {
+            delete activeValidationErrors[rawId];
+        }
+    }
+}
+
+// Merge persisted and active errors for a row (used by both Issues and Row Status)
+function getMergedIssues(rawId, persistedIssues) {
+    const issuesByField = {};
+
+    // First, add persisted issues
+    (persistedIssues || []).forEach(issue => {
+        issuesByField[issue.field] = issue;
+    });
+
+    // Then, add/override with active errors (these take precedence for current validation state)
+    if (activeValidationErrors[rawId]) {
+        Object.values(activeValidationErrors[rawId]).forEach(error => {
+            issuesByField[error.field] = error;
+        });
+    }
+
+    return Object.values(issuesByField);
+}
+
+// Calculate Row Status from merged issue list (persisted + active errors)
+function calculateRowStatus(allIssues) {
+    if (!allIssues || allIssues.length === 0) {
+        return 'No issues';
+    }
+
+    // If any issue is an error, status is Blocking
+    const hasError = allIssues.some(issue => issue.severity === 'error');
+    if (hasError) {
+        return 'Blocking';
+    }
+
+    // If any issue is a warning, status is Warning
+    const hasWarning = allIssues.some(issue => issue.severity === 'warning');
+    if (hasWarning) {
+        return 'Warning';
+    }
+
+    return 'No issues';
+}
+
+// Render Issues cell with accumulated persisted + active errors (no duplication)
+function renderIssuesCell(issuesCell, persistedIssues) {
+    const rawId = issuesCell.closest('tr').getAttribute('data-raw-id');
+    const allIssues = getMergedIssues(rawId, persistedIssues);
+
+    // Render all issues together
+    if (allIssues.length === 0) {
+        issuesCell.innerHTML = '<span style="color: #9ca3af; font-style: italic;">None</span>';
+    } else {
+        let issuesHtml = '';
+        allIssues.forEach(issue => {
+            const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
+            const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
+            issuesHtml += `<div style="margin-bottom: 4px;">
+                <span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
+                    ${issue.field || 'unknown'} — ${issue.reason || 'issue'}
+                </span>
+            </div>`;
+        });
+        issuesCell.innerHTML = issuesHtml;
+    }
+
+    // Also update Row Status based on merged issues
+    updateRowStatusFromIssues(issuesCell.closest('tr'), allIssues);
+}
+
+// Update Row Status dropdown based on merged issues
+function updateRowStatusFromIssues(row, allIssues) {
+    const rowStatus = calculateRowStatus(allIssues);
+    const dropdown = row.querySelector('.row-status-dropdown');
+    if (dropdown) {
+        const firstOption = dropdown.querySelector('option:first-child');
+        if (firstOption) {
+            firstOption.textContent = rowStatus;
+        }
+        dropdown.value = '';
+    }
+}
+
 // Phone number auto-formatting
 function formatPhoneNumber(value) {
     // Strip all non-digit characters
@@ -309,9 +410,9 @@ async function autosaveField(input) {
         if (response.ok) {
             const result = await response.json();
 
-            // Update row with refreshed state
+            // Update row with refreshed state (pass the field that was just edited)
             if (result.effective_values) {
-                updateRowFromAutosave(row, result);
+                updateRowFromAutosave(row, result, field);
             }
 
             // Show saved state
@@ -327,10 +428,16 @@ async function autosaveField(input) {
             statusSpan.style.color = '#ef4444';
             input.style.borderColor = '#ef4444';
 
-            // Update Row Status to show current validation state from error response
+            // Update Row Status and Issues to show current validation state from error response
             try {
                 const errorData = await response.json();
                 if (errorData.row_status || errorData.issues !== undefined) {
+                    // Track the failed-autosave validation error for this field
+                    const validationError = errorData.issues.find(issue => issue.field === field);
+                    if (validationError) {
+                        addActiveError(parseInt(rawId), field, validationError.reason, validationError.severity);
+                    }
+
                     // Update Row Status dropdown (preserve dropdown, update display)
                     const dropdown = row.querySelector('.row-status-dropdown');
                     if (dropdown && errorData.row_status) {
@@ -341,24 +448,10 @@ async function autosaveField(input) {
                         dropdown.value = '';
                     }
 
-                    // Update Issues display
+                    // Update Issues display: persisted issues + active errors combined and deduplicated
                     const issuesCell = row.querySelector('.issues-cell');
                     if (issuesCell && errorData.issues !== undefined) {
-                        if (errorData.issues.length === 0) {
-                            issuesCell.innerHTML = '<span style="color: #9ca3af; font-style: italic;">None</span>';
-                        } else {
-                            let issuesHtml = '';
-                            errorData.issues.forEach(issue => {
-                                const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
-                                const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
-                                issuesHtml += `<div style="margin-bottom: 4px;">
-                                    <span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
-                                        ${issue.field || 'unknown'} — ${issue.reason || 'issue'}
-                                    </span>
-                                </div>`;
-                            });
-                            issuesCell.innerHTML = issuesHtml;
-                        }
+                        renderIssuesCell(issuesCell, errorData.issues);
                     }
                 }
             } catch (e) {
@@ -373,7 +466,9 @@ async function autosaveField(input) {
     }
 }
 
-function updateRowFromAutosave(row, result) {
+function updateRowFromAutosave(row, result, editedField) {
+    const rawId = parseInt(row.getAttribute('data-raw-id'));
+
     // Update effective values
     ['date', 'name', 'email', 'phone', 'amount', 'address'].forEach(field => {
         const input = row.querySelector(`.autosave-field[data-field="${field}"]`);
@@ -384,37 +479,20 @@ function updateRowFromAutosave(row, result) {
                 value = formatPhoneNumber(value);
             }
             input.value = value;
+
+            // Only clear border and remove error for the field that was just edited
+            if (field === editedField) {
+                input.style.borderColor = '#d0d0d0';
+                removeActiveError(rawId, field);  // Only remove for the edited field
+            }
         }
     });
 
-    // Update Row Status dropdown (preserve dropdown, update display)
-    const dropdown = row.querySelector('.row-status-dropdown');
-    if (dropdown && result.row_status) {
-        const firstOption = dropdown.querySelector('option:first-child');
-        if (firstOption) {
-            firstOption.textContent = result.row_status || 'No issues';
-        }
-        dropdown.value = '';
-    }
-
-    // Update Issues
+    // Update Issues with persisted issues + remaining active errors
+    // renderIssuesCell will also recalculate Row Status from merged issues
     const issuesCell = row.querySelector('.issues-cell');
     if (issuesCell && result.issues !== undefined) {
-        if (result.issues.length === 0) {
-            issuesCell.innerHTML = '<span style="color: #9ca3af; font-style: italic;">None</span>';
-        } else {
-            let issuesHtml = '';
-            result.issues.forEach(issue => {
-                const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
-                const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
-                issuesHtml += `<div style="margin-bottom: 4px;">
-                    <span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
-                        ${issue.field || 'unknown'} — ${issue.reason || 'issue'}
-                    </span>
-                </div>`;
-            });
-            issuesCell.innerHTML = issuesHtml;
-        }
+        renderIssuesCell(issuesCell, result.issues);
     }
 }
 

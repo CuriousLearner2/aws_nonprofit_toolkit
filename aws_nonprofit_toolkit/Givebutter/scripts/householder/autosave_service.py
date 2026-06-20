@@ -203,8 +203,23 @@ def validate_corrected_values(
     errors = {}
 
     for field, value in corrected_values.items():
+        # Amount must be validated even if 0 (falsy) or empty string
+        if field == 'amount':
+            amount_str = '' if value is None else str(value).strip()
+            # Empty amount is invalid
+            if not amount_str:
+                errors['amount'] = 'Amount is required'
+            else:
+                try:
+                    amount_val = float(amount_str.replace('$', '').replace(',', '').strip())
+                    if amount_val <= 0:
+                        errors['amount'] = 'Amount must be greater than 0'
+                except ValueError:
+                    errors['amount'] = 'Invalid amount format'
+            continue
+
+        # For other fields, skip if empty/falsy (might be clearing a field)
         if not value or not isinstance(value, str):
-            # Empty values are allowed (might be clearing a field)
             continue
 
         value_str = value.strip()
@@ -223,15 +238,6 @@ def validate_corrected_values(
             # Use phonenumbers library for validation
             if not is_valid_phone(value_str, 'US'):
                 errors['phone'] = 'Invalid phone format (require: 10+ digit US number)'
-
-        # Validate amount field
-        elif field == 'amount':
-            try:
-                amount_val = float(value_str.replace('$', '').replace(',', '').strip())
-                if amount_val <= 0:
-                    errors['amount'] = 'Amount must be greater than 0'
-            except ValueError:
-                errors['amount'] = 'Invalid amount format'
 
     if errors:
         return False, errors
