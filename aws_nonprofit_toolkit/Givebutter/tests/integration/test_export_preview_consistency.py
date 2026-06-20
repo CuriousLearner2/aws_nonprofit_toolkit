@@ -499,3 +499,102 @@ def test_deferred_validation_blocks_export_without_confirmation(preview_consiste
     )
 
     session.close()
+
+
+def test_generated_csv_includes_row_level_reviewed_values(preview_consistency_db):
+    """Generated CSV uses row-level ReviewDecision effective values, not raw values."""
+    database_url, engine, export_dir = preview_consistency_db
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch with 1 row
+    batch = ImportBatch(
+        id='IMP-EFFECTIVE-001',
+        filename='test_effective.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Create raw import row with original values
+    raw_data = {
+        'transaction_id': 'TXN-EFFECTIVE-001',
+        'first_name': 'John',
+        'last_name': 'Smith',
+        'email': 'john.smith@example.com',
+        'amount': '100.00',
+    }
+    raw_row = RawImportRow(
+        batch_id='IMP-EFFECTIVE-001',
+        row_index=1,
+        raw_csv_data=raw_data,
+    )
+    session.add(raw_row)
+    session.flush()
+
+    # Create import contact from raw values
+    contact = ImportContact(
+        batch_id='IMP-EFFECTIVE-001',
+        raw_import_row_id=raw_row.id,
+        first_name=raw_data['first_name'],
+        last_name=raw_data['last_name'],
+        email=raw_data['email'],
+        amount=float(raw_data['amount']),
+    )
+    session.add(contact)
+    session.flush()
+
+    # Create row-level ReviewDecision with reviewed/corrected values
+    reviewed_email = 'corrected.email@example.com'
+    reviewed_amount = 350.75
+    row_decision = ReviewDecision(
+        batch_id='IMP-EFFECTIVE-001',
+        raw_import_row_id=raw_row.id,
+        review_item_id=None,  # Row-level decision
+        decision='accept',
+        reviewed_values={'email': reviewed_email, 'amount': reviewed_amount}
+    )
+    session.add(row_decision)
+    session.commit()
+
+    # Generate export
+    result = generate_export_file(
+        import_id='IMP-EFFECTIVE-001',
+        output_dir=export_dir,
+        reviewer='test_user',
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+    )
+
+    # Read generated CSV
+    with open(result.file_path, 'r', encoding='utf-8') as f:
+        csv_content = f.read()
+
+    csv_rows = list(csv.reader(StringIO(csv_content)))
+    headers = csv_rows[0]
+    data_row = csv_rows[1]  # First and only data row
+
+    # Verify effective email appears in CSV
+    email_idx = headers.index('email') if 'email' in headers else headers.index('Email')
+    assert data_row[email_idx] == reviewed_email, (
+        f"CSV should contain reviewed email '{reviewed_email}', got '{data_row[email_idx]}'"
+    )
+
+    # Verify effective amount appears in CSV (formatted as string)
+    amount_idx = headers.index('amount') if 'amount' in headers else headers.index('Amount')
+    csv_amount_str = data_row[amount_idx]
+    # Amount might be formatted as "350.75" or "$350.75"
+    assert reviewed_amount == float(csv_amount_str.replace('$', '').replace(',', '')), (
+        f"CSV should contain reviewed amount {reviewed_amount}, got '{csv_amount_str}'"
+    )
+
+    # Verify raw data is unchanged
+    modified_row = session.query(RawImportRow).filter_by(id=raw_row.id).first()
+    assert modified_row.raw_csv_data.get('email') == raw_data['email'], (
+        "Raw data should not be modified"
+    )
+    assert modified_row.raw_csv_data.get('amount') == raw_data['amount'], (
+        "Raw data should not be modified"
+    )
+
+    session.close()
