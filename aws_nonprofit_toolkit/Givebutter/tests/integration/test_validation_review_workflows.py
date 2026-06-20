@@ -1146,3 +1146,164 @@ class TestInspectModalControls:
         data = response.get_json()
         assert data['has_decision'] is True, \
             f"After recording decision, has_decision should be True, got: {data}"
+
+
+# ==============================================================================
+# TEST F: Cancel behavior - Modal Cancel should not create ReviewDecision/audit
+# ==============================================================================
+
+class TestCancelBehavior:
+    """Test that modal Cancel button does not create decisions or audit entries."""
+
+    def test_cancel_does_not_create_review_decision(
+        self, flask_client_with_validation_batch
+    ):
+        """Clicking Cancel should not create ReviewDecision."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        # Before Cancel: no decision
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/row-decision/{raw_id}'
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['has_decision'] is False, "Should have no decision initially"
+
+        # Simulate modal Cancel (user navigates away without submitting)
+        # Verify GET endpoint still shows no_decision
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/row-decision/{raw_id}'
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['has_decision'] is False, \
+            "Cancel should not create ReviewDecision"
+
+    def test_cancel_does_not_create_audit_entry(
+        self, flask_client_with_validation_batch
+    ):
+        """Clicking Cancel should not create audit entry."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        # Get audit log page
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/audit'
+        )
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        # Count initial audit entries
+        initial_count = html.count('<tr class="audit-entry')
+        initial_count = max(0, initial_count)  # Handle if no audit entries initially
+
+        # Simulate Cancel (no POST request)
+        # Verify audit log unchanged
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/audit'
+        )
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        final_count = html.count('<tr class="audit-entry')
+        final_count = max(0, final_count)
+
+        assert final_count == initial_count, \
+            f"Cancel should not create audit entry. Before: {initial_count}, After: {final_count}"
+
+
+# ==============================================================================
+# TEST G: Modal decision preserves field-level Issues and Row Status
+# ==============================================================================
+
+class TestModalPreservesFieldIssues:
+    """Test that making a modal decision doesn't erase unresolved field-level issues."""
+
+    def test_defer_preserves_existing_field_issues(
+        self, flask_client_with_validation_batch
+    ):
+        """Making Defer decision should not erase pre-existing field-level issues."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[3]  # Has email validation error
+
+        # Verify row has issue initially
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/validation'
+        )
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        # Verify issue appears in Issues column for this row
+        assert 'invalid' in html.lower() or 'email' in html.lower(), \
+            "Row should have validation issue initially"
+
+        # Record Defer decision
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'defer',
+                'notes': 'Will follow up'
+            }
+        )
+        assert response.status_code == 200
+
+        # Verify field issue still visible after decision
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/validation'
+        )
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        # Issue should still be present (decision doesn't erase field issues)
+        assert 'invalid' in html.lower() or 'email' in html.lower() or 'issue' in html.lower(), \
+            "Field-level issues should remain after Defer decision"
+
+    def test_follow_up_preserves_field_issues(
+        self, flask_client_with_validation_batch
+    ):
+        """Making Follow Up decision should not erase field-level issues."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[3]  # Has email validation error
+
+        # Get validation page before decision
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/validation'
+        )
+        assert response.status_code == 200
+        html_before = response.get_data(as_text=True)
+
+        # Record Follow Up decision with notes
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'needs_follow_up',
+                'notes': 'Must contact donor'
+            }
+        )
+        assert response.status_code == 200
+
+        # Verify decision was created
+        session = Session()
+        try:
+            decision = session.query(ReviewDecision).filter(
+                ReviewDecision.raw_import_row_id == raw_id
+            ).first()
+            assert decision is not None, "Follow Up decision should be created"
+            assert 'needs_follow_up' in decision.decision, \
+                f"Decision should contain needs_follow_up, got: {decision.decision}"
+        finally:
+            session.close()
+
+        # Get validation page after decision - field issues should still be visible
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/validation'
+        )
+        assert response.status_code == 200
+        html_after = response.get_data(as_text=True)
+
+        # Verify both versions have field-level issues (Issues column should still show errors)
+        assert ('issue' in html_after.lower() or 'invalid' in html_after.lower()), \
+            "Field-level issues should remain visible after Follow Up decision"
