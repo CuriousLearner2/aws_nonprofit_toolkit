@@ -66,6 +66,27 @@ For validation review screen:
 8. RawImportRow.raw_csv_data must remain unchanged.
 9. A visible enabled control must not silently do nothing.
 
+### Multi-issue validation-review invariant
+
+For validation-review UI changes, a Breaker pass is not valid unless at least one multi-error scenario is checked by inspection or targeted browser evidence.
+
+The Issues column must show every active issue source for the row at the same time, including:
+
+- persisted/effective row issues,
+- active failed-autosave validation errors,
+- visible field-level errors.
+
+Breaker must not accept a validation-review UI change by checking only one field in isolation when the workflow can show multiple simultaneous field errors.
+
+For at least one scenario with two simultaneous problems, verify or report missing coverage for:
+
+1. both field-level errors are visible,
+2. the Issues column contains both corresponding issue messages,
+3. Row Status reflects the highest severity,
+4. correcting one invalid field removes only that field's active issue,
+5. unrelated persisted/effective issues remain visible,
+6. failed autosave values are not persisted or exported.
+
 ## Decision/modal invariants
 
 1. Modal opened from a main-table decision must preserve the pending decision.
@@ -146,6 +167,8 @@ Existing tests that should have caught this:
 Missing tests:
 Recommended smallest fix:
 Recommended test:
+Multi-error scenario checked? yes/no
+If no, why not:
 Should this block commit? yes/no
 Human product decision needed? yes/no
 Unexpected files:

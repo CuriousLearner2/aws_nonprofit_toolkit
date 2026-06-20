@@ -726,6 +726,27 @@ Auto-commit is allowed only if:
 - No Breaker P0/P1 finding exists
 - All other clean-accept gates pass
 
+### Breaker validation-review multi-error gate
+
+For validation-review UI changes, Breaker pass is not valid unless Breaker explicitly reports that it checked a multi-error scenario or explains why one could not be tested.
+
+For validation review screen, inline editing/autosave, Issues column, or Row Status changes, Breaker must explicitly report:
+
+- single-field invalid case checked? yes/no
+- multi-field invalid case checked? yes/no
+- Issues column contains all visible field errors? yes/no
+- correcting one invalid field removes only that field's issue? yes/no
+- unrelated persisted/effective issues remain visible? yes/no
+- failed autosave values remain unpersisted and excluded from export? yes/no
+
+If Breaker does not provide this validation-review multi-error evidence for a relevant high-risk task, the Orchestrator must not treat Breaker verdict as `pass`. Report:
+
+```text
+Breaker multi-error evidence present? no
+Ready for auto-commit? no
+Human decision required: yes
+```
+
 ## Breaker finding triage
 
 If Breaker returns P0 or P1, classify the finding:
@@ -828,6 +849,9 @@ At the end, report:
 - Reviewer verdict; if Reviewer was not invoked, report `NOT RUN — BLOCKING`
 - Blocking issues, if any
 - Non-blocking follow-ups, if any
+- Breaker verdict, if invoked
+- Breaker finding classification, if P0/P1
+- Breaker multi-error evidence present, if validation-review UI changed
 - Ready for human commit review? yes/no; yes only after Reviewer returns `Accept` or `Accept with minor follow-up`
 - Pushed? no, unless this was a push-only task or `Happy-path auto-push: enabled` was explicitly provided
 - Unauthorized push occurred? yes/no
