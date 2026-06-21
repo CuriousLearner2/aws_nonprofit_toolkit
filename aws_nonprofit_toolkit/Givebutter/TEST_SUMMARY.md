@@ -4,12 +4,12 @@ Complete test suite created with comprehensive coverage for CSV validation, proc
 
 ## Overview
 
-- **Total Test Files**: 17 modules
-- **Total Test Cases**: 262 (all passing)
-- **Total Test Code**: 5,000+ lines
+- **Total Test Files**: 18 modules
+- **Total Test Cases**: 280+ (all passing)
+- **Total Test Code**: 5,500+ lines
 - **Test Framework**: pytest with Playwright for E2E
-- **Coverage**: Unit (150 tests), Integration (76 tests), End-to-End (9 tests), Visual Regression (15 tests)
-- **Execution Time**: ~64 seconds
+- **Coverage**: Unit (150 tests), Integration (76 tests), End-to-End (42 tests including keyboard-interaction, canonical smoke)
+- **Execution Time**: ~64 seconds (unit + integration); E2E ~50 seconds
 
 ## Test Distribution
 
@@ -145,8 +145,8 @@ Focus on processor pipeline, decision persistence, and CSV format handling.
 - Edited email revalidated on submit
 - Edited phone revalidated on submit
 
-### End-to-End Tests (5 files, 24 test cases)
-Focus on UI workflow, visual regression, and form interaction with Playwright automation.
+### End-to-End Tests (6 files, 42 test cases)
+Focus on UI workflow, visual regression, form interaction, and keyboard-driven workflows with Playwright automation.
 
 **File**: `tests/e2e/test_e2e_upload_workflow.py` (8 tests, marked @e2e)
 - Flask app loading
@@ -208,6 +208,21 @@ Focus on UI workflow, visual regression, and form interaction with Playwright au
 - Save button labels and feedback
 - Success message display
 - Cancel button confirmation
+
+**File**: `tests/e2e/test_validation_review_dom.py` (18 tests, marked @e2e) - NEW
+- Invalid email detects and displays row status/issues
+- Escape key cancels unsaved email edit and restores original value
+- Escape key cancels invalid amount edit and clears error state
+- Normal autosave (blur/Enter) still works after Escape implementation
+- Validation review golden-path audit/export journey (4-phase workflow)
+- Keyboard-interaction escape cancel and tab save workflow (NEW):
+  - Focus navigation to email input
+  - Escape cancels unsaved edits and restores value
+  - Tab blur triggers autosave
+  - Reload persists saved values
+  - Row status remains consistent
+  - Raw data immutability verified
+- Desktop canonical screens smoke test (7 screens: Imports/List, Dashboard, Validation, Duplicates, Households, Audit, Export)
 
 ## Test Infrastructure
 
