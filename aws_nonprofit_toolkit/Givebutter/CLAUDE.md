@@ -301,11 +301,29 @@ Before you start working on tests in this project:
   - Verified: Reviewer ACCEPT, Breaker PASS, 1373 tests pass
   - UI now consistent with export behavior (both show effective values)
 
+**Completed (2026-06-21):**
+- Households zero-count render bug fix (commit `15ee325`)
+  - Fixed: Households progress bar ZeroDivisionError when no suggestions exist
+  - Template fix: Jinja2 conditional prevents division by zero, renders 0% width
+  - Households route now renders successfully on empty state
+  - Progress bar displays 0% for "No household suggestions found" fallback message
+- Desktop canonical screens smoke E2E test added (commit `15ee325`)
+  - New test file: `tests/e2e/test_desktop_canonical_screens_smoke.py`
+  - Coverage: 7 canonical screens (Imports/List, Dashboard, Validation, Duplicates, Households, Audit, Export)
+  - Desktop-only at 1440x900 viewport
+  - Meaningful assertions: page load, body element, content > 500 bytes, no error markers, screen-specific keywords
+  - No silent try/except skipping; expected routes fail test on error
+  - Normalizations omitted (route not implemented; marked as planned)
+  - Verified: Reviewer ACCEPT, Breaker PASS
+  - E2E full-file five-run evidence: 5/5 passed (100% reliability)
+  - Household integration tests: 69 passed
+  - Household E2E workflow tests: 5 passed
+
 **Pending:**
 - Phase 3: Additional golden-file tests for multiple rows and mixed scenarios
 - Householder v2 planning: Cross-import identity linking
 
 ---
 
-**Last updated:** 2026-06-20  
-**Status:** Active (Validation review reload and multi-error evidence complete)
+**Last updated:** 2026-06-21  
+**Status:** Active (Households render fix and canonical smoke E2E complete)
