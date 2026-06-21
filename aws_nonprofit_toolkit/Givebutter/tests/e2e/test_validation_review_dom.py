@@ -2838,3 +2838,430 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
 
     finally:
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
+    """
+    GOAL: Verify Escape key cancels an unsaved email edit and restores original value.
+
+    Invariant: Pressing Escape should restore the field to its focus-time (last successfully saved) value
+    and prevent autosave of the abandoned edit.
+
+    Flow:
+    1. Seed database with initial email
+    2. Load validation page
+    3. Focus email field and record initial value
+    4. Change email to a different valid value
+    5. Press Escape key
+    6. Verify field value returns to original
+    7. Verify no autosave status shown
+    8. Reload page
+    9. Verify original value persisted (abandoned edit not saved)
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed test data
+        batch = ImportBatch(
+            id='escape-email-batch',
+            filename='escape_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id='escape-email-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Test Donor',
+                'date': '2026-01-15',
+                'email': 'original@example.com',
+                'phone': '(555) 123-4567',
+                'amount': '100.00',
+                'address': '123 Main St'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        import_contact = ImportContact(
+            batch_id='escape-email-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='Test',
+            last_name='Donor',
+            email='original@example.com',
+            phone='(555) 123-4567',
+            address_line1='123 Main St',
+            amount=100.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/escape-email-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/escape-email-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # Find email input
+                email_input = await page.query_selector('input[data-testid^="email-input-"]')
+                assert email_input is not None, "Email input not found"
+
+                # Record initial value
+                initial_email = await email_input.input_value()
+                assert initial_email == 'original@example.com', f"Expected original@example.com, got {initial_email}"
+                print(f"✓ Initial email: {initial_email}")
+
+                # ===== PART 1: Edit to different valid value =====
+                print(f"\n=== TEST PART 1: Edit Email ===")
+                await email_input.focus()
+                await email_input.fill('different@example.com')
+                current_value = await email_input.input_value()
+                assert current_value == 'different@example.com', f"Expected different@example.com after fill, got {current_value}"
+                print(f"✓ Entered new email: {current_value}")
+
+                # ===== PART 2: Press Escape to cancel edit =====
+                print(f"\n=== TEST PART 2: Press Escape ===")
+                await email_input.press('Escape')
+                await asyncio.sleep(0.3)  # Allow time for cancel to process
+                print("✓ Escape key pressed")
+
+                # Verify field restored to original
+                restored_value = await email_input.input_value()
+                assert restored_value == 'original@example.com', f"Expected original@example.com after Escape, got {restored_value}"
+                print(f"✓ Field restored to: {restored_value}")
+
+                # ===== PART 3: Reload page and verify abandoned value not persisted =====
+                print(f"\n=== TEST PART 3: Reload and Verify ===")
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input_after_reload = await page.query_selector('input[data-testid^="email-input-"]')
+                persisted_value = await email_input_after_reload.input_value()
+                assert persisted_value == 'original@example.com', f"Expected persisted original@example.com, got {persisted_value}"
+                print(f"✓ After reload, email still: {persisted_value}")
+                print("\n=== ESCAPE CANCEL TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
+    """
+    GOAL: Verify Escape key cancels an invalid edit and clears the local error.
+
+    Invariant: When user types an invalid value, autosave fails with red border.
+    Pressing Escape should restore the original value AND clear the error state.
+
+    Flow:
+    1. Seed database with valid amount
+    2. Load validation page
+    3. Change amount to negative (invalid)
+    4. Blur to trigger autosave (which will fail)
+    5. Verify red error border appears
+    6. Press Escape
+    7. Verify field restores to original valid amount
+    8. Verify red error border cleared
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed test data
+        batch = ImportBatch(
+            id='escape-amount-batch',
+            filename='escape_amount_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id='escape-amount-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Test Donor',
+                'date': '2026-01-15',
+                'email': 'test@example.com',
+                'phone': '(555) 123-4567',
+                'amount': '100.00',
+                'address': '123 Main St'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        import_contact = ImportContact(
+            batch_id='escape-amount-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='Test',
+            last_name='Donor',
+            email='test@example.com',
+            phone='(555) 123-4567',
+            address_line1='123 Main St',
+            amount=100.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/escape-amount-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/escape-amount-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # Find amount input
+                amount_input = await page.query_selector('input[data-testid^="amount-input-"]')
+                assert amount_input is not None, "Amount input not found"
+
+                # Record initial value
+                initial_amount = await amount_input.input_value()
+                assert '100' in initial_amount, f"Expected 100.00, got {initial_amount}"
+                print(f"✓ Initial amount: {initial_amount}")
+
+                # ===== PART 1: Enter invalid negative amount =====
+                print(f"\n=== TEST PART 1: Enter Invalid Amount ===")
+                await amount_input.fill('-50.00')
+                await amount_input.evaluate("el => el.blur()")
+                await asyncio.sleep(0.5)
+                print("✓ Entered negative amount: -50.00")
+
+                # Verify red error border appears
+                border_color = await amount_input.evaluate("el => getComputedStyle(el).borderColor")
+                assert 'rgb(239' in border_color or 'rgb(255' in border_color, \
+                    f"Expected red border, got {border_color}"
+                print(f"✓ Error border shown (red)")
+
+                # ===== PART 2: Press Escape to cancel invalid edit =====
+                print(f"\n=== TEST PART 2: Press Escape ===")
+                await amount_input.focus()
+                await amount_input.press('Escape')
+                await asyncio.sleep(0.3)
+                print("✓ Escape key pressed")
+
+                # Verify field restored to original
+                restored_amount = await amount_input.input_value()
+                assert '100' in restored_amount, f"Expected 100.00 after Escape, got {restored_amount}"
+                print(f"✓ Field restored to: {restored_amount}")
+
+                # Verify error border cleared
+                border_color_after = await amount_input.evaluate("el => getComputedStyle(el).borderColor")
+                assert not ('rgb(239' in border_color_after or 'rgb(255, 0' in border_color_after), \
+                    f"Expected normal border after Escape, got {border_color_after}"
+                print(f"✓ Error border cleared")
+                print("\n=== ESCAPE INVALID EDIT TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_normal_autosave_still_works_after_escape_implementation(e2e_database_and_app):
+    """
+    GOAL: Verify normal autosave (blur/Enter without Escape) still works correctly.
+
+    Invariant: Adding Escape key handler should not break existing autosave-on-blur behavior.
+
+    Flow:
+    1. Seed database with initial email
+    2. Load validation page
+    3. Edit email to new valid value
+    4. Blur field (trigger normal autosave, not Escape)
+    5. Verify "Saved" status appears
+    6. Reload page
+    7. Verify new value persisted
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed test data
+        batch = ImportBatch(
+            id='autosave-normal-batch',
+            filename='autosave_normal_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id='autosave-normal-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Test Donor',
+                'date': '2026-01-15',
+                'email': 'original@example.com',
+                'phone': '(555) 123-4567',
+                'amount': '100.00',
+                'address': '123 Main St'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        import_contact = ImportContact(
+            batch_id='autosave-normal-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='Test',
+            last_name='Donor',
+            email='original@example.com',
+            phone='(555) 123-4567',
+            address_line1='123 Main St',
+            amount=100.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/autosave-normal-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/autosave-normal-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # Find email input
+                email_input = await page.query_selector('input[data-testid^="email-input-"]')
+                assert email_input is not None, "Email input not found"
+
+                # ===== PART 1: Normal autosave (blur) =====
+                print(f"\n=== TEST PART 1: Normal Autosave on Blur ===")
+                await email_input.fill('newsaved@example.com')
+                print("✓ Edited email to: newsaved@example.com")
+
+                # Blur to trigger autosave
+                await email_input.evaluate("el => el.blur()")
+                print("✓ Blurred field (triggering autosave)")
+
+                # Wait for "Saved" status
+                await page.wait_for_function(
+                    "() => {const status = document.querySelector('input[data-testid^=\"email-input-\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Saved');}",
+                    timeout=5000
+                )
+                print("✓ 'Saved' status appeared")
+
+                # ===== PART 2: Reload and verify persistence =====
+                print(f"\n=== TEST PART 2: Reload and Verify Persistence ===")
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input_after = await page.query_selector('input[data-testid^="email-input-"]')
+                persisted_value = await email_input_after.input_value()
+                assert persisted_value == 'newsaved@example.com', \
+                    f"Expected newsaved@example.com after reload, got {persisted_value}"
+                print(f"✓ After reload, email persisted: {persisted_value}")
+                print("\n=== NORMAL AUTOSAVE TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()

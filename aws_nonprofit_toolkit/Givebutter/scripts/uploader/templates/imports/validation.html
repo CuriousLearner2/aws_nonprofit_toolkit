@@ -188,6 +188,12 @@ const batchId = '{{ batch.id }}';
 // Structure: { rawId: { fieldName: { field, reason, severity }, ... }, ... }
 const activeValidationErrors = {};
 
+// Track focus-time (last successfully saved) values and in-flight autosave requests per field
+// focusTimeValues: { fieldId: value }
+// inFlightRequests: { fieldId: AbortController }
+const focusTimeValues = {};
+const inFlightRequests = {};
+
 // Add a failed-autosave validation error to the active map
 function addActiveError(rawId, field, reason, severity) {
     if (!activeValidationErrors[rawId]) {
@@ -249,6 +255,8 @@ function calculateRowStatus(allIssues) {
 // Render Issues cell with accumulated persisted + active errors (no duplication)
 function renderIssuesCell(issuesCell, persistedIssues) {
     const rawId = issuesCell.closest('tr').getAttribute('data-raw-id');
+    // Store persisted issues on the element for later retrieval (used by cancelFieldEdit)
+    issuesCell._persistedIssues = persistedIssues || [];
     const allIssues = getMergedIssues(rawId, persistedIssues);
 
     // Render all issues together
@@ -341,6 +349,11 @@ document.addEventListener('DOMContentLoaded', loadRowDecisions);
 
 // Autosave on blur for editable fields
 document.querySelectorAll('.autosave-field').forEach(input => {
+    const fieldId = `${input.getAttribute('data-raw-id')}-${input.getAttribute('data-field')}`;
+
+    // Initialize focus-time value to current value (last successfully saved)
+    focusTimeValues[fieldId] = input.value;
+
     input.addEventListener('blur', async function() {
         // Format phone numbers on blur
         if (this.getAttribute('data-field') === 'phone') {
@@ -357,6 +370,14 @@ document.querySelectorAll('.autosave-field').forEach(input => {
                 this.value = formatPhoneNumber(this.value);
             }
             await autosaveField(this);
+        }
+    });
+
+    // Cancel edit on Escape key
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelFieldEdit(this);
         }
     });
 
@@ -380,14 +401,66 @@ document.querySelectorAll('.autosave-field').forEach(input => {
     }
 });
 
+// Cancel an in-progress field edit and restore the focus-time value
+function cancelFieldEdit(input) {
+    const field = input.getAttribute('data-field');
+    const rawId = input.getAttribute('data-raw-id');
+    const fieldId = `${rawId}-${field}`;
+    const row = input.closest('tr');
+    const statusSpan = input.parentElement.querySelector('.autosave-status');
+
+    // Cancel in-flight autosave request if one exists
+    if (inFlightRequests[fieldId]) {
+        inFlightRequests[fieldId].abort();
+        delete inFlightRequests[fieldId];
+    }
+
+    // Restore the focus-time value (last successfully saved)
+    const focusTimeValue = focusTimeValues[fieldId];
+    if (focusTimeValue !== undefined) {
+        input.value = focusTimeValue;
+    }
+
+    // Clear autosave status message
+    if (statusSpan) {
+        statusSpan.style.display = 'none';
+        statusSpan.textContent = '';
+    }
+
+    // Reset border to normal
+    input.style.borderColor = '#d0d0d0';
+
+    // Clear active validation error for this field (caused by the abandoned edit)
+    const numRawId = parseInt(rawId);
+    removeActiveError(numRawId, field);
+
+    // Recalculate and re-render Issues and Row Status (removes abandoned error, keeps persisted issues)
+    const issuesCell = row.querySelector('.issues-cell');
+    if (issuesCell) {
+        // Get persisted issues from the existing data (before active errors were added)
+        // Merge with remaining active errors (if any for other fields)
+        const persistedIssues = (issuesCell._persistedIssues || []);
+        const mergedIssues = getMergedIssues(numRawId, persistedIssues);
+        renderIssuesCell(issuesCell, mergedIssues);
+    }
+
+    // Blur the field to exit edit mode
+    input.blur();
+}
+
 async function autosaveField(input) {
     const field = input.getAttribute('data-field');
     const rawId = input.getAttribute('data-raw-id');
     const value = input.value.trim();
     const row = input.closest('tr');
     const statusSpan = input.parentElement.querySelector('.autosave-status');
+    const fieldId = `${rawId}-${field}`;
 
     if (!statusSpan) return;
+
+    // Create AbortController for this request
+    const abortController = new AbortController();
+    inFlightRequests[fieldId] = abortController;
 
     // Show saving state
     statusSpan.textContent = 'Saving...';
@@ -405,14 +478,20 @@ async function autosaveField(input) {
                 raw_import_row_id: parseInt(rawId),
                 corrected_values: { [field]: value }
             }),
+            signal: abortController.signal,
         });
 
         if (response.ok) {
             const result = await response.json();
 
+            // Clear in-flight request
+            delete inFlightRequests[fieldId];
+
             // Update row with refreshed state (pass the field that was just edited)
             if (result.effective_values) {
                 updateRowFromAutosave(row, result, field);
+                // Update focus-time value to the newly saved value
+                focusTimeValues[fieldId] = input.value;
             }
 
             // Show saved state
@@ -423,6 +502,9 @@ async function autosaveField(input) {
                 statusSpan.style.display = 'none';
             }, 2000);
         } else {
+            // Clear in-flight request on error
+            delete inFlightRequests[fieldId];
+
             // Show error state
             statusSpan.textContent = 'Error';
             statusSpan.style.color = '#ef4444';
@@ -459,10 +541,15 @@ async function autosaveField(input) {
             }
         }
     } catch (error) {
-        // Show error state
-        statusSpan.textContent = 'Error';
-        statusSpan.style.color = '#ef4444';
-        input.style.borderColor = '#ef4444';
+        // Clear in-flight request on network error
+        delete inFlightRequests[fieldId];
+
+        // Only show error state if it wasn't an abort (user pressed Escape)
+        if (error.name !== 'AbortError') {
+            statusSpan.textContent = 'Error';
+            statusSpan.style.color = '#ef4444';
+            input.style.borderColor = '#ef4444';
+        }
     }
 }
 
