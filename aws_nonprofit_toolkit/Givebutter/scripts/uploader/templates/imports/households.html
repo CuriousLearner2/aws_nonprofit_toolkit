@@ -142,7 +142,7 @@
 <div style="margin-top: 32px; padding: 20px; background-color: #f8f8f8; border-radius: 4px;">
     <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Progress: <strong>{{ current_household_index }} of {{ total_households }}</strong></p>
     <div style="width: 100%; height: 8px; background-color: #e0e0e0; border-radius: 4px; overflow: hidden;">
-        <div style="height: 100%; background-color: #2563eb; width: {{ (current_household_index / total_households * 100)|round }}%;"></div>
+        <div style="height: 100%; background-color: #2563eb; width: {{ (current_household_index / total_households * 100)|round if total_households > 0 else 0 }}%;"></div>
     </div>
 </div>
 
