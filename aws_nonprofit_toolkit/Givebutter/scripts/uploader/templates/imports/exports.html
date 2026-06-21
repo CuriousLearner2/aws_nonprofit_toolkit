@@ -27,27 +27,40 @@
     </div>
 </div>
 
-<!-- Export Preview Status -->
+<!-- Export Preview Status — Traffic Light UX -->
 {% if preview_available %}
-<div style="margin-bottom: 30px; padding: 20px; border-radius: 4px; {% if preview.blocked_count > 0 %}background-color: #fee; border-left: 4px solid #dc2626;{% else %}background-color: #f0fdf4; border-left: 4px solid #10b981;{% endif %}">
-    <h3 style="margin-top: 0; margin-bottom: 12px;">
-        {% if preview.blocked_count > 0 %}
-            ⚠️ Export Blocked
-        {% else %}
-            ✓ Export Ready
-        {% endif %}
-    </h3>
+<div style="margin-bottom: 30px; padding: 20px; border-radius: 4px; {% if preview.blocked_count > 0 %}background-color: #fee; border-left: 4px solid #dc2626;{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}background-color: #fffbeb; border-left: 4px solid #eab308;{% else %}background-color: #f0fdf4; border-left: 4px solid #10b981;{% endif %}">
+    <!-- Traffic Light Status Badge -->
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <span style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; {% if preview.blocked_count > 0 %}background-color: #dc2626; color: white;{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}background-color: #eab308; color: #000;{% else %}background-color: #10b981; color: white;{% endif %} font-size: 20px; font-weight: bold;">
+            {% if preview.blocked_count > 0 %}🔴{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}🟡{% else %}🟢{% endif %}
+        </span>
+        <div>
+            <h3 style="margin: 0 0 4px 0;">
+                {% if preview.blocked_count > 0 %}
+                    Export Blocked
+                {% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}
+                    Export Ready with Confirmations
+                {% else %}
+                    Export Ready
+                {% endif %}
+            </h3>
+            <p style="margin: 0; font-size: 12px; color: #666;">{{ preview.row_count }} rows staged</p>
+        </div>
+    </div>
 
-    <p style="font-size: 13px; margin-bottom: 12px;">
-        <strong>Preview:</strong> {{ preview.row_count }} rows
-        {% if preview.warning_count > 0 %}
-            | <strong>{{ preview.warning_count }} warning(s)</strong>
-        {% endif %}
-    </p>
+    <!-- Preview-to-CSV Alignment Statement -->
+    <div style="margin-bottom: 16px; padding: 12px; background-color: rgba(16, 185, 129, 0.1); border-radius: 3px; border-left: 3px solid #10b981;">
+        <p style="margin: 0; font-size: 12px; color: #065f46;">
+            <strong>Preview Accuracy:</strong> Generated CSV will use effective values from your reviewed corrections. Confirm any deferred items below.
+        </p>
+    </div>
 
+    <!-- Blockers Section (Red) -->
     {% if preview.blocked_count > 0 %}
     <div style="background-color: #fecaca; padding: 12px; border-radius: 3px; margin-bottom: 12px;">
-        <p style="font-size: 12px; color: #7f1d1d; margin: 0 0 8px 0; font-weight: 600;">{{ preview.blocked_count }} unresolved issue(s):</p>
+        <p style="font-size: 12px; color: #7f1d1d; margin: 0 0 8px 0; font-weight: 600;">🔴 {{ preview.blocked_count }} BLOCKING ISSUE(S):</p>
+        <p style="font-size: 12px; color: #7f1d1d; margin: 0 0 8px 0; font-style: italic;">Resolve these issues in their respective review screens before exporting.</p>
         <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #7f1d1d;">
             {% for blocker in preview.blockers %}
             <li>{{ blocker }}</li>
@@ -55,17 +68,44 @@
         </ul>
     </div>
     {% else %}
-    <p style="font-size: 13px; color: #065f46; margin-bottom: 16px;">All critical issues resolved. Click "Generate CSV Export" below to create downloadable file.</p>
+    <p style="font-size: 13px; color: #065f46; margin-bottom: 16px;">✓ No blocking issues. Ready to export.</p>
     {% endif %}
 
-    {% if preview.warning_count > 0 %}
+    <!-- Warnings/Deferred Section (Yellow) -->
+    {% if preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}
     <div style="background-color: #fef3c7; padding: 12px; border-radius: 3px; margin-bottom: 12px;">
-        <p style="font-size: 12px; color: #78350f; margin: 0 0 8px 0; font-weight: 600;">{{ preview.warning_count }} warning(s):</p>
-        <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #78350f;">
-            {% for warning in preview.warnings %}
-            <li>{{ warning }}</li>
-            {% endfor %}
-        </ul>
+        <p style="font-size: 12px; color: #78350f; margin: 0 0 8px 0; font-weight: 600;">🟡 WARNINGS/DEFERRED ITEMS (exportable with confirmation):</p>
+
+        {% if preview.warning_count > 0 %}
+        <div style="margin-bottom: 8px;">
+            <p style="font-size: 12px; color: #78350f; margin: 0 0 4px 0; font-weight: 500;">{{ preview.warning_count }} data warning(s):</p>
+            <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #78350f;">
+                {% for warning in preview.warnings %}
+                <li>{{ warning }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if preview.deferred_validation_count > 0 %}
+        <div style="margin-bottom: 8px;">
+            <p style="font-size: 12px; color: #78350f; margin: 0 0 4px 0; font-weight: 500;">{{ preview.deferred_validation_count }} deferred validation issue(s)</p>
+        </div>
+        {% endif %}
+
+        {% if preview.deferred_household_count > 0 %}
+        <div style="margin-bottom: 8px;">
+            <p style="font-size: 12px; color: #78350f; margin: 0 0 4px 0; font-weight: 500;">{{ preview.deferred_household_count }} unresolved household(s)</p>
+        </div>
+        {% endif %}
+
+        {% if preview.deferred_duplicate_count > 0 %}
+        <div>
+            <p style="font-size: 12px; color: #78350f; margin: 0 0 4px 0; font-weight: 500;">{{ preview.deferred_duplicate_count }} unresolved duplicate pair(s)</p>
+        </div>
+        {% endif %}
+
+        <p style="font-size: 12px; color: #78350f; margin: 8px 0 0 0; font-style: italic;">These items will be exported as-is. Confirm below if you want to proceed.</p>
     </div>
     {% endif %}
 </div>
