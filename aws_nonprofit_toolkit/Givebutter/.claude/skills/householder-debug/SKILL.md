@@ -25,6 +25,8 @@ Use this skill for Householder / DonorTrust bug fixes, review-screen issues, aut
 ### Breaker
 
 - Owns adversarial QA, invariant hunting, edge cases, misleading UI state, and P0/P1 workflow failures.
+- Breaker is required for high-risk implementation tasks involving validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency that could affect reviewer decisions.
+- Breaker is optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, the Reviewer flags a concrete invariant concern, or the task touches a recently problematic bug class where adversarial review is useful.
 
 ### Product UX Gatekeeper
 
@@ -52,6 +54,71 @@ Before review handoff, the Orchestrator must collect a Review Packet containing:
   - human product decision needed? yes/no
 
 The Review Packet is the shared review contract. Reviewers and Breakers should use its anchors before broadening scope.
+
+## Product UX Gatekeeper routing heuristic
+
+Invoke the Product UX Gatekeeper when the task or prompt contains product-choice language such as:
+
+- should we
+- how should
+- what should happen
+- best UX
+- would it be better
+
+Also invoke it when:
+
+- multiple reasonable user-visible workflows exist
+- the change affects what reviewers can see, decide, approve, defer, override, export, or navigate
+- the change affects visible controls, status semantics, warnings, blockers, notes requirements, approval/export confirmation, or decision semantics
+- implementing the task requires choosing between remove, disable, hide, label unavailable, or fully implement
+
+Do not invoke it when:
+
+- the human has already explicitly specified the expected behavior
+- the task is purely mechanical docs-only or test-only work and does not change reviewer-visible behavior
+- the task is commit-prep only or push-only
+- the question is code correctness rather than product behavior
+
+The Orchestrator must still report:
+
+- Product ambiguity present? yes/no
+- Product UX Gatekeeper invoked? yes/no
+- if not invoked, reason
+- human product decision needed? yes/no
+
+## Workflow violation handling
+
+A workflow violation blocks auto-commit and auto-push until the violation is resolved or explicitly waived by the human.
+
+The Orchestrator must report workflow violations to the human and let the human decide whether to continue, revert, fix forward, or create a separate task.
+
+Examples of workflow violations include:
+
+- unauthorized push
+- missing required evidence
+- unexpected files
+- bypassed gates
+
+The Reviewer may still judge code correctness, but the workflow is not clean until the violation is resolved or explicitly waived by the human.
+
+## Review verdict meanings
+
+- `Accept` — the change is correct, evidence is sufficient, and no blocking issue remains.
+- `Accept with minor follow-up` — the change is safe to commit; the follow-up is non-blocking and can be handled separately.
+- `Request changes` — the issue is fixable within the same task or a next authorized loop without changing the core product decision or approach.
+- `Reject` — the approach is unsafe, wrong, overbroad, product-ambiguous, missing required evidence in a way that invalidates the task, or needs redesign/fresh task.
+
+`Accept with minor follow-up` is not a clean happy path. Happy-path auto-commit eligibility remains `no` unless the Reviewer explicitly returns clean `Accept`.
+
+## Breaker loop and escalation policy
+
+At most two Implementer/Reviewer loops are allowed by default.
+
+If two loops are exhausted and issues remain, the Orchestrator must stop and ask the human.
+
+The Orchestrator must not silently start a third loop.
+
+Stopping after two loops is not itself a workflow violation. It becomes a workflow violation only if the Orchestrator continues without human approval.
 
 ## Review levels
 

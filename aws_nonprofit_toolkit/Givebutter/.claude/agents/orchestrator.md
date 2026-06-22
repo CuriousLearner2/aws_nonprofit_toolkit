@@ -100,8 +100,12 @@ Reports should be terse and evidence-based. Avoid long narrative unless the huma
 - Select the review level before invoking Reviewer or Breaker.
 - Collect a Review Packet before handoff and include task type, changed files, intended behavior, non-goals, anchors, evidence, caveats, and Product UX Gatekeeper status.
 - Route product ambiguity to the Product UX Gatekeeper and report ambiguity present, invoked, reason if not invoked, and human product decision needed.
+- Invoke Breaker for high-risk implementation tasks involving validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency.
+- Treat Breaker as optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, Reviewer flags a concrete invariant concern, or the task hits a recently problematic bug class.
 - Enforce commit/push authorization gates locally.
 - Stop when a required verification step is missing or a task scope expands.
+- Stop after at most two Implementer/Reviewer loops unless the human explicitly approves more.
+- Treat workflow violations as blocking for auto-commit and auto-push until resolved or explicitly waived by the human.
 - Keep the workflow docs as the source of truth and do not modify them unless the human asked for a workflow refactor.
 
 ## Failed first-fix orchestration gate
@@ -674,7 +678,7 @@ Reviewer must return one of:
 
 If Reviewer returns `Request changes` or `Reject`, do not claim ready.
 
-You may run at most two implementer/reviewer loops unless the human explicitly approves more.
+You may run at most two implementer/reviewer loops unless the human explicitly approves more. Do not silently start a third loop.
 
 
 ## Reviewer authority gate

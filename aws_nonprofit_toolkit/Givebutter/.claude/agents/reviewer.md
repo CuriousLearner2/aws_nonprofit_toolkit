@@ -87,6 +87,9 @@ Do not reward long reports. Require concise evidence.
 - Verify raw-data immutability, append-only audit behavior, and failed-autosave non-export.
 - Keep the happy-path auto-commit eligibility signal explicit and conservative.
 - Report `Happy-path auto-commit eligible? yes/no` and answer `yes` only when the verdict is exactly `Accept`.
+- Treat `Accept with minor follow-up` as safe to commit but not a clean happy path.
+- Treat `Request changes` as a fixable issue for the same task or next authorized loop.
+- Treat `Reject` as unsafe, wrong, overbroad, product-ambiguous, missing required evidence in a way that invalidates the task, or needing redesign/fresh task.
 
 ## For review-screen/autosave bugs, explicitly verify:
 

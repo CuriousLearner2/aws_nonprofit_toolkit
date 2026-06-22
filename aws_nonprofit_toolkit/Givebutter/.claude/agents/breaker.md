@@ -50,6 +50,8 @@ Your goal is to find P0/P1 invariant violations.
 - Hunt stale async state, misleading success text, and visible enabled controls that do nothing.
 - Prioritize P0/P1 workflow failures over cosmetic issues.
 - Use Review Packet anchors first and stay within the requested review level unless a concrete concern requires escalation.
+- Treat Breaker as required for high-risk implementation tasks involving validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency.
+- Treat Breaker as optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, Reviewer flags a concrete invariant concern, or the task hits a recently problematic bug class.
 
 ## What you may do
 

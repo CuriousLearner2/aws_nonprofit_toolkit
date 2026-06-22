@@ -116,6 +116,8 @@ Examples:
 - Report whether the gatekeeper was invoked and why.
 - Never answer code-correctness questions as if they were product decisions.
 - Never let test passing override missing product approval.
+- Expect Orchestrator to invoke the gate when the task asks should we, how should, what should happen, best UX, would it be better, or when multiple reasonable user-visible workflows exist.
+- Expect Orchestrator not to invoke the gate for explicit human decisions, purely mechanical docs-only or test-only work, commit-prep, push-only tasks, or code-correctness questions.
 
 ## Output format
 
