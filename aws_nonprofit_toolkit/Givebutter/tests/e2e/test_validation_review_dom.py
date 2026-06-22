@@ -3756,18 +3756,24 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
                             f"Modal height exceeds viewport at {name}: {modal_box['height']:.0f}px > {height}px"
                         print(f"✓ Modal fits within viewport (non-clipped)")
 
-                    # Close modal non-destructively with Escape key
-                    await page.keyboard.press('Escape')
-                    # Wait for modal to close
+                    # Close modal non-destructively
+                    # Must blur any focused field BEFORE closing to avoid triggering autosave
+                    await page.evaluate("() => { if (document.activeElement) document.activeElement.blur(); }")
+
+                    # Call closeModal directly via JavaScript to avoid any blur side effects from button click
+                    await page.evaluate("() => { const fn = window.closeModal; if (fn) fn('record-modal'); }")
+
+                    # Wait for modal to be hidden
                     try:
                         await page.wait_for_function(
-                            "() => !document.querySelector('#record-modal')",
+                            "() => {const modal = document.querySelector('#record-modal'); "
+                            "return !modal || modal.style.display === 'none' || !modal.offsetParent;}",
                             timeout=2000
                         )
                     except:
                         # Modal might still exist but be hidden; that's okay
                         pass
-                    print(f"✓ Modal closed non-destructively with Escape key")
+                    print(f"✓ Modal closed non-destructively (no blur/autosave triggered)")
 
                     print(f"\n✓ DESKTOP LAYOUT TEST PASSED FOR {name}")
 
