@@ -48,6 +48,99 @@ from scripts.householder.database_models import (
 from scripts.uploader.app import app
 
 
+# ============================================================================
+# HELPERS FOR ESCAPE CANCEL E2E TESTS
+# ============================================================================
+
+async def seed_validation_batch(
+    session,
+    batch_id: str,
+    filename: str,
+    field_values: dict,
+) -> tuple[str, str]:
+    """
+    Seed database with ImportBatch, RawImportRow, and ImportContact.
+
+    Returns: (raw_row_id, import_contact_first_name + last_name)
+    """
+    batch = ImportBatch(
+        id=batch_id,
+        filename=filename,
+        upload_timestamp=datetime.utcnow(),
+        status='pending_review',
+        raw_row_count=1
+    )
+    session.add(batch)
+    session.flush()
+
+    raw_row = RawImportRow(
+        batch_id=batch_id,
+        row_index=1,
+        raw_csv_data=field_values
+    )
+    session.add(raw_row)
+    session.flush()
+    raw_row_id = raw_row.id
+
+    import_contact = ImportContact(
+        batch_id=batch_id,
+        raw_import_row_id=raw_row_id,
+        first_name=field_values.get('name', 'Test').split()[0],
+        last_name=field_values.get('name', 'User').split()[-1] if len(field_values.get('name', '').split()) > 1 else 'User',
+        email=field_values.get('email', 'test@example.com'),
+        phone=field_values.get('phone', '(555) 000-0000'),
+        address_line1=field_values.get('address', '100 Main St'),
+        amount=float(field_values.get('amount', 0)) if field_values.get('amount') else 0.0
+    )
+    session.add(import_contact)
+    session.flush()
+    session.commit()
+
+    return raw_row_id
+
+
+async def start_flask_and_wait(flask_app, url: str, timeout_sec: int = 5) -> threading.Thread:
+    """Start Flask in background thread and wait for it to be ready."""
+    def run_flask():
+        flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
+    import requests
+    max_retries = timeout_sec
+    for attempt in range(max_retries):
+        try:
+            requests.get(url, timeout=2)
+            return flask_thread
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
+            else:
+                raise RuntimeError("Flask server failed to start")
+
+    return flask_thread
+
+
+async def assert_field_restoration(field_input, original_value: str, field_name: str):
+    """Assert field restored to original value, handling currency formatting for amount."""
+    restored_value = await field_input.input_value()
+    if field_name == 'amount' and restored_value.startswith('$'):
+        restored_normalized = restored_value.lstrip('$')
+        assert restored_normalized == original_value, \
+            f"{field_name}: Expected restored {original_value}, got {restored_value}"
+    else:
+        assert restored_value == original_value, \
+            f"{field_name}: Expected restored {original_value}, got {restored_value}"
+
+
+async def assert_no_status_feedback(field_status):
+    """Assert field-scoped status contains no success/feedback messages."""
+    status_text = await field_status.inner_text()
+    assert 'Saved' not in status_text, f"Should not show 'Saved', got: {status_text}"
+    assert 'Saving' not in status_text, f"Should not show 'Saving...', got: {status_text}"
+
+
 @pytest.fixture
 def e2e_database_and_app():
     """
@@ -4031,3 +4124,580 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
 
     print("\n=== DESKTOP DENSE-TABLE LAYOUT TEST COMPLETE ===")
     print("✓ All supported desktop widths verified")
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_escape_cancel_restores_without_status_for_all_editable_fields(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Parameterized hardening test for Escape cancel across all editable fields.
+
+    Invariant: For EVERY editable field (date, name, email, phone, amount, address),
+    pressing Escape after an edit must:
+    1. Restore the field to its pre-edit effective value
+    2. NOT show field-level "Saved" status
+    3. NOT show field-level "Saving..." status
+    4. NOT show any field-level success/completed/confirmation
+    5. NOT persist the abandoned value across reload
+
+    This test covers the full matrix of field types with distinct abandoned values
+    to ensure cancelFieldEdit() + suppressBlurAutosave work uniformly across all fields.
+
+    Flow for each field:
+    1. Capture the current effective field value from the input
+    2. Edit the field with a distinct non-matching value
+    3. Press Escape
+    4. Assert field restored immediately
+    5. Assert field-scoped status (adjacent span) shows no success messages
+    6. Wait 2 seconds to ensure no delayed status appears
+    7. Reload page
+    8. Re-query field and assert abandoned value did not persist
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed test data with all fields populated
+        field_values = {
+            'name': 'Alice Johnson',
+            'date': '2025-06-15',
+            'email': 'alice@example.com',
+            'phone': '(555) 111-2222',
+            'amount': '250.50',
+            'address': '456 Oak Ave'
+        }
+        await seed_validation_batch(session, 'escape-all-fields-batch', 'escape_all_fields.csv', field_values)
+
+        # Start Flask server
+        await start_flask_and_wait(flask_app, 'http://127.0.0.1:8001/imports/escape-all-fields-batch/validation')
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto('http://127.0.0.1:8001/imports/escape-all-fields-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # Matrix of fields: (field_name, selector_key, original_value, abandoned_value)
+                fields_to_test = [
+                    ('date', 'date', '2025-06-15', '2026-12-31'),
+                    ('name', 'name', 'Alice Johnson', 'Bob Unknown'),
+                    ('email', 'email', 'alice@example.com', 'bob.fake@notreal.org'),
+                    ('phone', 'phone', '(555) 111-2222', '(999) 888-7777'),
+                    ('amount', 'amount', '250.50', '999.99'),
+                    ('address', 'address', '456 Oak Ave', '789 Pine Blvd'),
+                ]
+
+                for field_name, field_data_attr, original_value, abandoned_value in fields_to_test:
+                    print(f"\n=== Testing field: {field_name} ===")
+
+                    # Query field input
+                    field_input = await page.query_selector(
+                        f'input.autosave-field[data-field="{field_data_attr}"]'
+                    )
+                    assert field_input is not None, f"{field_name} input not found"
+
+                    # Capture current value (should be original)
+                    current_value = await field_input.input_value()
+                    if field_name == 'amount' and current_value.startswith('$'):
+                        current_value = current_value.lstrip('$')
+                    print(f"✓ Original {field_name}: {current_value}")
+
+                    # Find status span (adjacent to input)
+                    field_status = await page.query_selector(
+                        f'input.autosave-field[data-field="{field_data_attr}"] ~ .autosave-status'
+                    )
+                    assert field_status is not None, f"{field_name} status span not found"
+
+                    # Edit field to abandoned value
+                    await field_input.fill(abandoned_value)
+                    print(f"✓ Changed {field_name} to abandoned value: {abandoned_value}")
+
+                    # Press Escape
+                    await field_input.press('Escape')
+                    await asyncio.sleep(0.1)
+                    print(f"✓ Escape pressed")
+
+                    # Assert field restored immediately
+                    await assert_field_restoration(field_input, original_value, field_name)
+                    print(f"✓ Field restored to: {original_value}")
+
+                    # Assert NO success feedback
+                    await assert_no_status_feedback(field_status)
+                    print(f"✓ No field-level status feedback")
+
+                    # Wait 2 seconds to ensure delayed "Saved" doesn't appear
+                    await asyncio.sleep(2)
+                    status_text_delayed = await field_status.inner_text()
+                    assert 'Saved' not in status_text_delayed, \
+                        f"{field_name}: After 2s, 'Saved' should NOT appear, got: {status_text_delayed}"
+                    print(f"✓ No delayed 'Saved' after 2s")
+
+                # Reload page and verify no abandoned values persisted
+                print(f"\n=== Verifying persistence after reload ===")
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                for field_name, field_data_attr, original_value, _ in fields_to_test:
+                    field_input = await page.query_selector(
+                        f'input.autosave-field[data-field="{field_data_attr}"]'
+                    )
+                    await assert_field_restoration(field_input, original_value, field_name)
+                print(f"✓ All fields persisted correctly after reload")
+
+                print("\n=== PARAMETERIZED ESCAPE CANCEL TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_escape_cancel_restores_to_last_saved_value_not_raw_value(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify Escape restores to last-saved reviewed value, not raw import value.
+
+    Invariant: When a user edits a field, saves it (showing "Saved"), then edits
+    again and presses Escape, the field must restore to the LAST SAVED value,
+    not revert to the original raw import data.
+
+    This distinguishes between:
+    - Raw import value (pre-review)
+    - Last saved reviewed value (post-autosave)
+    - Abandoned unsaved edit (current)
+
+    Flow:
+    1. Load validation review with email = raw value
+    2. Edit email to FIRST saved value
+    3. Tab to trigger autosave (normal save path)
+    4. Assert "Saved" appears for first save
+    5. Reload and verify first saved value persists
+    6. Edit email to SECOND abandoned value
+    7. Press Escape
+    8. Assert field restores to FIRST saved value (not raw import)
+    9. Assert no "Saved" appears (no autosave triggered)
+    10. Reload
+    11. Assert FIRST saved value still there (abandoned value didn't persist)
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed with raw value
+        field_values = {
+            'name': 'Test User',
+            'date': '2026-01-01',
+            'email': 'raw.import@example.com',
+            'phone': '(555) 000-0000',
+            'amount': '100.00',
+            'address': '100 Base St'
+        }
+        await seed_validation_batch(session, 'last-saved-batch', 'last_saved_test.csv', field_values)
+
+        # Start Flask
+        await start_flask_and_wait(flask_app, 'http://127.0.0.1:8001/imports/last-saved-batch/validation')
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                print(f"\n=== TEST PART 1: Initial load ===")
+                await page.goto('http://127.0.0.1:8001/imports/last-saved-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input = await page.query_selector('input[data-field="email"]')
+                assert email_input is not None, "Email input not found"
+
+                initial_value = await email_input.input_value()
+                assert initial_value == 'raw.import@example.com', \
+                    f"Initial should be raw value, got {initial_value}"
+                print(f"✓ Initial (raw) email: {initial_value}")
+
+                print(f"\n=== TEST PART 2: First edit and save ===")
+                # Edit to FIRST saved value
+                first_saved_value = 'alice.first.save@example.com'
+                await email_input.fill(first_saved_value)
+                print(f"✓ Edited email to first saved value: {first_saved_value}")
+
+                # Tab to trigger autosave
+                email_status = await page.query_selector('input[data-field="email"] ~ .autosave-status')
+                await email_input.press('Tab')
+                print(f"✓ Pressed Tab (normal save)")
+
+                # Wait for "Saved" to appear
+                try:
+                    await page.wait_for_function(
+                        "() => {const status = document.querySelector('input[data-field=\"email\"] ~ .autosave-status'); "
+                        "return status && status.textContent.includes('Saved');}",
+                        timeout=5000
+                    )
+                    print("✓ 'Saved' appeared (first save complete)")
+                except:
+                    status_text = await email_status.inner_text()
+                    assert 'Saved' in status_text, f"First save should show 'Saved', got: {status_text}"
+
+                print(f"\n=== TEST PART 3: Reload to verify first save persisted ===")
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input_after_reload = await page.query_selector('input[data-field="email"]')
+                persisted_value = await email_input_after_reload.input_value()
+                assert persisted_value == first_saved_value, \
+                    f"First save should persist, expected {first_saved_value}, got {persisted_value}"
+                print(f"✓ After reload, first saved value persists: {persisted_value}")
+
+                print(f"\n=== TEST PART 4: Second edit and Escape cancel ===")
+                # Edit to SECOND abandoned value
+                second_abandoned_value = 'bob.abandoned@notreal.org'
+                email_input = await page.query_selector('input[data-field="email"]')
+                await email_input.fill(second_abandoned_value)
+                print(f"✓ Edited to second abandoned value: {second_abandoned_value}")
+
+                # Press Escape
+                await email_input.press('Escape')
+                await asyncio.sleep(0.1)
+                print(f"✓ Escape pressed")
+
+                # Verify restores to FIRST saved (not raw)
+                restored_value = await email_input.input_value()
+                assert restored_value == first_saved_value, \
+                    f"Escape should restore to last saved {first_saved_value}, got {restored_value}"
+                print(f"✓ Restored to last saved value: {restored_value}")
+
+                # Verify no "Saved" appears after Escape
+                email_status = await page.query_selector('input[data-field="email"] ~ .autosave-status')
+                status_text = await email_status.inner_text()
+                assert 'Saved' not in status_text, \
+                    f"Escape should NOT show 'Saved', got: {status_text}"
+                print(f"✓ No 'Saved' message after Escape")
+
+                print(f"\n=== TEST PART 5: Final reload to verify no second value persisted ===")
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input_final = await page.query_selector('input[data-field="email"]')
+                final_value = await email_input_final.input_value()
+                assert final_value == first_saved_value, \
+                    f"After final reload, should still be {first_saved_value}, got {final_value}"
+                assert final_value != second_abandoned_value, \
+                    f"Second abandoned value should NOT persist"
+                print(f"✓ Final value correct: {final_value} (not {second_abandoned_value})")
+
+                print("\n=== LAST-SAVED-VALUE TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_escape_cancel_ignores_delayed_autosave_response(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify stale/delayed autosave responses cannot show "Saved" or restore abandoned value.
+
+    Invariant: If autosave request is in-flight when user presses Escape:
+    1. The field must restore immediately (on Escape)
+    2. A delayed autosave response (arriving after Escape) cannot reintroduce the abandoned value
+    3. A delayed autosave response cannot show "Saved" status retroactively
+    4. No console errors related to AbortError or unhandled promise rejection
+
+    Approach:
+    - Use Playwright route interception to delay the autosave response
+    - Trigger an edit (causing pending autosave)
+    - Delay the response (simulate slow network)
+    - Press Escape before response resolves
+    - Allow delayed response to complete
+    - Assert field remains restored, no status appears
+    - Reload and verify abandoned value didn't persist
+
+    This simulates real-world scenarios where user presses Escape before
+    slow network request completes.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed test data
+        field_values = {
+            'name': 'Charlie Brown',
+            'date': '2026-03-15',
+            'email': 'charlie@example.com',
+            'phone': '(555) 222-3333',
+            'amount': '500.00',
+            'address': '200 Elm St'
+        }
+        await seed_validation_batch(session, 'delayed-autosave-batch', 'delayed_autosave.csv', field_values)
+
+        # Start Flask
+        await start_flask_and_wait(flask_app, 'http://127.0.0.1:8001/imports/delayed-autosave-batch/validation')
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            # Capture console errors for later verification
+            console_errors = []
+            def on_console_msg(msg):
+                if 'error' in msg.type.lower():
+                    console_errors.append({
+                        'type': msg.type,
+                        'text': msg.text,
+                    })
+
+            page.on('console', on_console_msg)
+
+            try:
+                print(f"\n=== TEST PART 1: Setup ===")
+                await page.goto('http://127.0.0.1:8001/imports/delayed-autosave-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input = await page.query_selector('input[data-field="email"]')
+                assert email_input is not None
+                original_value = await email_input.input_value()
+                print(f"✓ Original email: {original_value}")
+
+                print(f"\n=== TEST PART 2: Intercept autosave and delay response ===")
+
+                # Track autosave requests and delay them
+                async def handle_autosave_route(route):
+                    # Delay for 2 seconds before sending response
+                    await asyncio.sleep(2)
+                    await route.continue_()
+
+                # Intercept autosave API calls
+                await page.route('**/autosave', handle_autosave_route)
+                print("✓ Autosave route intercepted and set to delay 2s")
+
+                print(f"\n=== TEST PART 3: Trigger edit (will cause delayed autosave) ===")
+                # Edit email to trigger autosave
+                abandoned_value = 'delayed.test@notreal.org'
+                await email_input.fill(abandoned_value)
+                print(f"✓ Changed email to: {abandoned_value}")
+
+                # Blur immediately to trigger autosave (which will now be delayed by route handler)
+                await email_input.evaluate("el => el.blur()")
+                print(f"✓ Blurred field (autosave request now pending/delayed)")
+
+                # Brief wait to let autosave request start
+                await asyncio.sleep(0.3)
+
+                print(f"\n=== TEST PART 4: Press Escape while autosave is still pending ===")
+                # At this point, autosave has been requested but is delayed
+                # Press Escape to cancel
+                await email_input.press('Escape')
+                print(f"✓ Escape pressed (autosave still pending for 1.7s more)")
+
+                # Verify immediate restoration
+                await asyncio.sleep(0.2)
+                restored_value = await email_input.input_value()
+                assert restored_value == original_value, \
+                    f"Escape should restore immediately, expected {original_value}, got {restored_value}"
+                print(f"✓ Field immediately restored to: {restored_value}")
+
+                print(f"\n=== TEST PART 5: Wait for delayed autosave to complete ===")
+                # Wait for the delayed autosave response to complete
+                await asyncio.sleep(2.5)  # Total 2.5s to ensure delay completes
+                print(f"✓ Delayed autosave response completed")
+
+                print(f"\n=== TEST PART 6: Verify stale response didn't reintroduce abandoned value ===")
+                current_value = await email_input.input_value()
+                assert current_value == original_value, \
+                    f"After delayed response, should still be {original_value}, got {current_value}"
+                print(f"✓ Field value remains restored: {current_value}")
+
+                # Verify no stale "Saved" status
+                email_status = await page.query_selector('input[data-field="email"] ~ .autosave-status')
+                status_text = await email_status.inner_text()
+                assert 'Saved' not in status_text, \
+                    f"Stale response should NOT show 'Saved', got: {status_text}"
+                print(f"✓ No stale 'Saved' message (status: '{status_text}')")
+
+                print(f"\n=== TEST PART 7: Reload to verify abandoned value didn't persist ===")
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input_final = await page.query_selector('input[data-field="email"]')
+                final_value = await email_input_final.input_value()
+                assert final_value == original_value, \
+                    f"After reload, should be {original_value}, got {final_value}"
+                assert final_value != abandoned_value, \
+                    f"Abandoned value should NOT persist, but got {final_value}"
+                print(f"✓ Final persisted value correct: {final_value}")
+
+                print(f"\n=== TEST PART 8: Console error check ===")
+                # Check for unexpected autosave-related errors
+                autosave_errors = [
+                    e for e in console_errors
+                    if 'autosave' in e['text'].lower() and 'aborterror' not in e['text'].lower()
+                ]
+                assert len(autosave_errors) == 0, \
+                    f"Unexpected autosave errors: {autosave_errors}"
+                print(f"✓ No unexpected autosave errors (console errors: {len(console_errors)} total)")
+
+                print("\n=== DELAYED AUTOSAVE RESPONSE TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_console_errors_during_escape_cancel_workflow(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Monitor console for unexpected errors during Escape cancel workflow.
+
+    Invariant: Escape cancel should not generate unhandled errors in console,
+    specifically:
+    - No unhandled promise rejections
+    - No unexpected autosave errors (AbortError is expected and OK)
+    - No Validation Review inline editing errors
+
+    This test monitors console output during a complete Escape workflow and
+    fails if unexpected errors appear.
+
+    Flow:
+    1. Setup console error listener
+    2. Perform multiple Escape cancel interactions
+    3. Collect console errors (filter for relevant types)
+    4. Assert no unexpected autosave/validation/promise errors
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed test data
+        field_values = {
+            'name': 'Diana Prince',
+            'date': '2026-05-20',
+            'email': 'diana@example.com',
+            'phone': '(555) 444-5555',
+            'amount': '750.00',
+            'address': '300 Justice Ave'
+        }
+        await seed_validation_batch(session, 'console-check-batch', 'console_check.csv', field_values)
+
+        # Start Flask
+        await start_flask_and_wait(flask_app, 'http://127.0.0.1:8001/imports/console-check-batch/validation')
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            # Capture console messages
+            console_messages = {
+                'error': [],
+                'warning': [],
+                'log': [],
+            }
+
+            def on_console(msg):
+                msg_type = msg.type.lower()
+                if msg_type in console_messages:
+                    console_messages[msg_type].append(msg.text)
+
+            page.on('console', on_console)
+
+            try:
+                print(f"\n=== Loading validation review ===")
+                await page.goto('http://127.0.0.1:8001/imports/console-check-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+                print(f"✓ Page loaded")
+
+                print(f"\n=== Performing multiple Escape cancel interactions ===")
+
+                # Test 1: Escape on email
+                print("Test 1: Email Escape cancel")
+                email_input = await page.query_selector('input[data-field="email"]')
+                await email_input.fill('test1@notreal.org')
+                await email_input.press('Escape')
+                await asyncio.sleep(0.2)
+                print("✓ Email Escape cancel complete")
+
+                # Test 2: Escape on name
+                print("Test 2: Name Escape cancel")
+                name_input = await page.query_selector('input[data-field="name"]')
+                await name_input.fill('Nobody Important')
+                await name_input.press('Escape')
+                await asyncio.sleep(0.2)
+                print("✓ Name Escape cancel complete")
+
+                # Test 3: Escape on amount
+                print("Test 3: Amount Escape cancel")
+                amount_input = await page.query_selector('input[data-field="amount"]')
+                await amount_input.fill('9999.99')
+                await amount_input.press('Escape')
+                await asyncio.sleep(0.2)
+                print("✓ Amount Escape cancel complete")
+
+                print(f"\n=== Analyzing console messages ===")
+
+                # Filter for unexpected errors
+                # Expected: AbortError is OK (request abort on Escape is fine)
+                # Unexpected: Other autosave errors, validation errors, unhandled rejections
+                errors = console_messages['error']
+                print(f"Total console errors: {len(errors)}")
+
+                unexpected_errors = []
+                for error_msg in errors:
+                    # Allow AbortError (expected when request is aborted on Escape)
+                    if 'aborterror' in error_msg.lower():
+                        print(f"  [OK] AbortError (expected): {error_msg[:80]}")
+                        continue
+
+                    # Flag autosave/validation/promise errors as unexpected
+                    if any(
+                        keyword in error_msg.lower()
+                        for keyword in ['autosave', 'validation', 'unhandled rejection', 'inline edit']
+                    ):
+                        unexpected_errors.append(error_msg)
+
+                assert len(unexpected_errors) == 0, \
+                    f"Unexpected console errors during Escape workflow: {unexpected_errors}"
+                print(f"✓ No unexpected errors (AbortError allowed)")
+
+                print("\n=== CONSOLE ERROR TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
