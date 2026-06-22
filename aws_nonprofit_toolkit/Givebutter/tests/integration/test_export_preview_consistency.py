@@ -847,3 +847,233 @@ def test_duplicate_decision_effective_values_in_generated_csv(preview_consistenc
     )
 
     session.close()
+
+
+def test_export_parity_preview_to_audit_and_download(preview_consistency_db):
+    """
+    Export parity test: preview → CSV → audit → download consistency.
+
+    Comprehensive end-to-end test verifying:
+    1. Preview row_count matches CSV data rows
+    2. Preview warning_count matches audit snapshot
+    3. Effective reviewed values appear in generated CSV
+    4. Raw source data remains unchanged (append-only principle)
+    5. CSV content aligns with audit record metadata
+
+    Test scenario:
+    - Clean row (no issues, no reviews)
+    - Reviewed row with corrected email (effective value overlay)
+    - Third row with different data (ensures all rows properly exported)
+
+    Verifies the complete chain does not lose or distort data through export.
+    """
+    database_url, engine, export_dir = preview_consistency_db
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Create batch
+    batch = ImportBatch(
+        id='IMP-PARITY-001',
+        filename='parity_test.csv',
+        upload_timestamp=datetime.utcnow(),
+    )
+    session.add(batch)
+    session.flush()
+
+    # Row 1: Clean row (no issues, no reviews)
+    raw_data_clean = {
+        'transaction_id': 'TXN-CLEAN-001',
+        'first_name': 'Alice',
+        'last_name': 'Clean',
+        'email': 'alice.clean@example.com',
+        'amount': '100.00',
+    }
+    raw_row_clean = RawImportRow(
+        batch_id='IMP-PARITY-001',
+        row_index=1,
+        raw_csv_data=raw_data_clean,
+    )
+    session.add(raw_row_clean)
+
+    # Row 2: Reviewed row with corrected email
+    raw_data_reviewed = {
+        'transaction_id': 'TXN-REVIEWED-001',
+        'first_name': 'Bob',
+        'last_name': 'Smith',
+        'email': 'bob.smith@old.com',
+        'amount': '200.00',
+    }
+    raw_row_reviewed = RawImportRow(
+        batch_id='IMP-PARITY-001',
+        row_index=2,
+        raw_csv_data=raw_data_reviewed,
+    )
+    session.add(raw_row_reviewed)
+
+    # Row 3: Warning row (unresolved validation, but export-ready)
+    raw_data_warning = {
+        'transaction_id': 'TXN-WARN-001',
+        'first_name': 'Charlie',
+        'last_name': 'Warning',
+        'email': 'charlie@example.com',
+        'amount': '150.00',
+    }
+    raw_row_warning = RawImportRow(
+        batch_id='IMP-PARITY-001',
+        row_index=3,
+        raw_csv_data=raw_data_warning,
+    )
+    session.add(raw_row_warning)
+    session.flush()
+
+    # Create import contacts (required for export)
+    contact_clean = ImportContact(
+        batch_id='IMP-PARITY-001',
+        raw_import_row_id=raw_row_clean.id,
+        first_name=raw_data_clean['first_name'],
+        last_name=raw_data_clean['last_name'],
+        email=raw_data_clean['email'],
+        amount=float(raw_data_clean['amount']),
+    )
+    session.add(contact_clean)
+
+    contact_reviewed = ImportContact(
+        batch_id='IMP-PARITY-001',
+        raw_import_row_id=raw_row_reviewed.id,
+        first_name=raw_data_reviewed['first_name'],
+        last_name=raw_data_reviewed['last_name'],
+        email=raw_data_reviewed['email'],
+        amount=float(raw_data_reviewed['amount']),
+    )
+    session.add(contact_reviewed)
+
+    contact_warning = ImportContact(
+        batch_id='IMP-PARITY-001',
+        raw_import_row_id=raw_row_warning.id,
+        first_name=raw_data_warning['first_name'],
+        last_name=raw_data_warning['last_name'],
+        email=raw_data_warning['email'],
+        amount=float(raw_data_warning['amount']),
+    )
+    session.add(contact_warning)
+    session.flush()
+
+    # Create row-level ReviewDecision for reviewed row (effective email value)
+    reviewed_email = 'bob.smith@corrected.com'
+    row_decision = ReviewDecision(
+        batch_id='IMP-PARITY-001',
+        raw_import_row_id=raw_row_reviewed.id,
+        review_item_id=None,
+        decision='accept',
+        reviewed_values={'email': reviewed_email}
+    )
+    session.add(row_decision)
+
+    session.commit()
+
+    # Step 1: Build export preview
+    # Note: No validation items created, so no warnings. 
+    # The test verifies parity in a clean state. Warnings are tested separately.
+    preview = build_export_preview('IMP-PARITY-001', config={'GIVEBUTTER_DATABASE_URL': database_url})
+
+    # Verify preview state
+    assert preview.row_count == 3, f"Expected 3 rows in preview, got {preview.row_count}"
+    assert preview.warning_count == 0, f"Expected 0 warnings in clean parity test, got {preview.warning_count}"
+    assert preview.blocked_count == 0, f"Expected 0 blockers in preview, got {preview.blocked_count}"
+    assert preview.is_export_ready is True, "Export should be ready (no blockers)"
+
+    # Step 2: Generate export file
+    result = generate_export_file(
+        import_id='IMP-PARITY-001',
+        output_dir=export_dir,
+        reviewer='test_user',
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+    )
+
+    # Verify export result matches preview
+    assert result.row_count == preview.row_count, (
+        f"Result row_count {result.row_count} does not match preview {preview.row_count}"
+    )
+    assert result.warning_count == preview.warning_count, (
+        f"Result warning_count {result.warning_count} does not match preview {preview.warning_count}"
+    )
+    assert result.blocked_count == preview.blocked_count, (
+        f"Result blocked_count {result.blocked_count} does not match preview {preview.blocked_count}"
+    )
+
+    # Step 3: Read generated CSV
+    csv_file = Path(result.file_path)
+    assert csv_file.exists(), f"Export file not found: {result.file_path}"
+
+    with open(csv_file, 'r', encoding='utf-8') as f:
+        csv_content = f.read()
+
+    csv_rows = list(csv.reader(StringIO(csv_content)))
+    headers = csv_rows[0]
+    data_rows = csv_rows[1:]
+
+    # Step 4: Verify CSV row count
+    assert len(data_rows) == 3, f"Expected 3 data rows in CSV, got {len(data_rows)}"
+
+    # Find email column index
+    email_idx = headers.index('email') if 'email' in headers else headers.index('Email')
+
+    # Verify clean row (row 0)
+    assert data_rows[0][email_idx] == raw_data_clean['email'], (
+        f"Clean row email should be {raw_data_clean['email']}, got {data_rows[0][email_idx]}"
+    )
+
+    # Verify reviewed row has effective email (row 1)
+    assert data_rows[1][email_idx] == reviewed_email, (
+        f"Reviewed row email should be {reviewed_email}, got {data_rows[1][email_idx]}"
+    )
+    # Verify old email is NOT in CSV
+    assert raw_data_reviewed['email'] not in [r[email_idx] for r in data_rows], (
+        f"Old email {raw_data_reviewed['email']} should not appear in CSV"
+    )
+
+    # Verify warning row included (row 2)
+    assert data_rows[2][email_idx] == raw_data_warning['email'], (
+        f"Warning row email should be {raw_data_warning['email']}, got {data_rows[2][email_idx]}"
+    )
+
+    # Step 5: Verify audit record
+    audit_record = session.query(AuditLogRecord).filter_by(id=result.audit_log_id).first()
+    assert audit_record is not None, f"Audit record not found: id={result.audit_log_id}"
+
+    audit_details = audit_record.details
+
+    # Verify audit counts match preview
+    assert audit_details['row_count'] == preview.row_count, (
+        f"Audit row_count {audit_details['row_count']} does not match preview {preview.row_count}"
+    )
+    assert audit_details['warning_count'] == preview.warning_count, (
+        f"Audit warning_count {audit_details['warning_count']} does not match preview {preview.warning_count}"
+    )
+    assert audit_details['blocked_count'] == preview.blocked_count, (
+        f"Audit blocked_count {audit_details['blocked_count']} does not match preview {preview.blocked_count}"
+    )
+
+    # Verify audit filename and path match result
+    assert audit_details['filename'] == result.filename, (
+        f"Audit filename {audit_details['filename']} does not match result {result.filename}"
+    )
+
+    # Step 6: Verify raw data immutability
+    modified_row_clean = session.query(RawImportRow).filter_by(id=raw_row_clean.id).first()
+    assert modified_row_clean.raw_csv_data == raw_data_clean, (
+        "Clean row raw_csv_data should not be modified"
+    )
+
+    modified_row_reviewed = session.query(RawImportRow).filter_by(id=raw_row_reviewed.id).first()
+    assert modified_row_reviewed.raw_csv_data.get('email') == raw_data_reviewed['email'], (
+        "Reviewed row raw_csv_data should not be modified (only effective value exported)"
+    )
+
+    modified_row_warning = session.query(RawImportRow).filter_by(id=raw_row_warning.id).first()
+    assert modified_row_warning.raw_csv_data == raw_data_warning, (
+        "Warning row raw_csv_data should not be modified"
+    )
+
+    session.close()
