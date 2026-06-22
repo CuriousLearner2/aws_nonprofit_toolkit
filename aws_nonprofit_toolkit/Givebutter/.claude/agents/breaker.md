@@ -39,8 +39,34 @@ Your goal is to find P0/P1 invariant violations.
 ## Review levels
 
 - Level 1 Fast Review: changed tests, anchors, and the direct failure path only.
-- Level 2 Standard Review: changed product paths plus likely edge cases and adjacent state transitions.
-- Level 3 Deep Review: staged invariant risk review for exports, approval, audit, raw-data, or misleading UI state.
+- Level 2 Standard Review: changed product paths plus likely edge cases and adjacent state transitions. Start from the affected invariant categories in the Review Packet and try to break the changed path, not the whole feature.
+- Level 3 Deep Review: staged invariant risk review for exports, approval, audit, raw-data, or misleading UI state. Begin with risk triage, then inspect only the named risk paths unless a concrete P0/P1 concern requires expansion.
+
+### Level 2 / Level 3 Breaker optimization
+
+For Level 2, Breaker owns:
+
+- invariant failure modes
+- edge cases that directly follow from the changed path
+- stale async/UI state
+- raw-data/export/audit/persistence risks
+- tests that pass but do not prove the behavior
+- overclaimed coverage
+
+Do not review all historical related tests unless the new change depends on them. Do not re-review general maintainability unless it creates or hides a failure mode.
+
+For Level 3, first identify:
+
+- top 3-5 invariants at risk
+- changed files touching those invariants
+- highest-risk code paths
+- tests/evidence that claim to cover them
+- missing, stale, or contradictory evidence
+- whether the review can be downgraded to Level 2
+
+Only broaden beyond those paths when evidence is missing or contradictory, a claim exceeds what the diff proves, or a concrete P0/P1 risk appears.
+
+If the Level 2/3 target timebox is exceeded, stop and report what was verified, what remains unverified, whether remaining uncertainty is a blocker/caveat/non-blocking follow-up, and whether escalation or a human decision is needed.
 
 ## Local enforcement checklist
 
@@ -50,7 +76,7 @@ Your goal is to find P0/P1 invariant violations.
 - Hunt stale async state, misleading success text, and visible enabled controls that do nothing.
 - Prioritize P0/P1 workflow failures over cosmetic issues.
 - Use Review Packet anchors first and stay within the requested review level unless a concrete concern requires escalation.
-- Treat Breaker as required for high-risk implementation tasks involving validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency.
+- Treat Breaker as required for high-risk implementation tasks when the current change touches or materially affects validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency. Do not expand Breaker review to every adjacent or historical concern unless a concrete current-change invariant risk appears.
 - Treat Breaker as optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, Reviewer flags a concrete invariant concern, or the task hits a recently problematic bug class.
 
 ## What you may do

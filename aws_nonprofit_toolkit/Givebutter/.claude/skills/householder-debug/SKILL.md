@@ -25,7 +25,7 @@ Use this skill for Householder / DonorTrust bug fixes, review-screen issues, aut
 ### Breaker
 
 - Owns adversarial QA, invariant hunting, edge cases, misleading UI state, and P0/P1 workflow failures.
-- Breaker is required for high-risk implementation tasks involving validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency that could affect reviewer decisions.
+- Breaker is required for high-risk implementation tasks when the current change touches or materially affects validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency that could affect reviewer decisions. Breaker is not required for every adjacent or historical concern unless a concrete current-change invariant risk appears.
 - Breaker is optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, the Reviewer flags a concrete invariant concern, or the task touches a recently problematic bug class where adversarial review is useful.
 
 ### Product UX Gatekeeper
@@ -163,11 +163,33 @@ Target:
 - Breaker: about 3-4 minutes
 - Combined if parallel: about 5-7 minutes
 
+Required Level 2 Review Packet fields:
+
+- changed files
+- changed functions, helpers, and tests
+- affected invariant category:
+  - UI feedback
+  - autosave/persistence
+  - row status/issues
+  - audit
+  - approval/export
+  - raw data
+  - navigation/modal
+- direct test evidence
+- nearby tests affected
+- explicit non-goals
+- Product UX Gatekeeper status
+
 Rules:
 
 - Use anchored review.
-- Inspect changed product code and directly affected tests.
-- Inspect adjacent code only when needed.
+- Inspect changed product code and directly affected tests first.
+- Inspect adjacent directly-called code only when needed.
+- Do not inspect unrelated historical tests by default.
+- Do not rerun tests when supplied evidence is complete and consistent.
+- Reviewer focuses on implementation correctness, scope control, test relevance, evidence validity, and maintainability as it affects the current diff's reviewability, code/test quality, scope, and risk. Reviewer should not request broad architecture cleanup or unrelated refactoring as part of maintainability review.
+- Breaker focuses on named invariant failure modes, changed-path edge cases, stale async/UI state, raw-data/export/audit/persistence risk, and overclaimed coverage.
+- Reviewer and Breaker should not duplicate each other's full review. Reviewer should not perform full adversarial QA unless Breaker is unavailable; Breaker should not re-review general maintainability unless it affects a failure mode.
 - Escalate to Level 3 only if there is a concrete risk to raw data, audit, export, persistence, approval state, or misleading UI feedback.
 
 ### Level 3 Deep Review
@@ -187,13 +209,39 @@ Target:
 
 - about 10-12 minutes unless a concrete blocker requires more time
 
-Rules:
+Required staged process:
 
-- Use staged escalation.
-- Stage 1: 3-4 minute risk triage.
-- Stage 2: focused deep review of only the risk paths identified in Stage 1.
-- Do not perform unbounded repo archaeology.
-- Escalate beyond 12 minutes only with a specific blocker, suspected bug, or missing evidence.
+Stage 1 — Risk triage, 3-4 minutes:
+
+- identify the top 3-5 invariants at risk
+- identify changed files touching those invariants
+- identify the highest-risk code paths
+- identify tests/evidence that claim to cover those paths
+- identify missing, stale, or contradictory evidence
+- decide whether the review can be downgraded to Level 2
+
+Stage 2 — Focused deep review, 7-8 minutes:
+
+- inspect only the risk paths identified in Stage 1 unless a concrete concern requires expansion
+- verify the highest-risk invariants against the supplied evidence and changed code
+- report blockers, caveats, and unverified items instead of producing long narrative summaries
+
+Allowed Level 3 expansion:
+
+- evidence is missing, stale, or contradictory
+- a product/test claim exceeds what the diff proves
+- raw data, export, audit, approval, persistence, or UI feedback could be wrong
+- a concrete P0/P1 risk is identified
+
+Prohibited Level 3 behavior:
+
+- unbounded repo archaeology
+- reading all related tests "just in case"
+- rerunning full suites without a specific reason
+- duplicating Reviewer and Breaker work
+- continuing beyond the timebox without reporting what remains unverified
+
+If the target timebox is exceeded, the agent must stop and report what was verified, what remains unverified, whether the uncertainty is a blocker/caveat/non-blocking follow-up, and whether escalation or a human decision is needed.
 
 ## Canonical shared policies
 

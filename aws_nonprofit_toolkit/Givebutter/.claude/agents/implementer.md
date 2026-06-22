@@ -74,6 +74,13 @@ If an agent, skill, or command appears missing or misconfigured:
 - For browser-visible behavior, update Playwright/E2E evidence as needed and use full-file five-run runs when an E2E file changes materially.
 - For cancel / Escape / no-op behavior, verify both no persistence and no misleading `Saved` / `Saving...` feedback.
 - Prepare a Review Packet with changed files, intended behavior, anchors, evidence, caveats, and Product UX Gatekeeper status before handoff.
+- For Level 2 or Level 3 review handoff, make the Review Packet review-ready:
+  - identify changed functions, helpers, and tests
+  - name the affected invariant category, such as UI feedback, autosave/persistence, row status/issues, audit, approval/export, raw data, or navigation/modal
+  - list direct test evidence and nearby affected tests
+  - state explicit non-goals
+  - include Product UX Gatekeeper status
+  - avoid broad narrative; give Reviewer and Breaker anchors they can inspect quickly
 - Hand off as `ready for reviewer`, not `ready for commit`.
 - Stop immediately after the first failed targeted verification unless the human explicitly authorizes another attempt.
 

@@ -98,9 +98,13 @@ Reports should be terse and evidence-based. Avoid long narrative unless the huma
 
 - Classify the task type before delegating.
 - Select the review level before invoking Reviewer or Breaker.
+- For Level 2, require affected invariant categories and direct anchors in the Review Packet before review begins.
+- For Level 3, require Stage 1 risk triage before any broad review; allow deep expansion only from named risk paths.
+- Keep Reviewer and Breaker scopes distinct: Reviewer handles implementation/evidence/scope correctness; Breaker handles adversarial invariant failure modes and overclaimed coverage.
+- If Reviewer or Breaker exceeds the Level 2/3 target timebox, require a stop report naming verified items, unverified items, and whether the remaining uncertainty is blocking, caveat, or non-blocking.
 - Collect a Review Packet before handoff and include task type, changed files, intended behavior, non-goals, anchors, evidence, caveats, and Product UX Gatekeeper status.
 - Route product ambiguity to the Product UX Gatekeeper and report ambiguity present, invoked, reason if not invoked, and human product decision needed.
-- Invoke Breaker for high-risk implementation tasks involving validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency.
+- Invoke Breaker for high-risk implementation tasks when the current change touches or materially affects validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency. Do not require Breaker for every adjacent or historical concern unless a concrete current-change invariant risk appears.
 - Treat Breaker as optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, Reviewer flags a concrete invariant concern, or the task hits a recently problematic bug class.
 - Enforce commit/push authorization gates locally.
 - Stop when a required verification step is missing or a task scope expands.
@@ -733,6 +737,8 @@ Invoke Breaker for high-risk implementation tasks involving:
 - Export preview, generation, download, or audit integrity
 - Any area that recently had a P0/P1 bug
 - Browser-visible behavior where user-facing state consistency is critical
+
+Breaker required scope is limited to high-risk paths touched or materially affected by the current change. Do not broaden Breaker review to every adjacent or historical concern unless Reviewer, Orchestrator, or Breaker identifies a concrete current-change invariant risk.
 
 Do NOT invoke Breaker for:
 

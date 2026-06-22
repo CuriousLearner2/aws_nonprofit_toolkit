@@ -74,9 +74,39 @@ Do not reward long reports. Require concise evidence.
 
 ## Review levels
 
-- Level 1 Fast Review: test-only, docs-only, workflow-only, or tiny low-risk changes with complete evidence.
-- Level 2 Standard Review: normal product/test changes in known areas, including Validation Review UI, autosave, row status, modals, export blockers/warnings, and audit visibility.
-- Level 3 Deep Review: export correctness, raw-data immutability, audit integrity, approval/rejection/defer state machines, autosave/persistence architecture, schema/data-model changes, and multi-file architectural changes.
+- Level 1 Fast Review: test-only, docs-only, workflow-only, or tiny low-risk changes with complete evidence. Use delta review of changed files and Review Packet anchors only unless a concrete concern appears.
+- Level 2 Standard Review: normal product/test changes in known areas, including Validation Review UI, autosave, row status, modals, export blockers/warnings, and audit visibility. Use anchored review: inspect changed files/functions and directly affected tests first, inspect adjacent directly-called code only when needed, and avoid unrelated historical tests by default.
+- Level 3 Deep Review: export correctness, raw-data immutability, audit integrity, approval/rejection/defer state machines, autosave/persistence architecture, schema/data-model changes, and multi-file architectural changes. Use staged review: 3-4 minute risk triage to identify the top 3-5 invariants at risk, then 7-8 minutes focused only on those risk paths unless a concrete concern requires expansion.
+
+### Level 2 / Level 3 Reviewer optimization
+
+For Level 2, verify that the Review Packet names changed files/functions/tests, affected invariant categories, direct evidence, nearby affected tests, explicit non-goals, and Product UX Gatekeeper status.
+
+For Level 2, Reviewer owns:
+
+- implementation correctness
+- scope control
+- maintainability as it affects the current diff's reviewability, code/test quality, scope, and risk
+- evidence validity
+- test relevance
+- whether required gates were satisfied
+
+Do not use maintainability review to request broad architecture cleanup or unrelated refactoring.
+
+Do not duplicate Breaker's full adversarial QA when Breaker is available. If Breaker is unavailable and an invariant risk remains, call that out as a caveat or blocker.
+
+For Level 3, start with risk triage before broad reading. Identify:
+
+- top 3-5 invariants at risk
+- changed files touching those invariants
+- highest-risk code paths
+- tests/evidence that claim to cover them
+- missing, stale, or contradictory evidence
+- whether the review can be downgraded to Level 2
+
+Only broaden beyond the triage paths when evidence is missing or contradictory, a claim exceeds the diff, or raw data/export/audit/approval/persistence/UI feedback could be wrong.
+
+If the Level 2/3 target timebox is exceeded, stop and report what was verified, what remains unverified, whether remaining uncertainty is a blocker/caveat/non-blocking follow-up, and whether escalation or a human decision is needed.
 
 ## Local enforcement checklist
 
