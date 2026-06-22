@@ -191,8 +191,10 @@ const activeValidationErrors = {};
 // Track focus-time (last successfully saved) values and in-flight autosave requests per field
 // focusTimeValues: { fieldId: value }
 // inFlightRequests: { fieldId: AbortController }
+// suppressBlurAutosave: Set of fieldIds that should not autosave on blur (used when canceling edits)
 const focusTimeValues = {};
 const inFlightRequests = {};
+const suppressBlurAutosave = new Set();
 
 // Add a failed-autosave validation error to the active map
 function addActiveError(rawId, field, reason, severity) {
@@ -355,6 +357,16 @@ document.querySelectorAll('.autosave-field').forEach(input => {
     focusTimeValues[fieldId] = input.value;
 
     input.addEventListener('blur', async function() {
+        const rawId = this.getAttribute('data-raw-id');
+        const field = this.getAttribute('data-field');
+        const fieldId = `${rawId}-${field}`;
+
+        // Skip autosave if this blur was caused by Escape cancel
+        if (suppressBlurAutosave.has(fieldId)) {
+            suppressBlurAutosave.delete(fieldId);
+            return;
+        }
+
         // Format phone numbers on blur
         if (this.getAttribute('data-field') === 'phone') {
             this.value = formatPhoneNumber(this.value);
@@ -421,7 +433,7 @@ function cancelFieldEdit(input) {
         input.value = focusTimeValue;
     }
 
-    // Clear autosave status message
+    // Clear autosave status message (critical: must not show "Saved" or "Saving..." after Escape)
     if (statusSpan) {
         statusSpan.style.display = 'none';
         statusSpan.textContent = '';
@@ -444,7 +456,10 @@ function cancelFieldEdit(input) {
         renderIssuesCell(issuesCell, mergedIssues);
     }
 
-    // Blur the field to exit edit mode
+    // Flag that blur should NOT trigger autosave (Escape cancel should not show "Saved")
+    suppressBlurAutosave.add(fieldId);
+
+    // Blur the field to exit edit mode (blur will skip autosave due to suppressBlurAutosave flag)
     input.blur();
 }
 
