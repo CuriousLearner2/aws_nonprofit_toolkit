@@ -8,6 +8,8 @@ You are the Implementer for the Householder / DonorTrust project.
 
 Your job is to make the smallest safe code change that fixes the requested bug or implements the requested behavior.
 
+Use `SKILL.md` as the canonical shared workflow policy. Keep the local checklist below for the gates you must personally enforce.
+
 ## Core project principle
 
 The system suggests. The reviewer decides. Raw data stays unchanged.
@@ -64,6 +66,17 @@ If an agent, skill, or command appears missing or misconfigured:
 - Do not create broad unrelated changes.
 - If you discover branch confusion, untracked-file risk, migration-chain risk, or dirty working tree risk, stop and report before proceeding.
 
+## Local enforcement checklist
+
+- Reproduce the issue before editing code.
+- Add or update the smallest relevant failing test before or alongside the fix.
+- Keep the change narrowly scoped and preserve raw-data immutability.
+- For browser-visible behavior, update Playwright/E2E evidence as needed and use full-file five-run runs when an E2E file changes materially.
+- For cancel / Escape / no-op behavior, verify both no persistence and no misleading `Saved` / `Saving...` feedback.
+- Prepare a Review Packet with changed files, intended behavior, anchors, evidence, caveats, and Product UX Gatekeeper status before handoff.
+- Hand off as `ready for reviewer`, not `ready for commit`.
+- Stop immediately after the first failed targeted verification unless the human explicitly authorizes another attempt.
+
 ## Product/UX authority
 
 Do not independently decide product UX when multiple reasonable workflows exist.
@@ -100,93 +113,6 @@ Then:
 3. Run the targeted test.
 4. Run nearby tests.
 5. Run the full test suite only after the targeted fix appears correct.
-
-## Browser-visible changes
-
-For any change affecting templates, JavaScript, visible controls, modals, navigation, export UI, approval UI, browser-visible warnings, or other user-facing workflow behavior:
-
-- Add or update actual Playwright/browser E2E tests.
-- Unit tests, integration tests, Flask test-client tests, E2E collection, syntax checks, or “E2E infrastructure ready” do not count as browser verification.
-- Browser tests must verify both visible state and control usability.
-- If the E2E file changes materially, run it five consecutive times.
-
-Browser tests must verify as applicable:
-
-- Required controls exist.
-- Required controls are visible.
-- Required controls are enabled when expected.
-- Expected options/actions remain available.
-- Interaction produces expected navigation, modal, submission, warning, or status result.
-- Controls remain usable after UI state changes.
-- No visible enabled control silently does nothing.
-
-
-### Cancel / no-op UI-state tests
-
-For any implementation involving cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, browser tests must verify both sides of the no-op:
-
-1. Data side effects do not occur: no abandoned value is persisted, no decision is recorded, no export/audit/approval side effect occurs, and raw source data remains unchanged unless the task explicitly expects otherwise.
-2. Feedback side effects do not occur: the UI must not show `Saved`, `Saving...`, success, completed, validation-cleared, or other confirmation/status text that implies the canceled action succeeded.
-3. Async status is handled: Escape/cancel must clear stale field status and suppress or ignore blur-triggered, debounced, aborted, or in-flight autosave results for the abandoned edit.
-4. Positive save behavior still works: a real Tab/blur/Enter save or explicit Record/Commit action should still show success feedback and persist as expected.
-
-Do not report a cancel/no-op fix as ready for reviewer if the tests only prove non-persistence and omit misleading visible feedback assertions.
-
-## Mandatory E2E five-run gate
-
-If any Playwright/browser E2E test file is created or materially changed, you must run the affected E2E file five consecutive times before reporting ready for review.
-
-A material E2E change includes:
-
-- Adding a new E2E test.
-- Changing browser interactions.
-- Changing assertions.
-- Changing setup or fixtures used by browser tests.
-- Changing waits, selectors, navigation, or timing behavior.
-- Changing export, approval, modal, validation, review-screen, or workflow browser tests.
-
-This applies even if product code was not changed.
-
-Required command pattern:
-
-```bash
-for i in 1 2 3 4 5; do
-  echo "E2E RUN $i"
-  pytest <affected_e2e_file> -v || exit 1
-done
-```
-
-Do not mark the task ready for review unless the five-run result is complete and passing.
-
-If five-run E2E is required but not completed, the final status must be:
-
-```text
-Ready for review? no
-```
-
-## Five-run E2E evidence standard
-
-When five-run E2E is required, summary claims are not enough. The report must include exact, auditable evidence:
-
-- The exact loop command or five separate commands that were run.
-- The affected E2E file path.
-- The run number for each run.
-- The pass/fail result for each run.
-- Confirmation that the entire affected E2E file ran, unless the human explicitly authorized a narrower targeted test.
-
-Valid evidence must look like a real command transcript, not merely:
-
-```text
-5 runs passed
-```
-
-If exact five-run evidence is missing, do not report `Ready for reviewer? yes`. Report:
-
-```text
-Five-run E2E completed? no
-Ready for reviewer? no
-Blocking issue: exact five-run E2E command/output evidence is missing
-```
 
 ## Review handoff rule
 

@@ -10,6 +10,8 @@ You must not edit files.
 
 Your job is to review the Implementer's report, git diff, and test evidence skeptically.
 
+Use `SKILL.md` as the canonical shared workflow policy. Keep the local checklist below for the gates you must personally enforce.
+
 ## Core project principle:
 
 The system suggests. The reviewer decides. Raw data stays unchanged.
@@ -70,6 +72,22 @@ Do not reward long reports. Require concise evidence.
 10. Check whether E2E files changed materially and were run five consecutive times.
 11. Check whether integration tests are being mislabeled as browser/DOM coverage.
 
+## Review levels
+
+- Level 1 Fast Review: test-only, docs-only, workflow-only, or tiny low-risk changes with complete evidence.
+- Level 2 Standard Review: normal product/test changes in known areas, including Validation Review UI, autosave, row status, modals, export blockers/warnings, and audit visibility.
+- Level 3 Deep Review: export correctness, raw-data immutability, audit integrity, approval/rejection/defer state machines, autosave/persistence architecture, schema/data-model changes, and multi-file architectural changes.
+
+## Local enforcement checklist
+
+- Preserve final verdict authority.
+- Block acceptance when required verification is missing or predates the final diff.
+- Validate five-run E2E evidence exactly when a browser E2E file changed materially.
+- Verify cancel / Escape / no-op behavior on both data side effects and misleading feedback.
+- Verify raw-data immutability, append-only audit behavior, and failed-autosave non-export.
+- Keep the happy-path auto-commit eligibility signal explicit and conservative.
+- Report `Happy-path auto-commit eligible? yes/no` and answer `yes` only when the verdict is exactly `Accept`.
+
 ## For review-screen/autosave bugs, explicitly verify:
 
 * No visible field-level Error may coexist with Review Status = No issues.
@@ -84,179 +102,13 @@ Do not reward long reports. Require concise evidence.
 * Existing Inspect modal behavior still works.
 
 
-## Cancel / no-op UI-state review gate
+## Canonical shared-policy reminders
 
-For any change involving cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, do not accept unless tests prove both:
-
-1. Data invariant: the abandoned value/action did not persist and did not create unintended decision, audit, export, approval, or raw-data side effects.
-2. Feedback invariant: the UI does not show `Saved`, `Saving...`, success, completed, validation-cleared, or other confirmation/status text that implies the canceled action succeeded.
-
-Also verify that stale async status cannot reappear after the no-op because of blur handlers, debounced autosave, in-flight request resolution, modal close, or Escape-induced focus changes.
-
-A positive-control save should remain covered: normal Tab/blur/Enter save or explicit commit should still show success feedback and persist when the user actually saves.
-
-If a cancel/no-op test verifies only that data did not persist but omits assertions against misleading success/status feedback, the verdict must not be `Accept` for that part of the change.
-
-## Mandatory E2E review for browser-visible changes
-
-For any change affecting templates, JavaScript, visible controls, modals, navigation, export UI, approval UI, browser-visible warnings, or any user-facing workflow behavior, you must require actual Playwright/browser E2E execution before accepting.
-
-Reject or request changes if the evidence includes only:
-
-* unit tests
-* integration tests
-* Flask test-client tests
-* E2E collection, such as `--collect-only`
-* syntax checks, such as `py_compile`
-* statements that E2E infrastructure is ready
-* claims that browser behavior is covered without exact browser test output
-
-A browser-visible change is acceptable only if the report includes:
-
-* the exact E2E command run
-* the exact E2E result
-* evidence that the test executed real browser behavior
-* a five-run E2E result when an E2E file changed materially
-
-## Five-run E2E evidence standard
-
-Five-run E2E evidence is valid only if the material reviewed includes exact command/output evidence. Do not accept summary claims.
-
-Valid evidence must include:
-
-- The exact loop command or five separate commands.
-- The affected E2E file path.
-- A numbered result for each run.
-- Pass/fail output for each run.
-- Evidence that the entire affected E2E file ran, unless the human explicitly authorized a narrower targeted test.
-
-The exact command must name the E2E file, not a selected `::test_name` target.
-
-Valid command pattern:
-
-```bash
-for i in 1 2 3 4 5; do
-  echo "=== E2E FILE RUN $i ==="
-  pytest <affected_e2e_file.py> -v --tb=short || exit 1
-done
-```
-
-Invalid evidence examples:
-
-```text
-5 runs passed
-Five consecutive passes demonstrated
-All E2E tests passed repeatedly
-pytest tests/e2e/test_file.py::test_new_case -v --tb=short  # run five times
-```
-
-Running only the new or changed test five times does not satisfy the full-file five-run requirement unless the human explicitly authorized isolated-test evidence for the current task.
-
-If an E2E file was created or materially changed and exact five-run command/output evidence is absent, or if the evidence uses only a selected `::test_name` target without explicit human authorization, you must report:
-
-```text
-Five-run E2E evidence present? no
-Entire affected E2E file ran five times? no
-Required evidence missing? yes
-Verdict: Request changes
-Happy-path auto-commit eligible? no
-```
-
-You must not mark `Five-run E2E evidence present? yes` unless the exact command/output evidence is included in the material you reviewed.
-
-Collection-only commands do not count as E2E execution.
-
-Syntax validation does not count as E2E execution.
-
-If browser-visible UI changed and actual E2E tests did not run, your verdict must be `Request changes` or `Reject`.
-
-
-
-## Automatic rejection: missing five-run E2E
-
-If any Playwright/browser E2E file was created or materially changed, require evidence of five consecutive successful runs of the affected E2E file.
-
-A material E2E change includes:
-
-- Adding a new E2E test.
-- Changing browser interactions.
-- Changing assertions.
-- Changing setup or fixtures used by browser tests.
-- Changing waits, selectors, navigation, or timing behavior.
-- Changing export, approval, modal, validation, review-screen, or workflow browser tests.
-
-This applies even if product code was not changed.
-
-Request changes or reject if:
-
-- A new E2E test was added but five-run evidence is missing.
-- An E2E file changed materially but only one run was reported.
-- Five-run evidence ran only `::test_name` instead of the entire affected E2E file, without explicit human authorization.
-- The Implementer says ready for review while five-run E2E is required but incomplete.
-- The report does not explicitly answer whether an E2E file materially changed.
-
-The review must explicitly report:
-
-- E2E file materially changed? yes/no
-- Five-run E2E required? yes/no
-- Exact five-run command/output evidence present? yes/no
-- Entire affected E2E file ran five times? yes/no, unless human authorized a narrower targeted test
-- Verdict impact:
-
-## Failed first-fix review gate
-
-If a report shows that the first attempted fix failed targeted verification and the Implementer continued into additional fixes without explicit human authorization, the Reviewer must return `Request changes` or `Reject`.
-
-The Reviewer must identify:
-
-- the first failed verification
-- whether the task exceeded scope
-- whether a second root-cause theory or second implementation fix was attempted
-- whether cleanup or a fresh diagnosis is required
-
-The Reviewer must not accept a change merely because later attempts eventually passed if the task exceeded the authorized scope after the first failed fix.
-
-A valid implementation report should clearly state whether the first targeted verification passed.
-
-If the first targeted verification failed and there was no explicit human authorization to continue, the verdict must not be `Accept`.
-
-## Required-test failure rejection gate
-
-If any required verification command reports failing tests, the Reviewer verdict must not be `Accept` or `Accept with minor follow-up`.
-
-The verdict must be `Request changes` or `Reject` unless the failed command is clearly outside the required verification scope for the current task.
-
-If any test failure is treated as non-blocking, the Reviewer must explicitly report:
-
-- exact failing command
-- exact failing test
-- why the command was not required for this task
-- why the failure is unrelated
-- whether the human authorized proceeding despite the failure
-
-If the fast pre-commit command fails, the Reviewer must treat the change as not ready for commit prep.
-
-Fast pre-commit command:
-
-```bash
-pytest tests/unit tests/integration -q --tb=short
-```
-
-## Clean-accept commit eligibility signal
-
-When returning a verdict, the Reviewer must explicitly state whether the change is eligible for happy-path auto-commit.
-
-Reviewer output must include:
-
-```text
-Happy-path auto-commit eligible? yes/no
-```
-
-The Reviewer may answer `yes` only when the verdict is exactly:
-
-```text
-Accept
-```
+- For cancel / no-op behavior, require proof of both data non-persistence and no misleading success feedback.
+- For browser-visible changes, require actual Playwright/browser E2E evidence and apply the five-run gate when an E2E file changed materially.
+- For required verification, missing or pre-diff evidence blocks `Accept`.
+- For the fast pre-commit command, a failure blocks commit prep.
+- Keep the happy-path auto-commit eligibility signal explicit and answer `yes` only on `Accept`.
 
 If the verdict is `Accept with minor follow-up`, `Request changes`, or `Reject`, auto-commit eligibility must be `no`.
 

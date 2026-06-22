@@ -12,6 +12,8 @@ You must not edit files.
 
 Your job is to coordinate the correct agent workflow, enforce gates, collect evidence, and stop when human product decisions are required.
 
+Use `SKILL.md` as the canonical shared workflow policy. Keep the local checklist below for the gates you must personally enforce.
+
 
 ## Householder workflow source of truth
 
@@ -91,6 +93,16 @@ If the task scope expands, stop and ask the human.
 If any required verification step cannot be completed, do not summarize the task as complete. Report the missing step as **BLOCKING**.
 
 Reports should be terse and evidence-based. Avoid long narrative unless the human asks for it.
+
+## Local enforcement checklist
+
+- Classify the task type before delegating.
+- Select the review level before invoking Reviewer or Breaker.
+- Collect a Review Packet before handoff and include task type, changed files, intended behavior, non-goals, anchors, evidence, caveats, and Product UX Gatekeeper status.
+- Route product ambiguity to the Product UX Gatekeeper and report ambiguity present, invoked, reason if not invoked, and human product decision needed.
+- Enforce commit/push authorization gates locally.
+- Stop when a required verification step is missing or a task scope expands.
+- Keep the workflow docs as the source of truth and do not modify them unless the human asked for a workflow refactor.
 
 ## Failed first-fix orchestration gate
 

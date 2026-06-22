@@ -8,6 +8,218 @@ allowed-tools: Read, Grep, Glob, Bash, Task
 
 Use this skill for Householder / DonorTrust bug fixes, review-screen issues, autosave issues, validation issues, approval/export issues, and small scoped implementation changes.
 
+## Role ownership
+
+### Orchestrator
+
+- Owns sequencing, gates, evidence collection, review-level selection, Product UX Gatekeeper routing/reporting, and commit/push authorization enforcement.
+
+### Implementer
+
+- Owns the smallest safe fix, test-first discipline, targeted evidence, and ready-for-review handoff.
+
+### Reviewer
+
+- Owns diff/test/evidence correctness, scope control, required verification, and the final review verdict.
+
+### Breaker
+
+- Owns adversarial QA, invariant hunting, edge cases, misleading UI state, and P0/P1 workflow failures.
+
+### Product UX Gatekeeper
+
+- Owns product/UX ambiguity only, including human product decision authority.
+- Does not review code correctness.
+
+## Review packet
+
+Before review handoff, the Orchestrator must collect a Review Packet containing:
+
+- task type
+- review level
+- changed files
+- intended behavior
+- non-goals
+- exact diff anchors for changed functions, helpers, and tests
+- test/evidence commands and results
+- known caveats
+- proven claims
+- claims not being made
+- Product UX Gatekeeper status:
+  - ambiguity present? yes/no
+  - invoked? yes/no
+  - if not invoked, reason
+  - human product decision needed? yes/no
+
+The Review Packet is the shared review contract. Reviewers and Breakers should use its anchors before broadening scope.
+
+## Review levels
+
+### Level 1 Fast Review
+
+Use for:
+
+- test-only changes
+- docs-only changes
+- workflow-only changes
+- tiny low-risk changes with complete evidence
+
+Target:
+
+- Reviewer: about 90 seconds
+- Breaker: about 90 seconds
+- Combined if parallel: about 3-4 minutes
+
+Rules:
+
+- Delta review only.
+- Inspect changed files and Review Packet anchors first.
+- Do not inspect unrelated product code or historical tests unless a concrete concern appears.
+- Do not rerun tests when supplied evidence is complete and consistent.
+
+### Level 2 Standard Review
+
+Use for:
+
+- normal product/test changes in known areas
+- Validation Review UI behavior
+- autosave behavior
+- row status logic
+- modal behavior
+- export blockers/warnings
+- audit visibility
+- small backend service changes with targeted tests
+
+Target:
+
+- Reviewer: about 2-3 minutes
+- Breaker: about 3-4 minutes
+- Combined if parallel: about 5-7 minutes
+
+Rules:
+
+- Use anchored review.
+- Inspect changed product code and directly affected tests.
+- Inspect adjacent code only when needed.
+- Escalate to Level 3 only if there is a concrete risk to raw data, audit, export, persistence, approval state, or misleading UI feedback.
+
+### Level 3 Deep Review
+
+Use for:
+
+- export correctness
+- raw-data immutability
+- audit integrity
+- approval/rejection/defer state machines
+- autosave/persistence architecture
+- schema/data-model changes
+- generated CSV behavior
+- multi-file architectural changes
+
+Target:
+
+- about 10-12 minutes unless a concrete blocker requires more time
+
+Rules:
+
+- Use staged escalation.
+- Stage 1: 3-4 minute risk triage.
+- Stage 2: focused deep review of only the risk paths identified in Stage 1.
+- Do not perform unbounded repo archaeology.
+- Escalate beyond 12 minutes only with a specific blocker, suspected bug, or missing evidence.
+
+## Canonical shared policies
+
+### Evidence Acceptance Rule
+
+Reviewer and Breaker may accept supplied test evidence without rerunning tests when all of the following are true:
+
+- exact commands are shown
+- results include collected/passed counts
+- evidence was produced after the latest diff
+- affected files match task scope
+- there are no failures, skips, or unexplained warnings
+- five-run E2E evidence is full-file when required
+
+They must request rerun or escalate when:
+
+- evidence predates the final diff
+- commands are missing
+- selected tests were run when full-file evidence was required
+- failures are dismissed as environmental without proof
+- product code changed but only insufficient tests were run
+- claims exceed what the tests prove
+
+### Review Budget Rule
+
+Reviewer and Breaker must start with the smallest sufficient review:
+
+1. changed files
+2. changed functions/tests
+3. adjacent directly-called code
+4. existing tests only if the new tests depend on them
+5. broader repo search only if a concrete concern remains unresolved
+
+If an agent exceeds the target timebox, it must stop and report:
+
+- what was verified
+- what remains unverified
+- whether the remaining uncertainty is a blocker or caveat
+
+### Cancel / no-op UI-state invariant
+
+For cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, tests must verify both:
+
+1. Data invariant: the abandoned value/action is not persisted and does not create a decision, export, audit, approval, or raw-data side effect unless explicitly expected.
+2. Feedback invariant: the UI does not show `Saved`, `Saving...`, success, completed, validation-cleared, or any other confirmation/status message that implies the canceled action succeeded.
+
+For review-screen/autosave work, also verify stale async state cannot show success after a no-op because of blur handlers, debounced autosave, in-flight request resolution, modal close, or Escape-induced focus changes.
+
+A cancel/no-op regression test is incomplete if it checks only persistence and not misleading visible feedback. Normal save behavior should remain positively tested: a real save may show success and must persist when expected.
+
+### Five-run E2E gate
+
+If any Playwright/browser E2E file is created or materially changed, the affected E2E file must run five consecutive times before the work can be reported ready for review or ready for commit.
+
+A material E2E change includes:
+
+- adding a new E2E test
+- changing browser interactions
+- changing assertions
+- changing setup or fixtures used by browser tests
+- changing waits, selectors, navigation, or timing behavior
+- changing export, approval, modal, validation, review-screen, or workflow browser tests
+
+The command must run the full affected E2E file. Do not use a `::test_name` selector for the five-run gate unless the human explicitly authorizes isolated-test evidence for the current task.
+
+### Raw-data and review-screen invariants
+
+For review-screen, inline-editing, autosave, validation, approval, and export work, enforce this invariant:
+
+**No visible field-level Error may coexist with Review Status = No issues.**
+
+Also verify:
+
+- Issues column updates when row validation changes
+- Approval warnings include rows with unresolved issues, follow-up, or defer decisions as required
+- Failed autosave values are not exported
+- Successful autosave values become effective reviewed values
+- RawImportRow.raw_csv_data remains unchanged
+- ReviewDecision / audit behavior remains append-only
+- Existing Needs follow-up Notes-required behavior still works
+- Existing Defer behavior still works
+- Existing Inspect modal behavior still works
+
+### Product UX Gatekeeper reporting
+
+Before any review handoff, the Orchestrator must report:
+
+- ambiguity present? yes/no
+- gatekeeper invoked? yes/no
+- if not invoked, reason
+- human product decision needed? yes/no
+
+If product/UX ambiguity is present, the Orchestrator must route to the Product UX Gatekeeper before treating the task as decision-complete.
 
 ## Householder workflow source of truth
 
@@ -39,138 +251,6 @@ Use the Implementer and Reviewer agents for this task.
 8. If the Reviewer returns `Request changes` or `Reject`, send only the specific review findings back to the Implementer.
 9. Run at most two implementer/reviewer loops unless the human explicitly approves more.
 10. Stop and summarize when the Reviewer returns `Accept` or `Accept with minor follow-up`.
-
-## Execution Budget / Drift Control
-
-For hardening tasks, avoid open-ended exploration.
-
-Classify the work before proceeding:
-
-* **Assessment only** — no edits, no commits, no pushes. Identify evidence, gaps, and the single recommended next task.
-* **Implementation only** — one confirmed gap only; targeted tests first; no commits or pushes.
-* **Commit preparation** — no re-investigation, no product reassessment, no five-run reruns unless explicitly requested or no prior evidence exists.
-* **Push only** — no edits and no new commits.
-
-Default drift-control rules:
-
-* If more than 8 shell commands are needed before the first meaningful result, stop and report why.
-* If a task starts to require broad rediscovery, product reassessment, schema changes, migration changes, or unrelated cleanup, stop and ask the human.
-* If any required verification step cannot be completed, do not summarize the task as complete. Report the missing step as **BLOCKING**.
-* Do not continue silently when the task scope expands.
-* Prefer targeted tests first. Run full unit/integration only after targeted tests pass and the change appears correct.
-* Keep reports terse: files changed, commands run, exact results, blockers, Reviewer verdict, ready/not ready.
-* Do not use passing tests to justify unapproved product behavior.
-* Do not rerun expensive tests in commit-prep if prior exact passing evidence exists and the human requested a fast commit-prep pass.
-
-
-## Mandatory E2E five-run gate
-
-If any Playwright/browser E2E file is created or materially changed, the affected E2E file must run five consecutive times before the work can be reported ready for review or ready for commit.
-
-A material E2E change includes:
-
-* Adding a new E2E test.
-* Changing browser interactions.
-* Changing assertions.
-* Changing setup or fixtures used by browser tests.
-* Changing waits, selectors, navigation, or timing behavior.
-* Changing export, approval, modal, validation, review-screen, or workflow browser tests.
-
-This applies even if product code was not changed.
-
-Required command pattern:
-
-```bash
-for i in 1 2 3 4 5; do
-  echo "=== E2E FILE RUN $i ==="
-  pytest <affected_e2e_file.py> -v --tb=short || exit 1
-done
-```
-
-The command must run the full affected E2E file. Do not use a `::test_name` selector for the five-run gate unless the human explicitly authorizes isolated-test evidence for the current task.
-
-Invalid five-run evidence:
-
-```bash
-pytest <affected_e2e_file.py>::test_new_or_changed_test -v --tb=short
-```
-
-Do not report five-run E2E reliability unless the exact command/output evidence shows the full affected E2E file ran five consecutive times.
-
-If five-run E2E is required but missing, incomplete, summarized only, or limited to a selected test without authorization, the missing verification is **BLOCKING**.
-
-## Failed first-fix stop policy
-
-If the first attempted fix fails, do not continue silently.
-
-Stop after the first failed targeted verification unless the human explicitly authorizes another implementation attempt.
-
-A failed first fix is not a reason to broaden scope. It is a reason to report:
-
-- failed test or command
-- exact failure
-- changed files
-- whether the failure is the same or different
-- whether partial edits remain
-- recommended cleanup or next narrow diagnostic task
-
-Do not continue into a second root-cause theory, selector redesign, fixture redesign, product behavior changes, broad test repair, or unrelated cleanup in the same task unless the human explicitly authorizes it.
-
-If the human instructed that failed edits should be reverted, revert only those edits and report the clean state.
-
-If failed edits remain, final status must be:
-
-```text
-Ready for commit? no
-Ready for commit prep? no
-```
-
-and the failed verification must be marked **BLOCKING**.
-
-## Project guardrails
-
-* Do not commit directly to main.
-* Do not mutate raw source data.
-* Do not add Givebutter/CRM writeback.
-* Do not add credentials.
-* Do not add auth/RBAC changes.
-* Do not add background jobs.
-* Do not add bulk actions.
-* Do not add new export formats.
-* Do not perform broad refactors.
-* Do not change Alembic migrations unless explicitly necessary and called out.
-* Preserve append-only audit history.
-* Preserve the principle: The system suggests. The reviewer decides. Raw data stays unchanged.
-
-## Review-screen / autosave invariant
-
-For review-screen, inline-editing, autosave, validation, approval, and export work, enforce this invariant:
-
-**No visible field-level Error may coexist with Review Status = No issues.**
-
-Also verify:
-
-* Issues column updates when row validation changes.
-* Approval warnings include rows with unresolved issues, follow-up, or defer decisions as required.
-* Failed autosave values are not exported.
-* Successful autosave values become effective reviewed values.
-* RawImportRow.raw_csv_data remains unchanged.
-* ReviewDecision / audit behavior remains append-only.
-* Existing Needs follow-up Notes-required behavior still works.
-* Existing Defer behavior still works.
-* Existing Inspect modal behavior still works.
-
-
-## Cancel / no-op UI-state invariant
-
-For cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, tests must verify both:
-
-1. **Data invariant:** the abandoned value/action is not persisted and does not create a decision, export, audit, approval, or raw-data side effect unless explicitly expected.
-2. **Feedback invariant:** the UI does not show `Saved`, `Saving...`, success, completed, validation-cleared, or any other confirmation/status message that implies the canceled action succeeded.
-
-For review-screen/autosave work, also verify stale async state cannot show success after a no-op because of blur handlers, debounced autosave, in-flight request resolution, modal close, or Escape-induced focus changes.
-
-A cancel/no-op regression test is incomplete if it checks only persistence and not misleading visible feedback. Normal save behavior should remain positively tested: a real save may show success and must persist when expected.
 
 ## Mandatory review completion
 
