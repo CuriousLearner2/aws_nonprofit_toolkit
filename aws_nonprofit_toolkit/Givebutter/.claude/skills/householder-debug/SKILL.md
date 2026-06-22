@@ -385,6 +385,42 @@ Ready for commit prep? no
 
 The Implementer may report “Ready for reviewer,” but only the Reviewer verdict can make the change ready for commit prep.
 
+## No intermediate handoff stopping rule
+
+When a task is being run through the Orchestrator, intermediate handoff states are not terminal.
+
+The Orchestrator must not respond to the human with only:
+
+- `ready for reviewer`
+- `ready for Reviewer sign-off`
+- `awaiting Reviewer`
+- `pending Reviewer response`
+- `ready for Breaker`
+- `awaiting Breaker`
+- `pending Breaker response`
+
+If the task requires Reviewer or Breaker review, the Orchestrator must invoke the required agent before responding to the human, unless one of the explicit stop exceptions below applies.
+
+After a Reviewer returns `Request changes`:
+
+1. The Orchestrator may send only the specific Reviewer finding back to the Implementer.
+2. After the Implementer fixes the issue, the Orchestrator must collect updated evidence.
+3. The Orchestrator must return the result to the Reviewer for a final verdict.
+4. The Orchestrator must not stop at `ready for Reviewer sign-off`.
+5. The Orchestrator must not ask the human to manually request Reviewer unless a human decision is actually required.
+
+If Breaker is required for the task, the Orchestrator must invoke Breaker after Reviewer `Accept` unless Breaker was explicitly waived by the human.
+
+The Orchestrator may report an intermediate handoff state only when:
+
+- the task was explicitly Implementer-only,
+- a required agent is unavailable,
+- a required verification step is blocked,
+- a human product/UX decision is required,
+- the two-loop limit has been reached,
+- the human explicitly asked to stop before review,
+- or the human explicitly asked for status only.
+
 ## Happy-path auto-commit policy
 
 Happy-path auto-commit is opt-in per task.

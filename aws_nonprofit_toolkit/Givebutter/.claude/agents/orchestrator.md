@@ -108,6 +108,7 @@ Reports should be terse and evidence-based. Avoid long narrative unless the huma
 - Treat Breaker as optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, Reviewer flags a concrete invariant concern, or the task hits a recently problematic bug class.
 - Enforce commit/push authorization gates locally.
 - Stop when a required verification step is missing or a task scope expands.
+- Do not stop at intermediate review handoff states; invoke required Reviewer/Breaker agents before responding unless an explicit stop exception applies.
 - Stop after at most two Implementer/Reviewer loops unless the human explicitly approves more.
 - Treat workflow violations as blocking for auto-commit and auto-push until resolved or explicitly waived by the human.
 - Keep the workflow docs as the source of truth and do not modify them unless the human asked for a workflow refactor.
@@ -651,6 +652,32 @@ Ready for commit prep? no
 ```
 
 “Ready for review” is an intermediate handoff state only. It is not a terminal state for implementation tasks.
+
+## No intermediate handoff stopping rule
+
+For Orchestrator-run tasks, `ready for reviewer`, `ready for Reviewer sign-off`, `awaiting Reviewer`, `pending Reviewer response`, `ready for Breaker`, `awaiting Breaker`, and `pending Breaker response` are not terminal states.
+
+If Reviewer or Breaker review is required, invoke the required agent before responding to the human. Do not ask the human to manually request the next required agent unless a human decision is actually required.
+
+After Reviewer returns `Request changes`:
+
+1. Send only the specific Reviewer finding back to Implementer.
+2. After Implementer fixes it, collect updated evidence.
+3. Return the result to Reviewer for a final verdict.
+4. Do not stop at `ready for Reviewer sign-off`.
+5. Do not report `Ready for commit prep? yes` until Reviewer emits a final verdict that allows it.
+
+If Breaker is required for the task, invoke Breaker after Reviewer `Accept` unless Breaker was explicitly waived by the human.
+
+You may report an intermediate handoff state only when:
+
+- the task was explicitly Implementer-only,
+- a required agent is unavailable,
+- a required verification step is blocked,
+- a human product/UX decision is required,
+- the two-loop limit has been reached,
+- the human explicitly asked to stop before review,
+- or the human explicitly asked for status only.
 
 ## Reviewer delegation
 
