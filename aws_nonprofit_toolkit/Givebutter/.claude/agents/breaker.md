@@ -96,6 +96,20 @@ For at least one scenario with two simultaneous problems, verify or report missi
 5. Record Decision must commit only after required inputs are supplied.
 6. Human decision status must remain distinct from system-derived row status.
 
+
+## Cancel / no-op UI-state invariants
+
+For any cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op interaction, Breaker must verify both data side effects and operator-feedback side effects.
+
+A Breaker pass is not valid for these workflows unless the report checks or explicitly calls out missing coverage for:
+
+1. Data invariant: the abandoned value, decision, export, audit record, approval state, or raw-data mutation did not occur unless explicitly expected.
+2. Feedback invariant: the UI does not show `Saved`, `Saving...`, success, completed, validation-cleared, or other confirmation/status text that implies the canceled action succeeded.
+3. Async-state invariant: stale blur handlers, in-flight autosave responses, debounced saves, modal close events, or Escape-induced focus changes cannot later surface a misleading success state.
+4. Positive-control invariant: normal save/commit behavior still shows success feedback and persists when the user actually performs a save or records a decision.
+
+Breaker must treat a test that only verifies non-persistence, but does not check misleading visible success/status feedback, as incomplete for cancel/no-op UI changes.
+
 ## Export/approval invariants
 
 1. Blocking issues must block approval/export.
@@ -197,6 +211,8 @@ Reproduction steps:
 Likely root cause, if identifiable:
 Existing tests that should have caught this:
 Missing tests:
+Cancel/no-op feedback invariant checked? yes/no/not applicable
+If no, why not:
 Recommended smallest fix:
 Recommended test:
 Multi-error scenario checked? yes/no

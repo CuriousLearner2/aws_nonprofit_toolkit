@@ -827,6 +827,19 @@ Always enforce these Householder / DonorTrust invariants:
 - ReviewDecision/audit behavior remains append-only.
 - Failed autosave values must not export.
 - Unresolved records must not be silently treated as clean.
+- Cancel/no-op actions must not create data side effects or misleading `Saved`/success feedback.
+
+
+### Cancel / no-op UI-state gate
+
+For implementation or review tasks involving cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, the Orchestrator must ensure the task evidence covers both:
+
+- Data invariant: no abandoned value, decision, export, audit, approval, or raw-data side effect occurred unless explicitly expected.
+- Feedback invariant: no `Saved`, `Saving...`, success, completed, validation-cleared, or other confirmation/status message remains visible in a way that implies the canceled action succeeded.
+
+Evidence must also address stale async UI state where relevant, including blur-triggered autosave, debounced saves, in-flight request resolution, modal close, or Escape-induced focus changes.
+
+If the tests only verify non-persistence and do not verify absence of misleading visible status, the Orchestrator must treat the evidence as incomplete and must not report ready for commit prep.
 
 ## Commit and push policy
 
@@ -860,6 +873,7 @@ At the end, report:
 - Any failing required test? yes/no
 - If failing tests exist, are they blocking? yes/no
 - Exact E2E commands/results, if browser-visible behavior changed
+- Cancel/no-op feedback invariant verified? yes/no/not applicable
 - Whether changed E2E tests ran five times
 - Reviewer verdict; if Reviewer was not invoked, report `NOT RUN — BLOCKING`
 - Blocking issues, if any

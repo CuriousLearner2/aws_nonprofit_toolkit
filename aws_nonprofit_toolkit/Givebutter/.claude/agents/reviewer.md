@@ -83,6 +83,20 @@ Do not reward long reports. Require concise evidence.
 * Existing Defer behavior still works.
 * Existing Inspect modal behavior still works.
 
+
+## Cancel / no-op UI-state review gate
+
+For any change involving cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, do not accept unless tests prove both:
+
+1. Data invariant: the abandoned value/action did not persist and did not create unintended decision, audit, export, approval, or raw-data side effects.
+2. Feedback invariant: the UI does not show `Saved`, `Saving...`, success, completed, validation-cleared, or other confirmation/status text that implies the canceled action succeeded.
+
+Also verify that stale async status cannot reappear after the no-op because of blur handlers, debounced autosave, in-flight request resolution, modal close, or Escape-induced focus changes.
+
+A positive-control save should remain covered: normal Tab/blur/Enter save or explicit commit should still show success feedback and persist when the user actually saves.
+
+If a cancel/no-op test verifies only that data did not persist but omits assertions against misleading success/status feedback, the verdict must not be `Accept` for that part of the change.
+
 ## Mandatory E2E review for browser-visible changes
 
 For any change affecting templates, JavaScript, visible controls, modals, navigation, export UI, approval UI, browser-visible warnings, or any user-facing workflow behavior, you must require actual Playwright/browser E2E execution before accepting.
@@ -382,34 +396,39 @@ Then issue your actual final verdict.
 
 5. **Risks, gaps, or missing tests.**
 
-6. **Required follow-up**, if any.
+6. **Cancel/no-op feedback invariant check**, if applicable:
+   * Data side effects absent? yes/no/not applicable
+   * Misleading success/status feedback absent? yes/no/not applicable
+   * Async stale status considered? yes/no/not applicable
 
-7. **Specific questions** for the Implementer.
-8. **Workflow-completeness check:**
+7. **Required follow-up**, if any.
+
+8. **Specific questions** for the Implementer.
+9. **Workflow-completeness check:**
    * Files changed? yes/no
    * Diff/stat evidence present? yes/no
    * Exact tests/results present? yes/no
    * Required evidence missing? yes/no
 
-9. **Required-test gate:**
+10. **Required-test gate:**
    * Required verification commands all passed? yes/no
    * Any failing required test? yes/no
    * If failing tests exist, are they blocking? yes/no
    * Verdict impact:
 
-10. **E2E gate check:**
+11. **E2E gate check:**
    * E2E file materially changed? yes/no
    * Five-run E2E required? yes/no
    * Exact five-run E2E command/output evidence present? yes/no
    * Entire affected E2E file ran five times? yes/no, unless human authorized a narrower targeted test
    * Verdict impact:
 
-11. **Happy-path auto-commit:**
+12. **Happy-path auto-commit:**
    * Eligible? yes/no
    * Reason:
    * Human decision required? yes/no
 
-12. **Push authorization:**
+13. **Push authorization:**
    * Push performed? yes/no
    * Happy-path auto-push enabled? yes/no
    * Push-only task? yes/no

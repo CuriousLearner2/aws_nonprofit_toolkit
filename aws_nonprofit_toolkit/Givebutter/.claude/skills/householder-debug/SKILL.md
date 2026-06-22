@@ -160,6 +160,18 @@ Also verify:
 * Existing Defer behavior still works.
 * Existing Inspect modal behavior still works.
 
+
+## Cancel / no-op UI-state invariant
+
+For cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, tests must verify both:
+
+1. **Data invariant:** the abandoned value/action is not persisted and does not create a decision, export, audit, approval, or raw-data side effect unless explicitly expected.
+2. **Feedback invariant:** the UI does not show `Saved`, `Saving...`, success, completed, validation-cleared, or any other confirmation/status message that implies the canceled action succeeded.
+
+For review-screen/autosave work, also verify stale async state cannot show success after a no-op because of blur handlers, debounced autosave, in-flight request resolution, modal close, or Escape-induced focus changes.
+
+A cancel/no-op regression test is incomplete if it checks only persistence and not misleading visible feedback. Normal save behavior should remain positively tested: a real save may show success and must persist when expected.
+
 ## Mandatory review completion
 
 For implementation tasks, **Ready for review** is not a terminal state.

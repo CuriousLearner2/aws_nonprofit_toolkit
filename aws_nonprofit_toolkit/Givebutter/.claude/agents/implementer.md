@@ -121,6 +121,17 @@ Browser tests must verify as applicable:
 - No visible enabled control silently does nothing.
 
 
+### Cancel / no-op UI-state tests
+
+For any implementation involving cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, browser tests must verify both sides of the no-op:
+
+1. Data side effects do not occur: no abandoned value is persisted, no decision is recorded, no export/audit/approval side effect occurs, and raw source data remains unchanged unless the task explicitly expects otherwise.
+2. Feedback side effects do not occur: the UI must not show `Saved`, `Saving...`, success, completed, validation-cleared, or other confirmation/status text that implies the canceled action succeeded.
+3. Async status is handled: Escape/cancel must clear stale field status and suppress or ignore blur-triggered, debounced, aborted, or in-flight autosave results for the abandoned edit.
+4. Positive save behavior still works: a real Tab/blur/Enter save or explicit Record/Commit action should still show success feedback and persist as expected.
+
+Do not report a cancel/no-op fix as ready for reviewer if the tests only prove non-persistence and omit misleading visible feedback assertions.
+
 ## Mandatory E2E five-run gate
 
 If any Playwright/browser E2E test file is created or materially changed, you must run the affected E2E file five consecutive times before reporting ready for review.
@@ -279,6 +290,7 @@ At the end, report:
 - Exact commands run
 - Exact test results
 - Browser/E2E test result if UI changed
+- Cancel/no-op feedback invariant verified? yes/no/not applicable
 - E2E file materially changed? yes/no
 - Five-run E2E required? yes/no
 - Five-run E2E completed? yes/no/not required
