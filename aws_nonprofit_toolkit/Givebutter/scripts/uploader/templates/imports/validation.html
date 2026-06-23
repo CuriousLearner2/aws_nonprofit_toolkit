@@ -192,9 +192,15 @@ const activeValidationErrors = {};
 // focusTimeValues: { fieldId: value }
 // inFlightRequests: { fieldId: AbortController }
 // suppressBlurAutosave: Set of fieldIds that should not autosave on blur (used when canceling edits)
+// sessionEditValues: { fieldId: value } - value at start of current edit session (on focus)
+// focusedFields: Set of fieldIds that are currently focused
+// dirtyFields: Set of fieldIds that have been modified in current focus session (input event fired)
 const focusTimeValues = {};
 const inFlightRequests = {};
 const suppressBlurAutosave = new Set();
+const sessionEditValues = {};
+const focusedFields = new Set();
+const dirtyFields = new Set();
 
 // Add a failed-autosave validation error to the active map
 function addActiveError(rawId, field, reason, severity) {
@@ -356,6 +362,20 @@ document.querySelectorAll('.autosave-field').forEach(input => {
     // Initialize focus-time value to current value (last successfully saved)
     focusTimeValues[fieldId] = input.value;
 
+    // Capture value at start of each edit session (on focus)
+    input.addEventListener('focus', function() {
+        const fieldId = `${this.getAttribute('data-raw-id')}-${this.getAttribute('data-field')}`;
+        sessionEditValues[fieldId] = this.value;
+        focusedFields.add(fieldId);  // Mark that field is currently focused
+        dirtyFields.delete(fieldId);  // Reset dirty flag for new focus session
+    });
+
+    // Track when field value is modified
+    input.addEventListener('input', function() {
+        const fieldId = `${this.getAttribute('data-raw-id')}-${this.getAttribute('data-field')}`;
+        dirtyFields.add(fieldId);  // Mark that field has been modified in this session
+    });
+
     input.addEventListener('blur', async function() {
         const rawId = this.getAttribute('data-raw-id');
         const field = this.getAttribute('data-field');
@@ -364,6 +384,18 @@ document.querySelectorAll('.autosave-field').forEach(input => {
         // Skip autosave if this blur was caused by Escape cancel
         if (suppressBlurAutosave.has(fieldId)) {
             suppressBlurAutosave.delete(fieldId);
+            return;
+        }
+
+        // NO-OP BLUR: Skip autosave if field was never modified since focus
+        // Mark field as no longer focused
+        focusedFields.delete(fieldId);
+        const wasModified = dirtyFields.has(fieldId);
+        dirtyFields.delete(fieldId);  // Reset for next focus
+
+        // Only skip autosave if the field was NOT modified (input event never fired)
+        if (!wasModified) {
+            // No-op blur: field never modified, do not autosave, do not show status
             return;
         }
 
@@ -420,6 +452,8 @@ function cancelFieldEdit(input) {
     const fieldId = `${rawId}-${field}`;
     const row = input.closest('tr');
     const statusSpan = input.parentElement.querySelector('.autosave-status');
+    focusedFields.delete(fieldId);  // Mark as no longer focused
+    dirtyFields.delete(fieldId);  // Reset dirty flag
 
     // Cancel in-flight autosave request if one exists
     if (inFlightRequests[fieldId]) {
@@ -507,6 +541,8 @@ async function autosaveField(input) {
                 updateRowFromAutosave(row, result, field);
                 // Update focus-time value to the newly saved value
                 focusTimeValues[fieldId] = input.value;
+                // Update session baseline after successful autosave
+                sessionEditValues[fieldId] = input.value;
             }
 
             // Show saved state

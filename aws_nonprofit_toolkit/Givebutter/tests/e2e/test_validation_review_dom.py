@@ -5096,3 +5096,299 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
 
     finally:
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_noop_blur_does_not_show_saved_feedback(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify that no-op blur (focus and blur without value change) does not show Saved/Saving feedback.
+
+    Invariant: If value hasn't changed since focus, blur should be silent (no autosave, no status message).
+
+    Flow:
+    1. Seed database with contact
+    2. Load validation page
+    3. Focus email field (sessionEditValues captures current value)
+    4. Blur without changing value
+    5. Assert no "Saved" message shown
+    6. Assert no "Saving..." message shown
+    7. Reload page
+    8. Verify value unchanged (no autosave was sent)
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='noop-test-batch',
+            filename='noop_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row
+        raw_row = RawImportRow(
+            batch_id='noop-test-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'John Doe',
+                'date': '2026-01-15',
+                'email': 'john@example.com',
+                'phone': '(555) 123-4567',
+                'amount': '100.00',
+                'address': '123 Main St'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        # Create ImportContact
+        import_contact = ImportContact(
+            batch_id='noop-test-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='John',
+            last_name='Doe',
+            email='john@example.com',
+            phone='(555) 123-4567',
+            address_line1='123 Main St',
+            amount=100.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/noop-test-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/noop-test-batch/validation')
+
+                # Wait for table to load
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # Find email input
+                email_input = await page.query_selector('input[data-testid^="email-input-"]')
+                assert email_input is not None, "Email input not found"
+
+                initial_value = await email_input.input_value()
+                print(f"\n=== NO-OP BLUR TEST ===")
+                print(f"Initial email value: {initial_value}")
+
+                # Focus and blur without changing value
+                await email_input.evaluate("el => el.focus()")
+                await asyncio.sleep(0.1)  # Ensure focus event fires
+                await email_input.evaluate("el => el.blur()")
+                await asyncio.sleep(0.5)  # Wait for any potential autosave
+
+                # A1: No "Saved" message shown
+                saved_messages = await page.query_selector_all('text=Saved')
+                assert len(saved_messages) == 0, f"A1 FAILED: Expected no 'Saved' message, found {len(saved_messages)}"
+                print("✓ A1: No 'Saved' message shown")
+
+                # A2: No "Saving..." message shown
+                saving_messages = await page.query_selector_all('text=Saving')
+                assert len(saving_messages) == 0, f"A2 FAILED: Expected no 'Saving...' message, found {len(saving_messages)}"
+                print("✓ A2: No 'Saving...' message shown")
+
+                # A3: Reload and verify value unchanged
+                await page.reload()
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                reloaded_field = await page.query_selector('input[data-testid^="email-input-"]')
+                reloaded_value = await reloaded_field.input_value()
+                assert reloaded_value == initial_value, f"A3 FAILED: Expected value to remain {initial_value}, got {reloaded_value}"
+                print(f"✓ A3: Value persisted correctly after reload: {reloaded_value}")
+
+                print("\n=== NO-OP BLUR TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_changed_value_blur_saves_and_persists(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify that changing value and blurring DOES save and persist (control test for no-op blur).
+
+    Invariant: If value HAS changed since focus, blur should autosave and update the database.
+
+    Flow:
+    1. Seed database with contact
+    2. Load validation page
+    3. Focus email field (sessionEditValues captures current value)
+    4. Change value to new email
+    5. Blur to trigger autosave
+    6. Verify autosave happens (status message shown or new value persists)
+    7. Reload page
+    8. Verify new value persisted in database
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='change-test-batch',
+            filename='change_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=1
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create raw row
+        raw_row = RawImportRow(
+            batch_id='change-test-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'John Doe',
+                'date': '2026-01-15',
+                'email': 'john@example.com',
+                'phone': '(555) 123-4567',
+                'amount': '100.00',
+                'address': '123 Main St'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        # Create ImportContact
+        import_contact = ImportContact(
+            batch_id='change-test-batch',
+            raw_import_row_id=raw_row_id,
+            first_name='John',
+            last_name='Doe',
+            email='john@example.com',
+            phone='(555) 123-4567',
+            address_line1='123 Main St',
+            amount=100.00
+        )
+        session.add(import_contact)
+        session.flush()
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/change-test-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/change-test-batch/validation')
+
+                # Wait for table to load
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                # Find email input
+                email_input = await page.query_selector('input[data-testid^="email-input-"]')
+                assert email_input is not None, "Email input not found"
+
+                initial_value = await email_input.input_value()
+                new_value = 'jane@example.com'
+                print(f"\n=== CHANGED VALUE TEST ===")
+                print(f"Initial email value: {initial_value}")
+                print(f"New email value: {new_value}")
+
+                # Change value and blur
+                await email_input.fill(new_value)
+                await email_input.evaluate("el => el.blur()")
+                await asyncio.sleep(1)  # Wait for autosave to complete
+
+                # A1: Verify field has new value
+                current_value = await email_input.input_value()
+                assert current_value == new_value, f"A1 FAILED: Expected {new_value}, got {current_value}"
+                print(f"✓ A1: Field shows new value: {current_value}")
+
+                # A2: Reload and verify persistence
+                await page.reload()
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                reloaded_field = await page.query_selector('input[data-testid^="email-input-"]')
+                reloaded_value = await reloaded_field.input_value()
+                assert reloaded_value == new_value, f"A2 FAILED: Expected persisted {new_value}, got {reloaded_value}"
+                print(f"✓ A2: Value persisted after reload: {reloaded_value}")
+
+                print("\n=== CHANGED VALUE TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
