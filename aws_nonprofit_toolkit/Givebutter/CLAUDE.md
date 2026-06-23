@@ -1,5 +1,19 @@
 # Claude Code Guidelines for Givebutter Project
 
+## Working Style: Agent Spawning Discipline
+
+**Default**: Self-implement straightforward fixes. Spawn agents strategically, not tactically.
+
+**Before spawning an agent**:
+1. Can I explain the fix in one paragraph? → Self-implement (saves 15+ min, 3000+ tokens)
+2. Is this a review gate (Reviewer, Breaker)? → Use required agent
+3. Am I genuinely blocked on architecture/design? → One agent, one question, then implement
+4. Have I already spawned an agent for this task? → Finish with that agent
+
+**Anti-pattern**: Spawning sequential agents (Orchestrator → Implementer → Implementer) for phased work that I can do directly in < 10 minutes.
+
+**Read for details**: See `.claude/projects/.../memory/agent_spawning_discipline.md` for rationale and examples.
+
 ## Testing
 
 ### E2E Tests - Critical Requirements
