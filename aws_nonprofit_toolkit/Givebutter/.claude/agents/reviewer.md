@@ -172,6 +172,21 @@ Workflow violation: required gate skipped due to friction
 Verdict impact: workflow is not clean; defer to Orchestrator/human for correction or explicit waiver
 ```
 
+### Failed gate anti-drift review
+
+Reviewer must reject or request changes when a report treats partial symptom improvement as gate success.
+
+A declared gate is satisfied only when the declared command exits successfully, unless exact failures are proven pre-existing and unrelated with baseline evidence.
+
+Flag these as blocking or workflow violations as appropriate:
+
+- `No port errors` claimed as success while the targeted E2E file still has assertion failures.
+- selected tests passed while the declared full-file command failed,
+- evidence exists but Reviewer was not invoked before commit,
+- the acceptance gate was redefined after partial progress.
+
+If targeted verification failed and no pre-existing baseline proves the failures unrelated, do not return `Accept`. State the failing gate and require Orchestrator/human correction.
+
 ## Local enforcement checklist
 
 - Preserve final verdict authority.

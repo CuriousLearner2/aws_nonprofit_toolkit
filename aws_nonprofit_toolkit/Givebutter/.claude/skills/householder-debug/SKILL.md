@@ -147,6 +147,34 @@ Examples:
 
 A friction-based gate skip is a workflow violation even when the code and evidence are technically correct. The remedy is to stop, report the exact gate and friction, and obtain a human decision or complete the gate.
 
+## Failed gate anti-drift rule
+
+A declared acceptance gate is binary.
+
+If a declared gate command exits nonzero, the gate failed unless the exact failures are proven pre-existing and unrelated with baseline evidence. Partial symptom improvement is not gate success.
+
+Examples:
+
+- `No port errors` is not success if the targeted E2E file still has assertion failures.
+- `Tests passed individually` is not success if the declared full-file gate failed.
+- `Evidence exists` is not success if Reviewer was required but not invoked.
+- `One failure class disappeared` is not success if the declared acceptance command still exits nonzero.
+
+When a declared gate fails, Orchestrator must stop and report:
+
+- gate name,
+- exact command/result,
+- passed/failed/skipped count,
+- failing tests or failure group,
+- whether failures are proven pre-existing and unrelated,
+- blocking issue,
+- whether failed-first-fix is triggered,
+- next allowed action.
+
+Do not proceed to Reviewer, Breaker, commit, or push after a failed declared gate unless the human explicitly authorizes a new diagnostic/fix task or explicitly waives the gate.
+
+If the gate is ambiguous, Orchestrator must define the gate before implementation begins. Do not redefine the gate after partial progress to make the task appear successful.
+
 ## Efficient orchestration rule
 
 Efficiency means using the smallest sufficient workflow, not skipping required gates.

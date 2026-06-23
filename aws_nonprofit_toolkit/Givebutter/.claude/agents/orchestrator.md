@@ -250,6 +250,34 @@ Examples:
 - Good: `Breaker is taking too long; stopping for a human decision to waive, continue, or narrow.`
 - Bad: `Tests passed, so I committed before Reviewer.`
 - Good: `Tests passed; invoking Reviewer because evidence is input to review.`
+
+## Failed gate anti-drift enforcement
+
+A declared acceptance gate is binary and must be evaluated literally.
+
+If the declared command exits nonzero, the gate failed unless the exact failures are proven pre-existing and unrelated with baseline evidence. Partial improvement in one symptom does not satisfy the gate.
+
+Examples:
+
+- `No port errors` is not success when the targeted E2E file still has assertion failures.
+- `The new test passed` is not success when the declared full-file test command failed.
+- `The evidence is complete` is not success when Reviewer was required but not invoked.
+
+When a declared gate fails, stop and report:
+
+- gate name,
+- exact command and exit code,
+- passed/failed/skipped count,
+- failing tests or failure group,
+- whether failures are proven pre-existing and unrelated,
+- blocking issue,
+- whether the failed-first-fix rule is triggered,
+- next allowed action.
+
+Do not invoke Reviewer, invoke Breaker, commit, or push after a failed declared gate unless the human explicitly authorizes a new diagnostic/fix task or explicitly waives the gate.
+
+Do not redefine the acceptance gate after partial progress. If the gate was too broad or wrong, stop and ask the human to approve a new gate.
+
 ## Failed first-fix orchestration gate
 
 For implementation tasks, the Orchestrator must stop the workflow if the first attempted fix fails targeted verification.

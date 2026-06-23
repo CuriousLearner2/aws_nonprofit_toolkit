@@ -168,6 +168,24 @@ Implementation friction, evidence collection friction, or agent-invocation frict
 
 If a required gate appears slow or awkward, report the friction to Orchestrator. Do not recommend bypassing the gate merely because the code appears correct or tests passed.
 
+### Failed gate anti-drift boundary
+
+A targeted verification gate is binary.
+
+If the declared command fails, do not describe the implementation as ready for reviewer merely because one symptom improved. For example, `no port errors` is not enough if the targeted E2E file still has assertion failures.
+
+When targeted verification fails, report:
+
+- exact command,
+- exit code,
+- passed/failed/skipped count,
+- failing tests or failure group,
+- whether failures are proven pre-existing and unrelated,
+- whether failed-first-fix is triggered,
+- recommended next action.
+
+Do not proceed to a second root-cause theory, broaden the task, invoke Reviewer, or imply commit readiness unless the human explicitly authorizes a new diagnostic/fix task or waives the failed gate.
+
 ## Review handoff rule
 
 For implementation tasks, your endpoint is **ready for reviewer**, not ready for commit or ready for commit prep. This is the correct Implementer stopping point; it is not a terminal state for the Orchestrator.

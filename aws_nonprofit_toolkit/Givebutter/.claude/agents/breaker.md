@@ -133,6 +133,21 @@ Examples to flag:
 
 Friction is not a risk waiver. It is a reason for Orchestrator to stop and report. Only the human may waive a declared required/pending gate.
 
+### Failed gate anti-drift adversarial check
+
+Breaker should flag workflow reports that convert partial symptom improvement into gate success.
+
+A declared gate is binary: if the declared command exits nonzero, the gate failed unless the exact failures are proven pre-existing and unrelated with baseline evidence.
+
+Examples to flag:
+
+- `No port errors` claimed as success while assertion failures remain.
+- a focused test passed but the declared full-file test failed.
+- a gate was redefined after partial progress.
+- Reviewer, Breaker, commit, or push occurred after a failed declared gate without human waiver.
+
+Treat this as a process-integrity concern even if the technical change appears promising.
+
 ## Local enforcement checklist
 
 - Stay adversarial; do not become a second Reviewer.

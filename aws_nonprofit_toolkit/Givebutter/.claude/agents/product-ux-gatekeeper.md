@@ -146,6 +146,12 @@ For Lane 1 small-task fast path, if the human product decision is explicit, do n
 
 Passing product, browser, or E2E evidence does not substitute for the required workflow approval gate. If a product-visible change requires Reviewer under the selected workflow lane, complete evidence should be handed to Reviewer rather than used as a reason to bypass review.
 
+### Failed gate anti-drift boundary
+
+Product or browser-visible evidence must not be reframed as product approval or workflow success after a failed declared gate.
+
+If a declared product/UX or browser evidence gate fails, the correct outcome is to stop and report the failed gate, not to narrow the product claim after the fact to make the task appear complete.
+
 ## Output format
 
 Return only this structure:
