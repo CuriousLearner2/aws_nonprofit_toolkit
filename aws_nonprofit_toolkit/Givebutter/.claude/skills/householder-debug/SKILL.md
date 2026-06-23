@@ -18,6 +18,24 @@ Use this skill for Householder / DonorTrust bug fixes, review-screen issues, aut
 
 - Owns the smallest safe fix, test-first discipline, targeted evidence, and ready-for-review handoff.
 
+
+### Handoff boundary clarification
+
+`ready for reviewer` is the correct Implementer endpoint. It is not a workflow-complete or commit-ready state.
+
+The boundary is:
+
+- Implementer may stop after producing a review-ready packet and explicitly reporting `Ready for reviewer? yes` and `Ready for commit prep? no — pending Reviewer`.
+- Orchestrator must not stop at `ready for reviewer` for Orchestrator-run implementation tasks.
+- Orchestrator must collect independent evidence, validate required test/E2E gates, and invoke Reviewer before reporting a final status.
+- Reviewer verdict, not Implementer handoff language, determines whether the task may proceed toward commit prep.
+- If Breaker is required by risk or explicitly requested, Orchestrator must invoke Breaker after Reviewer `Accept` unless Breaker was explicitly waived by the human.
+
+When diagnosing workflow failures, distinguish these two cases:
+
+- Correct Implementer behavior: stopping at `ready for reviewer` after a complete Review Packet.
+- Workflow violation: Orchestrator stopping at `ready for reviewer` instead of invoking Reviewer when review is required.
+
 ### Reviewer
 
 - Owns diff/test/evidence correctness, scope control, required verification, and the final review verdict.
@@ -453,20 +471,230 @@ Global files under `~/.claude/agents/` may exist as optional mirrors, but Househ
 
 Do not modify Claude workflow files during product work unless the human explicitly requests a Claude workflow configuration task.
 
-## Required process
+## Orchestrator preflight checks
 
-Use the Implementer and Reviewer agents for this task.
+Before any delegated work begins, run:
 
-1. First, ask the Implementer agent to handle the bug or requested change.
-2. The Implementer must reproduce the issue before editing code.
-3. The Implementer must add or update tests before or alongside the fix.
-4. The Implementer must make the smallest safe change.
-5. The Implementer must run targeted tests and report exact results.
-6. Then ask the Reviewer agent to review the Implementer's report, git diff, and test evidence.
-7. The Reviewer must remain read-only and must not edit files.
-8. If the Reviewer returns `Request changes` or `Reject`, send only the specific review findings back to the Implementer.
-9. Run at most two implementer/reviewer loops unless the human explicitly approves more.
-10. Stop and summarize when the Reviewer returns `Accept` or `Accept with minor follow-up`.
+```bash
+git branch --show-current
+git status --short
+git log -1 --oneline
+```
+
+If the working tree is not clean, stop and report the dirty state.
+
+**Exception:** If the human explicitly says to continue from an existing WIP state, report the dirty state and ask for confirmation before proceeding.
+
+## Ordered workflow process
+
+The Orchestrator coordinates this exact workflow:
+
+### 1. Preflight clean-tree check
+
+Run the preflight checks above. Block the workflow if the tree is dirty unless the human explicitly authorizes WIP continuation.
+
+### 2. Product/UX ambiguity check
+
+Determine whether product/UX ambiguity exists (see "Product UX Gatekeeper routing heuristic" above).
+
+**If ambiguity present:**
+
+- Invoke the `product-ux-gatekeeper` agent.
+- Report the gatekeeper's verdict.
+- Stop if the gatekeeper returns `Product decision required`.
+- Wait for the human to supply the product decision.
+
+**If no ambiguity or after human decision:**
+
+- Report: `Product ambiguity present? yes/no` and `Product UX Gatekeeper invoked? yes/no`.
+- Proceed to Step 3.
+
+### 3. Implementer: reproduce, test, fix
+
+Only after product ambiguity is resolved, invoke the `implementer` agent.
+
+The Implementer must:
+
+- Reproduce the issue before editing code.
+- Add or update the smallest relevant failing test before or alongside the fix.
+- Make the smallest safe change.
+- Run targeted tests and report exact results.
+- Prepare a Review Packet with changed files, intended behavior, anchors, evidence, caveats, and Product UX Gatekeeper status.
+- Report `Ready for reviewer? yes` and `Ready for commit prep? no — pending Reviewer`.
+
+### 4. Orchestrator independent evidence collection
+
+After the Implementer reports "ready for reviewer," do not immediately invoke Reviewer.
+
+Independently verify the changed scope:
+
+```bash
+git status --short
+git diff --stat
+git diff --name-only
+```
+
+**If unexpected files appear** (generated databases, `.DS_Store`, caches, credentials, secrets, local artifacts, `.claude` workflow files, or unrelated product code), stop and report.
+
+**If E2E files changed materially:**
+
+- Verify that actual Playwright/browser tests ran (not just `--collect-only` or syntax checks).
+- Collect exact test command and output.
+- For five-run E2E gates, verify the exact command proves the full affected E2E file ran five consecutive times.
+
+**Collect required evidence:**
+
+- exact `git diff --stat` output
+- exact test commands run
+- exact test results (stdout/stderr)
+- exact E2E command and full-file five-run results, if applicable
+- exact `git diff` excerpts for changed functions/tests if helpful for review anchors
+
+### 5. Reviewer handoff
+
+With evidence collected, invoke the `reviewer` agent.
+
+Provide:
+
+- The original task and human product decisions (if any).
+- Product UX Gatekeeper verdict (if invoked).
+- Implementer report, including the Review Packet.
+- Changed file list.
+- Collected evidence: `git diff --stat`, exact test commands, exact results.
+- Exact E2E command and full-file five-run results, if browser-visible behavior changed.
+
+The Reviewer must return one of:
+
+- `Accept`
+- `Accept with minor follow-up`
+- `Request changes`
+- `Reject`
+
+**If Reviewer returns `Request changes` or `Reject`:**
+
+1. Send only the specific Reviewer finding back to the Implementer.
+2. After the Implementer fixes the issue, collect updated evidence (Step 4).
+3. Return the result to Reviewer for a final verdict.
+4. Do not stop at `ready for Reviewer sign-off`; require the Reviewer's final verdict.
+5. Allow at most two implementer/reviewer loops unless the human explicitly approves more.
+
+**If Reviewer returns `Accept` or `Accept with minor follow-up`:**
+
+- Proceed to Step 6.
+
+### 6. Breaker: adversarial QA (if required by risk)
+
+Invoke Breaker only if the change touches high-risk paths:
+
+- validation review screen, inline editing/autosave
+- approval/export gating
+- decision modals
+- audit integrity
+- raw-data immutability
+- recently fixed P0/P1 paths
+- browser-visible state consistency
+
+**Do not invoke Breaker for:**
+
+- docs-only, test-only, push-only, or workflow-only tasks (unless the human explicitly requests it or the change hit a recently problematic bug class)
+
+After Reviewer returns `Accept` and Breaker is required:
+
+- Invoke the `breaker` agent.
+- Breaker must return one of: `pass` / `P2 follow-up only` / `P1 found` / `P0 found`.
+- If Breaker finds P0 or P1, stop and ask the human.
+- If Breaker returns `pass` or `P2 follow-up only`, proceed to Step 7.
+
+### 7. Commit only if authorized and clean
+
+Happy-path auto-commit is opt-in and requires explicit human authorization:
+
+```text
+Happy-path auto-commit: enabled
+```
+
+Without that phrase, stop after Reviewer verdict and report ready for commit prep. Do not auto-commit.
+
+**If happy-path auto-commit is enabled and all conditions are met:**
+
+Verify one final time:
+
+```bash
+git status --short
+git diff --name-only
+git diff --stat
+```
+
+Then stage only expected files and commit with a concise message:
+
+```bash
+git commit -m "Imperative subject summarizing the change.
+
+Body: exact behavioral/test/workflow change.
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+After commit, verify:
+
+```bash
+git status --short
+git log -5 --oneline
+```
+
+**Auto-commit must never include `git push`.** After a successful auto-commit, only status/log verification is allowed. Push is a separate, explicit authorization.
+
+### 8. Push only if separately authorized
+
+Happy-path auto-push is disabled by default and separate from auto-commit.
+
+The Orchestrator must not push unless the human explicitly includes:
+
+```text
+Happy-path auto-push: enabled
+```
+
+The following do not authorize a push:
+
+- `Ready to push? yes`
+- Reviewer `Accept`
+- successful tests
+- successful commit
+- clean working tree
+
+If `Happy-path auto-commit: enabled` is present but `Happy-path auto-push: enabled` is absent, the Orchestrator must stop after commit and report:
+
+```text
+Pushed? no
+Ready to push? yes/no
+Reason push was not performed: Happy-path auto-push not enabled
+```
+
+**For push-only or explicitly authorized auto-push tasks:**
+
+Verify working tree is clean and outgoing commits are exactly expected:
+
+```bash
+git log origin/main..HEAD --oneline
+git diff origin/main --stat
+```
+
+Then push:
+
+```bash
+git push origin HEAD
+```
+
+Verify:
+
+```bash
+git status
+git log -5 --oneline
+```
+
+## Previous: Required process
+
+(The ordered workflow above supersedes the earlier "Required process" section. Sections below remain unchanged.)
 
 ## Mandatory review completion
 

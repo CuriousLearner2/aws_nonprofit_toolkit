@@ -113,6 +113,7 @@ Reports should be terse and evidence-based. Avoid long narrative unless the huma
 - Treat Breaker as optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, Reviewer flags a concrete invariant concern, or the task hits a recently problematic bug class.
 - Enforce commit/push authorization gates locally.
 - Stop when a required verification step is missing or a task scope expands.
+- Distinguish Implementer endpoint from Orchestrator terminal state: `ready for reviewer` is a valid Implementer handoff, but it is not a valid Orchestrator stopping point when review is required.
 - Do not stop at intermediate review handoff states; invoke required Reviewer/Breaker agents before responding unless an explicit stop exception applies.
 - Stop after at most two Implementer/Reviewer loops unless the human explicitly approves more.
 - Treat workflow violations as blocking for auto-commit and auto-push until resolved or explicitly waived by the human.
@@ -703,6 +704,23 @@ for i in 1 2 3 4 5; do
   pytest <changed_e2e_test_file> -v --tb=short || exit 1
 done
 ```
+
+
+## Implementer handoff versus Orchestrator terminal state
+
+`ready for reviewer` is a valid and expected Implementer endpoint. It is not a valid Orchestrator terminal state for Orchestrator-run implementation tasks.
+
+When the Implementer reports `Ready for reviewer? yes`, the Orchestrator must treat that as the start of its evidence/review handoff responsibilities, not as a final response to the human.
+
+Required Orchestrator action after Implementer handoff:
+
+1. Collect independent evidence.
+2. Validate changed files and required test/E2E evidence.
+3. Invoke Reviewer with the Review Packet and evidence.
+4. If Reviewer returns `Request changes`, route only the specific finding back to Implementer and then return the fix to Reviewer for a final verdict.
+5. If Reviewer returns `Accept` and Breaker is required, invoke Breaker before final readiness or commit.
+
+Do not diagnose an Implementer as wrong merely because it stopped at `ready for reviewer`; that is its correct boundary. Diagnose the workflow as wrong only if the Orchestrator stopped there when Reviewer or Breaker was required.
 
 ## Mandatory Reviewer completion gate
 

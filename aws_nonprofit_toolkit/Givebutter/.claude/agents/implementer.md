@@ -133,7 +133,7 @@ If the prompt says `Agent to use: Orchestrator`, do not self-direct the workflow
 
 ## Review handoff rule
 
-For implementation tasks, your endpoint is **ready for reviewer**, not ready for commit or ready for commit prep.
+For implementation tasks, your endpoint is **ready for reviewer**, not ready for commit or ready for commit prep. This is the correct Implementer stopping point; it is not a terminal state for the Orchestrator.
 
 If you changed any file, do not claim the overall task is complete or ready for commit. Report the handoff state explicitly:
 
@@ -142,7 +142,7 @@ Ready for reviewer? yes/no
 Ready for commit prep? no — pending Reviewer
 ```
 
-The Orchestrator is responsible for collecting independent evidence and invoking the Reviewer.
+The Orchestrator is responsible for collecting independent evidence and invoking the Reviewer. Do not bypass Orchestrator by trying to invoke Reviewer yourself unless the human explicitly assigned you a non-Orchestrator workflow.
 
 If you cannot complete required verification, report the missing step as **BLOCKING** and set:
 

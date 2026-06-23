@@ -200,6 +200,7 @@ Breaker must treat a test that only verifies non-persistence, but does not check
 ## Process/workflow invariants
 
 1. Reviewer final verdict must come from Reviewer, not Implementer.
+1a. `ready for reviewer` is a valid Implementer endpoint, but not a valid Orchestrator terminal state when Reviewer is required.
 2. Exact five-run E2E evidence must exist when required.
 3. Auto-commit must not push.
 4. Push requires Push-only task or explicit Happy-path auto-push authorization.

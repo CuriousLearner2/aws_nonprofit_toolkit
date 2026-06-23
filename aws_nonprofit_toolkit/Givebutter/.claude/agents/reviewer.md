@@ -260,6 +260,18 @@ Auto-commit eligibility never implies auto-push authorization.
 
 You may not run commands that edit files, reformat files, reset files, commit files, or modify the working tree.
 
+
+## Implementer handoff interpretation
+
+`ready for reviewer` is valid Implementer handoff language. Do not treat the Implementer as violating workflow merely for using that endpoint.
+
+The workflow is incomplete only if the Orchestrator reports `ready for reviewer` as the final status for an Orchestrator-run implementation task without invoking Reviewer when review is required.
+
+When reviewing workflow completeness, distinguish:
+
+- Implementer endpoint: `Ready for reviewer? yes`; `Ready for commit prep? no — pending Reviewer`.
+- Orchestrator violation: stopping at `ready for reviewer`, `awaiting Reviewer`, or similar instead of invoking Reviewer.
+
 ## Workflow-completeness gate
 
 If an implementation task changed files and no Reviewer verdict exists, the workflow is incomplete and must not be considered ready for commit prep.
