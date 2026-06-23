@@ -97,11 +97,16 @@ Reports should be terse and evidence-based. Avoid long narrative unless the huma
 ## Local enforcement checklist
 
 - Classify the task type before delegating.
+- Do not interpret “be efficient” as permission to exit Orchestrator flow, self-implement outside the requested agent flow, or skip required gates.
+- Use fewer agents only when the workflow says those agents are optional for the current task type and risk.
+- If the prompt says “commit if clean,” do not stop at “ready for commit” after all gates pass; commit only the expected files and do not push unless push is explicitly authorized.
 - Select the review level before invoking Reviewer or Breaker.
 - For Level 2, require affected invariant categories and direct anchors in the Review Packet before review begins.
 - For Level 3, require Stage 1 risk triage before any broad review; allow deep expansion only from named risk paths.
 - Keep Reviewer and Breaker scopes distinct: Reviewer handles implementation/evidence/scope correctness; Breaker handles adversarial invariant failure modes and overclaimed coverage.
 - If Reviewer or Breaker exceeds the Level 2/3 target timebox, require a stop report naming verified items, unverified items, and whether the remaining uncertainty is blocking, caveat, or non-blocking.
+- When invoking Reviewer or Breaker, include the selected review level, target timebox, and hard stop/report threshold.
+- Treat a Reviewer/Breaker timebox overrun without a stop report as a workflow violation until resolved or explicitly waived by the human.
 - Collect a Review Packet before handoff and include task type, changed files, intended behavior, non-goals, anchors, evidence, caveats, and Product UX Gatekeeper status.
 - Route product ambiguity to the Product UX Gatekeeper and report ambiguity present, invoked, reason if not invoked, and human product decision needed.
 - Invoke Breaker for high-risk implementation tasks when the current change touches or materially affects validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency. Do not require Breaker for every adjacent or historical concern unless a concrete current-change invariant risk appears.
@@ -113,6 +118,61 @@ Reports should be terse and evidence-based. Avoid long narrative unless the huma
 - Treat workflow violations as blocking for auto-commit and auto-push until resolved or explicitly waived by the human.
 - Keep the workflow docs as the source of truth and do not modify them unless the human asked for a workflow refactor.
 
+## Efficient orchestration rule
+
+Efficiency means right-sizing the workflow, not bypassing required gates.
+
+Use the smallest sufficient agent flow for the task:
+
+- no subagents for simple assessment unless needed,
+- Implementer + Reviewer for ordinary implementation tasks,
+- add Breaker only when risk criteria require it or the human explicitly asks,
+- add Product UX Gatekeeper only when product ambiguity exists.
+
+Do not spawn extra agents for routine docs-only, test-only, commit-prep, or push-only work unless a concrete concern appears.
+
+But do not use efficiency as permission to skip required gates. If the task says `Agent to use: Orchestrator`, keep Orchestrator in control until the requested terminal state is reached. Do not self-implement outside Orchestrator flow, do not stop at `ready for Reviewer` or `ready for Breaker`, and do not skip Reviewer, Breaker, Product UX Gatekeeper, required tests, full-file five-run E2E, or commit-if-clean authorization when those gates are required.
+
+If the human asks you to “be efficient,” interpret that as:
+
+- avoid unnecessary investigation,
+- avoid duplicate review work,
+- avoid unnecessary agents,
+- avoid rerunning expensive tests when valid current evidence exists,
+- keep reports concise,
+- preserve every required gate.
+
+A task that says `commit if clean` requires Orchestrator to commit the expected files after all required gates pass, unless a blocker, human decision, or explicit stop condition exists. Do not stop at `ready for commit` in that case.
+
+
+
+## Timebox stop/report enforcement
+
+When invoking Reviewer or Breaker, the Orchestrator must include the selected review level, the target timebox, and the hard stop/report threshold.
+
+For Level 2:
+
+- Reviewer target: about 2-3 minutes.
+- Breaker target: about 3-4 minutes.
+- Hard stop/report threshold: 6 minutes unless a concrete current-change P0/P1 risk has already been identified.
+
+For Level 3:
+
+- Stage 1 risk triage target: about 3-4 minutes.
+- Stage 2 focused review target: about 7-8 minutes.
+- Hard stop/report threshold: 12 minutes unless the human explicitly authorizes deeper review.
+
+If Reviewer or Breaker exceeds the hard stop/report threshold, the Orchestrator must require a stop report instead of allowing open-ended review. The stop report must include:
+
+- what was verified,
+- what remains unverified,
+- whether each unverified item is blocking, caveat, or non-blocking follow-up,
+- whether a concrete current-change P0/P1 risk was found,
+- whether review, commit, or push readiness is blocked.
+
+A timebox overrun is not automatically a code blocker. A timebox overrun without the required stop report is a workflow violation and blocks clean auto-commit or auto-push until resolved or explicitly waived by the human.
+
+Do not use timebox enforcement to skip required gates. Use it to force bounded, evidence-based reporting.
 ## Failed first-fix orchestration gate
 
 For implementation tasks, the Orchestrator must stop the workflow if the first attempted fix fails targeted verification.
@@ -569,6 +629,38 @@ Ready for commit prep? no
 ```
 
 The Orchestrator must not allow happy-path auto-commit when Reviewer acceptance depends on missing, inferred, or summarized five-run evidence.
+
+
+
+## Full-file five-run evidence validation gate
+
+Before invoking Reviewer, preparing commit, or pushing, Orchestrator must validate five-run E2E evidence when an E2E file changed materially.
+
+Orchestrator must inspect the exact command. If the command includes `::test_name`, it does not satisfy full-file five-run evidence unless the human explicitly authorized isolated-test evidence for the current task.
+
+Required readiness fields:
+
+- Full affected E2E file required? yes/no
+- Affected E2E file:
+- Exact command:
+- Did the command include `::test_name`? yes/no
+- Did the entire affected E2E file run? yes/no
+- Run 1 result:
+- Run 2 result:
+- Run 3 result:
+- Run 4 result:
+- Run 5 result:
+- Valid full-file five-run evidence? yes/no
+- Targeted five-run only? yes/no
+
+If full-file evidence is required but missing, Orchestrator must not invoke Reviewer as ready, must not commit, and must not push. The report must say:
+
+```text
+Full-file five-run evidence present? no
+Targeted five-run only? yes
+Ready for review/commit/push? no
+Blocking issue: full affected E2E file five-run is missing
+```
 
 ## Test gates
 

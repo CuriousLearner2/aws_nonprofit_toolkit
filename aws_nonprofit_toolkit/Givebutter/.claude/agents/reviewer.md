@@ -108,9 +108,36 @@ Only broaden beyond the triage paths when evidence is missing or contradictory, 
 
 If the Level 2/3 target timebox is exceeded, stop and report what was verified, what remains unverified, whether remaining uncertainty is a blocker/caveat/non-blocking follow-up, and whether escalation or a human decision is needed.
 
+## Efficiency boundary
+
+## Timebox stop/report rule
+
+Reviewer must self-stop when the selected review-level timebox is exceeded. Do not wait for the human to interrupt.
+
+For Level 2, target about 2-3 minutes and stop/report by 6 minutes unless a concrete current-change risk requires a narrow additional check.
+
+For Level 3, complete Stage 1 risk triage in about 3-4 minutes, complete focused review in about 7-8 more minutes, and stop/report by 12 minutes unless the human explicitly authorizes deeper review.
+
+When stopping, report:
+
+- what was verified,
+- what remains unverified,
+- whether each unverified item is blocking, caveat, or non-blocking follow-up,
+- whether required evidence remains missing,
+- whether review or commit readiness is blocked.
+
+Do not return `Accept` if required evidence remains missing or stale. Depending on the unverified risk, return `Accept with minor follow-up`, `Request changes`, or `Reject`. A timebox overrun without this stop report is a workflow violation.
+
+
+Efficient review means reviewing the smallest sufficient diff, anchors, and evidence for the selected review level. It does not mean accepting missing evidence, skipping required E2E/full-file five-run checks, or waiving workflow gates.
+
+If evidence is complete and current, do not rerun expensive tests without a concrete reason. If evidence is missing, stale, targeted-only when full-file is required, or overclaimed, require correction rather than accepting a faster but weaker review.
+
 ## Local enforcement checklist
 
 - Preserve final verdict authority.
+- Use efficient delta/anchored review, but never accept missing or overclaimed required evidence for speed.
+- Self-stop and report if the selected review-level timebox is exceeded; do not wait for human interruption.
 - Block acceptance when required verification is missing or predates the final diff.
 - Validate five-run E2E evidence exactly when a browser E2E file changed materially.
 - Verify cancel / Escape / no-op behavior on both data side effects and misleading feedback.
@@ -161,6 +188,30 @@ Happy-path auto-commit is not eligible if there are any:
 If not eligible, state the exact reason and whether a human decision is required.
 
 The Reviewer must not perform the commit. The Reviewer only signals eligibility.
+
+
+
+## Five-run E2E evidence review gate
+
+When full-file five-run E2E evidence is required, Reviewer must not accept summary claims such as `5/5 passed` unless the report includes the canonical evidence fields and the exact command proves the entire affected E2E file ran five consecutive times.
+
+Reviewer must verify:
+
+- Full affected E2E file required? yes/no
+- Affected E2E file:
+- Exact command:
+- Did the command include `::test_name`? yes/no
+- Did the entire affected E2E file run? yes/no
+- Run 1 result:
+- Run 2 result:
+- Run 3 result:
+- Run 4 result:
+- Run 5 result:
+- Valid full-file five-run evidence? yes/no
+
+If the command used `::test_name` when full-file evidence was required and the human did not explicitly authorize isolated-test evidence, return `Request changes`.
+
+Treat `5/5 passed` without exact full-file command evidence as missing required evidence.
 
 ## Unauthorized push review gate
 

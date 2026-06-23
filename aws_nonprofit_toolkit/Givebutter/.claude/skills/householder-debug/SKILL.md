@@ -101,6 +101,40 @@ Examples of workflow violations include:
 
 The Reviewer may still judge code correctness, but the workflow is not clean until the violation is resolved or explicitly waived by the human.
 
+## Efficient orchestration rule
+
+Efficiency means using the smallest sufficient workflow, not skipping required gates.
+
+Orchestrator must optimize for less wasted work by:
+
+- choosing the minimum review level that fits the risk,
+- avoiding unnecessary agents,
+- avoiding broad repo archaeology,
+- avoiding duplicate Reviewer/Breaker work,
+- accepting valid current evidence instead of rerunning expensive tests without a reason,
+- keeping reports concise and evidence-based.
+
+Efficiency must never be used as a reason to skip or defer:
+
+- Reviewer when implementation changed files and review is required,
+- Breaker when required by risk or explicitly requested,
+- Product UX Gatekeeper when product ambiguity exists,
+- full-file five-run E2E when an E2E file changed materially,
+- required verification commands,
+- returning a Reviewer-requested fix to Reviewer for final verdict,
+- commit when the task says to commit if clean and all gates pass,
+- push only when explicitly authorized.
+
+If a task says `Agent to use: Orchestrator`, Orchestrator remains responsible until the requested terminal state is reached:
+
+- final assessment,
+- Reviewer verdict,
+- Reviewer + Breaker verdicts,
+- committed if clean,
+- or pushed if explicitly authorized.
+
+Do not interpret human requests to “be efficient,” “move faster,” or “avoid too many agents” as permission to exit Orchestrator flow, self-implement outside the requested agent flow, skip required Reviewer/Breaker gates, skip required evidence, or stop at an intermediate handoff state.
+
 ## Review verdict meanings
 
 - `Accept` — the change is correct, evidence is sufficient, and no blocking issue remains.
@@ -267,6 +301,40 @@ They must request rerun or escalate when:
 
 ### Review Budget Rule
 
+### Timebox stop/report rule
+
+Efficiency means bounded, focused review; it does not mean open-ended inspection.
+
+Reviewer and Breaker must self-stop when the selected review-level timebox is exceeded. They must not wait for the human to interrupt.
+
+If the timebox is exceeded, immediately report:
+
+- what was verified,
+- what remains unverified,
+- whether each unverified item is blocking, caveat, or non-blocking follow-up,
+- whether a concrete current-change P0/P1 risk was found,
+- whether review, commit, or push readiness is blocked.
+
+Continuing beyond the timebox is allowed only when:
+
+- a concrete current-change P0/P1 risk has already been found and the extra inspection is limited to that risk path, or
+- the human explicitly authorizes deeper review.
+
+A timebox overrun without a stop report is a workflow violation. The violation does not automatically mean the code is wrong, but the workflow is not clean until the agent produces the required stop report or the human explicitly waives the violation.
+
+For Level 2:
+
+- Reviewer target: about 2-3 minutes.
+- Breaker target: about 3-4 minutes.
+- Hard stop/report threshold: 6 minutes unless a concrete current-change P0/P1 risk has already been identified.
+
+For Level 3:
+
+- Stage 1 risk triage target: about 3-4 minutes.
+- Stage 2 focused review target: about 7-8 minutes.
+- Hard stop/report threshold: 12 minutes unless the human explicitly authorizes deeper review.
+
+
 Reviewer and Breaker must start with the smallest sufficient review:
 
 1. changed files
@@ -306,6 +374,39 @@ A material E2E change includes:
 - changing export, approval, modal, validation, review-screen, or workflow browser tests
 
 The command must run the full affected E2E file. Do not use a `::test_name` selector for the five-run gate unless the human explicitly authorizes isolated-test evidence for the current task.
+
+
+
+### Five-run E2E evidence format
+
+When full-file five-run evidence is required, summary language such as `5/5 passed`, `five consecutive passes`, or `100% reliability` is not sufficient. The report must distinguish full-file runs from selected-test runs.
+
+Required evidence fields:
+
+- Full affected E2E file required? yes/no
+- Affected E2E file:
+- Exact command:
+- Did the command include `::test_name`? yes/no
+- Did the entire affected E2E file run? yes/no
+- Run 1 result:
+- Run 2 result:
+- Run 3 result:
+- Run 4 result:
+- Run 5 result:
+- Valid full-file five-run evidence? yes/no
+
+If the command includes `::test_name`, the evidence is targeted-test evidence, not full-file evidence, unless the human explicitly authorized isolated-test evidence for the current task.
+
+When full-file five-run evidence is required but only selected tests ran five times, the report must say:
+
+```text
+Full-file five-run evidence present? no
+Targeted five-run only? yes
+Ready for review/commit/push? no
+Blocking issue: full affected E2E file five-run is missing
+```
+
+A task may not be reported ready for review, ready for commit, or ready to push when full-file five-run evidence is required but the canonical evidence fields do not prove that the entire affected E2E file ran five consecutive times.
 
 ### Raw-data and review-screen invariants
 

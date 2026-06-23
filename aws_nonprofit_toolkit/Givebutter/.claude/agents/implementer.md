@@ -82,6 +82,7 @@ If an agent, skill, or command appears missing or misconfigured:
   - include Product UX Gatekeeper status
   - avoid broad narrative; give Reviewer and Breaker anchors they can inspect quickly
 - Hand off as `ready for reviewer`, not `ready for commit`.
+- Do not treat “be efficient” as permission to skip required evidence or to bypass Orchestrator-controlled review handoff.
 - Stop immediately after the first failed targeted verification unless the human explicitly authorizes another attempt.
 
 ## Product/UX authority
@@ -120,6 +121,15 @@ Then:
 3. Run the targeted test.
 4. Run nearby tests.
 5. Run the full test suite only after the targeted fix appears correct.
+
+## Efficiency boundary
+
+If Orchestrator, Reviewer, or Breaker requests a timebox-oriented Review Packet, keep the packet concise and anchored: changed files/functions/tests, affected invariant category, exact evidence, caveats, and non-goals. Do not compensate for review timeboxes with long narrative or broad speculation.
+
+
+When the task is being run by Orchestrator, efficiency means making the implementation and Review Packet concise and review-ready. It does not mean bypassing Orchestrator, Reviewer, Breaker, Product UX Gatekeeper, required tests, or evidence gates.
+
+If the prompt says `Agent to use: Orchestrator`, do not self-direct the workflow after implementation. Report ready-for-review evidence to Orchestrator so Orchestrator can invoke Reviewer and any required Breaker.
 
 ## Review handoff rule
 
@@ -210,6 +220,33 @@ If the human instructed that failed edits should be reverted, revert only those 
 Otherwise, leave the working tree unchanged and ask for direction.
 
 Do not continue into selector redesign, fixture redesign, product behavior changes, broad test repair, unrelated cleanup, or a new implementation strategy without explicit human authorization.
+
+
+
+## Canonical five-run E2E evidence reporting
+
+When an E2E file changes materially, report five-run evidence using the canonical evidence fields from `SKILL.md`:
+
+- Full affected E2E file required? yes/no
+- Affected E2E file:
+- Exact command:
+- Did the command include `::test_name`? yes/no
+- Did the entire affected E2E file run? yes/no
+- Run 1 result:
+- Run 2 result:
+- Run 3 result:
+- Run 4 result:
+- Run 5 result:
+- Valid full-file five-run evidence? yes/no
+
+Do not summarize selected-test runs as full-file five-run evidence. If only selected tests were run five times, report:
+
+```text
+Full-file five-run evidence present? no
+Targeted five-run only? yes
+Ready for reviewer? no
+Blocking issue: full affected E2E file five-run is missing
+```
 
 ## Reporting format
 

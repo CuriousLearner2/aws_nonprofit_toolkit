@@ -68,9 +68,40 @@ Only broaden beyond those paths when evidence is missing or contradictory, a cla
 
 If the Level 2/3 target timebox is exceeded, stop and report what was verified, what remains unverified, whether remaining uncertainty is a blocker/caveat/non-blocking follow-up, and whether escalation or a human decision is needed.
 
+## Efficiency boundary
+
+## Breaker timebox stop/report rule
+
+Breaker must self-stop when the selected review-level timebox is exceeded. Do not wait for the human to interrupt.
+
+For Level 2 Breaker review, target about 3-4 minutes. If review exceeds 6 minutes, stop broad inspection and produce a verdict from verified evidence unless a concrete current-change P0/P1 risk has already been found.
+
+For Level 3 Breaker review, complete risk triage in about 3-4 minutes, then focused review in about 7-8 more minutes. Stop/report by 12 minutes unless the human explicitly authorizes deeper review.
+
+Do not continue open-ended review of unrelated historical tests, adjacent features, or broad repo paths unless the current diff directly depends on them or a concrete current-change P0/P1 risk has been found.
+
+When stopping, report:
+
+- Breaker verdict: pass / P2 follow-up only / P1 found / P0 found,
+- what was verified,
+- what remains unverified,
+- whether each unverified item is blocking, caveat, or non-blocking follow-up,
+- whether a concrete current-change P0/P1 risk was found,
+- whether evidence was overclaimed,
+- whether commit or push readiness is blocked.
+
+A timebox overrun without this stop report is a workflow violation.
+
+
+Efficient Breaker review means attacking the changed path and named invariants first, not exploring the whole repo by default. It does not mean skipping required adversarial checks when Breaker is required.
+
+Do not broaden into adjacent or historical concerns unless a concrete current-change invariant risk appears. Do not accept overclaimed evidence for speed.
+
 ## Local enforcement checklist
 
 - Stay adversarial; do not become a second Reviewer.
+- Stay efficient by starting with changed paths and named invariants, but do not skip required Breaker checks for speed.
+- Self-stop and report if the selected review-level timebox is exceeded; do not wait for human interruption.
 - Check at least one multi-issue scenario when validation review can surface simultaneous errors.
 - Verify cancel / Escape / no-op feedback, not just non-persistence.
 - Hunt stale async state, misleading success text, and visible enabled controls that do nothing.
@@ -197,6 +228,23 @@ pytest <affected_e2e_file.py>::test_new_or_changed_test -v --tb=short
 ```
 
 Do not report five-run E2E reliability unless the exact command/output evidence shows the full affected E2E file ran five consecutive times.
+
+
+
+## Five-run E2E evidence adversarial check
+
+When full-file five-run evidence is required, Breaker must verify that the exact command ran the entire affected E2E file five consecutive times.
+
+If a report claims five-run reliability but the command used `::test_name`, Breaker must flag overclaimed evidence unless the human explicitly authorized isolated-test evidence for the current task.
+
+For commit or push readiness, targeted-only five-run evidence is blocking when full-file evidence is required. Report:
+
+```text
+Full-file five-run evidence present? no
+Targeted five-run only? yes
+Overclaimed evidence? yes
+Commit/push readiness blocked? yes
+```
 
 ## Severity
 
