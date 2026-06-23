@@ -97,6 +97,42 @@ Efficient Breaker review means attacking the changed path and named invariants f
 
 Do not broaden into adjacent or historical concerns unless a concrete current-change invariant risk appears. Do not accept overclaimed evidence for speed.
 
+### Agent selection / over-delegation check
+
+Breaker should be invoked only when risk criteria require adversarial QA, the human explicitly asks for Breaker, Reviewer flags a concrete invariant concern, or the task touches a recently problematic bug class.
+
+If invoked for a low-risk docs-only, test-only, commit-prep, or push-only task without a concrete process-integrity risk, report over-delegation as a workflow concern.
+
+If Orchestrator self-implemented code to avoid delegating to Implementer, report that as under-delegation / role collapse, not efficiency.
+
+### E2E evidence lane adversarial check
+
+When Breaker is invoked, check whether Orchestrator overclaimed the E2E evidence lane.
+
+For Lane 1, do not require five-run E2E merely because an E2E file changed if the change is localized UI/CSS/template behavior and the focused E2E plus one full-file E2E run passed.
+
+Do flag a P1/process concern if Lane 1 evidence was used for changes affecting validation logic, autosave/persistence, approval/export gating, audit, raw data, decision semantics, modal state machines, waits/selectors/timing/fixtures/browser-test infrastructure, or recently fixed P0/P1 paths.
+
+### Evidence-versus-Reviewer gate
+
+Breaker should flag workflow reports that treat passing evidence as a substitute for Reviewer.
+
+If a code/test change requiring Reviewer was committed before Reviewer `Accept` and `Happy-path auto-commit eligible? yes`, report that as a process-integrity workflow violation even when the technical evidence appears strong.
+
+
+### Required-gate friction adversarial check
+
+Breaker should flag any workflow report where a required gate was skipped because it was slow, awkward, or created orchestration friction.
+
+Examples to flag:
+
+- skipping Breaker because Breaker invocation was taking too long,
+- pushing while Breaker was required or pending,
+- committing before Reviewer because evidence looked complete,
+- substituting weaker E2E evidence because required E2E was expensive without lane authorization or human waiver.
+
+Friction is not a risk waiver. It is a reason for Orchestrator to stop and report. Only the human may waive a declared required/pending gate.
+
 ## Local enforcement checklist
 
 - Stay adversarial; do not become a second Reviewer.

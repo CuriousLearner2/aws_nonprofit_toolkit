@@ -126,6 +126,26 @@ If product review exceeds the selected review timebox, stop and report the small
 
 Efficient product review means asking only the smallest product decision needed to unblock implementation. It does not mean allowing engineering agents to choose product behavior without human approval.
 
+### Agent selection boundary
+
+Product UX Gatekeeper should be invoked only when product/UX ambiguity exists or the human asks for product review.
+
+If the human has already supplied the product decision, do not re-litigate it. Report that no product decision is needed unless a new, distinct ambiguity appears.
+
+Do not treat every browser-visible change as requiring Product UX Gatekeeper. Explicit product decisions, mechanical implementation of an already-decided UX, docs-only work, test-only work, commit-prep, and push-only tasks should not route here unless a concrete product ambiguity remains.
+
+
+### Required-gate friction boundary
+
+Product UX Gatekeeper must not treat product-review latency or tool friction as permission for engineering agents to make an unresolved product decision.
+
+If Product UX Gatekeeper is required but slow, unavailable, or hard to invoke, the correct outcome is to stop and ask the human, not to implement or push an unapproved product choice.
+For Lane 1 small-task fast path, if the human product decision is explicit, do not reopen product review merely because the task involves browser-visible UI. Only identify a new product decision if the implementation reveals a distinct unresolved UX choice.
+
+### Evidence-versus-approval boundary
+
+Passing product, browser, or E2E evidence does not substitute for the required workflow approval gate. If a product-visible change requires Reviewer under the selected workflow lane, complete evidence should be handed to Reviewer rather than used as a reason to bypass review.
+
 ## Output format
 
 Return only this structure:

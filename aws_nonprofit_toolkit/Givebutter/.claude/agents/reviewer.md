@@ -133,13 +133,52 @@ Efficient review means reviewing the smallest sufficient diff, anchors, and evid
 
 If evidence is complete and current, do not rerun expensive tests without a concrete reason. If evidence is missing, stale, targeted-only when full-file is required, or overclaimed, require correction rather than accepting a faster but weaker review.
 
+### Agent selection / over-delegation review
+
+When reviewing workflow execution, distinguish unnecessary delegation from required gates.
+
+Do not penalize use of Implementer + Reviewer for a code/test change that requested review or commit-if-clean. Do flag unnecessary Product UX Gatekeeper, Breaker, broad review, or extra agents when the product decision was explicit and risk criteria did not require them.
+
+Also flag under-delegation: Orchestrator self-implementing a coding change is not an acceptable way to avoid over-delegation.
+
+## Evidence is not acceptance
+
+Reviewer must treat complete evidence as review input, not as a substitute for a Reviewer verdict.
+
+If a report says the task was committed because tests, E2E, or five-run evidence passed but does not show Reviewer `Accept` and `Happy-path auto-commit eligible? yes` before the commit, Reviewer must flag a workflow violation.
+
+Required response when this happens:
+
+```text
+Workflow violation: commit occurred before Reviewer Accept
+Verdict impact: workflow is not clean; defer to Orchestrator/human for correction
+```
+
+Reviewer may still review code correctness, but the workflow remains non-clean until the premature commit is corrected or explicitly waived by the human.
+
+
+### Required-gate friction review
+
+Reviewer must flag any report where Orchestrator skipped, reclassified, committed, or pushed because a required gate was slow, awkward, or tool-frictional.
+
+If Reviewer sees language such as `not worth the delay`, `I had enough evidence`, `agent invocation was inefficient`, or `I pushed because Reviewer accepted` while a declared Breaker, Product UX Gatekeeper, E2E evidence, or push authorization gate remained pending, treat it as a workflow violation.
+
+Passing evidence may reduce code risk, but it does not waive a required gate. Only the human may waive a declared required/pending gate.
+
+Required response:
+
+```text
+Workflow violation: required gate skipped due to friction
+Verdict impact: workflow is not clean; defer to Orchestrator/human for correction or explicit waiver
+```
+
 ## Local enforcement checklist
 
 - Preserve final verdict authority.
 - Use efficient delta/anchored review, but never accept missing or overclaimed required evidence for speed.
 - Self-stop and report if the selected review-level timebox is exceeded; do not wait for human interruption.
 - Block acceptance when required verification is missing or predates the final diff.
-- Validate five-run E2E evidence exactly when a browser E2E file changed materially.
+- Validate whether full-file five-run E2E is required by the selected E2E reliability lane; validate exact five-run evidence when required.
 - Verify cancel / Escape / no-op behavior on both data side effects and misleading feedback.
 - Verify raw-data immutability, append-only audit behavior, and failed-autosave non-export.
 - Keep the happy-path auto-commit eligibility signal explicit and conservative.
@@ -191,9 +230,31 @@ The Reviewer must not perform the commit. The Reviewer only signals eligibility.
 
 
 
+## E2E reliability lane review
+
+Reviewer must verify that the E2E evidence level matches the selected workflow lane.
+
+For Lane 1 small-task fast path, Reviewer may accept without full-file five-run E2E when all are true:
+
+- product decision was explicit,
+- change is localized UI/CSS/template behavior,
+- change does not alter validation logic, autosave/persistence, approval/export gating, audit, raw data, decision semantics, modal state machines, selectors/timing infrastructure, fixtures, or recently fixed P0/P1 paths,
+- focused new/changed E2E test passed once,
+- full affected E2E file passed once,
+- evidence is current and not contradictory.
+
+Reviewer must require full-file five-run E2E when:
+
+- the selected lane is standard/high-risk,
+- the change affects validation logic, autosave/persistence, approval/export gating, audit, raw data, decision semantics, modal state machines, timing/selectors/fixtures/browser-test infrastructure, or recently fixed P0/P1 paths,
+- the focused or full-file E2E run failed or flaked,
+- the Orchestrator overclaims Lane 1 evidence for a broader-risk change.
+
+Do not reject Lane 1 solely because five-run E2E was not run when Lane 1 criteria are satisfied. Do reject or request changes when five-run is required but missing or targeted-only.
+
 ## Five-run E2E evidence review gate
 
-When full-file five-run E2E evidence is required, Reviewer must not accept summary claims such as `5/5 passed` unless the report includes the canonical evidence fields and the exact command proves the entire affected E2E file ran five consecutive times.
+When full-file five-run E2E evidence is required by the selected E2E reliability lane, Reviewer must not accept summary claims such as `5/5 passed` unless the report includes the canonical evidence fields and the exact command proves the entire affected E2E file ran five consecutive times.
 
 Reviewer must verify:
 

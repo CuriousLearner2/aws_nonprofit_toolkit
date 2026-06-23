@@ -147,6 +147,57 @@ A task that says `commit if clean` requires Orchestrator to commit the expected 
 
 
 
+## Agent selection and no-over-delegation rule
+
+Choose the smallest sufficient agent set before delegating. Do not spawn agents just because they exist.
+
+Default routing:
+
+- Assessment/status: Orchestrator only; no subagents unless a concrete need appears.
+- Small code/test change without review or commit: direct Implementer task is appropriate if the human explicitly chose Implementer; otherwise Orchestrator may delegate only to Implementer and stop at the requested terminal state.
+- Code/test change with review or commit-if-clean: Orchestrator delegates to Implementer, then invokes Reviewer.
+- Product/UX ambiguity: invoke Product UX Gatekeeper before Implementer.
+- High-risk invariant work: invoke Breaker after Reviewer `Accept`.
+- Docs/workflow-only: use Level 1 Reviewer; invoke Breaker only if a concrete process-integrity concern appears.
+
+Do not over-delegate: avoid unnecessary Product UX Gatekeeper, Breaker, broad review, or additional agents when the product decision is explicit and risk criteria do not require them.
+
+Do not under-delegate: Orchestrator must not self-implement to avoid delegation. If coding is required, delegate to Implementer. Efficiency means choosing the right agent path, not collapsing roles.
+
+If the human has supplied the product decision, report `Product ambiguity present? no` and do not route to Product UX Gatekeeper unless a new, distinct product ambiguity appears.
+
+## E2E reliability lane enforcement
+
+Choose the E2E evidence level that matches the selected workflow lane.
+
+For Lane 1 small-task fast path, localized UI/CSS/template work may use fast E2E evidence when all of the following are true:
+
+- the human product decision is explicit,
+- the change is localized and does not alter validation logic, autosave/persistence, approval/export gating, audit, raw data, decision semantics, modal state machines, selectors/timing infrastructure, fixtures, or recently fixed P0/P1 paths,
+- the focused new/changed E2E test passes once,
+- the full affected E2E file passes once.
+
+Do not run full-file five-run E2E for Lane 1 unless:
+
+- the human explicitly requests it,
+- focused or full-file E2E fails or flakes,
+- waits/selectors/timing/fixtures/browser-test infrastructure changed,
+- Reviewer identifies a concrete reliability risk,
+- the task no longer fits Lane 1.
+
+For standard/high-risk changes, full-file five-run E2E remains mandatory when the change affects validation logic, autosave/persistence, approval/export gating, audit, raw data, decision semantics, modal state machines, flaky timing/selectors, or recently fixed P0/P1 paths.
+
+When reporting evidence, explicitly state:
+
+- Selected E2E evidence lane: Lane 1 fast / standard-high-risk five-run
+- Focused E2E result:
+- Full affected E2E file one-run result:
+- Full-file five-run required? yes/no
+- If no, why not:
+- If yes, exact five-run command and results:
+
+Do not substitute targeted E2E runs for required full-file five-run evidence when five-run is required.
+
 ## Timebox stop/report enforcement
 
 When invoking Reviewer or Breaker, the Orchestrator must include the selected review level, the target timebox, and the hard stop/report threshold.
@@ -174,6 +225,31 @@ If Reviewer or Breaker exceeds the hard stop/report threshold, the Orchestrator 
 A timebox overrun is not automatically a code blocker. A timebox overrun without the required stop report is a workflow violation and blocks clean auto-commit or auto-push until resolved or explicitly waived by the human.
 
 Do not use timebox enforcement to skip required gates. Use it to force bounded, evidence-based reporting.
+
+
+## Required-gate friction stop rule
+
+Orchestrator must not treat latency, tool friction, or agent invocation difficulty as authorization to skip a gate.
+
+If a gate has been declared required or pending, only the human may waive it. Orchestrator must not unilaterally reclassify the task, commit, or push because a Reviewer, Breaker, Product UX Gatekeeper, or E2E run is slow or awkward.
+
+When a required gate is slow, unavailable, or exceeds its timebox, stop and report:
+
+- the required gate,
+- why it is blocked or slow,
+- what has already been verified,
+- what remains unverified,
+- whether code risk is known or only workflow risk,
+- recommended options: continue, narrow scope, waive, defer, reset, or fix forward.
+
+Do not push while a previously required or pending gate remains incomplete unless the human explicitly waives that gate and explicitly authorizes push.
+
+Examples:
+
+- Bad: `Breaker is taking too long, so I pushed.`
+- Good: `Breaker is taking too long; stopping for a human decision to waive, continue, or narrow.`
+- Bad: `Tests passed, so I committed before Reviewer.`
+- Good: `Tests passed; invoking Reviewer because evidence is input to review.`
 ## Failed first-fix orchestration gate
 
 For implementation tasks, the Orchestrator must stop the workflow if the first attempted fix fails targeted verification.
@@ -237,6 +313,30 @@ pytest tests/unit tests/integration -q --tb=short
 ```
 
 When a required command fails, the final report must name the failing command, the failing test or failure group, and the verdict impact.
+
+## Evidence-to-Reviewer gate
+
+Evidence completion is not commit authorization. Complete evidence is the package Orchestrator gives to Reviewer.
+
+For any workflow lane requiring Reviewer, Orchestrator must:
+
+1. collect the complete evidence package,
+2. validate required E2E and test gates,
+3. invoke Reviewer,
+4. wait for a final Reviewer verdict, and
+5. commit only if Reviewer returns `Accept` and `Happy-path auto-commit eligible? yes`, with all other commit gates satisfied.
+
+Orchestrator must not commit solely because tests passed, five-run E2E passed, the change looks low-risk, or the evidence appears complete.
+
+If Orchestrator commits before Reviewer `Accept`, report:
+
+```text
+Workflow violation: commit occurred before Reviewer Accept
+Reviewer verdict: NOT RUN — BLOCKING
+Ready for commit prep? no
+```
+
+The correction is normally to reset or otherwise return to a pre-commit reviewable state, invoke Reviewer with the complete evidence, and recommit only after the required Reviewer gate passes.
 
 ## Clean-accept auto-commit gate
 
@@ -620,7 +720,7 @@ pytest tests/e2e/test_file.py::test_new_case -v --tb=short  # run five times
 
 Running only the new or changed test five times does not satisfy the full-file five-run requirement unless the human explicitly authorizes isolated-test evidence for the current task.
 
-For browser-visible changes, if an E2E file was created or materially changed and exact five-run command/output evidence is missing, or if the five-run evidence uses only a selected `::test_name` target without explicit human authorization, the Orchestrator must not invoke Reviewer and must report:
+For browser-visible changes, if full-file five-run E2E is required by the selected E2E evidence lane and exact five-run command/output evidence is missing, or if the five-run evidence uses only a selected `::test_name` target without explicit human authorization, the Orchestrator must not invoke Reviewer and must report:
 
 ```text
 Five-run E2E evidence present? no
@@ -635,7 +735,7 @@ The Orchestrator must not allow happy-path auto-commit when Reviewer acceptance 
 
 ## Full-file five-run evidence validation gate
 
-Before invoking Reviewer, preparing commit, or pushing, Orchestrator must validate five-run E2E evidence when an E2E file changed materially.
+Before invoking Reviewer, preparing commit, or pushing, Orchestrator must validate whether full-file five-run E2E evidence is required for the selected evidence lane.
 
 Orchestrator must inspect the exact command. If the command includes `::test_name`, it does not satisfy full-file five-run evidence unless the human explicitly authorized isolated-test evidence for the current task.
 
@@ -694,7 +794,7 @@ pytest tests/unit tests/integration -q
 
 For Export Console / export UI changes, run the relevant export E2E test file if one exists. If the change is browser-visible and no E2E exists, add one or stop and report.
 
-If an E2E browser test file changed materially, the affected E2E file must run five consecutive times before Reviewer invocation. This applies even if product code did not change.
+If E2E reliability lane selection determines that full-file five-run E2E is required, the affected E2E file must run five consecutive times before Reviewer invocation. This applies even if product code did not change.
 
 Run the full affected E2E file five times. Do not use a `::test_name` selector for this gate unless the human explicitly authorized isolated-test evidence:
 

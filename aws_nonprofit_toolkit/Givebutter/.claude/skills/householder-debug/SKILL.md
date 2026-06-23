@@ -119,6 +119,34 @@ Examples of workflow violations include:
 
 The Reviewer may still judge code correctness, but the workflow is not clean until the violation is resolved or explicitly waived by the human.
 
+
+## Required-gate friction stop rule
+
+Latency, tool friction, agent invocation difficulty, or timebox pressure is not permission to skip a required gate.
+
+If a required Reviewer, Breaker, Product UX Gatekeeper, E2E evidence, commit, or push-authorization gate is slow, unavailable, awkward to invoke, exceeds its timebox, or creates orchestration friction, Orchestrator must stop and report instead of unilaterally skipping the gate, reclassifying the task, committing, or pushing.
+
+Only the human may waive a required gate after it has been declared required or pending.
+
+Required behavior:
+
+- If Reviewer is slow or hard to invoke, stop and report; do not commit.
+- If Breaker is slow or hard to invoke after being required or pending, stop and report; do not push.
+- If Product UX Gatekeeper is required but unavailable or slow, stop and ask the human; do not implement the product choice.
+- If E2E evidence is required but expensive, stop and report the runtime cost; do not substitute weaker evidence unless the lane rules allow it or the human explicitly waives the gate.
+- If a push is blocked by an unresolved workflow gate, do not push because the code “looks safe.”
+
+Examples:
+
+- Bad: `Breaker is taking too long, so I pushed.`
+- Good: `Breaker is taking too long; stopping to ask whether to waive, continue, or narrow the Breaker scope.`
+- Bad: `Tests passed, so I committed before Reviewer.`
+- Good: `Tests passed; invoking Reviewer because evidence is input to review.`
+- Bad: `To be efficient, Orchestrator self-implemented.`
+- Good: `Using the fastest allowed lane while preserving role boundaries.`
+
+A friction-based gate skip is a workflow violation even when the code and evidence are technically correct. The remedy is to stop, report the exact gate and friction, and obtain a human decision or complete the gate.
+
 ## Efficient orchestration rule
 
 Efficiency means using the smallest sufficient workflow, not skipping required gates.
@@ -152,6 +180,39 @@ If a task says `Agent to use: Orchestrator`, Orchestrator remains responsible un
 - or pushed if explicitly authorized.
 
 Do not interpret human requests to “be efficient,” “move faster,” or “avoid too many agents” as permission to exit Orchestrator flow, self-implement outside the requested agent flow, skip required Reviewer/Breaker gates, skip required evidence, or stop at an intermediate handoff state.
+
+## Agent selection and no-over-delegation rule
+
+Use the smallest sufficient agent set for the task. Do not spawn agents just because they exist.
+
+Default choices:
+
+- Assessment/status: Orchestrator only, with no subagents unless a concrete need appears.
+- Small code/test change without review or commit: Implementer only, then stop at `ready for reviewer` if review is desired separately.
+- Code/test change with review or commit-if-clean: Orchestrator delegates to Implementer, then invokes Reviewer.
+- Product/UX ambiguity: Product UX Gatekeeper before implementation.
+- High-risk invariant work: add Breaker after Reviewer `Accept`.
+- Docs/workflow-only: Level 1 Reviewer; Breaker only if a concrete process-integrity concern appears.
+
+Orchestrator must not self-implement to avoid delegation. Efficiency means choosing the right agent path, not collapsing roles.
+
+When the human has already made a product decision, do not invoke Product UX Gatekeeper just to re-litigate it. Report that product ambiguity is absent because the decision was supplied, then proceed with the smallest sufficient implementation/review path.
+
+When a task is clearly low-risk but still asks for review or commit-if-clean, do not skip Orchestrator/Reviewer. Instead, use the lighter review level and omit optional agents such as Breaker unless the risk rules require them.
+
+## Evidence is not a substitute for Reviewer
+
+Complete evidence is the input to Reviewer. It is not a replacement for Reviewer.
+
+For any task that requires Reviewer:
+
+- Orchestrator must not commit merely because tests, E2E, or other evidence passed.
+- Orchestrator must invoke Reviewer with the complete evidence package before commit prep.
+- Commit is allowed only after Reviewer returns `Accept` and explicitly reports `Happy-path auto-commit eligible? yes`, plus all other commit gates pass.
+- If Reviewer was not invoked, final status must be `Reviewer verdict: NOT RUN — BLOCKING` and `Ready for commit prep? no`.
+- If a commit is created before Reviewer `Accept`, treat it as a workflow violation even if the code and evidence are technically correct.
+
+Do not interpret “evidence is complete,” “tests passed,” “five-run E2E passed,” or “changes are low-risk” as permission to skip Reviewer when the selected workflow lane requires Reviewer.
 
 ## Review verdict meanings
 
@@ -378,18 +439,61 @@ For review-screen/autosave work, also verify stale async state cannot show succe
 
 A cancel/no-op regression test is incomplete if it checks only persistence and not misleading visible feedback. Normal save behavior should remain positively tested: a real save may show success and must persist when expected.
 
+## E2E reliability lane selection
+
+Do not automatically require full-file five-run E2E for every E2E test edit.
+
+Use the smallest sufficient E2E evidence for the selected workflow lane.
+
+### Lane 1 small-task fast path E2E evidence
+
+For localized UI, CSS, or template changes where the human product decision is explicit and the change does **not** alter validation logic, autosave/persistence, approval/export gating, audit behavior, raw data, decision semantics, modal state machines, selectors/timing infrastructure, fixtures, or recently fixed P0/P1 paths:
+
+- run the focused new or changed E2E test once,
+- run the full affected E2E file once,
+- do not require full-file five-run E2E unless a trigger below appears.
+
+Full-file five-run E2E becomes required for Lane 1 only if:
+
+- the human explicitly requests it,
+- the focused E2E run fails or flakes,
+- the full affected E2E file run fails or flakes,
+- the change modifies waits, selectors, navigation timing, fixtures, browser-test infrastructure, or setup shared by browser tests,
+- Reviewer identifies a concrete reliability risk,
+- Orchestrator cannot confidently keep the task in Lane 1.
+
+### Standard/high-risk E2E evidence
+
+Full-file five-run E2E remains required when the current change affects or materially risks:
+
+- validation logic or row-status/issues semantics,
+- autosave or persistence behavior,
+- approval/export gating,
+- audit behavior,
+- raw-data immutability,
+- reviewer decision semantics,
+- modal state machines,
+- flaky timing, selectors, waits, fixtures, or E2E infrastructure,
+- recently fixed P0/P1 paths.
+
+### Reviewer check
+
+Reviewer must verify whether the selected E2E evidence lane is appropriate.
+
+For Lane 1, Reviewer must not reject solely because full-file five-run E2E was not run when the Lane 1 criteria are satisfied and the focused E2E plus one full-file E2E run passed.
+
+If the lane is wrong, the evidence is stale, the evidence is targeted-only when full-file evidence was required, or the change crosses into the standard/high-risk list above, Reviewer must require the stronger evidence before `Accept`.
+
 ### Five-run E2E gate
 
-If any Playwright/browser E2E file is created or materially changed, the affected E2E file must run five consecutive times before the work can be reported ready for review or ready for commit.
+Full-file five-run E2E is mandatory for standard/high-risk E2E changes and for Lane 1 only when a five-run trigger appears. When five-run E2E is required, the affected E2E file must run five consecutive times before the work can be reported ready for review or ready for commit.
 
-A material E2E change includes:
+Five-run-triggering E2E changes include:
 
-- adding a new E2E test
-- changing browser interactions
-- changing assertions
-- changing setup or fixtures used by browser tests
-- changing waits, selectors, navigation, or timing behavior
-- changing export, approval, modal, validation, review-screen, or workflow browser tests
+- changing setup, fixtures, waits, selectors, navigation timing, or browser-test infrastructure
+- changing browser interactions/assertions for validation, autosave, approval, export, audit, raw-data, decision, modal state-machine, or recently fixed P0/P1 paths
+- adding or changing E2E tests for high-risk workflow behavior
+- any Lane 1 E2E change that flakes/fails or cannot be confidently limited to localized UI/CSS/template reachability
 
 The command must run the full affected E2E file. Do not use a `::test_name` selector for the five-run gate unless the human explicitly authorizes isolated-test evidence for the current task.
 

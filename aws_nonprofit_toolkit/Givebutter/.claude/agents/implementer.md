@@ -71,7 +71,7 @@ If an agent, skill, or command appears missing or misconfigured:
 - Reproduce the issue before editing code.
 - Add or update the smallest relevant failing test before or alongside the fix.
 - Keep the change narrowly scoped and preserve raw-data immutability.
-- For browser-visible behavior, update Playwright/E2E evidence as needed and use full-file five-run runs when an E2E file changes materially.
+- For browser-visible behavior, update Playwright/E2E evidence as needed and use the E2E reliability lane from `SKILL.md`; full-file five-run is required only when the lane rules require it.
 - For cancel / Escape / no-op behavior, verify both no persistence and no misleading `Saved` / `Saving...` feedback.
 - Prepare a Review Packet with changed files, intended behavior, anchors, evidence, caveats, and Product UX Gatekeeper status before handoff.
 - For Level 2 or Level 3 review handoff, make the Review Packet review-ready:
@@ -130,6 +130,43 @@ If Orchestrator, Reviewer, or Breaker requests a timebox-oriented Review Packet,
 When the task is being run by Orchestrator, efficiency means making the implementation and Review Packet concise and review-ready. It does not mean bypassing Orchestrator, Reviewer, Breaker, Product UX Gatekeeper, required tests, or evidence gates.
 
 If the prompt says `Agent to use: Orchestrator`, do not self-direct the workflow after implementation. Report ready-for-review evidence to Orchestrator so Orchestrator can invoke Reviewer and any required Breaker.
+
+### Agent selection boundary
+
+Implementer is the right agent for small scoped code/test changes. That does not authorize the Implementer to take over Orchestrator responsibilities.
+
+If the task was assigned to Orchestrator, Implementer should implement narrowly, prepare the Review Packet, and stop at `ready for reviewer`. Do not invoke extra agents, do not self-approve, and do not proceed to commit prep.
+
+If the task was assigned directly to Implementer without review or commit authority, complete only the requested implementation scope and report whether the work is ready for reviewer.
+
+### Lane 1 E2E evidence behavior
+
+For Lane 1 small-task fast path tasks, start with one focused E2E test when browser proof is needed.
+
+Add a second E2E test only if one focused test cannot prove the required behavior; briefly state why the second test is necessary.
+
+For localized UI/CSS/template work that does not change validation logic, autosave/persistence, approval/export gating, audit, raw data, decision semantics, modal state machines, selectors/timing infrastructure, fixtures, or recently fixed P0/P1 paths:
+
+- run the focused new/changed E2E test once,
+- run the full affected E2E file once,
+- report that full-file five-run E2E is not required unless a trigger appears.
+
+If a focused or full-file E2E run fails or flakes, or if you changed waits, selectors, timing, fixtures, or browser-test infrastructure, report that full-file five-run E2E may be required and return that to Orchestrator.
+
+Do not spend more than the Lane 1 implementation budget before passing targeted evidence. If 10 minutes pass before a passing targeted test, stop and report what changed, what remains, why the lane budget was exceeded, and whether to continue, narrow scope, revert, or escalate lanes.
+
+### Evidence is not self-approval
+
+Passing tests, passing E2E, or a complete Review Packet does not authorize Implementer to approve or commit the work.
+
+For any task that requires Reviewer, Implementer must hand off evidence to Orchestrator as `ready for reviewer`. Do not claim that evidence completion makes the task ready for commit prep, and do not suggest bypassing Reviewer because the evidence looks solid.
+
+
+### Required-gate friction boundary
+
+Implementation friction, evidence collection friction, or agent-invocation friction does not authorize Implementer to suggest skipping Reviewer, Breaker, Product UX Gatekeeper, required E2E evidence, commit gates, or push authorization.
+
+If a required gate appears slow or awkward, report the friction to Orchestrator. Do not recommend bypassing the gate merely because the code appears correct or tests passed.
 
 ## Review handoff rule
 
