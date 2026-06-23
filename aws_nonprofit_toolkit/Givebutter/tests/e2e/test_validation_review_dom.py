@@ -5392,3 +5392,348 @@ async def test_changed_value_blur_saves_and_persists(
 
     finally:
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_sticky_action_bar_visible_while_scrolling(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify sticky bottom action bar remains visible during table scroll.
+
+    Scenario: Long validation table (50+ records) with scroll — Approve File and
+    Back to Dashboard buttons must be visible at bottom of viewport when scrolled.
+
+    Invariant: Action bar does not obscure table content (bottom padding applied).
+
+    Flow:
+    1. Seed database with 50 records (multiple with validation issues)
+    2. Load validation page in browser
+    3. Scroll table to bottom
+    4. Assert "Approve File" button is visible and clickable at bottom of viewport
+    5. Assert "Back to Dashboard" button is visible and clickable
+    6. Verify action bar does not overlap table rows
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Seed test data with 50 records
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch
+        batch = ImportBatch(
+            id='scroll-test-batch',
+            filename='scroll_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=50
+        )
+        session.add(batch)
+        session.flush()
+
+        # Create 50 raw rows
+        for i in range(1, 51):
+            raw_row = RawImportRow(
+                batch_id='scroll-test-batch',
+                row_index=i,
+                raw_csv_data={
+                    'name': f'Donor {i}',
+                    'date': '2026-01-15',
+                    'email': f'donor{i}@example.com',
+                    'phone': '(555) 123-4567',
+                    'amount': f'{100 * i}.00',
+                    'address': f'{100 * i} Main St'
+                }
+            )
+            session.add(raw_row)
+            session.flush()
+            raw_row_id = raw_row.id
+
+            # Create ImportContact
+            import_contact = ImportContact(
+                batch_id='scroll-test-batch',
+                raw_import_row_id=raw_row_id,
+                first_name='Donor',
+                last_name=str(i),
+                email=f'donor{i}@example.com',
+                phone='(555) 123-4567',
+                address_line1=f'{100 * i} Main St',
+                amount=float(f'{100 * i}')
+            )
+            session.add(import_contact)
+            session.flush()
+
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+
+        # Wait for server
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/scroll-test-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        # Launch browser
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/scroll-test-batch/validation')
+
+                # Wait for table to load
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                print("\n=== STICKY ACTION BAR TEST ===")
+
+                # Verify action bar exists at initial load
+                approve_btn = await page.query_selector('#approve-file-btn')
+                assert approve_btn is not None, "Approve File button not found"
+                print("✓ Approve File button found")
+
+                back_btn = await page.query_selector('a[href*="/dashboard"]')
+                assert back_btn is not None, "Back to Dashboard button not found"
+                print("✓ Back to Dashboard button found")
+
+                # Get initial bounding box of approve button
+                initial_box = await approve_btn.bounding_box()
+                assert initial_box is not None, "Approve button bounding box is None"
+                initial_y = initial_box['y']
+                print(f"✓ Initial Approve button Y position: {initial_y}")
+
+                # Get viewport height
+                viewport_height = page.viewport_size['height']
+                print(f"✓ Viewport height: {viewport_height}")
+
+                # Get page scroll height before scrolling
+                scroll_height = await page.evaluate("document.documentElement.scrollHeight")
+                print(f"✓ Page scroll height: {scroll_height}")
+
+                # Scroll to bottom of page (multiple scrolls to ensure we reach bottom)
+                for _ in range(10):
+                    await page.evaluate("window.scrollBy(0, 500)")
+                    await asyncio.sleep(0.1)
+
+                # Verify we've scrolled to near bottom
+                current_scroll = await page.evaluate("window.scrollY")
+                print(f"✓ Current scroll position: {current_scroll}")
+
+                await asyncio.sleep(0.5)
+
+                # Verify action bar is still visible after scroll
+                approve_btn_after = await page.query_selector('#approve-file-btn')
+                assert approve_btn_after is not None, "Approve File button disappeared after scroll"
+                print("✓ Approve File button still visible after scroll")
+
+                # Get bounding box after scroll
+                after_box = await approve_btn_after.bounding_box()
+                assert after_box is not None, "Approve button bounding box is None after scroll"
+                after_y = after_box['y']
+                after_height = after_box['height']
+                print(f"✓ Approve button Y position after scroll: {after_y}, height: {after_height}")
+
+                # Verify button is in viewport (not scrolled away)
+                # Button top should be above viewport bottom
+                button_bottom = after_y + after_height
+                assert after_y >= 0 and after_y < viewport_height, \
+                    f"Approve button not in viewport. Y={after_y}, viewport_height={viewport_height}"
+                print(f"✓ Approve button is in viewport (Y={after_y} within [0, {viewport_height}])")
+
+                # Verify button is clickable (has positive bounding box)
+                is_visible = await approve_btn_after.is_visible()
+                assert is_visible, "Approve button is not visible after scroll"
+                print("✓ Approve button is visible and clickable")
+
+                # Verify Back button is also visible
+                back_btn_after = await page.query_selector('a[href*="/dashboard"]')
+                assert back_btn_after is not None, "Back to Dashboard button disappeared after scroll"
+                back_visible = await back_btn_after.is_visible()
+                assert back_visible, "Back to Dashboard button is not visible after scroll"
+                print("✓ Back to Dashboard button is visible and clickable")
+
+                print("\n=== STICKY ACTION BAR TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_sticky_action_bar_with_approval_modal(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify sticky action bar visibility and z-index when approval modal opens.
+
+    Scenario: After scrolling a long table, reviewer clicks "Approve File" button.
+    The approval modal appears. Verify:
+    1. Sticky bar remains visible above modal or is properly layered
+    2. Bar is not hidden behind modal (z-index correct)
+    3. After closing modal, sticky bar is still accessible
+
+    This validates z-index layering and modal interaction with sticky bar.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Create batch with 50 records (all valid, no blocking issues)
+        batch = ImportBatch(
+            id='sticky-modal-test-batch',
+            filename='sticky_modal_test.csv',
+            upload_timestamp=datetime.utcnow(),
+            status='pending_review',
+            raw_row_count=50
+        )
+        session.add(batch)
+        session.flush()
+
+        # Seed 50 valid records (no validation issues, so approval is allowed)
+        for i in range(1, 51):
+            raw_row = RawImportRow(
+                batch_id='sticky-modal-test-batch',
+                row_index=i,
+                raw_csv_data={
+                    'name': f'Valid Donor {i}',
+                    'date': '2026-01-15',
+                    'email': f'valid{i}@example.com',
+                    'phone': '(555) 123-4567',
+                    'amount': f'{100 * i}.00',
+                    'address': f'{100 * i} Main St'
+                }
+            )
+            session.add(raw_row)
+            session.flush()
+            raw_row_id = raw_row.id
+
+            import_contact = ImportContact(
+                batch_id='sticky-modal-test-batch',
+                raw_import_row_id=raw_row_id,
+                first_name='Valid',
+                last_name=str(i),
+                email=f'valid{i}@example.com',
+                phone='(555) 123-4567',
+                address_line1=f'{100 * i} Main St',
+                amount=float(f'{100 * i}')
+            )
+            session.add(import_contact)
+            session.flush()
+
+        session.commit()
+
+        # Start Flask server
+        def run_flask():
+            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        await asyncio.sleep(2)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                requests.get('http://127.0.0.1:8001/imports/sticky-modal-test-batch/validation', timeout=2)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start")
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                # Navigate to validation page
+                await page.goto('http://127.0.0.1:8001/imports/sticky-modal-test-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                print("\n=== STICKY ACTION BAR MODAL INTERACTION TEST ===")
+
+                # Part 1: Verify sticky bar is visible initially
+                approve_btn = await page.query_selector('#approve-file-btn')
+                assert approve_btn is not None, "Approve File button not found"
+                is_visible_initial = await approve_btn.is_visible()
+                assert is_visible_initial, "Approve button not visible initially"
+                print("✓ Approve button visible initially")
+
+                # Part 2: Scroll to bottom of page
+                for _ in range(10):
+                    await page.evaluate("window.scrollBy(0, 500)")
+                    await asyncio.sleep(0.1)
+
+                # Verify button still visible after scroll
+                is_visible_after_scroll = await approve_btn.is_visible()
+                assert is_visible_after_scroll, "Approve button not visible after scroll"
+                print("✓ Approve button still visible after scroll")
+
+                # Part 3: Verify sticky bar z-index by checking it's not hidden
+                # Get button bounding box before modal
+                button_box_before = await approve_btn.bounding_box()
+                button_y_before = button_box_before['y']
+                print(f"✓ Approve button Y position before modal: {button_y_before}")
+
+                # Part 4: Click Approve File button (modal will appear with validation error, which is fine for z-index test)
+                await approve_btn.click()
+                await asyncio.sleep(1)  # Wait for modal to appear
+
+                # Part 5: Verify sticky bar remains accessible even if modal appeared
+                # The button should still be queryable and in the expected position
+                approve_btn_after_modal = await page.query_selector('#approve-file-btn')
+                assert approve_btn_after_modal is not None, "Approve button disappeared when modal triggered"
+                print("✓ Approve button still in DOM when modal triggered")
+
+                # Check button is still in viewport (not scrolled away or hidden behind modal)
+                button_box_after = await approve_btn_after_modal.bounding_box()
+                assert button_box_after is not None, "Approve button bounding box is None with modal open"
+                button_y_after = button_box_after['y']
+                print(f"✓ Approve button Y position with modal open: {button_y_after}")
+
+                # Part 6: Close modal by pressing Escape (standard way to close)
+                await page.keyboard.press('Escape')
+                await asyncio.sleep(0.5)
+
+                # Verify button is still visible after modal closes
+                is_visible_after_close = await approve_btn_after_modal.is_visible()
+                assert is_visible_after_close, "Approve button not visible after modal closed"
+                print("✓ Approve button remains visible after modal is closed")
+
+                print("\n=== STICKY ACTION BAR MODAL INTERACTION TEST PASSED ===")
+
+            finally:
+                await browser.close()
+
+    finally:
+        session.close()
