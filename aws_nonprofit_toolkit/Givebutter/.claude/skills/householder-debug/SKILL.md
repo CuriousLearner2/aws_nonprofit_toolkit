@@ -630,9 +630,13 @@ Then stage only expected files and commit with a concise message:
 ```bash
 git commit -m "Imperative subject summarizing the change.
 
-Body: exact behavioral/test/workflow change.
+Body: exact behavioral/test/workflow change."
+```
 
-Co-Authored-By: Claude <noreply@anthropic.com>"
+If your repo convention includes Co-Authored-By attribution for automated changes, append:
+
+```bash
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 After commit, verify:
