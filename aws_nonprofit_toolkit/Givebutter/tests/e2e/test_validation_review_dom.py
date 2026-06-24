@@ -30,6 +30,10 @@ import sys
 import tempfile
 import threading
 import os
+import subprocess
+import signal
+import time
+import requests
 from pathlib import Path
 from datetime import datetime
 from sqlalchemy.orm import sessionmaker
@@ -51,6 +55,34 @@ from scripts.uploader.app import app
 # ============================================================================
 # HELPERS FOR ESCAPE CANCEL E2E TESTS
 # ============================================================================
+
+def get_venv_python() -> str:
+    """
+    Get the correct Python interpreter from the active venv.
+
+    Returns the Python executable path that has all test dependencies installed.
+    If sys.executable doesn't contain '.venv/', derives it from sys.prefix.
+    """
+    # If running under venv, sys.executable should be correct
+    if '.venv' in sys.executable or 'venv' in sys.executable:
+        return sys.executable
+
+    # Otherwise, derive from sys.prefix (active venv location)
+    if hasattr(sys, 'prefix') and sys.prefix and '.venv' in sys.prefix:
+        venv_python = os.path.join(sys.prefix, 'bin', 'python3')
+        if os.path.exists(venv_python):
+            return venv_python
+
+    # Fallback: try to find .venv in parent directories
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        venv_python = parent / '.venv' / 'bin' / 'python3'
+        if venv_python.exists():
+            return str(venv_python)
+
+    # Last resort: return sys.executable (will fail if dependencies missing)
+    return sys.executable
+
 
 async def seed_validation_batch(
     session,
@@ -97,29 +129,6 @@ async def seed_validation_batch(
     session.commit()
 
     return raw_row_id
-
-
-async def start_flask_and_wait(flask_app, url: str, timeout_sec: int = 5) -> threading.Thread:
-    """Start Flask in background thread and wait for it to be ready."""
-    def run_flask():
-        flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-
-    import requests
-    max_retries = timeout_sec
-    for attempt in range(max_retries):
-        try:
-            requests.get(url, timeout=2)
-            return flask_thread
-        except (requests.ConnectionError, requests.Timeout):
-            if attempt < max_retries - 1:
-                await asyncio.sleep(1)
-            else:
-                raise RuntimeError("Flask server failed to start")
-
-    return flask_thread
 
 
 async def assert_field_restoration(field_input, original_value: str, field_name: str):
@@ -247,28 +256,38 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess (proof of concept)
+        base_url = 'http://127.0.0.1:8001'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
+        env['FLASK_ENV'] = 'development'
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
+        # Verify server is accessible with actual validation URL (diagnostic for database repo)
         import requests
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/email-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/email-test-batch/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -277,7 +296,7 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/email-test-batch/validation')
+                await page.goto(f'{base_url}/imports/email-test-batch/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -367,6 +386,11 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -450,28 +474,37 @@ async def test_validation_error_preserves_review_status_dropdown(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'dropdown-preserve-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/dropdown-preserve-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -480,7 +513,7 @@ async def test_validation_error_preserves_review_status_dropdown(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/dropdown-preserve-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -586,6 +619,11 @@ async def test_validation_error_preserves_review_status_dropdown(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -670,28 +708,37 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'approval-override-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/approval-override-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -700,7 +747,7 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/approval-override-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -780,6 +827,11 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -878,28 +930,37 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'inspect-modal-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(5)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/inspect-modal-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -908,7 +969,7 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/inspect-modal-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -960,14 +1021,21 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
                 await record_btn.click()
                 print("✓ P6: Clicked Record Decision button")
 
-                # Wait for modal to close
-                await page.wait_for_selector('#record-modal:not([style*="display: block"])', timeout=5000)
+                # Set up handler for the alert dialog that will appear
+                page.once("dialog", lambda dialog: dialog.accept())
+
+                # Wait for the modal to close (after the POST response is processed)
+                # The modal will be closed by the JS after the alert() is called
+                await page.wait_for_function(
+                    "() => !document.getElementById('record-modal').classList.contains('show')",
+                    timeout=5000
+                )
                 print("✓ P7: Modal closed after recording decision")
 
                 # ===== PART 4: Verify Table Dropdown Updated =====
                 print(f"\n=== PART 4: Verify Table Dropdown Updated ===")
 
-                # Find table dropdown
+                # Re-query the dropdown element from fresh DOM (don't reuse stale reference)
                 table_dropdown = await page.query_selector('select.row-status-dropdown')
                 assert table_dropdown is not None, "P8 FAILED: Table dropdown not found"
                 print("✓ P8: Table dropdown exists")
@@ -982,12 +1050,12 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
                 first_option_text = await first_option.inner_text()
                 print(f"✓ P10: First option shows: '{first_option_text}'")
 
-                # Check reset option visibility
+                # Re-query the reset-option element from fresh DOM (don't reuse stale reference)
                 reset_option = await table_dropdown.query_selector('.reset-option')
-                if reset_option:
-                    reset_display = await reset_option.evaluate("el => window.getComputedStyle(el).display")
-                    assert reset_display != 'none', "P11 FAILED: Reset option should be visible"
-                    print("✓ P11: Reset option is visible")
+                assert reset_option is not None, "P11 FAILED: Reset option not found in dropdown"
+                reset_display = await reset_option.evaluate("el => window.getComputedStyle(el).display")
+                assert reset_display != 'none', f"P11 FAILED: Reset option should be visible but display={reset_display}"
+                print("✓ P11: Reset option is visible")
 
                 # ===== PART 5: Re-open Inspect Modal and Verify =====
                 print(f"\n=== PART 5: Re-open Inspect Modal ===")
@@ -1023,6 +1091,11 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -1103,19 +1176,37 @@ async def test_needs_follow_up_notes_required_workflow(
         session.add(import_contact)
         session.commit()
 
-        # Start Flask app
-        from flask import Flask
-        import threading
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'followup-e2e-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        def run_app():
-            flask_app.run(port=8001, debug=False, use_reloader=False)
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        flask_thread = threading.Thread(target=run_app, daemon=True)
-        flask_thread.start()
+        # Wait for server to start
+        time.sleep(3)
 
-        # Wait for Flask to start
-        import time
-        time.sleep(2)
+        # Verify server is accessible with actual batch_id
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1123,7 +1214,7 @@ async def test_needs_follow_up_notes_required_workflow(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/followup-e2e-batch/validation', timeout=5000)
+                await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
                 await page.wait_for_selector('table', timeout=5000)
 
                 # Click Inspect button
@@ -1215,6 +1306,11 @@ async def test_needs_follow_up_notes_required_workflow(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -1291,19 +1387,37 @@ async def test_defer_workflow_notes_optional(
         session.add(import_contact)
         session.commit()
 
-        # Start Flask app
-        from flask import Flask
-        import threading
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'defer-e2e-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        def run_app():
-            flask_app.run(port=8001, debug=False, use_reloader=False)
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        flask_thread = threading.Thread(target=run_app, daemon=True)
-        flask_thread.start()
+        # Wait for server to start
+        time.sleep(3)
 
-        # Wait for Flask to start
-        import time
-        time.sleep(2)
+        # Verify server is accessible with actual batch_id
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1311,7 +1425,7 @@ async def test_defer_workflow_notes_optional(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/defer-e2e-batch/validation', timeout=5000)
+                await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
                 await page.wait_for_selector('table', timeout=5000)
 
                 # Click Inspect button
@@ -1358,6 +1472,11 @@ async def test_defer_workflow_notes_optional(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -1435,19 +1554,37 @@ async def test_inspect_modal_controls_comprehensive(
         session.add(import_contact)
         session.commit()
 
-        # Start Flask app
-        from flask import Flask
-        import threading
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'modal-controls-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        def run_app():
-            flask_app.run(port=8001, debug=False, use_reloader=False)
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        flask_thread = threading.Thread(target=run_app, daemon=True)
-        flask_thread.start()
+        # Wait for server to start
+        time.sleep(3)
 
-        # Wait for Flask to start
-        import time
-        time.sleep(2)
+        # Verify server is accessible with actual batch_id
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1455,7 +1592,7 @@ async def test_inspect_modal_controls_comprehensive(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/modal-controls-batch/validation', timeout=5000)
+                await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
                 await page.wait_for_selector('table', timeout=5000)
 
                 # Click Inspect button (FIRST OPEN)
@@ -1546,6 +1683,11 @@ async def test_inspect_modal_controls_comprehensive(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -1617,28 +1759,37 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8002, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'follow-up-test-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8002/imports/follow-up-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -1647,7 +1798,7 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8002/imports/follow-up-test-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -1719,6 +1870,11 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -1792,25 +1948,37 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'amount-test-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server and verify it's accessible
-        import requests
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/amount-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -1819,7 +1987,7 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/amount-test-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -1889,6 +2057,11 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -1973,28 +2146,37 @@ async def test_amount_validation_error_appears_in_issues_column(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'amount-test-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/amount-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -2003,7 +2185,7 @@ async def test_amount_validation_error_appears_in_issues_column(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/amount-test-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -2098,6 +2280,11 @@ async def test_amount_validation_error_appears_in_issues_column(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -2193,28 +2380,37 @@ async def test_amount_and_email_multi_error_workflow(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'multi-error-workflow-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/multi-error-workflow-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -2223,7 +2419,7 @@ async def test_amount_and_email_multi_error_workflow(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/multi-error-workflow-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -2370,6 +2566,11 @@ async def test_amount_and_email_multi_error_workflow(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -2439,16 +2640,37 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
         session.add(import_contact)
         session.commit()
 
-        # Start Flask app
-        def run_app():
-            flask_app.run(port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'audit-e2e-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_app, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for Flask to start
-        import time
-        time.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -2456,7 +2678,7 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
 
             try:
                 # Step 1: Open validation review page
-                await page.goto('http://127.0.0.1:8001/imports/audit-e2e-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('h1', timeout=5000)
                 print("✓ Validation review page loaded")
 
@@ -2505,7 +2727,7 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
 
                 # Step 6: Navigate to audit page
                 # Look for audit link or navigate directly
-                await page.goto('http://127.0.0.1:8001/imports/audit-e2e-batch/audit')
+                await page.goto(f'{base_url}/imports/{batch_id}/audit')
                 await page.wait_for_selector('h1, h2, table', timeout=5000)
                 print("✓ Audit page loaded")
 
@@ -2540,6 +2762,11 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -2611,15 +2838,37 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
         session.add(import_contact)
         session.commit()
 
-        # Start Flask app
-        def run_app():
-            flask_app.run(port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'cross-screen-audit-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_app, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        import time
-        time.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -2627,7 +2876,7 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
 
             try:
                 # Step 1: Open validation review page
-                await page.goto('http://127.0.0.1:8001/imports/cross-screen-audit-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('h1', timeout=5000)
                 print("✓ Validation review page loaded")
 
@@ -2678,7 +2927,7 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
                 print("✓ Validation review table shows Follow Up decision state")
 
                 # Step 4: Navigate to audit log page
-                await page.goto('http://127.0.0.1:8001/imports/cross-screen-audit-batch/audit')
+                await page.goto(f'{base_url}/imports/{batch_id}/audit')
                 await page.wait_for_selector('h1, h2, table', timeout=5000)
                 print("✓ Audit log page loaded")
 
@@ -2707,6 +2956,11 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -2779,15 +3033,37 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
         session.add(contact)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'golden-path-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -2796,7 +3072,7 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
 
             try:
                 # ===== PHASE 1: Validation Review - Make Autosave Correction =====
-                await page.goto('http://127.0.0.1:8001/imports/golden-path-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('h1', timeout=5000)
                 print("✓ Validation review page loaded")
 
@@ -2870,7 +3146,7 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
                 print("✓ Follow Up decision recorded; verifying persistence via audit log")
 
                 # ===== PHASE 3: Audit Log Navigation and Verification =====
-                await page.goto('http://127.0.0.1:8001/imports/golden-path-batch/audit')
+                await page.goto(f'{base_url}/imports/{batch_id}/audit')
                 await page.wait_for_selector('h1, h2, table', timeout=5000)
                 print("✓ Audit log page loaded")
 
@@ -2894,7 +3170,7 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
                 # ===== PHASE 4: Export Preview Navigation =====
                 try:
                     # Try to navigate to export preview/exports page if accessible
-                    await page.goto('http://127.0.0.1:8001/imports/golden-path-batch/exports')
+                    await page.goto(f'{base_url}/imports/{batch_id}/exports')
                     await page.wait_for_selector('h1, h2, button, a', timeout=5000)
                     print("✓ Export preview/console page loaded")
 
@@ -2930,6 +3206,11 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -3003,25 +3284,37 @@ async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'escape-email-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        import requests
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/escape-email-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3029,7 +3322,7 @@ async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/escape-email-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 # Find email input
@@ -3075,6 +3368,11 @@ async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -3147,25 +3445,37 @@ async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'escape-amount-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        import requests
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/escape-amount-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3173,7 +3483,7 @@ async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/escape-amount-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 # Find amount input
@@ -3221,6 +3531,11 @@ async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -3339,25 +3654,37 @@ async def test_escape_cancel_clears_status_and_does_not_show_saved(e2e_database_
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'escape-no-saved-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        import requests
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/escape-no-saved-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3365,7 +3692,7 @@ async def test_escape_cancel_clears_status_and_does_not_show_saved(e2e_database_
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/escape-no-saved-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 # Find email input and status span
@@ -3465,6 +3792,11 @@ async def test_escape_cancel_clears_status_and_does_not_show_saved(e2e_database_
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -3535,25 +3867,37 @@ async def test_normal_autosave_still_works_after_escape_implementation(e2e_datab
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'autosave-normal-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        import requests
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/autosave-normal-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3561,7 +3905,7 @@ async def test_normal_autosave_still_works_after_escape_implementation(e2e_datab
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/autosave-normal-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 # Find email input
@@ -3601,6 +3945,11 @@ async def test_normal_autosave_still_works_after_escape_implementation(e2e_datab
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -3689,25 +4038,37 @@ async def test_keyboard_interaction_escape_cancel_and_tab_save_workflow(
         session.add(contact)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'keyboard-test-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        import requests
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual batch_id
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3719,7 +4080,7 @@ async def test_keyboard_interaction_escape_cancel_and_tab_save_workflow(
                 print(f"\n=== KEYBOARD WORKFLOW PART 1: Navigate to Field ===")
 
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/keyboard-test-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
                 print("✓ Validation review page loaded")
 
@@ -3850,6 +4211,11 @@ async def test_keyboard_interaction_escape_cancel_and_tab_save_workflow(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -3889,6 +4255,8 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
     engine = create_db_engine(database_url)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
+
+    flask_process = None
 
     try:
         # Seed test data with multiple columns to exercise table width
@@ -3934,25 +4302,36 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
             session.add(contact)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        import requests
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual validation URL
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/desktop-layout-batch/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3976,7 +4355,7 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
                     # ===== PART 1: Page Load and Content Verification =====
                     print(f"\n--- Part 1: Page Load ({name}) ---")
 
-                    await page.goto('http://127.0.0.1:8001/imports/desktop-layout-batch/validation')
+                    await page.goto(f'{base_url}/imports/desktop-layout-batch/validation')
                     await page.wait_for_selector('table tbody tr', timeout=5000)
                     print(f"✓ Page loaded successfully")
 
@@ -4120,6 +4499,12 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
             await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        if flask_process is not None:
+            try:
+                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+            except Exception:
+                pass
         session.close()
 
     print("\n=== DESKTOP DENSE-TABLE LAYOUT TEST COMPLETE ===")
@@ -4175,15 +4560,45 @@ async def test_escape_cancel_restores_without_status_for_all_editable_fields(
         }
         await seed_validation_batch(session, 'escape-all-fields-batch', 'escape_all_fields.csv', field_values)
 
-        # Start Flask server
-        await start_flask_and_wait(flask_app, 'http://127.0.0.1:8001/imports/escape-all-fields-batch/validation')
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'escape-all-fields-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
+
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
+
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
             page = await browser.new_page()
 
             try:
-                await page.goto('http://127.0.0.1:8001/imports/escape-all-fields-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 # Matrix of fields: (field_name, selector_key, original_value, abandoned_value)
@@ -4259,6 +4674,11 @@ async def test_escape_cancel_restores_without_status_for_all_editable_fields(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -4312,8 +4732,38 @@ async def test_escape_cancel_restores_to_last_saved_value_not_raw_value(
         }
         await seed_validation_batch(session, 'last-saved-batch', 'last_saved_test.csv', field_values)
 
-        # Start Flask
-        await start_flask_and_wait(flask_app, 'http://127.0.0.1:8001/imports/last-saved-batch/validation')
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'last-saved-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
+
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
+
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -4321,7 +4771,7 @@ async def test_escape_cancel_restores_to_last_saved_value_not_raw_value(
 
             try:
                 print(f"\n=== TEST PART 1: Initial load ===")
-                await page.goto('http://127.0.0.1:8001/imports/last-saved-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 email_input = await page.query_selector('input[data-field="email"]')
@@ -4408,6 +4858,11 @@ async def test_escape_cancel_restores_to_last_saved_value_not_raw_value(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -4457,8 +4912,38 @@ async def test_escape_cancel_ignores_delayed_autosave_response(
         }
         await seed_validation_batch(session, 'delayed-autosave-batch', 'delayed_autosave.csv', field_values)
 
-        # Start Flask
-        await start_flask_and_wait(flask_app, 'http://127.0.0.1:8001/imports/delayed-autosave-batch/validation')
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'delayed-autosave-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
+
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
+
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -4477,7 +4962,7 @@ async def test_escape_cancel_ignores_delayed_autosave_response(
 
             try:
                 print(f"\n=== TEST PART 1: Setup ===")
-                await page.goto('http://127.0.0.1:8001/imports/delayed-autosave-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 email_input = await page.query_selector('input[data-field="email"]')
@@ -4569,6 +5054,11 @@ async def test_escape_cancel_ignores_delayed_autosave_response(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -4615,8 +5105,38 @@ async def test_console_errors_during_escape_cancel_workflow(
         }
         await seed_validation_batch(session, 'console-check-batch', 'console_check.csv', field_values)
 
-        # Start Flask
-        await start_flask_and_wait(flask_app, 'http://127.0.0.1:8001/imports/console-check-batch/validation')
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        batch_id = 'console-check-batch'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
+
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
+
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible
+        import requests
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
+                if response.status_code == 200:
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -4638,7 +5158,7 @@ async def test_console_errors_during_escape_cancel_workflow(
 
             try:
                 print(f"\n=== Loading validation review ===")
-                await page.goto('http://127.0.0.1:8001/imports/console-check-batch/validation')
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
                 print(f"✓ Page loaded")
 
@@ -4700,6 +5220,11 @@ async def test_console_errors_during_escape_cancel_workflow(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
         session.close()
 
 
@@ -4742,6 +5267,8 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+
+    flask_process = None
 
     try:
         # Create batch with validation issues (for realistic screen content)
@@ -4790,28 +5317,36 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual validation URL
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/keyboard-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/keyboard-test-batch/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -4822,7 +5357,7 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
                 print("\n=== KEYBOARD NAVIGATION AND FOCUS VISIBILITY TEST ===")
 
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/keyboard-test-batch/validation')
+                await page.goto(f'{base_url}/imports/keyboard-test-batch/validation')
                 print("✓ Validation Review page loaded")
 
                 # Wait for table to load (observable element, not hidden selector)
@@ -5095,6 +5630,12 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        if flask_process is not None:
+            try:
+                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+            except Exception:
+                pass
         session.close()
 
 
@@ -5126,6 +5667,8 @@ async def test_noop_blur_does_not_show_saved_feedback(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+
+    flask_process = None
 
     try:
         # Create batch
@@ -5171,28 +5714,36 @@ async def test_noop_blur_does_not_show_saved_feedback(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual validation URL
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/noop-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/noop-test-batch/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -5201,7 +5752,7 @@ async def test_noop_blur_does_not_show_saved_feedback(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/noop-test-batch/validation')
+                await page.goto(f'{base_url}/imports/noop-test-batch/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -5245,6 +5796,12 @@ async def test_noop_blur_does_not_show_saved_feedback(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        if flask_process is not None:
+            try:
+                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+            except Exception:
+                pass
         session.close()
 
 
@@ -5276,6 +5833,8 @@ async def test_changed_value_blur_saves_and_persists(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+
+    flask_process = None
 
     try:
         # Create batch
@@ -5321,28 +5880,36 @@ async def test_changed_value_blur_saves_and_persists(
         session.flush()
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual validation URL
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/change-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/change-test-batch/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -5351,7 +5918,7 @@ async def test_changed_value_blur_saves_and_persists(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/change-test-batch/validation')
+                await page.goto(f'{base_url}/imports/change-test-batch/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -5391,6 +5958,12 @@ async def test_changed_value_blur_saves_and_persists(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        if flask_process is not None:
+            try:
+                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+            except Exception:
+                pass
         session.close()
 
 
@@ -5423,6 +5996,8 @@ async def test_sticky_action_bar_visible_while_scrolling(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+
+    flask_process = None
 
     try:
         # Create batch
@@ -5470,28 +6045,36 @@ async def test_sticky_action_bar_visible_while_scrolling(
 
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server to start
+        time.sleep(3)
 
-        # Verify server is accessible
-        import requests
+        # Verify server is accessible with actual validation URL
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/scroll-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/scroll-test-batch/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         # Launch browser
         async with async_playwright() as p:
@@ -5500,7 +6083,7 @@ async def test_sticky_action_bar_visible_while_scrolling(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/scroll-test-batch/validation')
+                await page.goto(f'{base_url}/imports/scroll-test-batch/validation')
 
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -5578,6 +6161,12 @@ async def test_sticky_action_bar_visible_while_scrolling(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        if flask_process is not None:
+            try:
+                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+            except Exception:
+                pass
         session.close()
 
 
@@ -5604,6 +6193,8 @@ async def test_sticky_action_bar_with_approval_modal(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+
+    flask_process = None
 
     try:
         # Create batch with 50 records (all valid, no blocking issues)
@@ -5650,26 +6241,36 @@ async def test_sticky_action_bar_with_approval_modal(
 
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
+        # Start Flask server via subprocess
+        base_url = 'http://127.0.0.1:8001'
+        env = os.environ.copy()
+        env['HOUSEHOLDER_REPOSITORY'] = 'database'
+        env['GIVEBUTTER_DATABASE_URL'] = database_url
 
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-        await asyncio.sleep(2)
+        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
+        flask_process = subprocess.Popen(
+            [get_venv_python(), '-c', flask_cmd],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
 
-        # Verify server is accessible
-        import requests
+        # Wait for server to start
+        time.sleep(3)
+
+        # Verify server is accessible with actual validation URL
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports/sticky-modal-test-batch/validation', timeout=2)
-                break
+                response = requests.get(f'{base_url}/imports/sticky-modal-test-batch/validation', timeout=2)
+                if response.status_code == 200:
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    time.sleep(1)
                 else:
-                    raise RuntimeError("Flask server failed to start")
+                    raise RuntimeError("Flask server failed to start or validation URL returned error")
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -5677,7 +6278,7 @@ async def test_sticky_action_bar_with_approval_modal(
 
             try:
                 # Navigate to validation page
-                await page.goto('http://127.0.0.1:8001/imports/sticky-modal-test-batch/validation')
+                await page.goto(f'{base_url}/imports/sticky-modal-test-batch/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 print("\n=== STICKY ACTION BAR MODAL INTERACTION TEST ===")
@@ -5736,4 +6337,10 @@ async def test_sticky_action_bar_with_approval_modal(
                 await browser.close()
 
     finally:
+        # Cleanup Flask subprocess
+        if flask_process is not None:
+            try:
+                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+            except Exception:
+                pass
         session.close()
