@@ -51,6 +51,15 @@ This document describes the GitHub Actions workflow approach for Givebutter Phas
   - And others per DonorTrust Phase 1A guardrails
 - Verifies scope: warns if app code modified in documentation-only PRs
 
+#### e2e-smoke-test
+- **Trigger:** Opt-in via `e2e-check` label only (does not run on normal PRs)
+- **Test:** Single representative E2E test (test_invalid_email_updates_visible_row_status_and_issues)
+- **Purpose:** Validates Flask startup and browser integration without slowing normal CI
+- **Informational Only (Initial Rollout):** Does not block PR merge (continue-on-error: true). This is temporary while gathering CI stability data; after roughly 10 successful labeled PR runs or 1–2 weeks without flaky failures, we can switch the smoke job to blocking.
+- **Setup:** Installs Playwright, launches Chromium browser, seeds test database
+- **Artifact:** Uploads e2e-smoke-results.txt (30-day retention)
+- **Timeout:** 15 minutes (allows for browser startup overhead)
+
 **Example Output:**
 ```
 ## 🧪 QA Report
@@ -108,7 +117,12 @@ git push origin feature/new-householder-field
    - Posts test results as comment
    - No merge action taken
 
-2. **Review Process (Human):**
+2. **On e2e-check Label (Optional):**
+   - Runs single E2E smoke test (Flask + Playwright)
+   - Does NOT slow down normal PRs (label gating)
+   - Results posted as artifact for review
+
+3. **Review Process (Human):**
    - Developer reviews test results in PR
    - If tests fail: developer fixes locally, pushes again
    - If tests pass: reviewer approves and merges manually
@@ -173,7 +187,35 @@ pytest tests/unit/test_*.py tests/integration/test_*.py -v --tb=short
 
 # 6. Check tests that currently pass still pass
 pytest tests/ -v --tb=short
+
+# 7. Optional: Run E2E smoke test locally (requires playwright install)
+pytest tests/e2e/test_validation_review_dom.py::test_invalid_email_updates_visible_row_status_and_issues -v
 ```
+
+---
+
+## E2E Smoke Test (Label-Gated)
+
+### How to Trigger E2E Smoke Test on Your PR
+
+1. **Add the `e2e-check` label** to your PR
+2. GitHub Actions automatically runs the e2e-smoke-test job (separate from unit/integration)
+3. Results appear in artifacts > e2e-smoke-results
+4. Test passes or fails independently (does not block merge)
+
+### Why Not Run E2E on Every PR?
+
+- **Browser startup overhead:** ~10 seconds per test
+- **Normal PRs focus:** Unit + integration tests (12 seconds, no browser)
+- **Selective coverage:** E2E smoke test verifies Flask + Playwright interaction only
+- **Cost:** Chromium installation + headless browser launch adds ~30 seconds total
+
+### When Should I Add e2e-check?
+
+- Making changes to **validation review UI** or **form handling**
+- Adding/modifying **E2E test coverage**
+- Testing **Flask route changes** that affect browser rendering
+- **Optional:** For documentation-only changes (not needed)
 
 ---
 
@@ -205,6 +247,12 @@ Once Phase 1B is stable and tested, GitHub Actions can be enhanced to include:
 2. Or PR is automatically QA'd on creation
 3. Or manually trigger: workflow_dispatch in Actions tab
 
+### How do I request E2E smoke test on my PR?
+
+1. Add `e2e-check` label to your PR
+2. e2e-smoke-test job automatically runs (separate from unit/integration)
+3. Check artifacts for e2e-smoke-results.txt
+
 ### What if a test fails?
 
 1. GitHub Actions posts test results as PR comment
@@ -222,6 +270,12 @@ Once Phase 1B is stable and tested, GitHub Actions can be enhanced to include:
 - **Automatic:** All PRs run tests when created/updated
 - **needs-qa:** Explicit label for extended review (same tests, explicit flagging)
 
+### What's the difference between needs-qa and e2e-check?
+
+- **needs-qa:** Runs unit + integration tests (12 seconds, no browser)
+- **e2e-check:** Runs single E2E smoke test (validates Flask + Playwright, ~30 seconds including browser startup)
+- **Both independent:** Can use one, both, or neither depending on your change
+
 ---
 
 ## Implementation Status
@@ -229,6 +283,7 @@ Once Phase 1B is stable and tested, GitHub Actions can be enhanced to include:
 | Component | Status | File |
 |-----------|--------|------|
 | Test & Guardrails Workflow | ✅ Active | `.github/workflows/claude-qa.yml` |
+| E2E Smoke Test (Opt-In) | ✅ Active | `.github/workflows/claude-qa.yml` (e2e-smoke-test job) |
 | Developer Automation (Claude Action) | ⏳ Not configured | (future: `.github/workflows/claude-dev.yml`) |
 | CODEOWNERS | ✅ Optional | `.github/CODEOWNERS` |
 | Hybrid Model Documentation | ✅ This document | `docs/automation/GITHUB_WORKFLOW_HYBRID_MODEL.md` |
@@ -239,11 +294,12 @@ Once Phase 1B is stable and tested, GitHub Actions can be enhanced to include:
 
 1. **Phase 1B:** Test the hybrid model with a few sample features
 2. **Incident Monitoring:** Track test pass rate and feedback
-3. **Phase 1B Completion:** Evaluate if automation can be expanded
-4. **Phase 2:** Plan anthropics/claude-code-action integration (if beneficial)
+3. **E2E Smoke Test Usage:** Gather feedback on opt-in label gating
+4. **Phase 1B Completion:** Evaluate if automation can be expanded
+5. **Phase 2:** Plan anthropics/claude-code-action integration (if beneficial)
 
 ---
 
-**Last Updated:** 2026-06-11  
-**Model Status:** Hybrid (Local Developer + GitHub Automated QA)  
+**Last Updated:** 2026-06-23
+**Model Status:** Hybrid (Local Developer + GitHub Automated QA + Opt-In E2E Smoke)
 **Recommended for:** Phase 1B development and testing

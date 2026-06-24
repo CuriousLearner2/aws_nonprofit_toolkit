@@ -18,8 +18,6 @@ permissions:
 
 env:
   PYTHON_VERSION: '3.14'
-  # Claude Code uses ANTHROPIC_API_KEY from repository secrets for analysis
-  # See docs/automation/CLAUDE_GITHUB_WORKFLOW.md for setup
 
 jobs:
   qa-check:
@@ -173,3 +171,43 @@ jobs:
           else
             echo "✅ Only documentation files changed"
           fi
+
+  e2e-smoke-test:
+    # E2E smoke test: opt-in via e2e-check label only
+    if: contains(github.event.pull_request.labels.*.name, 'e2e-check')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install E2E Dependencies
+        run: |
+          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio playwright
+          playwright install chromium
+
+      - name: Run E2E Smoke Test
+        run: |
+          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          python -m pytest tests/e2e/test_validation_review_dom.py::test_invalid_email_updates_visible_row_status_and_issues -q --tb=short 2>&1 | tee e2e-smoke-results.txt
+        continue-on-error: true
+
+      - name: Upload E2E Smoke Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: e2e-smoke-results
+          path: aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/e2e-smoke-results.txt
+          retention-days: 30
