@@ -6,164 +6,155 @@ allowed-tools: Read, Grep, Glob, Bash, Task
 
 # Householder Debug Skill
 
-Use this skill for Householder / DonorTrust bug fixes, review-screen issues, autosave issues, validation issues, approval/export issues, and small scoped implementation changes.
+Use this skill for Householder / DonorTrust bug fixes, review-screen issues, autosave issues, validation issues, approval/export issues, E2E issues, workflow/docs updates, and small scoped implementation changes.
+
+## Operating model
+
+The workflow is deliberately simple:
+
+```text
+Classify → declare gate → make one proof step → verify gate → stop or proceed
+```
+
+Do not drift into open-ended debugging. Do not reinterpret failed gates as partial success.
+
+## Source of truth
+
+Repo-local workflow files are authoritative for this project:
+
+```text
+.claude/skills/householder-debug/SKILL.md
+.claude/agents/orchestrator.md
+.claude/agents/implementer.md
+.claude/agents/reviewer.md
+.claude/agents/breaker.md
+.claude/agents/product-ux-gatekeeper.md
+```
+
+Global files under `~/.claude/` are optional mirrors only and must not override repo-local files.
+
+Do not create, move, overwrite, or modify Claude workflow/configuration files during product implementation. For this project, workflow-file edits are handled by ChatGPT unless the human explicitly authorizes a Claude workflow-configuration task.
+
+## Core project principle
+
+The system suggests. The reviewer decides. Raw data stays unchanged.
+
+Hard guardrails:
+
+- No CRM/Givebutter API calls or writeback.
+- No credentials, auth/RBAC changes, background jobs, bulk actions, or new export formats.
+- No raw source-data mutation.
+- No contact merge/delete, household_id assignment, cross-import matching, or master contacts/households.
+- Preserve append-only audit behavior.
+- Do not change schema/migrations unless explicitly authorized.
+- Do not approve broad unrelated refactors.
 
 ## Role ownership
 
-### Orchestrator
+- **Orchestrator** owns lane selection, sequencing, gates, evidence, review-level selection, Product UX Gatekeeper routing/reporting, and commit/push authorization.
+- **Implementer** owns the smallest safe fix, test-first discipline, targeted evidence, and ready-for-review handoff.
+- **Reviewer** owns implementation correctness, scope control, evidence validity, required verification, and final review verdict.
+- **Breaker** owns adversarial QA for P0/P1 invariant failures and overclaimed coverage. Breaker is not a second Reviewer.
+- **Product UX Gatekeeper** owns product/UX ambiguity only. The human is final product authority.
 
-- Owns sequencing, gates, evidence collection, review-level selection, Product UX Gatekeeper routing/reporting, and commit/push authorization enforcement.
+## Task types and terminal states
 
-### Implementer
+Classify every task before work begins.
 
-- Owns the smallest safe fix, test-first discipline, targeted evidence, and ready-for-review handoff.
+### Assessment only
 
+Use for diagnosis, planning, verification of assumptions, or workflow comprehension.
 
-### Handoff boundary clarification
+- No edits, staging, commits, pushes, or implementation agents.
+- Run only commands needed to answer the assessment.
+- Return facts, gaps, and one narrow recommended next task.
 
-`ready for reviewer` is the correct Implementer endpoint. It is not a workflow-complete or commit-ready state.
+### Implementation only
 
-The boundary is:
+Use for one confirmed gap.
 
-- Implementer may stop after producing a review-ready packet and explicitly reporting `Ready for reviewer? yes` and `Ready for commit prep? no — pending Reviewer`.
-- Orchestrator must not stop at `ready for reviewer` for Orchestrator-run implementation tasks.
-- Orchestrator must collect independent evidence, validate required test/E2E gates, and invoke Reviewer before reporting a final status.
-- Reviewer verdict, not Implementer handoff language, determines whether the task may proceed toward commit prep.
-- If Breaker is required by risk or explicitly requested, Orchestrator must invoke Breaker after Reviewer `Accept` unless Breaker was explicitly waived by the human.
+- Orchestrator delegates to Implementer, then invokes Reviewer when the declared implementation gate passes.
+- Do not broaden into related cleanup, product reassessment, schema changes, or alternate theories.
+- Use targeted tests first.
+- Stop if the first fix fails the declared gate.
 
-When diagnosing workflow failures, distinguish these two cases:
+### Commit preparation
 
-- Correct Implementer behavior: stopping at `ready for reviewer` after a complete Review Packet.
-- Workflow violation: Orchestrator stopping at `ready for reviewer` instead of invoking Reviewer when review is required.
+Use after clean review/evidence.
 
-### Reviewer
+- Do not re-investigate the bug or re-assess product behavior.
+- Verify changed/staged files only.
+- Commit only expected files and only when commit authorization is satisfied.
 
-- Owns diff/test/evidence correctness, scope control, required verification, and the final review verdict.
+### Push only
 
-### Breaker
+Use only when the human explicitly asks to push or enables auto-push.
 
-- Owns adversarial QA, invariant hunting, edge cases, misleading UI state, and P0/P1 workflow failures.
-- Breaker is required for high-risk implementation tasks when the current change touches or materially affects validation review, inline editing/autosave, approval/export gating, decision modals, audit integrity, raw-data immutability, recently fixed P0/P1 paths, or browser-visible state consistency that could affect reviewer decisions. Breaker is not required for every adjacent or historical concern unless a concrete current-change invariant risk appears.
-- Breaker is optional for docs-only, test-only, workflow-only, commit-prep, and push-only tasks unless the human explicitly asks, the Reviewer flags a concrete invariant concern, or the task touches a recently problematic bug class where adversarial review is useful.
+- No edits, staging, or new commits.
+- Verify intended commits, then push only if explicitly authorized.
 
-### Product UX Gatekeeper
+## Agent selection
 
-- Owns product/UX ambiguity only, including human product decision authority.
-- Does not review code correctness.
+Use the smallest sufficient agent set.
+
+- Assessment/status: Orchestrator only.
+- Small direct implementation without review/commit: Implementer only if the human explicitly chose Implementer.
+- Code/test change with review or commit-if-clean: Orchestrator → Implementer → Reviewer.
+- Product/UX ambiguity: Product UX Gatekeeper before implementation.
+- High-risk invariant work: Breaker after Reviewer `Accept`.
+- Docs/workflow-only: Level 1 Reviewer; Breaker only for concrete process-integrity risk.
+- Push-only: Orchestrator only.
+
+Do not over-delegate to optional agents without concrete need. Do not under-delegate by having Orchestrator self-implement.
+
+## Product/UX gate
+
+Invoke Product UX Gatekeeper when product/UX ambiguity exists, including choices about visible controls, status semantics, warnings/blockers, notes requirements, approval/export confirmation, navigation, decision semantics, or “should/how/best UX” questions.
+
+Do not invoke Product UX Gatekeeper when the human already made the product decision, or for mechanical test-only/docs-only/commit-prep/push-only work.
+
+Always report:
+
+```text
+Product ambiguity present? yes/no
+Product UX Gatekeeper invoked? yes/no
+If not invoked, reason:
+Human product decision needed? yes/no
+```
 
 ## Review packet
 
-Before review handoff, the Orchestrator must collect a Review Packet containing:
+Before Reviewer/Breaker handoff, Orchestrator must collect a concise Review Packet:
 
-- task type
-- review level
-- changed files
-- intended behavior
-- non-goals
-- exact diff anchors for changed functions, helpers, and tests
-- test/evidence commands and results
-- known caveats
-- proven claims
-- claims not being made
-- Product UX Gatekeeper status:
-  - ambiguity present? yes/no
-  - invoked? yes/no
-  - if not invoked, reason
-  - human product decision needed? yes/no
+- task type and review level,
+- changed files/functions/tests,
+- intended behavior and explicit non-goals,
+- affected invariant categories,
+- exact test/evidence commands and results,
+- caveats, proven claims, claims not being made,
+- Product UX Gatekeeper status.
 
-The Review Packet is the shared review contract. Reviewers and Breakers should use its anchors before broadening scope.
+Use anchors first. Avoid broad narrative.
 
-## Product UX Gatekeeper routing heuristic
+## Acceptance gates
 
-Invoke the Product UX Gatekeeper when the task or prompt contains product-choice language such as:
+A declared gate is binary.
 
-- should we
-- how should
-- what should happen
-- best UX
-- would it be better
+If the declared command exits nonzero, hangs, times out, exits `143`, or is interrupted, the gate failed unless the task was explicitly assessment-only or exact failures are proven pre-existing and unrelated with baseline evidence.
 
-Also invoke it when:
-
-- multiple reasonable user-visible workflows exist
-- the change affects what reviewers can see, decide, approve, defer, override, export, or navigate
-- the change affects visible controls, status semantics, warnings, blockers, notes requirements, approval/export confirmation, or decision semantics
-- implementing the task requires choosing between remove, disable, hide, label unavailable, or fully implement
-
-Do not invoke it when:
-
-- the human has already explicitly specified the expected behavior
-- the task is purely mechanical docs-only or test-only work and does not change reviewer-visible behavior
-- the task is commit-prep only or push-only
-- the question is code correctness rather than product behavior
-
-The Orchestrator must still report:
-
-- Product ambiguity present? yes/no
-- Product UX Gatekeeper invoked? yes/no
-- if not invoked, reason
-- human product decision needed? yes/no
-
-## Workflow violation handling
-
-A workflow violation blocks auto-commit and auto-push until the violation is resolved or explicitly waived by the human.
-
-The Orchestrator must report workflow violations to the human and let the human decide whether to continue, revert, fix forward, or create a separate task.
-
-Examples of workflow violations include:
-
-- unauthorized push
-- missing required evidence
-- unexpected files
-- bypassed gates
-
-The Reviewer may still judge code correctness, but the workflow is not clean until the violation is resolved or explicitly waived by the human.
-
-
-## Required-gate friction stop rule
-
-Latency, tool friction, agent invocation difficulty, or timebox pressure is not permission to skip a required gate.
-
-If a required Reviewer, Breaker, Product UX Gatekeeper, E2E evidence, commit, or push-authorization gate is slow, unavailable, awkward to invoke, exceeds its timebox, or creates orchestration friction, Orchestrator must stop and report instead of unilaterally skipping the gate, reclassifying the task, committing, or pushing.
-
-Only the human may waive a required gate after it has been declared required or pending.
-
-Required behavior:
-
-- If Reviewer is slow or hard to invoke, stop and report; do not commit.
-- If Breaker is slow or hard to invoke after being required or pending, stop and report; do not push.
-- If Product UX Gatekeeper is required but unavailable or slow, stop and ask the human; do not implement the product choice.
-- If E2E evidence is required but expensive, stop and report the runtime cost; do not substitute weaker evidence unless the lane rules allow it or the human explicitly waives the gate.
-- If a push is blocked by an unresolved workflow gate, do not push because the code “looks safe.”
-
-Examples:
-
-- Bad: `Breaker is taking too long, so I pushed.`
-- Good: `Breaker is taking too long; stopping to ask whether to waive, continue, or narrow the Breaker scope.`
-- Bad: `Tests passed, so I committed before Reviewer.`
-- Good: `Tests passed; invoking Reviewer because evidence is input to review.`
-- Bad: `To be efficient, Orchestrator self-implemented.`
-- Good: `Using the fastest allowed lane while preserving role boundaries.`
-
-A friction-based gate skip is a workflow violation even when the code and evidence are technically correct. The remedy is to stop, report the exact gate and friction, and obtain a human decision or complete the gate.
-
-## Failed gate anti-drift rule
-
-A declared acceptance gate is binary.
-
-If a declared gate command exits nonzero, the gate failed unless the exact failures are proven pre-existing and unrelated with baseline evidence. Partial symptom improvement is not gate success.
+Partial symptom improvement is not gate success.
 
 Examples:
 
 - `No port errors` is not success if the targeted E2E file still has assertion failures.
-- `Tests passed individually` is not success if the declared full-file gate failed.
-- `Evidence exists` is not success if Reviewer was required but not invoked.
-- `One failure class disappeared` is not success if the declared acceptance command still exits nonzero.
+- `One test passed` is not success if the declared full-file command failed.
+- `/health` passing is not proof that the target page sees seeded test data.
+- Complete evidence is not success if Reviewer was required but not invoked.
 
-When a declared gate fails, Orchestrator must stop and report:
+When a declared gate fails, stop and report:
 
 - gate name,
-- exact command/result,
+- exact command and exit code/timeout,
 - passed/failed/skipped count,
 - failing tests or failure group,
 - whether failures are proven pre-existing and unrelated,
@@ -171,762 +162,246 @@ When a declared gate fails, Orchestrator must stop and report:
 - whether failed-first-fix is triggered,
 - next allowed action.
 
-Do not proceed to Reviewer, Breaker, commit, or push after a failed declared gate unless the human explicitly authorizes a new diagnostic/fix task or explicitly waives the gate.
+Do not redefine the gate after partial progress. If the gate was wrong or too broad, stop and ask the human to approve a new gate.
 
-If the gate is ambiguous, Orchestrator must define the gate before implementation begins. Do not redefine the gate after partial progress to make the task appear successful.
+## Failed-first-fix and fail-fast rules
 
-## Efficient orchestration rule
+For implementation tasks, the first attempted fix gets one declared gate.
 
-Efficiency means using the smallest sufficient workflow, not skipping required gates.
+Stop if:
 
-Orchestrator must optimize for less wasted work by:
+- the first targeted verification fails,
+- the command hangs, times out, exits `143`, or is interrupted,
+- more than about 8 minutes pass after the first edit without a passing declared gate,
+- the root-cause theory changes materially,
+- the next likely fix is broader than authorized.
 
-- choosing the minimum review level that fits the risk,
-- avoiding unnecessary agents,
-- avoiding broad repo archaeology,
-- avoiding duplicate Reviewer/Breaker work,
-- accepting valid current evidence instead of rerunning expensive tests without a reason,
-- keeping reports concise and evidence-based.
+Do not continue into a second theory, second fix, selector redesign, fixture redesign, subprocess rewrite, product-code change, broad test repair, repeated hanging rerun, Reviewer, Breaker, commit, or push unless the human explicitly authorizes a new task or waives the gate.
 
-Efficiency must never be used as a reason to skip or defer:
+Stop report must include:
 
-- Reviewer when implementation changed files and review is required,
-- Breaker when required by risk or explicitly requested,
-- Product UX Gatekeeper when product ambiguity exists,
-- full-file five-run E2E when an E2E file changed materially,
-- required verification commands,
-- returning a Reviewer-requested fix to Reviewer for final verdict,
-- commit when the task says to commit if clean and all gates pass,
-- push only when explicitly authorized.
+- files changed,
+- exact failed/hung command,
+- last observed output/test count,
+- first attempted fix,
+- why it failed,
+- current hypothesis,
+- why the next step exceeds scope,
+- partial-change recommendation: revert / preserve / ask human,
+- next proposed human-authorized task.
 
-If a task says `Agent to use: Orchestrator`, Orchestrator remains responsible until the requested terminal state is reached:
+## E2E proof-step rule
 
-- final assessment,
-- Reviewer verdict,
-- Reviewer + Breaker verdicts,
-- committed if clean,
-- or pushed if explicitly authorized.
+For E2E infrastructure work, do not migrate or rewrite a whole E2E file until one representative test proves the new pattern.
 
-Do not interpret human requests to “be efficient,” “move faster,” or “avoid too many agents” as permission to exit Orchestrator flow, self-implement outside the requested agent flow, skip required Reviewer/Breaker gates, skip required evidence, or stop at an intermediate handoff state.
+This applies to changes involving Flask/browser startup, Playwright setup, E2E fixtures, database isolation, server lifecycle, ports, waits/timeouts/selectors, subprocess/thread/process cleanup, or pytest-xdist readiness.
 
-## Agent selection and no-over-delegation rule
+Required sequence:
 
-Use the smallest sufficient agent set for the task. Do not spawn agents just because they exist.
+1. **Assessment**
+   - Identify one representative test.
+   - Identify its fixture/startup path, URL, route, seeded data, database, and selector.
+   - Define a one-test acceptance gate.
 
-Default choices:
+2. **One-test proof**
+   - Change only the minimum code needed for that representative test.
+   - Do not modify all tests.
+   - Do not use broad replacement scripts.
+   - Do not change product code or assertions except mechanical URL/base_url plumbing.
+   - The one-test command must exit 0.
 
-- Assessment/status: Orchestrator only, with no subagents unless a concrete need appears.
-- Small code/test change without review or commit: Implementer only, then stop at `ready for reviewer` if review is desired separately.
-- Code/test change with review or commit-if-clean: Orchestrator delegates to Implementer, then invokes Reviewer.
-- Product/UX ambiguity: Product UX Gatekeeper before implementation.
-- High-risk invariant work: add Breaker after Reviewer `Accept`.
-- Docs/workflow-only: Level 1 Reviewer; Breaker only if a concrete process-integrity concern appears.
+3. **Small batch**
+   - Only after the one-test proof passes may a 3–5 test batch be migrated.
+   - The small-batch gate must exit 0.
 
-Orchestrator must not self-implement to avoid delegation. Efficiency means choosing the right agent path, not collapsing roles.
+4. **Whole file**
+   - Only after the small batch passes may the full affected E2E file be migrated.
+   - The full-file gate must exit 0 before Reviewer.
 
-When the human has already made a product decision, do not invoke Product UX Gatekeeper just to re-litigate it. Report that product ambiguity is absent because the decision was supplied, then proceed with the smallest sufficient implementation/review path.
+Prohibited:
 
-When a task is clearly low-risk but still asks for review or commit-if-clean, do not skip Orchestrator/Reviewer. Instead, use the lighter review level and omit optional agents such as Breaker unless the risk rules require them.
+- Migrating all tests before one-test proof.
+- Broad automated replacement scripts unless explicitly authorized after a passing proof step.
+- Treating `/health` as proof of page/data readiness.
+- Inferring architecture blockers without exact command/traceback evidence.
+- Proceeding to Reviewer after a failed proof-step gate.
 
-## Evidence is not a substitute for Reviewer
+Failed proof-step report must include:
 
-Complete evidence is the input to Reviewer. It is not a replacement for Reviewer.
+```text
+Representative test or batch:
+Exact command:
+Exit code / timeout:
+Passed/failed/skipped:
+First failing test:
+Failing URL / route / selector if known:
+Server health passed? yes/no
+Seeded data visible to page? yes/no/unknown
+First attempted fix:
+Why it failed:
+Next smallest testable step:
+Ready for Reviewer? no
+Ready for commit prep? no
+```
 
-For any task that requires Reviewer:
+## Proof-step progression rule
 
-- Orchestrator must not commit merely because tests, E2E, or other evidence passed.
-- Orchestrator must invoke Reviewer with the complete evidence package before commit prep.
-- Commit is allowed only after Reviewer returns `Accept` and explicitly reports `Happy-path auto-commit eligible? yes`, plus all other commit gates pass.
-- If Reviewer was not invoked, final status must be `Reviewer verdict: NOT RUN — BLOCKING` and `Ready for commit prep? no`.
-- If a commit is created before Reviewer `Accept`, treat it as a workflow violation even if the code and evidence are technically correct.
+When a task uses a staged proof sequence, do not re-plan a stage that already passed.
 
-Do not interpret “evidence is complete,” “tests passed,” “five-run E2E passed,” or “changes are low-risk” as permission to skip Reviewer when the selected workflow lane requires Reviewer.
+For E2E infrastructure work, the normal progression is:
 
-## Review verdict meanings
+```text
+Assessment → one-test proof → small batch → whole file → Reviewer
+```
 
-- `Accept` — the change is correct, evidence is sufficient, and no blocking issue remains.
-- `Accept with minor follow-up` — the change is safe to commit; the follow-up is non-blocking and can be handled separately.
-- `Request changes` — the issue is fixable within the same task or a next authorized loop without changing the core product decision or approach.
-- `Reject` — the approach is unsafe, wrong, overbroad, product-ambiguous, missing required evidence in a way that invalidates the task, or needs redesign/fresh task.
+After a stage passes, Orchestrator may proceed directly to the next human-authorized stage without re-running prior proof gates, re-listing already-proven tests, re-arguing the approach, or invoking extra planning agents.
 
-`Accept with minor follow-up` is not a clean happy path. Happy-path auto-commit eligibility remains `no` unless the Reviewer explicitly returns clean `Accept`.
+Reassessment is required only when:
 
-## Breaker loop and escalation policy
+- a declared gate fails, hangs, times out, exits `143`, or flakes,
+- prior evidence is stale or predates the current diff,
+- the next step materially changes scope,
+- product code or product behavior becomes necessary,
+- a new concrete risk appears,
+- or the human asks for reassessment.
 
-At most two Implementer/Reviewer loops are allowed by default.
+If none of those conditions apply, proceed to the next authorized proof step with a brief classification, one direct implementation delegation, one declared gate, and a stop report if the gate fails.
 
-If two loops are exhausted and issues remain, the Orchestrator must stop and ask the human.
+## Post-gate handoff rule
 
-The Orchestrator must not silently start a third loop.
+After a required implementation gate exits 0, the next required handoff is not a new planning phase.
 
-Stopping after two loops is not itself a workflow violation. It becomes a workflow violation only if the Orchestrator continues without human approval.
+If the workflow requires Reviewer after the gate, Orchestrator should invoke Reviewer immediately with a concise packet. Do not re-run prior proof gates, re-plan the already-approved approach, restate long history, or ask for another decision unless evidence is stale, scope changed, the gate failed/flaked, product code became necessary, a new concrete risk appeared, or the human asked for reassessment.
+
+The handoff packet should normally be under 10 bullets and take under about 60 seconds to prepare. Include only:
+
+- changed files,
+- prior blocking issues or proof history when relevant,
+- exact current gate command/result,
+- product code changed? yes/no,
+- assertions changed? yes/no,
+- scope/invariant notes needed for review,
+- Product UX Gatekeeper status.
+
+If Reviewer returns `Request changes` or `Reject` with concrete blocking fixes and the human authorizes a fix task, Orchestrator should delegate directly to Implementer. Do not start a new planning loop unless the requested fix is ambiguous or out of scope.
+
+## E2E evidence lanes
+
+### Lane 1 fast evidence
+
+Allowed only for localized UI/CSS/template work when product decision is explicit and the change does not affect validation logic, autosave/persistence, approval/export, audit, raw data, decision semantics, modal state machines, selectors/timing infrastructure, fixtures, or recently fixed P0/P1 paths.
+
+Requires:
+
+- focused E2E once,
+- full affected E2E file once.
+
+Five-run is required if the human asks, a run fails/flakes, waits/selectors/timing/fixtures/browser infrastructure changed, Reviewer flags reliability risk, or the task no longer fits Lane 1.
+
+### Standard/high-risk five-run
+
+Full-file five-run E2E is mandatory when changes affect validation logic, autosave/persistence, approval/export gating, audit, raw data, decision semantics, modal state machines, flaky timing/selectors, fixtures, or recently fixed P0/P1 paths.
+
+Report exact command/results and whether five-run was required.
 
 ## Review levels
 
 ### Level 1 Fast Review
 
-Use for:
-
-- test-only changes
-- docs-only changes
-- workflow-only changes
-- tiny low-risk changes with complete evidence
-
-Target:
-
-- Reviewer: about 90 seconds
-- Breaker: about 90 seconds
-- Combined if parallel: about 3-4 minutes
-
-Rules:
-
-- Delta review only.
-- Inspect changed files and Review Packet anchors first.
-- Do not inspect unrelated product code or historical tests unless a concrete concern appears.
-- Do not rerun tests when supplied evidence is complete and consistent.
+Use for docs-only, workflow-only, test-only, or tiny low-risk changes with complete evidence. Delta review only. Target about 90 seconds per agent.
 
 ### Level 2 Standard Review
 
-Use for:
-
-- normal product/test changes in known areas
-- Validation Review UI behavior
-- autosave behavior
-- row status logic
-- modal behavior
-- export blockers/warnings
-- audit visibility
-- small backend service changes with targeted tests
-
-Target:
-
-- Reviewer: about 2-3 minutes
-- Breaker: about 3-4 minutes
-- Combined if parallel: about 5-7 minutes
-
-Required Level 2 Review Packet fields:
-
-- changed files
-- changed functions, helpers, and tests
-- affected invariant category:
-  - UI feedback
-  - autosave/persistence
-  - row status/issues
-  - audit
-  - approval/export
-  - raw data
-  - navigation/modal
-- direct test evidence
-- nearby tests affected
-- explicit non-goals
-- Product UX Gatekeeper status
-
-Rules:
-
-- Use anchored review.
-- Inspect changed product code and directly affected tests first.
-- Inspect adjacent directly-called code only when needed.
-- Do not inspect unrelated historical tests by default.
-- Do not rerun tests when supplied evidence is complete and consistent.
-- Reviewer focuses on implementation correctness, scope control, test relevance, evidence validity, and maintainability as it affects the current diff's reviewability, code/test quality, scope, and risk. Reviewer should not request broad architecture cleanup or unrelated refactoring as part of maintainability review.
-- Breaker focuses on named invariant failure modes, changed-path edge cases, stale async/UI state, raw-data/export/audit/persistence risk, and overclaimed coverage.
-- Reviewer and Breaker should not duplicate each other's full review. Reviewer should not perform full adversarial QA unless Breaker is unavailable; Breaker should not re-review general maintainability unless it affects a failure mode.
-- Escalate to Level 3 only if there is a concrete risk to raw data, audit, export, persistence, approval state, or misleading UI feedback.
+Use for normal product/test changes, Validation Review UI, autosave, row status, modals, export blockers/warnings, audit visibility, and E2E infrastructure changes. Use anchored review. Reviewer target 2–3 minutes; Breaker target 3–4 minutes; hard stop/report at 6 minutes.
 
 ### Level 3 Deep Review
 
-Use for:
+Use for export correctness, raw-data immutability, audit integrity, approval/defer state machines, autosave/persistence architecture, schema/data-model changes, generated CSV behavior, or multi-file architectural changes. Start with 3–4 minute risk triage, then 7–8 minute focused review. Hard stop/report at 12 minutes unless the human authorizes more.
 
-- export correctness
-- raw-data immutability
-- audit integrity
-- approval/rejection/defer state machines
-- autosave/persistence architecture
-- schema/data-model changes
-- generated CSV behavior
-- multi-file architectural changes
+Reviewer/Breaker must self-stop at timebox and report verified items, unverified items, blocker/caveat/follow-up status, and whether readiness is blocked.
 
-Target:
+## Reviewer and Breaker gates
 
-- about 10-12 minutes unless a concrete blocker requires more time
+Evidence is input to Reviewer, not a substitute for Reviewer.
 
-Required staged process:
+For any lane requiring Reviewer:
 
-Stage 1 — Risk triage, 3-4 minutes:
+1. collect evidence,
+2. validate gates,
+3. invoke Reviewer,
+4. wait for final verdict,
+5. commit only if Reviewer returns clean `Accept` and commit gates are satisfied.
 
-- identify the top 3-5 invariants at risk
-- identify changed files touching those invariants
-- identify the highest-risk code paths
-- identify tests/evidence that claim to cover those paths
-- identify missing, stale, or contradictory evidence
-- decide whether the review can be downgraded to Level 2
+Breaker is required after Reviewer `Accept` for high-risk invariant work touching validation review, inline editing/autosave, approval/export, decision modals, audit, raw-data immutability, recent P0/P1 paths, or browser-visible state consistency that could affect reviewer decisions.
 
-Stage 2 — Focused deep review, 7-8 minutes:
+Do not invoke Breaker for every adjacent historical concern unless a concrete current-change risk appears.
 
-- inspect only the risk paths identified in Stage 1 unless a concrete concern requires expansion
-- verify the highest-risk invariants against the supplied evidence and changed code
-- report blockers, caveats, and unverified items instead of producing long narrative summaries
+## Workflow violation handling
 
-Allowed Level 3 expansion:
+A workflow violation blocks auto-commit and auto-push until resolved or explicitly waived by the human.
 
-- evidence is missing, stale, or contradictory
-- a product/test claim exceeds what the diff proves
-- raw data, export, audit, approval, persistence, or UI feedback could be wrong
-- a concrete P0/P1 risk is identified
+Examples:
 
-Prohibited Level 3 behavior:
+- unauthorized push,
+- missing required evidence,
+- unexpected files,
+- bypassed Reviewer/Breaker/Product UX Gatekeeper,
+- committing before Reviewer `Accept`,
+- skipping a required gate due to friction,
+- continuing after failed-first-fix without authorization.
 
-- unbounded repo archaeology
-- reading all related tests "just in case"
-- rerunning full suites without a specific reason
-- duplicating Reviewer and Breaker work
-- continuing beyond the timebox without reporting what remains unverified
+The Reviewer may still judge code correctness, but workflow is not clean until the violation is resolved or waived.
 
-If the target timebox is exceeded, the agent must stop and report what was verified, what remains unverified, whether the uncertainty is a blocker/caveat/non-blocking follow-up, and whether escalation or a human decision is needed.
+## Commit gate
 
-## Canonical shared policies
-
-### Evidence Acceptance Rule
-
-Reviewer and Breaker may accept supplied test evidence without rerunning tests when all of the following are true:
-
-- exact commands are shown
-- results include collected/passed counts
-- evidence was produced after the latest diff
-- affected files match task scope
-- there are no failures, skips, or unexplained warnings
-- five-run E2E evidence is full-file when required
-
-They must request rerun or escalate when:
-
-- evidence predates the final diff
-- commands are missing
-- selected tests were run when full-file evidence was required
-- failures are dismissed as environmental without proof
-- product code changed but only insufficient tests were run
-- claims exceed what the tests prove
-
-### Review Budget Rule
-
-### Timebox stop/report rule
-
-Efficiency means bounded, focused review; it does not mean open-ended inspection.
-
-Reviewer and Breaker must self-stop when the selected review-level timebox is exceeded. They must not wait for the human to interrupt.
-
-If the timebox is exceeded, immediately report:
-
-- what was verified,
-- what remains unverified,
-- whether each unverified item is blocking, caveat, or non-blocking follow-up,
-- whether a concrete current-change P0/P1 risk was found,
-- whether review, commit, or push readiness is blocked.
-
-Continuing beyond the timebox is allowed only when:
-
-- a concrete current-change P0/P1 risk has already been found and the extra inspection is limited to that risk path, or
-- the human explicitly authorizes deeper review.
-
-A timebox overrun without a stop report is a workflow violation. The violation does not automatically mean the code is wrong, but the workflow is not clean until the agent produces the required stop report or the human explicitly waives the violation.
-
-For Level 2:
-
-- Reviewer target: about 2-3 minutes.
-- Breaker target: about 3-4 minutes.
-- Hard stop/report threshold: 6 minutes unless a concrete current-change P0/P1 risk has already been identified.
-
-For Level 3:
-
-- Stage 1 risk triage target: about 3-4 minutes.
-- Stage 2 focused review target: about 7-8 minutes.
-- Hard stop/report threshold: 12 minutes unless the human explicitly authorizes deeper review.
-
-
-Reviewer and Breaker must start with the smallest sufficient review:
-
-1. changed files
-2. changed functions/tests
-3. adjacent directly-called code
-4. existing tests only if the new tests depend on them
-5. broader repo search only if a concrete concern remains unresolved
-
-If an agent exceeds the target timebox, it must stop and report:
-
-- what was verified
-- what remains unverified
-- whether the remaining uncertainty is a blocker or caveat
-
-### Cancel / no-op UI-state invariant
-
-For cancel, Escape, close, dismiss, revert, defer-without-save, or other no-op behavior, tests must verify both:
-
-1. Data invariant: the abandoned value/action is not persisted and does not create a decision, export, audit, approval, or raw-data side effect unless explicitly expected.
-2. Feedback invariant: the UI does not show `Saved`, `Saving...`, success, completed, validation-cleared, or any other confirmation/status message that implies the canceled action succeeded.
-
-For review-screen/autosave work, also verify stale async state cannot show success after a no-op because of blur handlers, debounced autosave, in-flight request resolution, modal close, or Escape-induced focus changes.
-
-A cancel/no-op regression test is incomplete if it checks only persistence and not misleading visible feedback. Normal save behavior should remain positively tested: a real save may show success and must persist when expected.
-
-## E2E reliability lane selection
-
-Do not automatically require full-file five-run E2E for every E2E test edit.
-
-Use the smallest sufficient E2E evidence for the selected workflow lane.
-
-### Lane 1 small-task fast path E2E evidence
-
-For localized UI, CSS, or template changes where the human product decision is explicit and the change does **not** alter validation logic, autosave/persistence, approval/export gating, audit behavior, raw data, decision semantics, modal state machines, selectors/timing infrastructure, fixtures, or recently fixed P0/P1 paths:
-
-- run the focused new or changed E2E test once,
-- run the full affected E2E file once,
-- do not require full-file five-run E2E unless a trigger below appears.
-
-Full-file five-run E2E becomes required for Lane 1 only if:
-
-- the human explicitly requests it,
-- the focused E2E run fails or flakes,
-- the full affected E2E file run fails or flakes,
-- the change modifies waits, selectors, navigation timing, fixtures, browser-test infrastructure, or setup shared by browser tests,
-- Reviewer identifies a concrete reliability risk,
-- Orchestrator cannot confidently keep the task in Lane 1.
-
-### Standard/high-risk E2E evidence
-
-Full-file five-run E2E remains required when the current change affects or materially risks:
-
-- validation logic or row-status/issues semantics,
-- autosave or persistence behavior,
-- approval/export gating,
-- audit behavior,
-- raw-data immutability,
-- reviewer decision semantics,
-- modal state machines,
-- flaky timing, selectors, waits, fixtures, or E2E infrastructure,
-- recently fixed P0/P1 paths.
-
-### Reviewer check
-
-Reviewer must verify whether the selected E2E evidence lane is appropriate.
-
-For Lane 1, Reviewer must not reject solely because full-file five-run E2E was not run when the Lane 1 criteria are satisfied and the focused E2E plus one full-file E2E run passed.
-
-If the lane is wrong, the evidence is stale, the evidence is targeted-only when full-file evidence was required, or the change crosses into the standard/high-risk list above, Reviewer must require the stronger evidence before `Accept`.
-
-### Five-run E2E gate
-
-Full-file five-run E2E is mandatory for standard/high-risk E2E changes and for Lane 1 only when a five-run trigger appears. When five-run E2E is required, the affected E2E file must run five consecutive times before the work can be reported ready for review or ready for commit.
-
-Five-run-triggering E2E changes include:
-
-- changing setup, fixtures, waits, selectors, navigation timing, or browser-test infrastructure
-- changing browser interactions/assertions for validation, autosave, approval, export, audit, raw-data, decision, modal state-machine, or recently fixed P0/P1 paths
-- adding or changing E2E tests for high-risk workflow behavior
-- any Lane 1 E2E change that flakes/fails or cannot be confidently limited to localized UI/CSS/template reachability
-
-The command must run the full affected E2E file. Do not use a `::test_name` selector for the five-run gate unless the human explicitly authorizes isolated-test evidence for the current task.
-
-
-
-### Five-run E2E evidence format
-
-When full-file five-run evidence is required, summary language such as `5/5 passed`, `five consecutive passes`, or `100% reliability` is not sufficient. The report must distinguish full-file runs from selected-test runs.
-
-Required evidence fields:
-
-- Full affected E2E file required? yes/no
-- Affected E2E file:
-- Exact command:
-- Did the command include `::test_name`? yes/no
-- Did the entire affected E2E file run? yes/no
-- Run 1 result:
-- Run 2 result:
-- Run 3 result:
-- Run 4 result:
-- Run 5 result:
-- Valid full-file five-run evidence? yes/no
-
-If the command includes `::test_name`, the evidence is targeted-test evidence, not full-file evidence, unless the human explicitly authorized isolated-test evidence for the current task.
-
-When full-file five-run evidence is required but only selected tests ran five times, the report must say:
-
-```text
-Full-file five-run evidence present? no
-Targeted five-run only? yes
-Ready for review/commit/push? no
-Blocking issue: full affected E2E file five-run is missing
-```
-
-A task may not be reported ready for review, ready for commit, or ready to push when full-file five-run evidence is required but the canonical evidence fields do not prove that the entire affected E2E file ran five consecutive times.
-
-### Raw-data and review-screen invariants
-
-For review-screen, inline-editing, autosave, validation, approval, and export work, enforce this invariant:
-
-**No visible field-level Error may coexist with Review Status = No issues.**
-
-Also verify:
-
-- Issues column updates when row validation changes
-- Approval warnings include rows with unresolved issues, follow-up, or defer decisions as required
-- Failed autosave values are not exported
-- Successful autosave values become effective reviewed values
-- RawImportRow.raw_csv_data remains unchanged
-- ReviewDecision / audit behavior remains append-only
-- Existing Needs follow-up Notes-required behavior still works
-- Existing Defer behavior still works
-- Existing Inspect modal behavior still works
-
-### Product UX Gatekeeper reporting
-
-Before any review handoff, the Orchestrator must report:
-
-- ambiguity present? yes/no
-- gatekeeper invoked? yes/no
-- if not invoked, reason
-- human product decision needed? yes/no
-
-If product/UX ambiguity is present, the Orchestrator must route to the Product UX Gatekeeper before treating the task as decision-complete.
-
-## Householder workflow source of truth
-
-For this project, the repo-local Claude workflow files are the source of truth:
-
-```text
-.claude/agents/implementer.md
-.claude/agents/reviewer.md
-.claude/agents/orchestrator.md
-.claude/agents/product-ux-gatekeeper.md
-.claude/skills/householder-debug/SKILL.md
-```
-
-Global files under `~/.claude/agents/` may exist as optional mirrors, but Householder tasks should follow the repo-local workflow files.
-
-Do not modify Claude workflow files during product work unless the human explicitly requests a Claude workflow configuration task.
-
-## Orchestrator preflight checks
-
-Before any delegated work begins, run:
-
-```bash
-git branch --show-current
-git status --short
-git log -1 --oneline
-```
-
-If the working tree is not clean, stop and report the dirty state.
-
-**Exception:** If the human explicitly says to continue from an existing WIP state, report the dirty state and ask for confirmation before proceeding.
-
-## Ordered workflow process
-
-The Orchestrator coordinates this exact workflow:
-
-### 1. Preflight clean-tree check
-
-Run the preflight checks above. Block the workflow if the tree is dirty unless the human explicitly authorizes WIP continuation.
-
-### 2. Product/UX ambiguity check
-
-Determine whether product/UX ambiguity exists (see "Product UX Gatekeeper routing heuristic" above).
-
-**If ambiguity present:**
-
-- Invoke the `product-ux-gatekeeper` agent.
-- Report the gatekeeper's verdict.
-- Stop if the gatekeeper returns `Product decision required`.
-- Wait for the human to supply the product decision.
-
-**If no ambiguity or after human decision:**
-
-- Report: `Product ambiguity present? yes/no` and `Product UX Gatekeeper invoked? yes/no`.
-- Proceed to Step 3.
-
-### 3. Implementer: reproduce, test, fix
-
-Only after product ambiguity is resolved, invoke the `implementer` agent.
-
-The Implementer must:
-
-- Reproduce the issue before editing code.
-- Add or update the smallest relevant failing test before or alongside the fix.
-- Make the smallest safe change.
-- Run targeted tests and report exact results.
-- Prepare a Review Packet with changed files, intended behavior, anchors, evidence, caveats, and Product UX Gatekeeper status.
-- Report `Ready for reviewer? yes` and `Ready for commit prep? no — pending Reviewer`.
-
-### 4. Orchestrator independent evidence collection
-
-After the Implementer reports "ready for reviewer," do not immediately invoke Reviewer.
-
-Independently verify the changed scope:
-
-```bash
-git status --short
-git diff --stat
-git diff --name-only
-```
-
-**If unexpected files appear** (generated databases, `.DS_Store`, caches, credentials, secrets, local artifacts, `.claude` workflow files, or unrelated product code), stop and report.
-
-**If E2E files changed materially:**
-
-- Verify that actual Playwright/browser tests ran (not just `--collect-only` or syntax checks).
-- Collect exact test command and output.
-- For five-run E2E gates, verify the exact command proves the full affected E2E file ran five consecutive times.
-
-**Collect required evidence:**
-
-- exact `git diff --stat` output
-- exact test commands run
-- exact test results (stdout/stderr)
-- exact E2E command and full-file five-run results, if applicable
-- exact `git diff` excerpts for changed functions/tests if helpful for review anchors
-
-### 5. Reviewer handoff
-
-With evidence collected, invoke the `reviewer` agent.
-
-Provide:
-
-- The original task and human product decisions (if any).
-- Product UX Gatekeeper verdict (if invoked).
-- Implementer report, including the Review Packet.
-- Changed file list.
-- Collected evidence: `git diff --stat`, exact test commands, exact results.
-- Exact E2E command and full-file five-run results, if browser-visible behavior changed.
-
-The Reviewer must return one of:
-
-- `Accept`
-- `Accept with minor follow-up`
-- `Request changes`
-- `Reject`
-
-**If Reviewer returns `Request changes` or `Reject`:**
-
-1. Send only the specific Reviewer finding back to the Implementer.
-2. After the Implementer fixes the issue, collect updated evidence (Step 4).
-3. Return the result to Reviewer for a final verdict.
-4. Do not stop at `ready for Reviewer sign-off`; require the Reviewer's final verdict.
-5. Allow at most two implementer/reviewer loops unless the human explicitly approves more.
-
-**If Reviewer returns `Accept` or `Accept with minor follow-up`:**
-
-- Proceed to Step 6.
-
-### 6. Breaker: adversarial QA (if required by risk)
-
-Invoke Breaker only if the change touches high-risk paths:
-
-- validation review screen, inline editing/autosave
-- approval/export gating
-- decision modals
-- audit integrity
-- raw-data immutability
-- recently fixed P0/P1 paths
-- browser-visible state consistency
-
-**Do not invoke Breaker for:**
-
-- docs-only, test-only, push-only, or workflow-only tasks (unless the human explicitly requests it or the change hit a recently problematic bug class)
-
-After Reviewer returns `Accept` and Breaker is required:
-
-- Invoke the `breaker` agent.
-- Breaker must return one of: `pass` / `P2 follow-up only` / `P1 found` / `P0 found`.
-- If Breaker finds P0 or P1, stop and ask the human.
-- If Breaker returns `pass` or `P2 follow-up only`, proceed to Step 7.
-
-### 7. Commit only if authorized and clean
-
-Happy-path auto-commit is opt-in and requires explicit human authorization:
+Happy-path auto-commit is disabled unless the prompt includes exactly:
 
 ```text
 Happy-path auto-commit: enabled
 ```
 
-Without that phrase, stop after Reviewer verdict and report ready for commit prep. Do not auto-commit.
+Auto-commit may run only when all are true:
 
-**If happy-path auto-commit is enabled and all conditions are met:**
+- Reviewer verdict is exactly `Accept`.
+- Reviewer states `Happy-path auto-commit eligible? yes`.
+- All required tests/E2E gates passed.
+- Fast pre-commit passed: `pytest tests/unit tests/integration -q --tb=short`.
+- Working tree contains only expected files.
+- No product-code files unless authorized.
+- No workflow files unless this is a workflow-config task.
+- No generated junk, credentials, caches, screenshots, traces, exports, DBs, `.DS_Store`, or unexpected untracked files.
+- No required test failures, blocking issues, unresolved product questions, schema concerns, or failed-first-fix violation.
+- Staged files exactly match expected files.
 
-Verify one final time:
+If any condition fails, do not commit. Report reason and human decision needed.
 
-```bash
-git status --short
-git diff --name-only
-git diff --stat
-```
+`Accept with minor follow-up`, `Request changes`, and `Reject` are not clean happy path.
 
-Then stage only expected files and commit with a concise message:
+## Push gate
 
-```bash
-git commit -m "Imperative subject summarizing the change.
-
-Body: exact behavioral/test/workflow change."
-```
-
-If your repo convention includes Co-Authored-By attribution for automated changes, append:
-
-```bash
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
-
-After commit, verify:
-
-```bash
-git status --short
-git log -5 --oneline
-```
-
-**Auto-commit must never include `git push`.** After a successful auto-commit, only status/log verification is allowed. Push is a separate, explicit authorization.
-
-### 8. Push only if separately authorized
-
-Happy-path auto-push is disabled by default and separate from auto-commit.
-
-The Orchestrator must not push unless the human explicitly includes:
+Auto-push is disabled unless the prompt includes exactly:
 
 ```text
 Happy-path auto-push: enabled
 ```
 
-The following do not authorize a push:
+`Ready to push? yes` is only a status report, never permission.
 
-- `Ready to push? yes`
-- Reviewer `Accept`
-- successful tests
-- successful commit
-- clean working tree
+Do not infer push authorization from tests, Reviewer Accept, commit success, clean branch, or branch ahead of origin.
 
-If `Happy-path auto-commit: enabled` is present but `Happy-path auto-push: enabled` is absent, the Orchestrator must stop after commit and report:
+## Output discipline
+
+Reports should be short, structured, and evidence-based. Prefer exact commands, exit codes, file names, and gate status over narrative.
+
+Required readiness fields when relevant:
 
 ```text
-Pushed? no
+Acceptance gate passed? yes/no
+Failed-first-fix triggered? yes/no
+Reviewer invoked? yes/no
+Reviewer verdict:
+Breaker invoked? yes/no
+Ready for Reviewer? yes/no
+Ready for commit prep? yes/no
 Ready to push? yes/no
-Reason push was not performed: Happy-path auto-push not enabled
 ```
-
-**For push-only or explicitly authorized auto-push tasks:**
-
-Verify working tree is clean and outgoing commits are exactly expected:
-
-```bash
-git log origin/main..HEAD --oneline
-git diff origin/main --stat
-```
-
-Then push:
-
-```bash
-git push origin HEAD
-```
-
-Verify:
-
-```bash
-git status
-git log -5 --oneline
-```
-
-## Previous: Required process
-
-(The ordered workflow above supersedes the earlier "Required process" section. Sections below remain unchanged.)
-
-## Mandatory review completion
-
-For implementation tasks, **Ready for review** is not a terminal state.
-
-After the Implementer finishes, the Orchestrator must collect independent evidence and invoke the Reviewer before the task can be considered complete, ready for commit, or ready for commit prep.
-
-Do not summarize an implementation task as complete unless the Reviewer returns `Accept` or `Accept with minor follow-up`.
-
-If Reviewer was not invoked, the final report must say:
-
-```text
-Reviewer verdict: NOT RUN — BLOCKING
-Ready for commit? no
-Ready for commit prep? no
-```
-
-The Implementer may report “Ready for reviewer,” but only the Reviewer verdict can make the change ready for commit prep.
-
-## No intermediate handoff stopping rule
-
-When a task is being run through the Orchestrator, intermediate handoff states are not terminal.
-
-The Orchestrator must not respond to the human with only:
-
-- `ready for reviewer`
-- `ready for Reviewer sign-off`
-- `awaiting Reviewer`
-- `pending Reviewer response`
-- `ready for Breaker`
-- `awaiting Breaker`
-- `pending Breaker response`
-
-If the task requires Reviewer or Breaker review, the Orchestrator must invoke the required agent before responding to the human, unless one of the explicit stop exceptions below applies.
-
-After a Reviewer returns `Request changes`:
-
-1. The Orchestrator may send only the specific Reviewer finding back to the Implementer.
-2. After the Implementer fixes the issue, the Orchestrator must collect updated evidence.
-3. The Orchestrator must return the result to the Reviewer for a final verdict.
-4. The Orchestrator must not stop at `ready for Reviewer sign-off`.
-5. The Orchestrator must not ask the human to manually request Reviewer unless a human decision is actually required.
-
-If Breaker is required for the task, the Orchestrator must invoke Breaker after Reviewer `Accept` unless Breaker was explicitly waived by the human.
-
-The Orchestrator may report an intermediate handoff state only when:
-
-- the task was explicitly Implementer-only,
-- a required agent is unavailable,
-- a required verification step is blocked,
-- a human product/UX decision is required,
-- the two-loop limit has been reached,
-- the human explicitly asked to stop before review,
-- or the human explicitly asked for status only.
-
-## Happy-path auto-commit policy
-
-Happy-path auto-commit is opt-in per task.
-
-The workflow may automatically commit after Reviewer Accept only when the human explicitly includes:
-
-```
-Happy-path auto-commit: enabled
-```
-
-Without that phrase, stop after Reviewer Accept and report ready for commit prep.
-
-Happy-path auto-commit never includes push unless the human explicitly includes:
-
-```
-Happy-path auto-push: enabled
-```
-
-Do not use happy-path auto-commit for:
-
-* schema/migration changes,
-* product/UX ambiguous changes,
-* changes with any failing required test,
-* changes involving secrets/credentials,
-* changes involving unexpected files,
-* changes where Reviewer did not return Accept or Accept with minor follow-up,
-* changes where the human asked for assessment only, review only, commit prep only, or push only.
-
-## Final report format
-
-At the end, report:
-
-* **Original issue/request** — what was the problem or requested change
-* **Implementer summary** — what the Implementer did
-* **Reviewer verdict** — Accept / Accept with minor follow-up / Request changes / Reject / NOT RUN — BLOCKING
-* **Files changed** — list of modified/created files
-* **Tests added or updated** — which tests changed
-* **Exact test commands run** — the pytest commands executed
-* **Exact test results** — stdout/stderr from tests
-* **E2E file materially changed?** — yes/no
-* **Five-run E2E required?** — yes/no
-* **Five-run E2E completed?** — yes/no/not required, with exact full-file command and Run 1 through Run 5 results when required
-* **Unresolved risks** — any gaps or concerns
-* **Ready for commit?** — yes/no with justification; yes only after Reviewer returns Accept or Accept with minor follow-up
