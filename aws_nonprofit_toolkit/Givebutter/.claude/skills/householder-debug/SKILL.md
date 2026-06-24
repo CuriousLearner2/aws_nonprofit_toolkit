@@ -93,6 +93,29 @@ Use only when the human explicitly asks to push or enables auto-push.
 - No edits, staging, or new commits.
 - Verify intended commits, then push only if explicitly authorized.
 
+
+## Terminal-state stop rule
+
+When a requested task reaches its terminal state, stop and wait for the human. Do not automatically begin the next logical task, even if it seems obvious or useful.
+
+Terminal states include:
+
+- assessment report delivered,
+- failed-gate or fail-fast stop report delivered,
+- cleanup completed,
+- Reviewer verdict delivered,
+- commit completed,
+- push completed.
+
+After a terminal state, only report final status and readiness. Do not launch a new assessment, invoke agents, run tests, inspect new files, optimize, commit, push, or begin follow-up work unless the human explicitly asks.
+
+Examples:
+
+- Bad: after pushing CI changes, immediately start E2E performance assessment.
+- Good: after pushing CI changes, report pushed commit/status and stop.
+- Bad: after Reviewer `Accept`, start commit prep without `Happy-path auto-commit: enabled`.
+- Good: after Reviewer `Accept`, report ready for commit prep and stop.
+
 ## Agent selection
 
 Use the smallest sufficient agent set.

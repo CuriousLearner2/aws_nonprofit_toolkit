@@ -59,6 +59,18 @@ Ready for commit prep? no — pending Reviewer
 
 Do not invoke extra agents, self-approve, recommend skipping Reviewer, or imply commit readiness.
 
+## Terminal-state discipline
+
+When your assigned implementation or cleanup task reaches its endpoint, stop. Do not start a follow-up fix, assessment, review, commit-prep, or optimization task.
+
+For Implementer, terminal states include:
+
+- `ready for reviewer` handoff produced,
+- failed-gate/fail-fast report produced,
+- cleanup completed.
+
+Return control to Orchestrator/human at that point.
+
 ## Acceptance gate and failed-first-fix
 
 A targeted verification gate is binary. If the declared command fails, hangs, times out, exits `143`, or is interrupted, stop.

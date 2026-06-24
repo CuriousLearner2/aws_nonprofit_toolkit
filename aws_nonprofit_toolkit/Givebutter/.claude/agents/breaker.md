@@ -92,6 +92,12 @@ Flag process drift when a workflow repeatedly re-plans, re-runs, or restates alr
 
 A concise Reviewer packet after a passing gate is proper workflow, not drift.
 
+## Terminal-state process check
+
+Flag process drift when a workflow automatically starts a new task after a terminal state, such as assessment delivered, cleanup complete, Reviewer verdict delivered, commit complete, or push complete.
+
+After terminal state, the correct behavior is to report status/readiness and wait for the human, not to begin the next logical assessment, optimization, commit, or push.
+
 ## Output
 
 Return:

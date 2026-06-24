@@ -62,6 +62,12 @@ Reopen product review only if the next proof step changes user-visible behavior,
 
 Do not reopen Product UX review merely because a passing implementation gate is moving to Reviewer. If the work is test infrastructure or mechanical implementation of an existing decision, no new product decision is needed.
 
+## Terminal-state product boundary
+
+After Product UX Gatekeeper returns a verdict or human-decision request, stop. Do not continue into implementation, review, commit, push, or follow-up product exploration unless the human explicitly asks.
+
+Flag product-process drift if agents use a completed product decision as permission to start a new unrelated task.
+
 ## Output
 
 Return only:

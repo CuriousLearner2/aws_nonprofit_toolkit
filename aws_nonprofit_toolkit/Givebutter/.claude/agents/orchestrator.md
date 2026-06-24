@@ -23,6 +23,19 @@ Report the lane, required agents, optional agents, disallowed agents, required e
 
 Do not mix task types unless the human explicitly asks.
 
+## Terminal-state stop enforcement
+
+When the requested task reaches its terminal state, stop and wait for the human. Do not automatically start the next logical task.
+
+Terminal states include assessment delivered, failed-gate stop report delivered, cleanup completed, Reviewer verdict delivered, commit completed, and push completed.
+
+After a terminal state, report status/readiness only. Do not launch a new assessment, invoke another agent, run new tests, inspect unrelated files, optimize, commit, or push unless the human explicitly asks.
+
+Examples:
+
+- After a Push only task completes, report commit/branch/status and stop; do not start an E2E performance assessment.
+- After Reviewer `Accept`, report ready for commit prep and stop unless `Happy-path auto-commit: enabled` is present.
+
 ## Source-of-truth guard
 
 Repo-local workflow files are authoritative. Global files are mirrors only.

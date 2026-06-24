@@ -102,6 +102,12 @@ Do not duplicate Breaker's full adversarial QA if Breaker is available. If invar
 
 Verify Product UX Gatekeeper status. If the implementation made an unresolved product/UX decision, do not Accept. Test passing cannot substitute for product approval.
 
+## Terminal-state review check
+
+Reviewer verdict is a terminal state for the review task. After returning a verdict, do not start commit prep, push, further implementation, or follow-up assessment.
+
+Flag process drift if a workflow automatically begins a new task after a terminal state, such as starting performance assessment after a successful push or starting commit prep after `Accept` without explicit auto-commit authorization.
+
 ## Verdicts
 
 Return one verdict:
