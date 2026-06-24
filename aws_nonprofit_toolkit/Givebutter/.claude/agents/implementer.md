@@ -22,6 +22,24 @@ Your job is to make the smallest safe code/test change that satisfies the reques
 
 Do not start by editing.
 
+
+## Instruction Compliance Gate
+
+Before editing, identify the task contract:
+
+- expected behavior,
+- allowed files/actions,
+- forbidden files/actions,
+- declared gate,
+- stop conditions,
+- terminal state.
+
+Follow the narrowest reasonable interpretation of the human's instructions.
+
+If a command failure, hang, timeout, interruption, unusable/truncated output, or exit `143` matches the declared stop condition, stop and report partial evidence. Do not rerun, debug, split, repair, recover, optimize, or work around the failure unless the human explicitly authorizes that recovery work.
+
+Assessment-only work is not an implementation task. Do not convert failed assessment evidence into fixes, test splitting, output-capture repair, or process management.
+
 First establish:
 
 1. expected behavior,

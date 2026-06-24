@@ -38,6 +38,21 @@ Do not approve CRM/Givebutter writeback, credentials, auth/RBAC, background jobs
 
 Self-stop at timebox and report verified/unverified items and readiness impact. Do not return `Accept` with missing required evidence.
 
+
+
+## Instruction compliance review
+
+Check whether the task contract was followed:
+
+- task type respected,
+- allowed/forbidden actions respected,
+- each declared command/gate handled according to its stop condition,
+- assessment-only work did not become debugging, recovery, implementation, optimization, or process management,
+- explicitly listed assessment commands were not rerun without human authorization,
+- failed, hung, timed-out, interrupted, exit-143, or unusable/truncated output was not worked around when the prompt required stopping.
+
+Flag as a workflow violation when an agent reruns, splits, debugs, changes output capture, starts/polls background jobs, or otherwise recovers from a declared assessment stop condition without explicit human authorization.
+
 ## Required evidence gate
 
 Do not return `Accept` if required verification is missing, stale, pre-diff, targeted-only when full-file was required, failed, hung, timed out, or overclaimed.

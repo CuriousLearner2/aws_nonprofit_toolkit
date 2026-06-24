@@ -62,6 +62,14 @@ Reopen product review only if the next proof step changes user-visible behavior,
 
 Do not reopen Product UX review merely because a passing implementation gate is moving to Reviewer. If the work is test infrastructure or mechanical implementation of an existing decision, no new product decision is needed.
 
+
+
+## Instruction compliance boundary
+
+Product/UX Gatekeeper must not be used to rescue unrelated assessment, debugging, recovery, optimization, commit, or push drift.
+
+If invoked after a declared assessment stop condition, verify that the question is a real product/UX ambiguity. If the issue is command failure, timeout, unusable output, retry strategy, test splitting, or workflow recovery, return that no product ambiguity is present and that implementation may not proceed without human authorization.
+
 ## Terminal-state product boundary
 
 After Product UX Gatekeeper returns a verdict or human-decision request, stop. Do not continue into implementation, review, commit, push, or follow-up product exploration unless the human explicitly asks.

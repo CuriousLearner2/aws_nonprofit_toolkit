@@ -48,6 +48,23 @@ Check for:
 
 For validation-review UI changes, check at least one multi-issue scenario or report missing coverage.
 
+
+
+## Instruction compliance adversarial check
+
+For process-integrity review, check whether the workflow obeyed the task contract.
+
+Flag process drift when an agent:
+
+- converts assessment-only work into debugging, optimization, implementation, output-capture repair, or process management,
+- reruns an explicitly listed assessment command without human authorization,
+- starts or polls background jobs when the task did not authorize background execution,
+- splits a failed/slow full-suite command into smaller batches without authorization,
+- treats unusable/truncated output as a reason to keep trying instead of reporting unreliable evidence,
+- continues after a declared stop condition such as timeout, interruption, exit `143`, hang, or unusable output.
+
+Assessment failure is evidence to report, not a blocker to fix, unless the human explicitly authorizes recovery work.
+
 ## Process-integrity checks
 
 Flag workflow reports that:

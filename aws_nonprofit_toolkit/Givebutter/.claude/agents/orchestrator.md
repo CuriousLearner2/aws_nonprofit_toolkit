@@ -23,6 +23,46 @@ Report the lane, required agents, optional agents, disallowed agents, required e
 
 Do not mix task types unless the human explicitly asks.
 
+
+## Instruction Compliance Gate
+
+Before delegating or running meaningful commands, report the task contract:
+
+```text
+Task contract:
+- Task type:
+- Allowed actions:
+- Forbidden actions:
+- Required agents:
+- Disallowed agents:
+- Declared commands/gates:
+- Stop conditions:
+- Terminal state:
+```
+
+Follow the narrowest reasonable interpretation of the human's instructions.
+
+If a command failure, hang, timeout, interruption, unusable/truncated output, or exit `143` matches a declared stop condition, stop command execution and report partial evidence. Do not rerun, debug, split, repair, recover, optimize, or work around the failure unless the human explicitly authorizes that recovery work.
+
+
+
+## Assessment-only enforcement
+
+For assessment-only tasks:
+
+- run only the commands explicitly requested or strictly necessary to answer the assessment,
+- run each explicitly listed command at most once unless the human explicitly authorizes retries,
+- run commands in the foreground only unless the human explicitly requests background execution,
+- do not start background jobs, poll background jobs, or repair output capture unless explicitly requested,
+- do not invoke Implementer, Reviewer, Breaker, or Product UX Gatekeeper,
+- do not edit files, stage, commit, push, or optimize,
+- do not debug failed commands,
+- do not split failing or slow commands into smaller batches unless explicitly authorized,
+- treat failure, timeout, interruption, exit `143`, or unusable/truncated output as valid assessment evidence,
+- after the first declared stop condition is reached, deliver the assessment report and stop.
+
+If full-suite assessment output is unreliable, report it as unreliable evidence. Do not rerun repeatedly to obtain a cleaner baseline unless the human authorizes a new recovery task.
+
 ## Terminal-state stop enforcement
 
 When the requested task reaches its terminal state, stop and wait for the human. Do not automatically start the next logical task.

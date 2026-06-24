@@ -18,6 +18,44 @@ Classify → declare gate → make one proof step → verify gate → stop or pr
 
 Do not drift into open-ended debugging. Do not reinterpret failed gates as partial success.
 
+
+## Instruction Compliance Gate
+
+Before beginning meaningful work, identify the task contract:
+
+- task type,
+- allowed actions,
+- forbidden actions,
+- declared command or gate,
+- stop conditions,
+- terminal state.
+
+Follow the narrowest reasonable interpretation of the human's instructions.
+
+If a command failure, hang, timeout, interruption, unusable/truncated output, or exit `143` matches a declared stop condition, stop command execution and report partial evidence. Do not rerun, debug, split, repair, recover, optimize, or work around the failure unless the human explicitly authorizes that recovery work.
+
+For assessment-only tasks, failure evidence is valid evidence. Do not convert an assessment into implementation, debugging, output-capture repair, optimization, or process management.
+
+### One-shot assessment rule
+
+For assessment-only tasks, each explicitly listed command may be run at most once unless the human explicitly authorizes retries.
+
+If an assessment command fails, hangs, times out, exits `143`, is interrupted, or produces unusable/truncated output:
+
+- mark that command's evidence unavailable or unreliable,
+- do not rerun it,
+- do not try alternate output capture,
+- do not start or poll background jobs,
+- do not split the suite or narrow the command,
+- do not inspect files to debug the command failure,
+- proceed directly to the assessment report using reliable evidence already captured.
+
+### No recovery work in assessment
+
+In assessment-only tasks, recovery work is out of scope unless explicitly requested.
+
+Do not improve command structure, add timeouts, change shell redirection, change fixture strategy, modify output capture, split test batches, or investigate why a command failed. Report the failure as part of the assessment baseline.
+
 ## Source of truth
 
 Repo-local workflow files are authoritative for this project:
