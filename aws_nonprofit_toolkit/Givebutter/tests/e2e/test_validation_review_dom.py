@@ -84,6 +84,36 @@ def get_venv_python() -> str:
     return sys.executable
 
 
+def wait_for_flask_ready(base_url: str, batch_id: str, timeout_seconds: int = 10) -> None:
+    """
+    Wait for Flask server to become ready by polling the validation endpoint.
+
+    Uses exponential backoff starting at 0.1s, bounded by timeout_seconds.
+    Raises RuntimeError if Flask never becomes ready.
+    """
+    start_time = time.time()
+    wait_interval = 0.1
+    max_interval = 1.0
+
+    while time.time() - start_time < timeout_seconds:
+        try:
+            response = requests.get(
+                f'{base_url}/imports/{batch_id}/validation',
+                timeout=2
+            )
+            if response.status_code == 200:
+                return
+        except (requests.ConnectionError, requests.Timeout):
+            pass
+
+        time.sleep(wait_interval)
+        wait_interval = min(wait_interval * 1.5, max_interval)
+
+    raise RuntimeError(
+        f"Flask server failed to become ready within {timeout_seconds}s at {base_url}"
+    )
+
+
 async def seed_validation_batch(
     session,
     batch_id: str,
@@ -272,22 +302,8 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual validation URL (diagnostic for database repo)
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/email-test-batch/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, 'email-test-batch')
 
         # Launch browser
         async with async_playwright() as p:
@@ -490,21 +506,8 @@ async def test_validation_error_preserves_review_status_dropdown(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
         async with async_playwright() as p:
@@ -724,21 +727,8 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
         async with async_playwright() as p:
@@ -1192,21 +1182,8 @@ async def test_needs_follow_up_notes_required_workflow(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1403,21 +1380,8 @@ async def test_defer_workflow_notes_optional(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1570,21 +1534,8 @@ async def test_inspect_modal_controls_comprehensive(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1775,21 +1726,8 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
         async with async_playwright() as p:
@@ -1964,21 +1902,8 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
         async with async_playwright() as p:
@@ -2162,21 +2087,8 @@ async def test_amount_validation_error_appears_in_issues_column(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
         async with async_playwright() as p:
@@ -2396,21 +2308,8 @@ async def test_amount_and_email_multi_error_workflow(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
         async with async_playwright() as p:
@@ -2656,21 +2555,8 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -2854,21 +2740,8 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3049,21 +2922,8 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
         async with async_playwright() as p:
@@ -3300,21 +3160,8 @@ async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3461,21 +3308,8 @@ async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3670,21 +3504,8 @@ async def test_escape_cancel_clears_status_and_does_not_show_saved(e2e_database_
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -3883,21 +3704,8 @@ async def test_normal_autosave_still_works_after_escape_implementation(e2e_datab
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -4054,21 +3862,8 @@ async def test_keyboard_interaction_escape_cancel_and_tab_save_workflow(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -4317,21 +4112,8 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual validation URL
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/desktop-layout-batch/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, 'desktop-layout-batch')
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -4576,22 +4358,8 @@ async def test_escape_cancel_restores_without_status_for_all_editable_fields(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -4748,22 +4516,8 @@ async def test_escape_cancel_restores_to_last_saved_value_not_raw_value(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -4928,22 +4682,8 @@ async def test_escape_cancel_ignores_delayed_autosave_response(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -5121,22 +4861,8 @@ async def test_console_errors_during_escape_cancel_workflow(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -5332,21 +5058,8 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual validation URL
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/keyboard-test-batch/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, 'keyboard-test-batch')
 
         # Launch browser
         async with async_playwright() as p:
@@ -5729,21 +5442,8 @@ async def test_noop_blur_does_not_show_saved_feedback(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual validation URL
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/noop-test-batch/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, 'noop-test-batch')
 
         # Launch browser
         async with async_playwright() as p:
@@ -5895,21 +5595,8 @@ async def test_changed_value_blur_saves_and_persists(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual validation URL
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/change-test-batch/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, 'change-test-batch')
 
         # Launch browser
         async with async_playwright() as p:
@@ -6060,21 +5747,8 @@ async def test_sticky_action_bar_visible_while_scrolling(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual validation URL
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/scroll-test-batch/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, 'scroll-test-batch')
 
         # Launch browser
         async with async_playwright() as p:
@@ -6256,21 +5930,8 @@ async def test_sticky_action_bar_with_approval_modal(
             preexec_fn=os.setsid
         )
 
-        # Wait for server to start
-        time.sleep(3)
-
-        # Verify server is accessible with actual validation URL
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/sticky-modal-test-batch/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        # Wait for server to become ready
+        wait_for_flask_ready(base_url, 'sticky-modal-test-batch')
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
