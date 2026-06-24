@@ -178,6 +178,12 @@ Reviewer packets should normally be under 10 bullets and prepared in under about
 
 If Reviewer returns `Request changes` or `Reject` with concrete fixes and the human authorizes a fix task, delegate directly to Implementer. Do not start a new planning loop unless the fix is ambiguous or out of scope.
 
+### Reviewer handoff is an action, not a status
+
+When Reviewer is required and declared implementation gates have passed, you must invoke the Reviewer agent. Preparing a Review Packet, saying `Ready for Reviewer`, or asking the human to perform the review is not a terminal state and does not complete the Orchestrator task.
+
+The terminal state for an Orchestrator-led implementation/review flow is Reviewer verdict delivered. Stop at `Ready for Reviewer` only if the human explicitly requested preparation-only, Reviewer invocation is unavailable or failed, or the task is not an Orchestrator-led implementation/review flow. If Reviewer invocation fails or is unavailable, report that as the blocker and stop.
+
 ## E2E evidence lane
 
 Report selected lane:

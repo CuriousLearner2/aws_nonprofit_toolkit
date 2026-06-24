@@ -116,6 +116,12 @@ Do not require re-planning or re-running already-passed gates merely because the
 
 If Reviewer previously returned `Request changes` or `Reject` with concrete blockers, review whether those blockers were fixed and whether the current gate passed. Do not require a fresh planning narrative when the fix scope was already authorized.
 
+### Reviewer handoff completion check
+
+Flag process drift if Orchestrator stops at `Ready for Reviewer` after gates pass instead of invoking Reviewer when Reviewer is required. A Review Packet is input to Reviewer, not the terminal state.
+
+For Orchestrator-led implementation/review flows, the valid terminal state is Reviewer verdict delivered, unless the human explicitly requested preparation-only or Reviewer invocation was unavailable/failed and that blocker was reported.
+
 ## Reviewer vs Breaker
 
 Reviewer owns implementation correctness, evidence validity, scope control, maintainability of the current diff, and final verdict.

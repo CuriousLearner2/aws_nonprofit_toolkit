@@ -118,6 +118,8 @@ Flag process drift when a workflow repeatedly re-plans, re-runs, or restates alr
 
 A concise Reviewer packet after a passing gate is proper workflow, not drift.
 
+Flag process drift when Orchestrator prepares a Reviewer packet but stops at `Ready for Reviewer` instead of invoking Reviewer when Reviewer is required. Reviewer handoff is an action, not a status; the terminal state is Reviewer verdict delivered unless the human requested preparation-only or Reviewer invocation was unavailable/failed.
+
 ## Terminal-state process check
 
 Flag process drift when a workflow automatically starts a new task after a terminal state, such as assessment delivered, cleanup complete, Reviewer verdict delivered, commit complete, or push complete.
