@@ -12,6 +12,32 @@ from pathlib import Path
 from sqlalchemy import create_engine
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from scripts.householder.database_models import Base, create_db_engine
+import requests
+
+
+def wait_for_flask_ready(base_url: str, timeout_seconds: int = 10) -> None:
+	"""
+	Wait for Flask server to become ready by polling the health endpoint.
+
+	Uses exponential backoff starting at 0.1s, bounded by timeout_seconds.
+	Raises RuntimeError if Flask never becomes ready.
+	"""
+	start_time = time.time()
+	wait_interval = 0.1
+	max_interval = 1.0
+
+	while time.time() - start_time < timeout_seconds:
+		try:
+			response = requests.get(f'{base_url}/health', timeout=2)
+			if response.status_code == 200:
+				return
+		except (requests.ConnectionError, requests.Timeout):
+			pass
+
+		time.sleep(wait_interval)
+		wait_interval = min(wait_interval * 1.5, max_interval)
+
+	raise RuntimeError(f"Flask app failed to become ready at {base_url}/health after {timeout_seconds}s")
 
 
 @pytest.fixture(scope="session")
@@ -72,22 +98,8 @@ def flask_app_e2e(e2e_test_database):
         preexec_fn=os.setsid  # Create new process group for cleanup
     )
 
-    # Wait for app to start
-    time.sleep(3)
-
-    # Verify app is healthy
-    import requests
-    max_retries = 5
-    for attempt in range(max_retries):
-        try:
-            response = requests.get('http://127.0.0.1:8000/health', timeout=2)
-            if response.status_code == 200:
-                break
-        except (requests.ConnectionError, requests.Timeout):
-            if attempt < max_retries - 1:
-                time.sleep(1)
-            else:
-                raise RuntimeError("Flask app failed to start or health check failed")
+    # Wait for app to start with bounded readiness polling
+    wait_for_flask_ready('http://127.0.0.1:8000', timeout_seconds=10)
 
     yield process, database_url, db_path
 
