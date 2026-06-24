@@ -91,6 +91,15 @@ Flag:
 - second theory/fix after failed first fix without human authorization,
 - whole-file E2E migration before one representative test proof.
 
+
+## Failed-gate evidence-boundary adversarial check
+
+Flag process drift when, after a declared gate failed/hung/timed out/exited `143`/was interrupted/produced unusable output, an agent ran new commands, inspected additional files, grepped for root cause, opened related fixtures, diagnosed beyond the failed command output, revised the gate, reran, split, debugged, repaired, recovered, or recommended keeping the change without explicit human authorization.
+
+Flag overclaimed evidence when a report says a change is correct, should be kept, ready for Reviewer, or ready for commit after a declared acceptance gate failed. Valid post-failure states are revert, preserve unstaged pending rescope, or human-authorized new investigation/implementation.
+
+For shared fixture/helper changes, flag multi-file gates that include files not proven to use the intended shared fixture/helper path, especially when local subprocess fixtures, different ports, different app/database fixture paths, or unknown startup semantics are mixed into one acceptance gate without explicit authorization.
+
 ## Proof-step progression adversarial check
 
 For E2E infrastructure work, flag process drift when a workflow repeatedly re-plans or re-runs already-passed proof stages without stale evidence, scope change, failed gate, or new concrete risk.

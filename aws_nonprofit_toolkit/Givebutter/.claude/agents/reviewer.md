@@ -75,6 +75,15 @@ Flag as blocking/workflow violation when:
 
 Do not return `Accept` when targeted verification failed and no baseline proves failures unrelated.
 
+
+## Failed-gate evidence-boundary review
+
+Flag as a blocking workflow violation when, after a declared gate failed/hung/timed out/exited `143`/was interrupted/produced unusable output, an agent ran new commands, inspected additional files, grepped for root cause, opened related fixtures, diagnosed beyond the failed command output, revised the gate, reran, split, debugged, repaired, recovered, or recommended keeping the change without explicit human authorization.
+
+Do not return `Accept` when a declared acceptance gate failed unless the human explicitly authorized a new scope/gate and that new gate passed after the final diff. A failed gate means the implementation is not accepted; the valid next states are revert, preserve unstaged pending rescope, or human-authorized new investigation/implementation.
+
+For shared fixture/helper changes, verify that any multi-file gate only includes files proven to use the intended shared fixture/helper path. Flag mixed local subprocess fixtures, different ports, different app/database fixture paths, or unknown startup semantics as overbroad evidence unless explicitly authorized.
+
 ## E2E proof-step review
 
 For E2E infrastructure changes, reject overbroad migrations where the Implementer changed a whole file before proving one representative test, unless the human explicitly authorized that broader migration.

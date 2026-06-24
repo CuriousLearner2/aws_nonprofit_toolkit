@@ -122,6 +122,17 @@ Next allowed action:
 
 Do not redefine a gate after partial progress.
 
+
+## Failed-gate evidence boundary / post-failure command freeze
+
+After any declared gate fails, hangs, times out, exits `143`, is interrupted, or produces unusable/truncated output, stop command execution immediately.
+
+Do not run new commands, inspect additional files, grep, open related fixtures, diagnose root cause beyond the failed command output, revise the gate, rerun, split, debug, repair, recover, or recommend keeping the change as correct unless the human explicitly authorizes a rescope/debug task.
+
+When a declared acceptance gate fails, the implementation is not accepted. Do not invoke Reviewer, Breaker, commit prep, or push. Report only a mechanical failed-gate stop report and the next human choices: revert, preserve unstaged pending rescope, or authorize a new investigation/implementation task.
+
+For shared fixture/helper changes, before declaring or running a multi-file gate, verify that every file in the gate uses the intended shared fixture/helper path. If fixture usage is unclear or mixed, use collect-only or a single-file proof gate first; do not mix local subprocess fixtures, different ports, or different app/database fixture paths in one acceptance gate without explicit human authorization.
+
 ## Failed-first-fix / fail-fast
 
 For implementation tasks, one attempted fix gets one declared gate.

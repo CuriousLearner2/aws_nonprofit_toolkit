@@ -115,6 +115,17 @@ Ready for commit prep? no
 
 If about 8 minutes pass after first edit without a passing gate, stop and report.
 
+
+## Failed-gate evidence boundary / post-failure command freeze
+
+After any declared implementation gate fails, hangs, times out, exits `143`, is interrupted, or produces unusable/truncated output, stop command execution immediately.
+
+Do not run new commands, inspect additional files, grep, open related fixtures, diagnose root cause beyond the failed command output, revise the gate, rerun, split, debug, repair, recover, or recommend keeping the change as correct unless the human explicitly authorizes a rescope/debug task.
+
+When a declared acceptance gate fails, the implementation is not accepted. Do not claim the change is correct, ready for Reviewer, ready for commit, or should be kept. Report only a mechanical failed-gate stop report and the next human choices: revert, preserve unstaged pending rescope, or authorize a new investigation/implementation task.
+
+For shared fixture/helper changes, do not declare or run a multi-file gate until each file in the gate is proven to use the intended shared fixture/helper path. If usage is mixed or unclear, stop and ask Orchestrator/human for a narrower gate.
+
 ## E2E proof-step implementation
 
 For E2E infrastructure changes, prove the new pattern on one representative test before modifying the whole file.

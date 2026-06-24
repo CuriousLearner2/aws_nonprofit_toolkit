@@ -56,6 +56,43 @@ In assessment-only tasks, recovery work is out of scope unless explicitly reques
 
 Do not improve command structure, add timeouts, change shell redirection, change fixture strategy, modify output capture, split test batches, or investigate why a command failed. Report the failure as part of the assessment baseline.
 
+
+### Failed-gate evidence boundary and post-failure command freeze
+
+After any declared gate fails, hangs, times out, exits `143`, is interrupted, or produces unusable/truncated output, stop command execution immediately.
+
+The agent may report only the failed command output already produced and the mechanical stop-report fields required by this workflow. Do not run new commands, inspect additional files, grep for root cause, open related fixtures, diagnose beyond the failed command output, revise the gate, rerun, split, debug, repair, recover, or recommend keeping the change as correct unless the human explicitly authorizes a rescope/debug task.
+
+When a declared acceptance gate fails, the implementation is not accepted. Do not claim the change is correct, ready for Reviewer, ready for commit, or should be kept. Report only the available options: revert, preserve unstaged pending human-authorized rescope, or authorize a new investigation/implementation task.
+
+A failed-gate stop report must stay mechanical:
+
+```text
+Failed Gate Stop Report
+Declared gate:
+Exact command:
+Exit code / timeout:
+Last observed output:
+Passed/failed/skipped:
+Modified files:
+Gate accepted? no
+Failed-first-fix triggered? yes/no
+Reviewer allowed? no
+Commit allowed? no
+Push allowed? no
+No further diagnosis performed because the gate failed.
+Next human choices:
+1. Revert current changes
+2. Preserve unstaged changes and authorize rescope assessment
+3. Authorize a new implementation/debug task
+```
+
+### Shared-fixture gate rule
+
+Before declaring or running a multi-file gate for a shared fixture/helper change, verify that every file in the gate actually uses the intended shared fixture path.
+
+If fixture/helper usage is unclear, use collect-only or a single-file proof gate first. Do not mix files with local subprocess fixtures, different ports, different app/database fixture paths, or unknown startup semantics in the same acceptance gate unless that broader fixture architecture work is explicitly authorized by the human.
+
 ## Source of truth
 
 Repo-local workflow files are authoritative for this project:
