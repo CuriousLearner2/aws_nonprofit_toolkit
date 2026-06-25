@@ -333,8 +333,8 @@ async def test_import_queue_table_structure(start_flask_app, temp_dir, sample_cs
             # Wait for table to populate
             await page.wait_for_selector('tbody tr', timeout=5000)
 
-            # Wait a moment for table to populate
-            await asyncio.sleep(1)
+            # Wait for action buttons to be rendered
+            await page.wait_for_selector('table tbody button', timeout=5000)
 
             # Verify table has rows with action buttons
             action_buttons = await page.query_selector_all('table tbody button')
