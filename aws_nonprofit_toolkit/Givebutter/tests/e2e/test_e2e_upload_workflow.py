@@ -7,6 +7,7 @@ import subprocess
 import time
 import signal
 import os
+import requests
 
 
 @pytest.fixture(scope="session")
@@ -20,8 +21,24 @@ def start_flask_app():
         preexec_fn=os.setsid  # Create new process group for cleanup
     )
 
-    # Wait for app to start
-    time.sleep(2)
+    # Wait for Flask to be ready using exponential backoff (0.1s → 1.0s, 10s timeout)
+    start_time = time.time()
+    wait_interval = 0.1
+    max_interval = 1.0
+    timeout_seconds = 10
+
+    while time.time() - start_time < timeout_seconds:
+        try:
+            response = requests.get('http://127.0.0.1:8000/', timeout=2)
+            if response.status_code < 500:  # Accept any non-500 response (includes 200, 404, etc.)
+                break
+        except (requests.ConnectionError, requests.Timeout):
+            pass
+
+        time.sleep(wait_interval)
+        wait_interval = min(wait_interval * 1.5, max_interval)
+    else:
+        raise RuntimeError("Flask app failed to become ready at http://127.0.0.1:8000/ after 10s")
 
     yield process
 
