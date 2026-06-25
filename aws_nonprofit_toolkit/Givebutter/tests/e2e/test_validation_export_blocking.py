@@ -39,6 +39,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from sqlalchemy.orm import sessionmaker
+from werkzeug.serving import make_server
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -204,11 +205,9 @@ async def test_validation_blocker_appears_in_export_console(e2e_database_and_app
         print("✓ A2: Raw ImportContact data unchanged (append-only principle)")
 
         # A3: Verify blocker appears in browser
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with proven lifecycle cleanup pattern
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -266,6 +265,10 @@ async def test_validation_blocker_appears_in_export_console(e2e_database_and_app
 
             finally:
                 await browser.close()
+
+        # Explicit server shutdown and thread cleanup
+        server.shutdown()
+        flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -349,11 +352,9 @@ async def test_clean_validation_export_proceeds(e2e_database_and_app):
 
         contact_id = contact.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with proven lifecycle cleanup pattern
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -373,64 +374,69 @@ async def test_clean_validation_export_proceeds(e2e_database_and_app):
                     raise RuntimeError("Flask server failed to start")
 
         # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
 
-            try:
-                # C0: Navigate to exports page
-                await page.goto('http://127.0.0.1:8001/imports/clean-validation-batch-c/exports')
+                try:
+                    # C0: Navigate to exports page
+                    await page.goto('http://127.0.0.1:8001/imports/clean-validation-batch-c/exports')
 
-                # Wait for page to load
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ C0: Export console page loaded (clean batch)")
+                    # Wait for page to load
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ C0: Export console page loaded (clean batch)")
 
-                # C1: Generate export preview
-                await page.evaluate("""
-                    async () => {
-                        const response = await fetch('/imports/clean-validation-batch-c/exports/preview', {
-                            method: 'POST'
-                        });
-                        if (response.ok) {
-                            const html = await response.text();
-                            document.open();
-                            document.write(html);
-                            document.close();
+                    # C1: Generate export preview
+                    await page.evaluate("""
+                        async () => {
+                            const response = await fetch('/imports/clean-validation-batch-c/exports/preview', {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                const html = await response.text();
+                                document.open();
+                                document.write(html);
+                                document.close();
+                            }
                         }
-                    }
-                """)
+                    """)
 
-                # Wait for preview to load
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ C1: Export preview loaded (clean data)")
+                    # Wait for preview to load
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ C1: Export preview loaded (clean data)")
 
-                # C2: Verify no blocker warning
-                page_text = await page.inner_text('body')
-                has_blocker_warning = ('blocker' in page_text.lower() and 'validation' in page_text.lower())
-                assert not has_blocker_warning, f"C2 FAILED: Should not have blocker warning for clean data, got: {page_text[:200]}"
-                print("✓ C2: No blocker warning for clean data")
+                    # C2: Verify no blocker warning
+                    page_text = await page.inner_text('body')
+                    has_blocker_warning = ('blocker' in page_text.lower() and 'validation' in page_text.lower())
+                    assert not has_blocker_warning, f"C2 FAILED: Should not have blocker warning for clean data, got: {page_text[:200]}"
+                    print("✓ C2: No blocker warning for clean data")
 
-                # C3: Verify export button exists
-                export_btn = await page.query_selector('#generate-export-btn')
-                assert export_btn is not None, "C3 FAILED: Export button should exist"
-                print("✓ C3: Export button exists")
+                    # C3: Verify export button exists
+                    export_btn = await page.query_selector('#generate-export-btn')
+                    assert export_btn is not None, "C3 FAILED: Export button should exist"
+                    print("✓ C3: Export button exists")
 
-                # C4: Verify export button is enabled (or at least not blocked)
-                is_disabled = await export_btn.is_disabled() if export_btn else False
-                assert not is_disabled, "C4 FAILED: Export button should be enabled for clean data"
-                print("✓ C4: Export button is enabled (clean data is export-ready)")
+                    # C4: Verify export button is enabled (or at least not blocked)
+                    is_disabled = await export_btn.is_disabled() if export_btn else False
+                    assert not is_disabled, "C4 FAILED: Export button should be enabled for clean data"
+                    print("✓ C4: Export button is enabled (clean data is export-ready)")
 
-                # C5: Verify raw ImportContact data unchanged
-                contact_check = session.query(ImportContact).filter_by(id=contact_id).first()
-                assert contact_check is not None, "C5 FAILED: Contact should still exist"
-                assert contact_check.first_name == 'Clean', "C5 FAILED: Contact first_name should be unchanged"
-                assert contact_check.email == 'clean@example.com', "C5 FAILED: Contact email should be unchanged"
-                print("✓ C5: Raw ImportContact data unchanged (append-only principle)")
+                    # C5: Verify raw ImportContact data unchanged
+                    contact_check = session.query(ImportContact).filter_by(id=contact_id).first()
+                    assert contact_check is not None, "C5 FAILED: Contact should still exist"
+                    assert contact_check.first_name == 'Clean', "C5 FAILED: Contact first_name should be unchanged"
+                    assert contact_check.email == 'clean@example.com', "C5 FAILED: Contact email should be unchanged"
+                    print("✓ C5: Raw ImportContact data unchanged (append-only principle)")
 
-                print("\n=== TEST C: CLEAN VALIDATION EXPORT PROCEEDS PASSED ===")
+                    print("\n=== TEST C: CLEAN VALIDATION EXPORT PROCEEDS PASSED ===")
 
-            finally:
-                await browser.close()
+                finally:
+                    await browser.close()
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -525,68 +531,72 @@ async def test_failed_autosave_values_not_exported(e2e_database_and_app):
             "D1 FAILED: Contact should have valid email before autosave"
         print("✓ D1: Contact initialized with valid email")
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with proven lifecycle cleanup pattern
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
         await asyncio.sleep(2)
 
-        # D2: Attempt failed autosave with INVALID email
-        # This autosave should fail validation and return 400
-        response = requests.post(
-            'http://127.0.0.1:8001/imports/failed-autosave-batch-d/autosave',
-            json={
-                'raw_import_row_id': raw_row.id,
-                'corrected_values': {'email': 'invalid-no-at-symbol'}  # Invalid
-            },
-            timeout=5
-        )
+        try:
+                # D2: Attempt failed autosave with INVALID email
+            # This autosave should fail validation and return 400
+            response = requests.post(
+                'http://127.0.0.1:8001/imports/failed-autosave-batch-d/autosave',
+                json={
+                    'raw_import_row_id': raw_row.id,
+                    'corrected_values': {'email': 'invalid-no-at-symbol'}  # Invalid
+                },
+                timeout=5
+            )
 
-        assert response.status_code == 400, \
-            f"D2 FAILED: Autosave should fail with 400, got {response.status_code}"
-        print("✓ D2: Autosave correctly rejected with 400 (invalid email)")
+            assert response.status_code == 400, \
+                f"D2 FAILED: Autosave should fail with 400, got {response.status_code}"
+            print("✓ D2: Autosave correctly rejected with 400 (invalid email)")
 
-        # D3: Verify NO ReviewDecision was created
-        review_decisions = session.query(ReviewDecision).filter_by(
-            batch_id='failed-autosave-batch-d'
-        ).all()
-        assert len(review_decisions) == 0, \
-            f"D3 FAILED: No ReviewDecision should exist after failed autosave, found {len(review_decisions)}"
-        print("✓ D3: No ReviewDecision persisted after failed autosave")
+            # D3: Verify NO ReviewDecision was created
+            review_decisions = session.query(ReviewDecision).filter_by(
+                batch_id='failed-autosave-batch-d'
+            ).all()
+            assert len(review_decisions) == 0, \
+                f"D3 FAILED: No ReviewDecision should exist after failed autosave, found {len(review_decisions)}"
+            print("✓ D3: No ReviewDecision persisted after failed autosave")
 
-        # D4: Verify raw ImportContact email is STILL the original valid email
-        contact_check = session.query(ImportContact).filter_by(id=contact_id).first()
-        assert contact_check.email == 'john@example.com', \
-            f"D4 FAILED: Contact email should remain original, got {contact_check.email}"
-        print("✓ D4: ImportContact email unchanged after failed autosave attempt")
+            # D4: Verify raw ImportContact email is STILL the original valid email
+            contact_check = session.query(ImportContact).filter_by(id=contact_id).first()
+            assert contact_check.email == 'john@example.com', \
+                f"D4 FAILED: Contact email should remain original, got {contact_check.email}"
+            print("✓ D4: ImportContact email unchanged after failed autosave attempt")
 
-        # D5: Build export preview and verify export row contains original email
-        preview = build_export_preview('failed-autosave-batch-d', {'GIVEBUTTER_DATABASE_URL': database_url})
-        assert len(preview.export_rows) == 1, \
-            f"D5 FAILED: Export should have 1 row, got {len(preview.export_rows)}"
+            # D5: Build export preview and verify export row contains original email
+            preview = build_export_preview('failed-autosave-batch-d', {'GIVEBUTTER_DATABASE_URL': database_url})
+            assert len(preview.export_rows) == 1, \
+                f"D5 FAILED: Export should have 1 row, got {len(preview.export_rows)}"
 
-        export_row = preview.export_rows[0]
-        assert export_row.email == 'john@example.com', \
-            f"D5 FAILED: Export row should contain original email 'john@example.com', got '{export_row.email}'"
-        print(f"✓ D5: Export row contains original email (not failed autosave value)")
+            export_row = preview.export_rows[0]
+            assert export_row.email == 'john@example.com', \
+                f"D5 FAILED: Export row should contain original email 'john@example.com', got '{export_row.email}'"
+            print(f"✓ D5: Export row contains original email (not failed autosave value)")
 
-        # D6: Verify failed autosave email is NOT in export
-        assert export_row.email != 'invalid-no-at-symbol', \
-            "D6 FAILED: Export row should NOT contain the failed autosave email"
-        print("✓ D6: Failed autosave value ('invalid-no-at-symbol') not in export")
+            # D6: Verify failed autosave email is NOT in export
+            assert export_row.email != 'invalid-no-at-symbol', \
+                "D6 FAILED: Export row should NOT contain the failed autosave email"
+            print("✓ D6: Failed autosave value ('invalid-no-at-symbol') not in export")
 
-        # D7: Verify raw ImportContact data unchanged (append-only principle)
-        contact_final = session.query(ImportContact).filter_by(id=contact_id).first()
-        assert contact_final is not None, "D7 FAILED: Contact should still exist"
-        assert contact_final.first_name == 'Valid', "D7 FAILED: Contact first_name unchanged"
-        assert contact_final.email == 'john@example.com', "D7 FAILED: Contact email unchanged"
-        print("✓ D7: Raw ImportContact data unchanged (append-only principle)")
+            # D7: Verify raw ImportContact data unchanged (append-only principle)
+            contact_final = session.query(ImportContact).filter_by(id=contact_id).first()
+            assert contact_final is not None, "D7 FAILED: Contact should still exist"
+            assert contact_final.first_name == 'Valid', "D7 FAILED: Contact first_name unchanged"
+            assert contact_final.email == 'john@example.com', "D7 FAILED: Contact email unchanged"
+            print("✓ D7: Raw ImportContact data unchanged (append-only principle)")
 
-        print("\n=== TEST D: FAILED AUTOSAVE VALUES NOT EXPORTED PASSED ===")
+            print("\n=== TEST D: FAILED AUTOSAVE VALUES NOT EXPORTED PASSED ===")
+
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -735,10 +745,8 @@ async def test_persisted_validation_override_allows_export(e2e_database_and_app)
         print("✓ E5: Raw ImportContact data unchanged (append-only principle)")
 
         # E6: Verify in browser that export button is enabled (export can proceed)
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -758,43 +766,48 @@ async def test_persisted_validation_override_allows_export(e2e_database_and_app)
                     raise RuntimeError("Flask server failed to start")
 
         # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
 
-            try:
-                # Navigate to exports page
-                await page.goto('http://127.0.0.1:8001/imports/validation-override-batch-e/exports')
-                await page.wait_for_selector('h1', timeout=5000)
+                try:
+                    # Navigate to exports page
+                    await page.goto('http://127.0.0.1:8001/imports/validation-override-batch-e/exports')
+                    await page.wait_for_selector('h1', timeout=5000)
 
-                # Generate export preview
-                await page.evaluate("""
-                    async () => {
-                        const response = await fetch('/imports/validation-override-batch-e/exports/preview', {
-                            method: 'POST'
-                        });
-                        if (response.ok) {
-                            const html = await response.text();
-                            document.open();
-                            document.write(html);
-                            document.close();
+                    # Generate export preview
+                    await page.evaluate("""
+                        async () => {
+                            const response = await fetch('/imports/validation-override-batch-e/exports/preview', {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                const html = await response.text();
+                                document.open();
+                                document.write(html);
+                                document.close();
+                            }
                         }
-                    }
-                """)
+                    """)
 
-                await page.wait_for_selector('h1', timeout=5000)
+                    await page.wait_for_selector('h1', timeout=5000)
 
-                # E6: Verify export button is NOT disabled
-                export_btn = await page.query_selector('#generate-export-btn')
-                assert export_btn is not None, "E6 FAILED: Export button should exist"
-                is_disabled = await export_btn.is_disabled() if export_btn else False
-                assert not is_disabled, "E6 FAILED: Export button should be enabled after override"
-                print("✓ E6: Export button enabled (export can proceed after override)")
+                    # E6: Verify export button is NOT disabled
+                    export_btn = await page.query_selector('#generate-export-btn')
+                    assert export_btn is not None, "E6 FAILED: Export button should exist"
+                    is_disabled = await export_btn.is_disabled() if export_btn else False
+                    assert not is_disabled, "E6 FAILED: Export button should be enabled after override"
+                    print("✓ E6: Export button enabled (export can proceed after override)")
 
-                print("\n=== TEST E: PERSISTED VALIDATION OVERRIDE ALLOWS EXPORT PASSED ===")
+                    print("\n=== TEST E: PERSISTED VALIDATION OVERRIDE ALLOWS EXPORT PASSED ===")
 
-            finally:
-                await browser.close()
+                finally:
+                    await browser.close()
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -953,10 +966,8 @@ async def test_deferred_validation_remains_export_relevant(e2e_database_and_app)
         print("✓ F6: Raw ImportContact data unchanged (append-only principle)")
 
         # F7: Verify in browser that export button is enabled (not blocked by deferred issue)
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -976,50 +987,55 @@ async def test_deferred_validation_remains_export_relevant(e2e_database_and_app)
                     raise RuntimeError("Flask server failed to start")
 
         # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
 
-            try:
-                # Navigate to exports page
-                await page.goto('http://127.0.0.1:8001/imports/validation-deferred-batch-f/exports')
-                await page.wait_for_selector('h1', timeout=5000)
+                try:
+                    # Navigate to exports page
+                    await page.goto('http://127.0.0.1:8001/imports/validation-deferred-batch-f/exports')
+                    await page.wait_for_selector('h1', timeout=5000)
 
-                # Generate export preview
-                await page.evaluate("""
-                    async () => {
-                        const response = await fetch('/imports/validation-deferred-batch-f/exports/preview', {
-                            method: 'POST'
-                        });
-                        if (response.ok) {
-                            const html = await response.text();
-                            document.open();
-                            document.write(html);
-                            document.close();
+                    # Generate export preview
+                    await page.evaluate("""
+                        async () => {
+                            const response = await fetch('/imports/validation-deferred-batch-f/exports/preview', {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                const html = await response.text();
+                                document.open();
+                                document.write(html);
+                                document.close();
+                            }
                         }
-                    }
-                """)
+                    """)
 
-                await page.wait_for_selector('h1', timeout=5000)
+                    await page.wait_for_selector('h1', timeout=5000)
 
-                # F7: Verify export button is enabled (not blocked by deferred issue)
-                export_btn = await page.query_selector('#generate-export-btn')
-                assert export_btn is not None, "F7 FAILED: Export button should exist"
-                is_disabled = await export_btn.is_disabled() if export_btn else False
-                assert not is_disabled, "F7 FAILED: Export button should be enabled (deferred is not blocking)"
-                print("✓ F7: Export button enabled (deferred issue does not block export)")
+                    # F7: Verify export button is enabled (not blocked by deferred issue)
+                    export_btn = await page.query_selector('#generate-export-btn')
+                    assert export_btn is not None, "F7 FAILED: Export button should exist"
+                    is_disabled = await export_btn.is_disabled() if export_btn else False
+                    assert not is_disabled, "F7 FAILED: Export button should be enabled (deferred is not blocking)"
+                    print("✓ F7: Export button enabled (deferred issue does not block export)")
 
-                # F8: Verify deferred status is visible in browser preview
-                page_text = await page.inner_text('body')
-                has_deferred_indicator = ('deferred' in page_text.lower() or 'unresolved' in page_text.lower())
-                assert has_deferred_indicator, \
-                    "F8 FAILED: Deferred status should be visible in browser preview (not hidden)"
-                print("✓ F8: Deferred status visible in browser export preview (not hidden)")
+                    # F8: Verify deferred status is visible in browser preview
+                    page_text = await page.inner_text('body')
+                    has_deferred_indicator = ('deferred' in page_text.lower() or 'unresolved' in page_text.lower())
+                    assert has_deferred_indicator, \
+                        "F8 FAILED: Deferred status should be visible in browser preview (not hidden)"
+                    print("✓ F8: Deferred status visible in browser export preview (not hidden)")
 
-                print("\n=== TEST F: DEFERRED VALIDATION REMAINS EXPORT RELEVANT PASSED ===")
+                    print("\n=== TEST F: DEFERRED VALIDATION REMAINS EXPORT RELEVANT PASSED ===")
 
-            finally:
-                await browser.close()
+                finally:
+                    await browser.close()
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -1131,11 +1147,9 @@ async def test_export_warning_appears_for_deferred_validation(e2e_database_and_a
         session.add(defer_decision)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with proven lifecycle cleanup pattern
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -1155,50 +1169,55 @@ async def test_export_warning_appears_for_deferred_validation(e2e_database_and_a
                     raise RuntimeError("Flask server failed to start")
 
         # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
 
-            try:
-                # G1: Navigate to exports page
-                await page.goto('http://127.0.0.1:8001/imports/validation-deferred-export-warning-g/exports')
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ G1: Export console page loaded")
+                try:
+                    # G1: Navigate to exports page
+                    await page.goto('http://127.0.0.1:8001/imports/validation-deferred-export-warning-g/exports')
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ G1: Export console page loaded")
 
-                # G2: Generate preview
-                await page.evaluate("""
-                    async () => {
-                        const response = await fetch('/imports/validation-deferred-export-warning-g/exports/preview', {
-                            method: 'POST'
-                        });
-                        if (response.ok) {
-                            const html = await response.text();
-                            document.open();
-                            document.write(html);
-                            document.close();
+                    # G2: Generate preview
+                    await page.evaluate("""
+                        async () => {
+                            const response = await fetch('/imports/validation-deferred-export-warning-g/exports/preview', {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                const html = await response.text();
+                                document.open();
+                                document.write(html);
+                                document.close();
+                            }
                         }
-                    }
-                """)
+                    """)
 
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ G2: Export preview loaded")
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ G2: Export preview loaded")
 
-                # G3: Verify deferred validation warning appears
-                deferred_validation_warning = await page.query_selector('#confirm-unresolved-validations-checkbox')
-                assert deferred_validation_warning is not None, \
-                    "G3 FAILED: Validation confirmation checkbox should appear for deferred issues"
-                print("✓ G3: Validation confirmation checkbox present")
+                    # G3: Verify deferred validation warning appears
+                    deferred_validation_warning = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                    assert deferred_validation_warning is not None, \
+                        "G3 FAILED: Validation confirmation checkbox should appear for deferred issues"
+                    print("✓ G3: Validation confirmation checkbox present")
 
-                # G4: Verify export button is enabled (deferred doesn't block)
-                export_btn = await page.query_selector('#generate-export-btn')
-                is_disabled = await export_btn.is_disabled() if export_btn else False
-                assert not is_disabled, "G4 FAILED: Export button should be enabled (deferred issues do not block)"
-                print("✓ G4: Export button enabled (deferred issues do not block)")
+                    # G4: Verify export button is enabled (deferred doesn't block)
+                    export_btn = await page.query_selector('#generate-export-btn')
+                    is_disabled = await export_btn.is_disabled() if export_btn else False
+                    assert not is_disabled, "G4 FAILED: Export button should be enabled (deferred issues do not block)"
+                    print("✓ G4: Export button enabled (deferred issues do not block)")
 
-                print("\n=== TEST G: EXPORT WARNING APPEARS FOR DEFERRED VALIDATION PASSED ===")
+                    print("\n=== TEST G: EXPORT WARNING APPEARS FOR DEFERRED VALIDATION PASSED ===")
 
-            finally:
-                await browser.close()
+                finally:
+                    await browser.close()
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -1305,11 +1324,9 @@ async def test_export_blocked_when_validation_confirmation_unchecked(e2e_databas
         session.add(defer_decision)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with proven lifecycle cleanup pattern
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
         await asyncio.sleep(2)
 
@@ -1327,55 +1344,60 @@ async def test_export_blocked_when_validation_confirmation_unchecked(e2e_databas
                     raise RuntimeError("Flask server failed to start")
 
         # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
 
-            try:
-                # H1: Navigate to exports page
-                await page.goto('http://127.0.0.1:8001/imports/validation-unchecked-h/exports')
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ H1: Export console loaded")
+                try:
+                    # H1: Navigate to exports page
+                    await page.goto('http://127.0.0.1:8001/imports/validation-unchecked-h/exports')
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ H1: Export console loaded")
 
-                # H2: Generate preview
-                await page.evaluate("""
-                    async () => {
-                        const response = await fetch('/imports/validation-unchecked-h/exports/preview', {
-                            method: 'POST'
-                        });
-                        if (response.ok) {
-                            const html = await response.text();
-                            document.open();
-                            document.write(html);
-                            document.close();
+                    # H2: Generate preview
+                    await page.evaluate("""
+                        async () => {
+                            const response = await fetch('/imports/validation-unchecked-h/exports/preview', {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                const html = await response.text();
+                                document.open();
+                                document.write(html);
+                                document.close();
+                            }
                         }
-                    }
-                """)
+                    """)
 
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ H2: Export preview loaded")
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ H2: Export preview loaded")
 
-                # H3: Verify validation confirmation checkbox exists
-                validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
-                assert validation_checkbox is not None, \
-                    "H3 FAILED: Validation confirmation checkbox should exist"
-                print("✓ H3: Validation confirmation checkbox exists")
+                    # H3: Verify validation confirmation checkbox exists
+                    validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                    assert validation_checkbox is not None, \
+                        "H3 FAILED: Validation confirmation checkbox should exist"
+                    print("✓ H3: Validation confirmation checkbox exists")
 
-                # H4: Verify checkbox is unchecked initially
-                is_checked = await validation_checkbox.is_checked()
-                assert not is_checked, "H4 FAILED: Checkbox should be unchecked initially"
-                print("✓ H4: Checkbox is unchecked initially")
+                    # H4: Verify checkbox is unchecked initially
+                    is_checked = await validation_checkbox.is_checked()
+                    assert not is_checked, "H4 FAILED: Checkbox should be unchecked initially"
+                    print("✓ H4: Checkbox is unchecked initially")
 
-                # H5: Verify export button is enabled (deferred doesn't block)
-                export_btn = await page.query_selector('#generate-export-btn')
-                is_disabled = await export_btn.is_disabled() if export_btn else False
-                assert not is_disabled, "H5 FAILED: Export button should be enabled (deferred issues do not block)"
-                print("✓ H5: Export button is enabled (deferred issues do not block)")
+                    # H5: Verify export button is enabled (deferred doesn't block)
+                    export_btn = await page.query_selector('#generate-export-btn')
+                    is_disabled = await export_btn.is_disabled() if export_btn else False
+                    assert not is_disabled, "H5 FAILED: Export button should be enabled (deferred issues do not block)"
+                    print("✓ H5: Export button is enabled (deferred issues do not block)")
 
-                print("\n=== TEST H: EXPORT BLOCKED WHEN VALIDATION CONFIRMATION UNCHECKED PASSED ===")
+                    print("\n=== TEST H: EXPORT BLOCKED WHEN VALIDATION CONFIRMATION UNCHECKED PASSED ===")
 
-            finally:
-                await browser.close()
+                finally:
+                    await browser.close()
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -1483,11 +1505,9 @@ async def test_export_button_enabled_when_validation_confirmation_checked(e2e_da
         session.add(defer_decision)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with proven lifecycle cleanup pattern
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
         await asyncio.sleep(2)
 
@@ -1505,54 +1525,59 @@ async def test_export_button_enabled_when_validation_confirmation_checked(e2e_da
                     raise RuntimeError("Flask server failed to start")
 
         # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
 
-            try:
-                # I1: Navigate to exports page
-                await page.goto('http://127.0.0.1:8001/imports/validation-checked-i/exports')
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ I1: Export console loaded")
+                try:
+                    # I1: Navigate to exports page
+                    await page.goto('http://127.0.0.1:8001/imports/validation-checked-i/exports')
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ I1: Export console loaded")
 
-                # I2: Generate preview
-                await page.evaluate("""
-                    async () => {
-                        const response = await fetch('/imports/validation-checked-i/exports/preview', {
-                            method: 'POST'
-                        });
-                        if (response.ok) {
-                            const html = await response.text();
-                            document.open();
-                            document.write(html);
-                            document.close();
+                    # I2: Generate preview
+                    await page.evaluate("""
+                        async () => {
+                            const response = await fetch('/imports/validation-checked-i/exports/preview', {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                const html = await response.text();
+                                document.open();
+                                document.write(html);
+                                document.close();
+                            }
                         }
-                    }
-                """)
+                    """)
 
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ I2: Export preview loaded")
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ I2: Export preview loaded")
 
-                # I3: Verify button is enabled (deferred doesn't block)
-                export_btn = await page.query_selector('#generate-export-btn')
-                is_initially_disabled = await export_btn.is_disabled()
-                assert not is_initially_disabled, "I3 FAILED: Export button should be enabled (deferred issues do not block)"
-                print("✓ I3: Export button enabled (deferred issues do not block)")
+                    # I3: Verify button is enabled (deferred doesn't block)
+                    export_btn = await page.query_selector('#generate-export-btn')
+                    is_initially_disabled = await export_btn.is_disabled()
+                    assert not is_initially_disabled, "I3 FAILED: Export button should be enabled (deferred issues do not block)"
+                    print("✓ I3: Export button enabled (deferred issues do not block)")
 
-                # I4: Check the validation confirmation checkbox
-                validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
-                await validation_checkbox.check()
-                print("✓ I4: Validation confirmation checkbox checked")
+                    # I4: Check the validation confirmation checkbox
+                    validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                    await validation_checkbox.check()
+                    print("✓ I4: Validation confirmation checkbox checked")
 
-                # I5: Verify button remains enabled
-                is_enabled = not await export_btn.is_disabled()
-                assert is_enabled, "I5 FAILED: Export button should remain enabled"
-                print("✓ I5: Export button remains enabled")
+                    # I5: Verify button remains enabled
+                    is_enabled = not await export_btn.is_disabled()
+                    assert is_enabled, "I5 FAILED: Export button should remain enabled"
+                    print("✓ I5: Export button remains enabled")
 
-                print("\n=== TEST I: EXPORT BUTTON ENABLED WHEN VALIDATION CONFIRMATION CHECKED PASSED ===")
+                    print("\n=== TEST I: EXPORT BUTTON ENABLED WHEN VALIDATION CONFIRMATION CHECKED PASSED ===")
 
-            finally:
-                await browser.close()
+                finally:
+                    await browser.close()
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -1627,11 +1652,9 @@ async def test_clean_validation_export_skips_confirmation(e2e_database_and_app):
         session.add(contact)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with proven lifecycle cleanup pattern
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
         await asyncio.sleep(2)
 
@@ -1649,50 +1672,55 @@ async def test_clean_validation_export_skips_confirmation(e2e_database_and_app):
                     raise RuntimeError("Flask server failed to start")
 
         # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
 
-            try:
-                # J1: Navigate to exports page
-                await page.goto('http://127.0.0.1:8001/imports/clean-validation-export-j/exports')
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ J1: Export console loaded (clean validation)")
+                try:
+                    # J1: Navigate to exports page
+                    await page.goto('http://127.0.0.1:8001/imports/clean-validation-export-j/exports')
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ J1: Export console loaded (clean validation)")
 
-                # J2: Generate preview
-                await page.evaluate("""
-                    async () => {
-                        const response = await fetch('/imports/clean-validation-export-j/exports/preview', {
-                            method: 'POST'
-                        });
-                        if (response.ok) {
-                            const html = await response.text();
-                            document.open();
-                            document.write(html);
-                            document.close();
+                    # J2: Generate preview
+                    await page.evaluate("""
+                        async () => {
+                            const response = await fetch('/imports/clean-validation-export-j/exports/preview', {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                const html = await response.text();
+                                document.open();
+                                document.write(html);
+                                document.close();
+                            }
                         }
-                    }
-                """)
+                    """)
 
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ J2: Export preview loaded (clean validation)")
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ J2: Export preview loaded (clean validation)")
 
-                # J3: Verify NO validation confirmation checkbox appears
-                validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
-                assert validation_checkbox is None, \
-                    "J3 FAILED: Validation confirmation checkbox should NOT appear for clean validation"
-                print("✓ J3: No validation confirmation checkbox (clean validation)")
+                    # J3: Verify NO validation confirmation checkbox appears
+                    validation_checkbox = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                    assert validation_checkbox is None, \
+                        "J3 FAILED: Validation confirmation checkbox should NOT appear for clean validation"
+                    print("✓ J3: No validation confirmation checkbox (clean validation)")
 
-                # J4: Verify export button is enabled
-                export_btn = await page.query_selector('#generate-export-btn')
-                is_disabled = await export_btn.is_disabled() if export_btn else False
-                assert not is_disabled, "J4 FAILED: Export button should be enabled for clean validation"
-                print("✓ J4: Export button enabled (no confirmation required for clean validation)")
+                    # J4: Verify export button is enabled
+                    export_btn = await page.query_selector('#generate-export-btn')
+                    is_disabled = await export_btn.is_disabled() if export_btn else False
+                    assert not is_disabled, "J4 FAILED: Export button should be enabled for clean validation"
+                    print("✓ J4: Export button enabled (no confirmation required for clean validation)")
 
-                print("\n=== TEST J: CLEAN VALIDATION EXPORT SKIPS CONFIRMATION PASSED ===")
+                    print("\n=== TEST J: CLEAN VALIDATION EXPORT SKIPS CONFIRMATION PASSED ===")
 
-            finally:
-                await browser.close()
+                finally:
+                    await browser.close()
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -1851,11 +1879,9 @@ async def test_mixed_validation_household_export_warnings(e2e_database_and_app):
         session.add(hh_decision)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with proven lifecycle cleanup pattern
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -1875,83 +1901,88 @@ async def test_mixed_validation_household_export_warnings(e2e_database_and_app):
                     raise RuntimeError("Flask server failed to start")
 
         # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
 
-            try:
-                # K1: Navigate to exports page
-                await page.goto('http://127.0.0.1:8001/imports/mixed-export-warnings-k/exports')
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ K1: Export console loaded")
+                try:
+                    # K1: Navigate to exports page
+                    await page.goto('http://127.0.0.1:8001/imports/mixed-export-warnings-k/exports')
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ K1: Export console loaded")
 
-                # K2: Generate preview
-                await page.evaluate("""
-                    async () => {
-                        const response = await fetch('/imports/mixed-export-warnings-k/exports/preview', {
-                            method: 'POST'
-                        });
-                        if (response.ok) {
-                            const html = await response.text();
-                            document.open();
-                            document.write(html);
-                            document.close();
+                    # K2: Generate preview
+                    await page.evaluate("""
+                        async () => {
+                            const response = await fetch('/imports/mixed-export-warnings-k/exports/preview', {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                const html = await response.text();
+                                document.open();
+                                document.write(html);
+                                document.close();
+                            }
                         }
-                    }
-                """)
+                    """)
 
-                await page.wait_for_selector('h1', timeout=5000)
-                print("✓ K2: Export preview loaded with mixed warnings")
+                    await page.wait_for_selector('h1', timeout=5000)
+                    print("✓ K2: Export preview loaded with mixed warnings")
 
-                # K3: Verify both warning sections appear
-                val_warning = await page.query_selector('#confirm-unresolved-validations-checkbox')
-                hh_warning = await page.query_selector('#confirm-unresolved-households-checkbox')
-                assert val_warning is not None, "K3 FAILED: Validation warning checkbox should be present"
-                assert hh_warning is not None, "K3 FAILED: Household warning checkbox should be present"
-                print("✓ K3: Both warning checkboxes present (validation + household)")
+                    # K3: Verify both warning sections appear
+                    val_warning = await page.query_selector('#confirm-unresolved-validations-checkbox')
+                    hh_warning = await page.query_selector('#confirm-unresolved-households-checkbox')
+                    assert val_warning is not None, "K3 FAILED: Validation warning checkbox should be present"
+                    assert hh_warning is not None, "K3 FAILED: Household warning checkbox should be present"
+                    print("✓ K3: Both warning checkboxes present (validation + household)")
 
-                # K4: Verify export button is enabled (deferred issues don't block)
-                export_btn = await page.query_selector('#generate-export-btn')
-                is_initially_disabled = await export_btn.is_disabled()
-                assert not is_initially_disabled, "K4 FAILED: Export button should be enabled (deferred issues do not block)"
-                print("✓ K4: Export button enabled (deferred issues do not block)")
+                    # K4: Verify export button is enabled (deferred issues don't block)
+                    export_btn = await page.query_selector('#generate-export-btn')
+                    is_initially_disabled = await export_btn.is_disabled()
+                    assert not is_initially_disabled, "K4 FAILED: Export button should be enabled (deferred issues do not block)"
+                    print("✓ K4: Export button enabled (deferred issues do not block)")
 
-                # K5: Check ONLY validation checkbox
-                await val_warning.check()
-                await page.wait_for_timeout(200)  # Wait for JS state update
-                is_still_disabled = await export_btn.is_disabled()
-                assert not is_still_disabled, \
-                    "K5 FAILED: Export button should remain enabled (deferred doesn't block)"
-                print("✓ K5: Button remains enabled (deferred doesn't block)")
+                    # K5: Check ONLY validation checkbox
+                    await val_warning.check()
+                    await page.wait_for_timeout(200)  # Wait for JS state update
+                    is_still_disabled = await export_btn.is_disabled()
+                    assert not is_still_disabled, \
+                        "K5 FAILED: Export button should remain enabled (deferred doesn't block)"
+                    print("✓ K5: Button remains enabled (deferred doesn't block)")
 
-                # K6: Now check household checkbox too
-                await hh_warning.check()
-                await page.wait_for_timeout(200)  # Wait for JS state update
-                is_now_enabled = not await export_btn.is_disabled()
-                assert is_now_enabled, \
-                    "K6 FAILED: Export button should remain enabled"
-                print("✓ K6: Button remains enabled")
+                    # K6: Now check household checkbox too
+                    await hh_warning.check()
+                    await page.wait_for_timeout(200)  # Wait for JS state update
+                    is_now_enabled = not await export_btn.is_disabled()
+                    assert is_now_enabled, \
+                        "K6 FAILED: Export button should remain enabled"
+                    print("✓ K6: Button remains enabled")
 
-                # K7: Verify independent unchecking
-                await val_warning.uncheck()
-                await page.wait_for_timeout(200)  # Wait for JS state update
-                is_disabled_again = await export_btn.is_disabled()
-                assert not is_disabled_again, \
-                    "K7 FAILED: Button should remain enabled (deferred doesn't block)"
-                print("✓ K7: Button remains enabled (deferred doesn't block)")
+                    # K7: Verify independent unchecking
+                    await val_warning.uncheck()
+                    await page.wait_for_timeout(200)  # Wait for JS state update
+                    is_disabled_again = await export_btn.is_disabled()
+                    assert not is_disabled_again, \
+                        "K7 FAILED: Button should remain enabled (deferred doesn't block)"
+                    print("✓ K7: Button remains enabled (deferred doesn't block)")
 
-                # K8: Check validation again to re-enable
-                await val_warning.check()
-                await page.wait_for_timeout(200)  # Wait for JS state update
-                is_enabled_again = not await export_btn.is_disabled()
-                assert is_enabled_again, \
-                    "K8 FAILED: Button should be enabled again when both re-checked"
-                print("✓ K8: Button re-enabled when both confirmations checked again")
+                    # K8: Check validation again to re-enable
+                    await val_warning.check()
+                    await page.wait_for_timeout(200)  # Wait for JS state update
+                    is_enabled_again = not await export_btn.is_disabled()
+                    assert is_enabled_again, \
+                        "K8 FAILED: Button should be enabled again when both re-checked"
+                    print("✓ K8: Button re-enabled when both confirmations checked again")
 
-                print("\n=== TEST K: MIXED VALIDATION + HOUSEHOLD EXPORT WARNINGS PASSED ===")
+                    print("\n=== TEST K: MIXED VALIDATION + HOUSEHOLD EXPORT WARNINGS PASSED ===")
 
-            finally:
-                await browser.close()
+                finally:
+                    await browser.close()
+        finally:
+            # Explicit server shutdown and thread cleanup
+            server.shutdown()
+            flask_thread.join(timeout=2)
 
     finally:
         session.close()
