@@ -35,6 +35,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from sqlalchemy.orm import sessionmaker
+from werkzeug.serving import make_server
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -246,11 +247,9 @@ async def test_previous_next_navigation_no_decisions(
         household_1_id = household_1.id
         household_2_id = household_2.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with explicit shutdown capability
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -366,6 +365,10 @@ async def test_previous_next_navigation_no_decisions(
             finally:
                 await browser.close()
 
+        # Explicit server shutdown and thread cleanup
+        server.shutdown()
+        flask_thread.join(timeout=2)
+
     finally:
         session.close()
 
@@ -477,11 +480,9 @@ async def test_defer_without_notes_warning_non_blocking(
         contact_id = contact.id
         household_id = household.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with explicit shutdown capability
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -579,6 +580,10 @@ async def test_defer_without_notes_warning_non_blocking(
 
             finally:
                 await browser.close()
+
+        # Explicit server shutdown and thread cleanup
+        server.shutdown()
+        flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -686,11 +691,9 @@ async def test_confirm_household_decision(
         contact_id = contact.id
         household_id = household.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with explicit shutdown capability
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -769,6 +772,10 @@ async def test_confirm_household_decision(
 
             finally:
                 await browser.close()
+
+        # Explicit server shutdown and thread cleanup
+        server.shutdown()
+        flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -876,11 +883,9 @@ async def test_reject_household_decision(
         contact_id = contact.id
         household_id = household.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with explicit shutdown capability
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -959,6 +964,10 @@ async def test_reject_household_decision(
 
             finally:
                 await browser.close()
+
+        # Explicit server shutdown and thread cleanup
+        server.shutdown()
+        flask_thread.join(timeout=2)
 
     finally:
         session.close()
@@ -1072,11 +1081,9 @@ async def test_redirect_chain_to_exports(
 
         household_ids = [h.id for h in households]
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server with explicit shutdown capability
+        server = make_server('127.0.0.1', 8001, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
         # Wait for server
@@ -1223,6 +1230,10 @@ async def test_redirect_chain_to_exports(
 
             finally:
                 await browser.close()
+
+        # Explicit server shutdown and thread cleanup
+        server.shutdown()
+        flask_thread.join(timeout=2)
 
     finally:
         session.close()
