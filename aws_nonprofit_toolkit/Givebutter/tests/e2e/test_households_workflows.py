@@ -53,6 +53,39 @@ from scripts.householder.database_models import (
 from scripts.uploader.app import app
 
 
+async def wait_for_households_page_ready(url: str, timeout_seconds: int = 10) -> None:
+	"""
+	Wait for Flask server to be ready by polling a households page route.
+
+	Uses exponential backoff polling with a bounded timeout.
+
+	Args:
+		url: Full URL to poll (e.g., 'http://127.0.0.1:8001/imports/{batch_id}/households')
+		timeout_seconds: Total timeout in seconds (default 10)
+
+	Raises:
+		RuntimeError: If the server does not become ready within timeout_seconds
+	"""
+	import requests
+	import time
+
+	start_time = time.time()
+	wait_interval = 0.1
+
+	while time.time() - start_time < timeout_seconds:
+		try:
+			response = requests.get(url, timeout=2)
+			# Successful response means server is ready
+			return
+		except (requests.ConnectionError, requests.Timeout):
+			# Server not ready yet, wait and retry
+			await asyncio.sleep(wait_interval)
+			# Exponential backoff: 0.1 → 0.15 → 0.225 → ... → capped at 1.0
+			wait_interval = min(wait_interval * 1.5, 1.0)
+
+	raise RuntimeError(f"Flask server failed to become ready at {url} after {timeout_seconds}s")
+
+
 @pytest.fixture
 def e2e_database_and_app():
     """
@@ -252,21 +285,8 @@ async def test_previous_next_navigation_no_decisions(
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/nav-test-batch/households', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server with bounded exponential backoff polling
+        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/nav-test-batch/households', timeout_seconds=10)
 
         # Launch browser
         async with async_playwright() as p:
@@ -485,21 +505,8 @@ async def test_defer_without_notes_warning_non_blocking(
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/defer-warning-batch/households', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server with bounded exponential backoff polling
+        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/defer-warning-batch/households', timeout_seconds=10)
 
         # Launch browser
         async with async_playwright() as p:
@@ -696,21 +703,8 @@ async def test_confirm_household_decision(
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/confirm-test-batch/households', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server with bounded exponential backoff polling
+        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/confirm-test-batch/households', timeout_seconds=10)
 
         # Launch browser
         async with async_playwright() as p:
@@ -888,21 +882,8 @@ async def test_reject_household_decision(
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/reject-test-batch/households', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server with bounded exponential backoff polling
+        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/reject-test-batch/households', timeout_seconds=10)
 
         # Launch browser
         async with async_playwright() as p:
@@ -1086,21 +1067,8 @@ async def test_redirect_chain_to_exports(
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/redirect-chain-batch/households', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server with bounded exponential backoff polling
+        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/redirect-chain-batch/households', timeout_seconds=10)
 
         # Launch browser
         async with async_playwright() as p:
