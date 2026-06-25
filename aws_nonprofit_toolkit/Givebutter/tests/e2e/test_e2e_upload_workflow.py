@@ -16,8 +16,8 @@ def start_flask_app():
     app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
     process = subprocess.Popen(
         [sys.executable, str(app_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         preexec_fn=os.setsid  # Create new process group for cleanup
     )
 
