@@ -57,6 +57,39 @@ from scripts.householder.database_models import (
 from scripts.uploader.app import app
 
 
+async def wait_for_validation_export_page_ready(url: str, timeout_seconds: int = 10) -> None:
+	"""
+	Wait for Flask server to be ready by polling a validation export page route.
+
+	Uses exponential backoff polling with a bounded timeout.
+
+	Args:
+		url: Full URL to poll (e.g., 'http://127.0.0.1:8001/imports/{batch_id}/exports')
+		timeout_seconds: Total timeout in seconds (default 10)
+
+	Raises:
+		RuntimeError: If the server does not become ready within timeout_seconds
+	"""
+	import requests
+	import time
+
+	start_time = time.time()
+	wait_interval = 0.1
+
+	while time.time() - start_time < timeout_seconds:
+		try:
+			response = requests.get(url, timeout=2)
+			# Successful response means server is ready
+			return
+		except (requests.ConnectionError, requests.Timeout):
+			# Server not ready yet, wait and retry
+			await asyncio.sleep(wait_interval)
+			# Exponential backoff: 0.1 → 0.15 → 0.225 → ... → capped at 1.0
+			wait_interval = min(wait_interval * 1.5, 1.0)
+
+	raise RuntimeError(f"Flask server failed to become ready at {url} after {timeout_seconds}s")
+
+
 @pytest.fixture
 def e2e_database_and_app():
     """
@@ -210,21 +243,8 @@ async def test_validation_blocker_appears_in_export_console(e2e_database_and_app
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/validation-blocker-batch-a/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/validation-blocker-batch-a/exports', timeout_seconds=10)
 
         # Launch browser
         async with async_playwright() as p:
@@ -357,21 +377,8 @@ async def test_clean_validation_export_proceeds(e2e_database_and_app):
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/clean-validation-batch-c/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/clean-validation-batch-c/exports', timeout_seconds=10)
 
         # Launch browser
         try:
@@ -536,8 +543,8 @@ async def test_failed_autosave_values_not_exported(e2e_database_and_app):
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/failed-autosave-batch-d/exports', timeout_seconds=10)
 
         try:
                 # D2: Attempt failed autosave with INVALID email
@@ -749,21 +756,8 @@ async def test_persisted_validation_override_allows_export(e2e_database_and_app)
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/validation-override-batch-e/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/validation-override-batch-e/exports', timeout_seconds=10)
 
         # Launch browser
         try:
@@ -970,21 +964,8 @@ async def test_deferred_validation_remains_export_relevant(e2e_database_and_app)
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/validation-deferred-batch-f/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/validation-deferred-batch-f/exports', timeout_seconds=10)
 
         # Launch browser
         try:
@@ -1152,21 +1133,8 @@ async def test_export_warning_appears_for_deferred_validation(e2e_database_and_a
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/validation-deferred-export-warning-g/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/validation-deferred-export-warning-g/exports', timeout_seconds=10)
 
         # Launch browser
         try:
@@ -1328,20 +1296,9 @@ async def test_export_blocked_when_validation_confirmation_unchecked(e2e_databas
         server = make_server('127.0.0.1', 8001, flask_app)
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
-        await asyncio.sleep(2)
 
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/validation-unchecked-h/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/validation-unchecked-h/exports', timeout_seconds=10)
 
         # Launch browser
         try:
@@ -1509,20 +1466,9 @@ async def test_export_button_enabled_when_validation_confirmation_checked(e2e_da
         server = make_server('127.0.0.1', 8001, flask_app)
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
-        await asyncio.sleep(2)
 
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/validation-checked-i/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/validation-checked-i/exports', timeout_seconds=10)
 
         # Launch browser
         try:
@@ -1656,20 +1602,9 @@ async def test_clean_validation_export_skips_confirmation(e2e_database_and_app):
         server = make_server('127.0.0.1', 8001, flask_app)
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
-        await asyncio.sleep(2)
 
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/clean-validation-export-j/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/clean-validation-export-j/exports', timeout_seconds=10)
 
         # Launch browser
         try:
@@ -1884,21 +1819,8 @@ async def test_mixed_validation_household_export_warnings(e2e_database_and_app):
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/mixed-export-warnings-k/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Wait for server using exponential backoff polling
+        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/mixed-export-warnings-k/exports', timeout_seconds=10)
 
         # Launch browser
         try:
