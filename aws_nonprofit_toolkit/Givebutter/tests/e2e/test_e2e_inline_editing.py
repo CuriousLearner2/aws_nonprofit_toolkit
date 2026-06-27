@@ -231,14 +231,14 @@ async def test_inline_editing_invalid_email_shows_error(flask_app_database_mode,
 
 
 @pytest.mark.e2e
-async def test_inline_editing_clears_only_field_specific_issues(flask_app_isolated, temp_dir):
+async def test_inline_editing_clears_only_field_specific_issues(flask_app_database_mode, sample_csv):
     """Verify that editing a field only clears issues for that field, not all issues."""
     from playwright.async_api import async_playwright
     import csv
 
     # Create test CSV with multiple issues (email typo, missing phone)
-    test_csv = temp_dir / "test_multiple_issues.csv"
-    with open(test_csv, 'w', newline='') as f:
+    test_csv_path = sample_csv.parent / "test_multiple_issues.csv"
+    with open(test_csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=[
             'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
         ])
@@ -258,18 +258,32 @@ async def test_inline_editing_clears_only_field_specific_issues(flask_app_isolat
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
-            await file_input.set_input_files(str(test_csv))
+            await file_input.set_input_files(str(test_csv_path))
 
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
             # Get issues cell and verify both issues exist initially
             issues_cell = await page.query_selector('td.issues')
@@ -314,14 +328,14 @@ async def test_inline_editing_clears_only_field_specific_issues(flask_app_isolat
 
 
 @pytest.mark.e2e
-async def test_inline_editing_updates_suggestions_column(flask_app_isolated, temp_dir):
+async def test_inline_editing_updates_suggestions_column(flask_app_database_mode, sample_csv):
     """Verify that Suggested_Modifications column updates when field is edited."""
     from playwright.async_api import async_playwright
     import csv
 
     # Create test CSV with suggestions
-    test_csv = temp_dir / "test_suggestions.csv"
-    with open(test_csv, 'w', newline='') as f:
+    test_csv_path = sample_csv.parent / "test_suggestions.csv"
+    with open(test_csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=[
             'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
         ])
@@ -341,18 +355,32 @@ async def test_inline_editing_updates_suggestions_column(flask_app_isolated, tem
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
-            await file_input.set_input_files(str(test_csv))
+            await file_input.set_input_files(str(test_csv_path))
 
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
             # Get suggestions cell
             suggestions_cell = await page.query_selector('td.suggestions')
@@ -394,14 +422,14 @@ async def test_inline_editing_updates_suggestions_column(flask_app_isolated, tem
 
 
 @pytest.mark.e2e
-async def test_inline_editing_clears_email_typo_suggestions(flask_app_isolated, temp_dir):
+async def test_inline_editing_clears_email_typo_suggestions(flask_app_database_mode, sample_csv):
     """Verify that email typo suggestions are cleared when email is corrected."""
     from playwright.async_api import async_playwright
     import csv
 
     # Create test CSV with email typo that generates "Consider: corrected@email.com" suggestion
-    test_csv = temp_dir / "test_email_suggestion.csv"
-    with open(test_csv, 'w', newline='') as f:
+    test_csv_path = sample_csv.parent / "test_email_suggestion.csv"
+    with open(test_csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=[
             'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
         ])
@@ -421,18 +449,32 @@ async def test_inline_editing_clears_email_typo_suggestions(flask_app_isolated, 
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
-            await file_input.set_input_files(str(test_csv))
+            await file_input.set_input_files(str(test_csv_path))
 
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
             # Get initial suggestions
             suggestions_cell = await page.query_selector('td.suggestions')
@@ -475,14 +517,14 @@ async def test_inline_editing_clears_email_typo_suggestions(flask_app_isolated, 
 
 
 @pytest.mark.e2e
-async def test_inline_editing_displays_new_validation_failures(flask_app_isolated, temp_dir):
+async def test_inline_editing_displays_new_validation_failures(flask_app_database_mode, sample_csv):
     """Verify that editing a field to an INVALID value shows new issues/suggestions."""
     from playwright.async_api import async_playwright
     import csv
 
     # Create test CSV with valid data
-    test_csv = temp_dir / "test_validation_failure.csv"
-    with open(test_csv, 'w', newline='') as f:
+    test_csv_path = sample_csv.parent / "test_validation_failure.csv"
+    with open(test_csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=[
             'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
         ])
@@ -502,18 +544,32 @@ async def test_inline_editing_displays_new_validation_failures(flask_app_isolate
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
-            await file_input.set_input_files(str(test_csv))
+            await file_input.set_input_files(str(test_csv_path))
 
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
             # Verify initial state: PASS tier, no issues
             tier_cell = await page.query_selector('tr[data-record-idx="0"] td:nth-child(10)')
@@ -574,14 +630,14 @@ async def test_inline_editing_displays_new_validation_failures(flask_app_isolate
 
 
 @pytest.mark.e2e
-async def test_inline_editing_recalculates_tier_on_edit(flask_app_isolated, temp_dir):
+async def test_inline_editing_recalculates_tier_on_edit(flask_app_database_mode, sample_csv):
     """Verify that Validation_Tier updates when fixes move record between tiers."""
     from playwright.async_api import async_playwright
     import csv
 
     # Create test CSV with record in FAIL tier (missing phone, bad email)
-    test_csv = temp_dir / "test_tier_recalc.csv"
-    with open(test_csv, 'w', newline='') as f:
+    test_csv_path = sample_csv.parent / "test_tier_recalc.csv"
+    with open(test_csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=[
             'Transaction ID', 'Date', 'Name', 'Email', 'Phone', 'Amount', 'Campaign Title'
         ])
@@ -601,18 +657,32 @@ async def test_inline_editing_recalculates_tier_on_edit(flask_app_isolated, temp
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
-            await file_input.set_input_files(str(test_csv))
+            await file_input.set_input_files(str(test_csv_path))
 
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
             # Get initial tier (should be WARNING due to email issue)
             tier_cell = await page.query_selector('tr[data-record-idx="0"] td:nth-child(10)')
