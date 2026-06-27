@@ -230,8 +230,8 @@ async def test_decision_selection_changes_visual_state(flask_app_for_forms, temp
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_dropdown_keyboard_navigation(flask_app_for_forms, temp_dir, sample_csv):
-    """Test that dropdown can be navigated with keyboard."""
+async def test_dropdown_keyboard_navigation(flask_app_database_mode, temp_dir, sample_csv):
+    """Test that dropdown can be navigated with keyboard via uploader batch_id propagation."""
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
@@ -239,9 +239,9 @@ async def test_dropdown_keyboard_navigation(flask_app_for_forms, temp_dir, sampl
         page = await browser.new_page()
 
         try:
-            # Navigate to review
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to uploader on port 8001 (database mode fixture uses this port)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -250,40 +250,55 @@ async def test_dropdown_keyboard_navigation(flask_app_for_forms, temp_dir, sampl
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Debug: print page content to see what's in the table
+            page_content = await page.content()
+            print(f"DEBUG: page contains 'batch' keyword: {'batch' in page_content.lower()}")
+            print(f"DEBUG: page contains 'data-batch-id': {'data-batch-id' in page_content}")
 
             # Wait for review button to be visible before clicking
-            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
-            review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
-            if review_button:
-                await review_button.click()
+            # Use specific selector to find the action button in the table
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
 
-                # Wait for table and dropdowns to fully load
-                await page.wait_for_selector('table.review-table', timeout=5000)
-                await page.wait_for_selector('select.decision-select', timeout=5000)
+            # Get batch_id from button before clicking (for debugging)
+            batch_id_attr = await review_buttons[0].get_attribute('data-batch-id')
+            print(f"DEBUG: batch_id from button: {batch_id_attr}")
+            assert batch_id_attr, f"batch_id is empty or None: {batch_id_attr}"
 
-                selects = await page.query_selector_all('select.decision-select')
-                if selects:
-                    dropdown = selects[0]
+            # Click the first review button
+            await review_buttons[0].click()
 
-                    # Get available options
-                    options = await page.query_selector_all('select.decision-select option')
-                    assert len(options) > 1, "Dropdown should have more than one option"
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
-                    # Select the second option (first is usually empty/default)
-                    second_option_value = await options[1].get_attribute('value')
+            # Wait for dropdowns to fully load
+            await page.wait_for_selector('select.row-status-dropdown', timeout=5000)
 
-                    # Handle any confirmation dialogs automatically
-                    page.once("dialog", lambda dialog: dialog.accept())
+            selects = await page.query_selector_all('select.row-status-dropdown')
+            if selects:
+                dropdown = selects[0]
 
-                    await dropdown.select_option(second_option_value)
+                # Get available options
+                options = await page.query_selector_all('select.row-status-dropdown option')
+                assert len(options) > 1, "Dropdown should have more than one option"
 
-                    # Wait for auto-save to complete
-                    await page.wait_for_load_state('networkidle', timeout=5000)
+                # Select the second option (first is usually empty/default)
+                second_option_value = await options[1].get_attribute('value')
 
-                    # Verify the selection was made
-                    selected_value = await dropdown.evaluate('el => el.value')
-                    assert selected_value == second_option_value, f"Expected {second_option_value} to be selected, but got {selected_value}"
+                # Handle any confirmation dialogs automatically
+                page.once("dialog", lambda dialog: dialog.accept())
+
+                await dropdown.select_option(second_option_value)
+
+                # Wait for auto-save to complete
+                await page.wait_for_load_state('networkidle', timeout=5000)
+
+                # Verify the selection was made
+                selected_value = await dropdown.evaluate('el => el.value')
+                assert selected_value == second_option_value, f"Expected {second_option_value} to be selected, but got {selected_value}"
 
         finally:
             await browser.close()

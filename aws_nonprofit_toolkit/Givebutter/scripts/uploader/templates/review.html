@@ -849,16 +849,7 @@
                 files.forEach(f => {
                     const row = document.createElement('tr');
 
-                    // Determine action button
-                    let actionBtn = '';
-                    if (f.status === 'Pending Review') {
-                        actionBtn = `<button class="action-btn primary" onclick="reviewFile('${f.filename}')">Review Import</button>`;
-                    } else if (f.status === 'In Review') {
-                        actionBtn = `<button class="action-btn primary" onclick="reviewFile('${f.filename}')">Continue Review</button>`;
-                    } else if (f.status === 'Completed') {
-                        actionBtn = `<button class="action-btn secondary" onclick="viewSummary('${f.filename}')">View Summary</button>`;
-                    }
-
+                    // Create cells and button
                     row.innerHTML = `
                         <td title="${f.filename}"><span class="material-symbols-outlined file-icon">description</span><strong>${f.filename}</strong></td>
                         <td style="font-family: 'JetBrains Mono', monospace;">${f.uploaded}</td>
@@ -874,9 +865,31 @@
                         <td style="font-family: 'JetBrains Mono', monospace;">${f.households} <span style="font-size: 11px; color: var(--slate-gray);">suggested</span></td>
                         <td style="font-family: 'JetBrains Mono', monospace;">${f.duplicates} <span style="font-size: 11px; color: var(--slate-gray);">candidates</span></td>
                         <td><span class="status-text">${f.status}</span></td>
-                        <td style="text-align: right;">${actionBtn}</td>
+                        <td style="text-align: right;" class="action-cell"></td>
                     `;
                     tbody.appendChild(row);
+
+                    // Add action button with event listener
+                    const actionCell = row.querySelector('.action-cell');
+                    if (f.status === 'Pending Review' || f.status === 'In Review') {
+                        const btn = document.createElement('button');
+                        btn.className = 'action-btn primary';
+                        btn.textContent = f.status === 'Pending Review' ? 'Review Import' : 'Continue Review';
+                        btn.dataset.batchId = f.batch_id || '';
+                        btn.dataset.filename = f.filename;
+                        btn.addEventListener('click', function() {
+                            reviewFile(this);
+                        });
+                        actionCell.appendChild(btn);
+                    } else if (f.status === 'Completed') {
+                        const btn = document.createElement('button');
+                        btn.className = 'action-btn secondary';
+                        btn.textContent = 'View Summary';
+                        btn.addEventListener('click', function() {
+                            viewSummary(f.filename);
+                        });
+                        actionCell.appendChild(btn);
+                    }
 
                     if (f.status !== 'Completed') {
                         totalPending += f.rows;
@@ -899,8 +912,16 @@
             document.getElementById('lastUpload').textContent = lastUpload;
         }
 
-        function reviewFile(filename) {
-            alert('Review functionality not yet implemented for: ' + filename);
+        function reviewFile(buttonElement) {
+            // Get batch_id from button's data attribute (from /api/processing response)
+            const batchId = buttonElement && buttonElement.dataset ? buttonElement.dataset.batchId : null;
+
+            if (batchId && batchId.trim()) {
+                const url = '/imports/' + batchId + '/validation';
+                window.location.href = url;
+            } else {
+                console.error('Unable to determine batch ID for review');
+            }
         }
 
         function viewSummary(filename) {

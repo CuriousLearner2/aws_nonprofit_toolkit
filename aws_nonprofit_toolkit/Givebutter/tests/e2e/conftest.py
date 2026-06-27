@@ -66,6 +66,98 @@ def e2e_test_database():
         pass
 
 
+@pytest.fixture(scope="function")
+def flask_app_database_mode():
+    """Start Flask app for a single test with database mode enabled.
+
+    This fixture is function-scoped and starts a fresh Flask instance
+    with database mode enabled for each test that uses it.
+
+    This is slower than session-scoped but ensures each test has:
+    - Fresh database with no prior data
+    - Fresh Flask process with correct environment variables
+    - Proper cleanup between tests
+    """
+    import tempfile
+
+    # Kill any existing Flask processes on port 8000
+    try:
+        os.system("lsof -i :8000 | grep -v LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true")
+    except:
+        pass
+    time.sleep(1)  # Wait for port to be released
+
+    # Create fresh database for this test
+    db_fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(db_fd)
+    database_url = f'sqlite:///{db_path}'
+
+    # Initialize database schema
+    engine = create_engine(database_url)
+    Base.metadata.create_all(engine)
+
+    app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
+
+    # Prepare environment for subprocess
+    env = os.environ.copy()
+    env['HOUSEHOLDER_REPOSITORY'] = 'database'
+    env['GIVEBUTTER_DATABASE_URL'] = database_url
+    env['HOUSEHOLDER_INGEST_ON_UPLOAD'] = 'true'
+    env['FLASK_ENV'] = 'development'
+
+    # Start Flask in subprocess on a different port (avoid conflicts with session-scoped fixture)
+    # NOT piping stdout/stderr so we can see logs for debugging
+    # Use port 8001 to avoid conflicts with port 8000 (used by session-scoped fixture)
+    app_path_str = str(app_path)
+    process = subprocess.Popen(
+        [sys.executable, "-c", f"import sys; sys.path.insert(0, '{app_path_str.rsplit('/', 1)[0]}'); from app import app; app.run(host='127.0.0.1', port=8001, debug=False)"],
+        env=env,
+        cwd=str(app_path.parent),
+        preexec_fn=os.setsid  # Create new process group for cleanup
+    )
+
+    # Wait for app to start with bounded readiness polling on port 8001
+    def wait_for_flask_ready_8001(timeout_seconds: int = 10) -> None:
+        import requests
+        start_time = time.time()
+        wait_interval = 0.1
+        max_interval = 1.0
+        while time.time() - start_time < timeout_seconds:
+            try:
+                response = requests.get('http://127.0.0.1:8001/health', timeout=2)
+                if response.status_code == 200:
+                    return
+            except (requests.ConnectionError, requests.Timeout):
+                pass
+            time.sleep(wait_interval)
+            wait_interval = min(wait_interval * 1.5, max_interval)
+        raise RuntimeError(f"Flask app failed to become ready on port 8001 after {timeout_seconds}s")
+
+    try:
+        wait_for_flask_ready_8001(timeout_seconds=10)
+    except RuntimeError as e:
+        # If Flask still won't start, kill the process and raise
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        except:
+            pass
+        raise
+
+    yield process, database_url, db_path
+
+    # Cleanup
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except Exception:
+        pass
+
+    # Cleanup database
+    try:
+        Path(db_path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 @pytest.fixture(scope="session")
 def flask_app_e2e(e2e_test_database):
     """Start Flask app for E2E tests with database mode enabled.

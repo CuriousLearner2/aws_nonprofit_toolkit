@@ -9,6 +9,8 @@ import shutil
 import logging
 import sys
 import tempfile
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path so we can import processor
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -34,6 +36,13 @@ try:
 except ImportError:
     # Fallback for direct script execution
     from householder.ingestion_service import ingest_processed_csv, IngestionValidationError, IngestionIOError, IngestionDatabaseError
+
+# Import database models for batch_id lookup
+try:
+    from householder.database_models import ImportBatch, create_db_engine
+except ImportError:
+    # Fallback for direct script execution
+    from householder.database_models import ImportBatch, create_db_engine
 
 # Import fixtures for DonorTrust v1 prototype
 try:
@@ -165,7 +174,9 @@ def upload():
         return jsonify({'error': 'Only CSV files allowed'}), 400
 
     try:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        # Capture timestamp at the start for consistent batch identification
+        upload_timestamp = datetime.now()
+        timestamp = upload_timestamp.strftime('%Y%m%d_%H%M%S')
         safe_name = f"upload_{timestamp}_{file.filename}"
         intake_path = INTAKE_DIR / safe_name
 
@@ -200,12 +211,13 @@ def upload():
 
         if ingest_enabled and database_url:
             try:
-                # Perform database ingestion
+                # Perform database ingestion with the captured timestamp for batch identification
                 ingestion_result = ingest_processed_csv(
                     processed_csv_path=str(processed_path),
-                    original_filename=file.filename,
+                    original_filename=safe_name,
                     database_url=database_url,
-                    uploader='system'
+                    uploader='system',
+                    imported_at=upload_timestamp
                 )
 
                 # Enhance response with ingestion data
@@ -256,6 +268,27 @@ def upload():
 def list_processing():
     """List files in processing (being reviewed). Limited to most recent 5 files."""
     files = []
+
+    # Load all batches from database (if configured) to enable direct batch_id lookup
+    all_batches = {}
+    database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
+    if database_url:
+        try:
+            engine = create_engine(database_url)
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            batches = session.query(ImportBatch).all()
+            logger.info(f"Found {len(batches)} batches in database")
+            # Map batch_id by the disk filename format (upload_YYYYMMDD_HHMMSS_original_filename)
+            # to enable robust matching regardless of original filename collisions
+            for batch in batches:
+                # Store batch by ID for direct retrieval
+                all_batches[batch.id] = batch
+                logger.debug(f"Batch {batch.id}: filename={batch.filename}, upload_timestamp={batch.upload_timestamp}")
+            session.close()
+        except Exception as e:
+            logger.warning(f"Failed to query ImportBatch from database: {e}")
+
     try:
         # Get most recent 5 files sorted by modification time
         all_files = sorted(PROCESSING_DIR.glob('*.csv'), key=lambda x: x.stat().st_mtime, reverse=True)
@@ -297,19 +330,32 @@ def list_processing():
                 else:
                     status = 'In Review'
 
-                # Get upload time from filename (format: upload_YYYYMMDD_HHMMSS_*)
+                # Direct lookup: match filename directly from database
+                # Filename format: upload_YYYYMMDD_HHMMSS_original_filename.csv
+                # ImportBatch.filename now stores the safe_name for stable matching
+                batch_id = None
+                uploaded_str = 'Unknown'
                 try:
                     parts = f.name.split('_')
                     if len(parts) >= 3:
                         upload_time = datetime.strptime(f"{parts[1]}_{parts[2]}", '%Y%m%d_%H%M%S')
                         uploaded_str = format_relative_time(upload_time)
-                    else:
-                        uploaded_str = 'Unknown'
-                except:
-                    uploaded_str = 'Unknown'
+
+                        # Direct lookup: no timestamp heuristics, no collisions
+                        if all_batches:
+                            for bid, batch in all_batches.items():
+                                if batch.filename == f.name:
+                                    batch_id = bid
+                                    break
+
+                        if not batch_id:
+                            logger.warning(f"No batch_id found for {f.name} in database")
+                except Exception as e:
+                    logger.debug(f"Failed to process {f.name}: {e}")
 
                 files.append({
                     'filename': f.name,
+                    'batch_id': batch_id,
                     'rows': record_count,
                     'pass_count': pass_count,
                     'warning_count': warning_count,
