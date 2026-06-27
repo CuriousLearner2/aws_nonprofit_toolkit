@@ -7,8 +7,8 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.mark.e2e
-async def test_inline_editing_pencil_icon_appears(flask_app_running, sample_csv):
-    """Verify pencil icon appears on hover over editable cells."""
+async def test_inline_editing_pencil_icon_appears(flask_app_database_mode, sample_csv):
+    """Verify pencil icon appears on hover over editable cells in validation review."""
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
@@ -16,21 +16,34 @@ async def test_inline_editing_pencil_icon_appears(flask_app_running, sample_csv)
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
 
-            # Wait for processing
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
-            # Look for editable cells and verify pencil icon
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
+
+            # Look for editable cells and verify pencil icon in validation review
             editable_cells = await page.query_selector_all('td.editable-cell')
 
             if editable_cells:
@@ -46,7 +59,7 @@ async def test_inline_editing_pencil_icon_appears(flask_app_running, sample_csv)
 
 
 @pytest.mark.e2e
-async def test_inline_editing_click_switches_to_edit_mode(flask_app_running, sample_csv):
+async def test_inline_editing_click_switches_to_edit_mode(flask_app_database_mode, sample_csv):
     """Verify clicking a cell switches it to edit mode."""
     from playwright.async_api import async_playwright
 
@@ -55,18 +68,32 @@ async def test_inline_editing_click_switches_to_edit_mode(flask_app_running, sam
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
 
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
             # Find editable cell and click it
             editable_cells = await page.query_selector_all('td.editable-cell')
@@ -84,7 +111,7 @@ async def test_inline_editing_click_switches_to_edit_mode(flask_app_running, sam
 
 
 @pytest.mark.e2e
-async def test_inline_editing_cancel_discards_changes(flask_app_running, sample_csv):
+async def test_inline_editing_cancel_discards_changes(flask_app_database_mode, sample_csv):
     """Verify cancel button exits edit mode without saving."""
     from playwright.async_api import async_playwright
 
@@ -93,18 +120,32 @@ async def test_inline_editing_cancel_discards_changes(flask_app_running, sample_
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
 
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
             # Edit a cell
             editable_cells = await page.query_selector_all('td.editable-cell')
@@ -133,7 +174,7 @@ async def test_inline_editing_cancel_discards_changes(flask_app_running, sample_
 
 
 @pytest.mark.e2e
-async def test_inline_editing_invalid_email_shows_error(flask_app_running, sample_csv):
+async def test_inline_editing_invalid_email_shows_error(flask_app_database_mode, sample_csv):
     """Verify invalid email triggers validation error."""
     from playwright.async_api import async_playwright
 
@@ -142,18 +183,32 @@ async def test_inline_editing_invalid_email_shows_error(flask_app_running, sampl
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Navigate to upload page on port 8001
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
 
-            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload")')
+            # Click upload button
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            # Wait for processing results
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
+            # Wait for review button to be visible
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
+
+            # Click the review button to navigate to validation page
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
             # Find email cell and edit it with invalid value
             email_cells = await page.query_selector_all('td.editable-cell[data-field="email"]')
