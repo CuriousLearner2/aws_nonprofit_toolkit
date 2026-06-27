@@ -255,6 +255,46 @@ def get_db_session(database_url: str) -> Session:
         raise IngestionDatabaseError(f"Failed to connect to database: {str(e)}")
 
 
+def find_batch_by_filename(
+    filename: str,
+    database_url: str,
+) -> Optional[str]:
+    """
+    Find batch_id for a given filename (exact match).
+
+    Used by /api/processing to match uploaded files back to their ImportBatch.
+    Returns the most recent batch if multiple batches share the filename.
+
+    Args:
+        filename: Filename to search (e.g., 'test.csv' or 'upload_YYYYMMDD_HHMMSS_test.csv')
+        database_url: Database connection URL
+
+    Returns:
+        batch_id if match found, None otherwise
+
+    Raises:
+        IngestionDatabaseError: If database query fails
+    """
+    try:
+        session = get_db_session(database_url)
+        try:
+            # Query batches with matching filename (exact match)
+            batch = session.query(ImportBatch).filter_by(filename=filename).order_by(
+                ImportBatch.upload_timestamp.desc()
+            ).first()
+
+            if batch:
+                return batch.id
+            return None
+        finally:
+            session.close()
+    except IngestionDatabaseError:
+        raise
+    except Exception as e:
+        logger.warning(f"Failed to find batch by filename {filename}: {e}")
+        return None
+
+
 # ============================================================================
 # CSV Validation and Processing
 # ============================================================================

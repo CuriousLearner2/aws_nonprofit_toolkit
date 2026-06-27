@@ -9,9 +9,6 @@ import shutil
 import logging
 import sys
 import tempfile
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 # Add parent directory to path so we can import processor
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from processor import (
@@ -32,17 +29,22 @@ from processor import (
 
 # Import ingestion service for optional database mode
 try:
-    from householder.ingestion_service import ingest_processed_csv, IngestionValidationError, IngestionIOError, IngestionDatabaseError
+    from householder.ingestion_service import (
+        ingest_processed_csv,
+        find_batch_by_filename,
+        IngestionValidationError,
+        IngestionIOError,
+        IngestionDatabaseError
+    )
 except ImportError:
     # Fallback for direct script execution
-    from householder.ingestion_service import ingest_processed_csv, IngestionValidationError, IngestionIOError, IngestionDatabaseError
-
-# Import database models for batch_id lookup
-try:
-    from householder.database_models import ImportBatch, create_db_engine
-except ImportError:
-    # Fallback for direct script execution
-    from householder.database_models import ImportBatch, create_db_engine
+    from householder.ingestion_service import (
+        ingest_processed_csv,
+        find_batch_by_filename,
+        IngestionValidationError,
+        IngestionIOError,
+        IngestionDatabaseError
+    )
 
 # Import fixtures for DonorTrust v1 prototype
 try:
@@ -214,7 +216,7 @@ def upload():
                 # Perform database ingestion with the captured timestamp for batch identification
                 ingestion_result = ingest_processed_csv(
                     processed_csv_path=str(processed_path),
-                    original_filename=safe_name,
+                    original_filename=file.filename,
                     database_url=database_url,
                     uploader='system',
                     imported_at=upload_timestamp
@@ -269,25 +271,8 @@ def list_processing():
     """List files in processing (being reviewed). Limited to most recent 5 files."""
     files = []
 
-    # Load all batches from database (if configured) to enable direct batch_id lookup
-    all_batches = {}
+    # Get database URL if configured
     database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
-    if database_url:
-        try:
-            engine = create_engine(database_url)
-            Session = sessionmaker(bind=engine)
-            session = Session()
-            batches = session.query(ImportBatch).all()
-            logger.info(f"Found {len(batches)} batches in database")
-            # Map batch_id by the disk filename format (upload_YYYYMMDD_HHMMSS_original_filename)
-            # to enable robust matching regardless of original filename collisions
-            for batch in batches:
-                # Store batch by ID for direct retrieval
-                all_batches[batch.id] = batch
-                logger.debug(f"Batch {batch.id}: filename={batch.filename}, upload_timestamp={batch.upload_timestamp}")
-            session.close()
-        except Exception as e:
-            logger.warning(f"Failed to query ImportBatch from database: {e}")
 
     try:
         # Get most recent 5 files sorted by modification time
@@ -330,26 +315,32 @@ def list_processing():
                 else:
                     status = 'In Review'
 
-                # Direct lookup: match filename directly from database
-                # Filename format: upload_YYYYMMDD_HHMMSS_original_filename.csv
-                # ImportBatch.filename now stores the safe_name for stable matching
+                # Lookup batch_id from database if configured
                 batch_id = None
                 uploaded_str = 'Unknown'
                 try:
                     parts = f.name.split('_')
-                    if len(parts) >= 3:
+                    if len(parts) >= 4:  # At least: upload, YYYYMMDD, HHMMSS, filename
                         upload_time = datetime.strptime(f"{parts[1]}_{parts[2]}", '%Y%m%d_%H%M%S')
                         uploaded_str = format_relative_time(upload_time)
 
-                        # Direct lookup: no timestamp heuristics, no collisions
-                        if all_batches:
-                            for bid, batch in all_batches.items():
-                                if batch.filename == f.name:
-                                    batch_id = bid
-                                    break
+                        # Extract original filename from safe_name
+                        # Format: upload_YYYYMMDD_HHMMSS_original_filename.csv
+                        # parts[0]='upload', parts[1]=YYYYMMDD, parts[2]=HHMMSS, parts[3:]=original_filename_parts
+                        original_filename_parts = parts[3:]
+                        original_filename = '_'.join(original_filename_parts)
 
-                        if not batch_id:
-                            logger.warning(f"No batch_id found for {f.name} in database")
+                        # Use helper function to find batch by filename (respects arch boundary)
+                        if database_url:
+                            try:
+                                batch_id = find_batch_by_filename(
+                                    filename=original_filename,
+                                    database_url=database_url
+                                )
+                                if not batch_id:
+                                    logger.debug(f"No batch_id found for {original_filename} in database")
+                            except IngestionDatabaseError as e:
+                                logger.warning(f"Database error looking up {original_filename}: {e}")
                 except Exception as e:
                     logger.debug(f"Failed to process {f.name}: {e}")
 

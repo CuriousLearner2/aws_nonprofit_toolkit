@@ -80,9 +80,9 @@ def flask_app_database_mode():
     """
     import tempfile
 
-    # Kill any existing Flask processes on port 8000
+    # Kill any existing Flask processes on port 8001
     try:
-        os.system("lsof -i :8000 | grep -v LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true")
+        os.system("lsof -i :8001 | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true")
     except:
         pass
     time.sleep(1)  # Wait for port to be released
@@ -154,6 +154,17 @@ def flask_app_database_mode():
     # Cleanup database
     try:
         Path(db_path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    # Cleanup processing directory (shared across tests)
+    # PROCESSING_DIR is at Givebutter/review/processing relative to app.py location
+    try:
+        import shutil
+        processing_dir = Path(__file__).parent.parent.parent / "review" / "processing"
+        if processing_dir.exists():
+            shutil.rmtree(processing_dir, ignore_errors=True)
+            processing_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
 
