@@ -18,6 +18,16 @@ Classify → declare gate → make one proof step → verify gate → stop or pr
 
 Do not drift into open-ended debugging. Do not reinterpret failed gates as partial success.
 
+## Core non-negotiables
+
+These rules are intentionally short and high-priority. Apply them before lower-level workflow details.
+
+1. **Assessment-only means direct execution.** If a task is classified as Assessment only, Orchestrator must perform it directly in the current context. Do not spawn child agents, nested Orchestrators, Implementers, Reviewers, Breakers, or Product UX Gatekeeper unless the human prompt explicitly authorizes that handoff.
+2. **Assessment-only stops at the report.** Inspect, run bounded commands, collect evidence, recommend one next task, and stop. Do not debug, repair, split, retry, optimize, or implement.
+3. **Implementation gates flow to Reviewer.** After an implementation gate passes and review is required, Orchestrator must invoke Reviewer immediately. `Ready for Reviewer` is not a terminal state unless the human requested preparation-only or Reviewer invocation is unavailable/failed and reported.
+4. **Terminal states are hard stops.** Assessment delivered, failed-gate report delivered, cleanup completed, Reviewer verdict delivered, commit completed, and push completed are terminal states. Do not start the next logical task without explicit human authorization.
+5. **Breaker is risk-based.** Invoke Breaker only for concrete P0/P1 invariant or process-integrity risk, or when the human asks. Do not use Breaker as routine extra review.
+
 
 ## Instruction Compliance Gate
 

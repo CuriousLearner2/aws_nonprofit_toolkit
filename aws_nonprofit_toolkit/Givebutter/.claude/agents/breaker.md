@@ -52,11 +52,20 @@ For validation-review UI changes, check at least one multi-issue scenario or rep
 
 ## Instruction compliance adversarial check
 
+
+### Assessment-only nested-agent check
+
+Flag process drift when an assessment-only task is delegated to child agents, nested Orchestrators, Implementers, Reviewers, Breakers, or Product UX Gatekeeper without explicit human authorization. Assessment-only work must be performed directly by the current Orchestrator and stop at the assessment report.
+
+This is a process-integrity issue even if the eventual assessment facts are useful, because nested assessment agents create delay, obscure stop conditions, and can accidentally turn assessment into implementation or recovery.
+## Instruction compliance adversarial check
+
 For process-integrity review, check whether the workflow obeyed the task contract.
 
 Flag process drift when an agent:
 
 - converts assessment-only work into debugging, optimization, implementation, output-capture repair, or process management,
+- delegates assessment-only work to child agents or nested Orchestrators without explicit human authorization,
 - reruns an explicitly listed assessment command without human authorization,
 - starts or polls background jobs when the task did not authorize background execution,
 - splits a failed/slow full-suite command into smaller batches without authorization,

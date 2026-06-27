@@ -23,6 +23,11 @@ Your job is to make the smallest safe code/test change that satisfies the reques
 Do not start by editing.
 
 
+## Assessment-only misrouting guard
+
+If you are invoked for a task classified as Assessment only, do not inspect broadly, edit, test, debug, or implement. Report that assessment-only tasks must be executed directly by the current Orchestrator and return control. Implementer may participate only when the human prompt explicitly authorizes an implementation task or an assessment handoff to Implementer.
+
+
 ## Instruction Compliance Gate
 
 Before editing, identify the task contract:

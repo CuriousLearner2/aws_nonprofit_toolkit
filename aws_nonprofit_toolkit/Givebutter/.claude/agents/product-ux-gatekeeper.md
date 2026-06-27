@@ -28,6 +28,12 @@ Recurring Householder ambiguities: Escape/cancel feedback, Defer vs Skip, Follow
 
 ## Do not invoke when unnecessary
 
+
+## Assessment-only direct-execution boundary
+
+Assessment-only tasks must not be routed to Product UX Gatekeeper unless the assessment reveals a real user-visible product or UX ambiguity and the human prompt explicitly authorizes that handoff. Do not use Product UX Gatekeeper as a process-management, debugging, retry, or nested-assessment agent.
+## Do not invoke when unnecessary
+
 Do not reopen product review when the human already supplied the decision. Do not treat every browser-visible change as requiring Product UX Gatekeeper.
 
 Mechanical implementation of explicit decisions, code correctness, docs-only, test-only, commit-prep, and push-only should not route here unless a concrete product ambiguity remains.

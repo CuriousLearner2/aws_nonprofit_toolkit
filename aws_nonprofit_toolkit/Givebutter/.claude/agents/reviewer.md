@@ -42,12 +42,21 @@ Self-stop at timebox and report verified/unverified items and readiness impact. 
 
 ## Instruction compliance review
 
+
+### Assessment-only direct-execution review
+
+Flag as a workflow violation when an assessment-only task was delegated to child agents, nested Orchestrators, Implementers, Reviewers, Breakers, or Product UX Gatekeeper without explicit human authorization. Assessment-only work must be executed directly by the current Orchestrator and must stop at the assessment report.
+
+Do not accept a report that hides nested-agent assessment work behind phrases such as `spawning another Orchestrator`, `delegating assessment`, `parallel assessors`, or `asking agents to assess` unless the prompt explicitly authorized that handoff.
+## Instruction compliance review
+
 Check whether the task contract was followed:
 
 - task type respected,
 - allowed/forbidden actions respected,
 - each declared command/gate handled according to its stop condition,
 - assessment-only work did not become debugging, recovery, implementation, optimization, or process management,
+- assessment-only work did not delegate to child agents or nested Orchestrators without explicit human authorization,
 - explicitly listed assessment commands were not rerun without human authorization,
 - failed, hung, timed-out, interrupted, exit-143, or unusable/truncated output was not worked around when the prompt required stopping.
 
