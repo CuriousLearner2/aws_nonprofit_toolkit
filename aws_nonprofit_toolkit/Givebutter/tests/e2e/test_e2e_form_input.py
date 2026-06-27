@@ -378,7 +378,7 @@ async def test_notes_textarea_accepts_input(flask_app_database_mode, temp_dir, s
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_notes_textarea_unicode_input(flask_app_for_forms, temp_dir, sample_csv):
+async def test_notes_textarea_unicode_input(flask_app_database_mode, temp_dir, sample_csv):
     """Test that notes textarea handles Unicode input."""
     from playwright.async_api import async_playwright
 
@@ -388,8 +388,8 @@ async def test_notes_textarea_unicode_input(flask_app_for_forms, temp_dir, sampl
 
         try:
             # Navigate to review
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -398,22 +398,31 @@ async def test_notes_textarea_unicode_input(flask_app_for_forms, temp_dir, sampl
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Wait for review button to be visible before clicking
-            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
-            review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
-            if review_button:
-                await review_button.click()
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
 
-                textareas = await page.query_selector_all('textarea, [class*="notes"]')
-                if textareas:
-                    unicode_text = "Special: José García 李明 Müller"
-                    await textareas[0].fill(unicode_text)
+            # Get batch_id from button (may be empty if /api/processing lookup failed)
+            batch_id_attr = await review_buttons[0].get_attribute('data-batch-id')
+            # Note: batch_id might be empty in fixture environment, but button should still work
 
-                    value = await textareas[0].input_value()
-                    assert 'José' in value
-                    assert '李明' in value
+            # Click the first review button
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
+
+            textareas = await page.query_selector_all('textarea, [class*="notes"]')
+            if textareas:
+                unicode_text = "Special: José García 李明 Müller"
+                await textareas[0].fill(unicode_text)
+
+                value = await textareas[0].input_value()
+                assert 'José' in value
+                assert '李明' in value
 
         finally:
             await browser.close()
@@ -421,7 +430,7 @@ async def test_notes_textarea_unicode_input(flask_app_for_forms, temp_dir, sampl
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_notes_textarea_placeholder_text(flask_app_for_forms, temp_dir, sample_csv):
+async def test_notes_textarea_placeholder_text(flask_app_database_mode, temp_dir, sample_csv):
     """Test that notes textarea shows helpful placeholder."""
     from playwright.async_api import async_playwright
 
@@ -431,8 +440,8 @@ async def test_notes_textarea_placeholder_text(flask_app_for_forms, temp_dir, sa
 
         try:
             # Navigate to review
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -441,21 +450,30 @@ async def test_notes_textarea_placeholder_text(flask_app_for_forms, temp_dir, sa
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Wait for review button to be visible before clicking
-            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
-            review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
-            if review_button:
-                await review_button.click()
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
 
-                textareas = await page.query_selector_all('textarea, [class*="notes"]')
-                if textareas:
-                    placeholder = await textareas[0].get_attribute('placeholder')
-                    if placeholder:
-                        # Placeholder should be helpful
-                        assert len(placeholder) > 0
-                        assert any(word in placeholder.lower() for word in ['note', 'comment', 'text'])
+            # Get batch_id from button (may be empty if /api/processing lookup failed)
+            batch_id_attr = await review_buttons[0].get_attribute('data-batch-id')
+            # Note: batch_id might be empty in fixture environment, but button should still work
+
+            # Click the first review button
+            await review_buttons[0].click()
+
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
+
+            textareas = await page.query_selector_all('textarea, [class*="notes"]')
+            if textareas:
+                placeholder = await textareas[0].get_attribute('placeholder')
+                if placeholder:
+                    # Placeholder should be helpful
+                    assert len(placeholder) > 0
+                    assert any(word in placeholder.lower() for word in ['note', 'comment', 'text'])
 
         finally:
             await browser.close()
@@ -519,7 +537,7 @@ async def test_textarea_keyboard_navigation(flask_app_database_mode, temp_dir, s
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_validation_summary_clear(flask_app_for_forms, temp_dir, sample_csv):
+async def test_validation_summary_clear(flask_app_database_mode, temp_dir, sample_csv):
     """Test that validation summary is clear and readable."""
     from playwright.async_api import async_playwright
 
@@ -528,8 +546,8 @@ async def test_validation_summary_clear(flask_app_for_forms, temp_dir, sample_cs
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -538,7 +556,7 @@ async def test_validation_summary_clear(flask_app_for_forms, temp_dir, sample_cs
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             content = await page.content()
             # Should show pass/warning/fail counts clearly
@@ -551,7 +569,7 @@ async def test_validation_summary_clear(flask_app_for_forms, temp_dir, sample_cs
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_validation_tier_color_coded(flask_app_for_forms, temp_dir, sample_csv):
+async def test_validation_tier_color_coded(flask_app_database_mode, temp_dir, sample_csv):
     """Test that validation tiers are visually distinct (e.g., color-coded)."""
     from playwright.async_api import async_playwright
 
@@ -560,8 +578,8 @@ async def test_validation_tier_color_coded(flask_app_for_forms, temp_dir, sample
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -570,19 +588,13 @@ async def test_validation_tier_color_coded(flask_app_for_forms, temp_dir, sample
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
-            # Wait for review button to be visible before clicking
-            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
-            review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
-            if review_button:
-                await review_button.click()
-
-                # Check for validation tier indicators in table
-                content = await page.content()
-                # Should distinguish between PASS, WARNING, FAIL
-                # This could be via CSS classes, colors, icons, etc.
-                assert any(tier in content for tier in ['PASS', 'WARNING', 'FAIL'])
+            # Check for validation tier indicators in upload summary
+            content = await page.content()
+            # Should distinguish between PASS, WARNING, FAIL
+            # This could be via CSS classes, colors, icons, etc.
+            assert any(tier in content for tier in ['PASS', 'WARNING', 'FAIL'])
 
         finally:
             await browser.close()
