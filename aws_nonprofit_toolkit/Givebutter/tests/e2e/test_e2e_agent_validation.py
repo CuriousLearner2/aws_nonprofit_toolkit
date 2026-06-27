@@ -15,7 +15,7 @@ from pathlib import Path
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_p0_1_upload_csv_and_process(flask_app_running, temp_dir):
+async def test_p0_1_upload_csv_and_process(flask_app_database_mode, temp_dir):
     """P0 Test Case 1: Upload CSV & Process Records.
 
     Verify the complete upload → processing → review queue flow works end-to-end.
@@ -40,34 +40,41 @@ TX005,2026-05-14,Charlie Lee,charlie@gmial.com,5555555555,75,654 Maple Ln,Austin
 
         try:
             # Navigate to upload page
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
 
-            # Wait for drop-zone to appear
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            # Wait for upload card to appear
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload file
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(test_csv))
 
-            # Wait for processing success
-            await asyncio.sleep(2)
+            # Wait for processing to complete and results to appear
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Verify file appears in Review Queue with tier counts
             content = await page.content()
+            page_text = await page.inner_text('body')
 
             # Check for success indicators
-            assert 'Processed' in content or 'records' in content.lower(), \
-                "Upload should show success message with record count"
-            assert 'Review' in content or 'review' in content.lower(), \
-                "Review Queue should be displayed"
+            assert 'pass' in page_text.lower() or 'warn' in page_text.lower() or 'fail' in page_text.lower(), \
+                "Upload should show tier badges with pass/warn/fail counts"
+            assert 'review' in page_text.lower(), \
+                "Review action should be visible"
 
             # Verify tier breakdown visible (PASS/WARNING/FAIL counts)
             # The page should show some indication of tiers
-            page_text = await page.inner_text('body')
+            has_tier_badges = (
+                'pass' in content.lower() and
+                ('warn' in content.lower() or 'warning' in content.lower()) and
+                'fail' in content.lower()
+            )
+            assert has_tier_badges, \
+                "Tier breakdown with pass/warn/fail badges should be displayed"
 
-            # At minimum, we should see the upload was successful
-            assert 'test_upload_p0_1' in content or 'TX00' in content, \
-                "File should appear in queue or content should show transaction IDs"
+            # At minimum, we should see the upload was successful with filename
+            assert 'test_upload_p0_1' in content, \
+                "Uploaded filename should appear in queue"
 
         finally:
             await browser.close()
