@@ -9,24 +9,7 @@ import signal
 import os
 
 
-def flask_app_for_visual():
-    """Start Flask app for visual tests."""
-    app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
-    process = subprocess.Popen(
-        [sys.executable, str(app_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        preexec_fn=os.setsid
-    )
-
-    time.sleep(2)
-
-    yield process
-
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    except:
-        process.terminate()
+# Fixture removed - use flask_app_database_mode from conftest instead
 
 
 @pytest.fixture
@@ -49,7 +32,7 @@ def screenshots_dir(temp_dir):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_page_visual(flask_app_for_visual, screenshots_dir):
+async def test_upload_page_visual(flask_app_database_mode, screenshots_dir):
     """Capture screenshot of upload page."""
     from playwright.async_api import async_playwright
 
@@ -58,8 +41,8 @@ async def test_upload_page_visual(flask_app_for_visual, screenshots_dir):
         page = await browser.new_page(viewport={'width': 1280, 'height': 720})
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Take screenshot
             screenshot_path = screenshots_dir['actual'] / "upload_page.png"
@@ -75,7 +58,7 @@ async def test_upload_page_visual(flask_app_for_visual, screenshots_dir):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_processing_queue_visual(flask_app_for_visual, temp_dir, sample_csv, screenshots_dir):
+async def test_processing_queue_visual(flask_app_database_mode, temp_dir, sample_csv, screenshots_dir):
     """Capture screenshot of processing queue after upload."""
     from playwright.async_api import async_playwright
 
@@ -85,8 +68,8 @@ async def test_processing_queue_visual(flask_app_for_visual, temp_dir, sample_cs
 
         try:
             # Upload file
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -96,7 +79,7 @@ async def test_processing_queue_visual(flask_app_for_visual, temp_dir, sample_cs
                 await submit_button.click()
 
             # Wait for results
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Take screenshot of results page
             screenshot_path = screenshots_dir['actual'] / "processing_queue.png"
@@ -111,7 +94,7 @@ async def test_processing_queue_visual(flask_app_for_visual, temp_dir, sample_cs
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_notes_textarea_visual(flask_app_for_visual, temp_dir, sample_csv, screenshots_dir):
+async def test_notes_textarea_visual(flask_app_database_mode, temp_dir, sample_csv, screenshots_dir):
     """Capture screenshot of notes textarea."""
     from playwright.async_api import async_playwright
 
@@ -121,8 +104,8 @@ async def test_notes_textarea_visual(flask_app_for_visual, temp_dir, sample_csv,
 
         try:
             # Navigate to review
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -131,7 +114,7 @@ async def test_notes_textarea_visual(flask_app_for_visual, temp_dir, sample_csv,
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Wait for review button to be visible before clicking
             await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
@@ -157,7 +140,7 @@ async def test_notes_textarea_visual(flask_app_for_visual, temp_dir, sample_csv,
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_error_message_visual(flask_app_for_visual, temp_dir, screenshots_dir):
+async def test_error_message_visual(flask_app_database_mode, temp_dir, screenshots_dir):
     """Capture screenshot of error message (if invalid file uploaded)."""
     from playwright.async_api import async_playwright
 
@@ -170,8 +153,8 @@ async def test_error_message_visual(flask_app_for_visual, temp_dir, screenshots_
         page = await browser.new_page(viewport={'width': 1280, 'height': 720})
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(invalid_file))
@@ -189,7 +172,7 @@ async def test_error_message_visual(flask_app_for_visual, temp_dir, screenshots_
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_mobile_viewport_upload(flask_app_for_visual, screenshots_dir):
+async def test_mobile_viewport_upload(flask_app_database_mode, screenshots_dir):
     """Test upload page on mobile viewport (375px)."""
     from playwright.async_api import async_playwright
 
@@ -198,8 +181,8 @@ async def test_mobile_viewport_upload(flask_app_for_visual, screenshots_dir):
         page = await browser.new_page(viewport={'width': 375, 'height': 667})
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Take screenshot of mobile view
             screenshot_path = screenshots_dir['actual'] / "mobile_upload_page.png"
@@ -214,7 +197,7 @@ async def test_mobile_viewport_upload(flask_app_for_visual, screenshots_dir):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_tablet_viewport_review(flask_app_for_visual, temp_dir, sample_csv, screenshots_dir):
+async def test_tablet_viewport_review(flask_app_database_mode, temp_dir, sample_csv, screenshots_dir):
     """Test review page on tablet viewport (768px)."""
     from playwright.async_api import async_playwright
 
@@ -224,8 +207,8 @@ async def test_tablet_viewport_review(flask_app_for_visual, temp_dir, sample_csv
 
         try:
             # Upload and navigate to review
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -234,7 +217,7 @@ async def test_tablet_viewport_review(flask_app_for_visual, temp_dir, sample_csv
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Wait for review button to be visible before clicking
             await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
