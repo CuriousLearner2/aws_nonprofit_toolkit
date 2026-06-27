@@ -125,7 +125,7 @@ def csv_with_email_typos(temp_dir):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_csv_with_lowercase_headers(flask_app_running, csv_lowercase_headers):
+async def test_upload_csv_with_lowercase_headers(flask_app_database_mode, csv_lowercase_headers):
     """Test uploading CSV with lowercase headers (case-insensitive matching)."""
     from playwright.async_api import async_playwright
 
@@ -134,8 +134,8 @@ async def test_upload_csv_with_lowercase_headers(flask_app_running, csv_lowercas
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload CSV with lowercase headers
             file_input = await page.query_selector('input[type="file"]')
@@ -146,7 +146,7 @@ async def test_upload_csv_with_lowercase_headers(flask_app_running, csv_lowercas
                 await submit_button.click()
 
             # Should process successfully
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             content = await page.content()
             assert 'processed' in content.lower() or '1' in content  # Should show record count
@@ -157,7 +157,7 @@ async def test_upload_csv_with_lowercase_headers(flask_app_running, csv_lowercas
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_csv_with_title_case_headers(flask_app_running, csv_title_case_headers):
+async def test_upload_csv_with_title_case_headers(flask_app_database_mode, csv_title_case_headers):
     """Test uploading CSV with title case fuzzy match headers."""
     from playwright.async_api import async_playwright
 
@@ -166,8 +166,8 @@ async def test_upload_csv_with_title_case_headers(flask_app_running, csv_title_c
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(csv_title_case_headers))
@@ -177,7 +177,7 @@ async def test_upload_csv_with_title_case_headers(flask_app_running, csv_title_c
                 await submit_button.click()
 
             # Should process successfully with fuzzy match
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             content = await page.content()
             assert 'processed' in content.lower() or '1' in content
@@ -188,7 +188,7 @@ async def test_upload_csv_with_title_case_headers(flask_app_running, csv_title_c
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_csv_without_optional_phone(flask_app_running, csv_missing_optional_phone):
+async def test_upload_csv_without_optional_phone(flask_app_database_mode, csv_missing_optional_phone):
     """Test uploading CSV without phone column (should create WARNING, not FAIL)."""
     from playwright.async_api import async_playwright
 
@@ -197,8 +197,8 @@ async def test_upload_csv_without_optional_phone(flask_app_running, csv_missing_
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(csv_missing_optional_phone))
@@ -208,11 +208,11 @@ async def test_upload_csv_without_optional_phone(flask_app_running, csv_missing_
                 await submit_button.click()
 
             # Should process and appear in review queue
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Navigate to Review Queue to verify it appears (with WARNING, not FAIL)
             content = await page.content()
-            assert 'processed' in content.lower() or 'Alice' in content  # Record should be processed
+            assert 'review import' in content.lower() or 'no_phone' in content  # Record should be in queue
 
         finally:
             await browser.close()
@@ -220,7 +220,7 @@ async def test_upload_csv_without_optional_phone(flask_app_running, csv_missing_
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_csv_with_mixed_case_headers(flask_app_running, csv_mixed_case_headers):
+async def test_upload_csv_with_mixed_case_headers(flask_app_database_mode, csv_mixed_case_headers):
     """Test uploading CSV with mixed case headers."""
     from playwright.async_api import async_playwright
 
@@ -229,8 +229,8 @@ async def test_upload_csv_with_mixed_case_headers(flask_app_running, csv_mixed_c
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(csv_mixed_case_headers))
@@ -240,7 +240,7 @@ async def test_upload_csv_with_mixed_case_headers(flask_app_running, csv_mixed_c
                 await submit_button.click()
 
             # Should handle mixed case gracefully
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             content = await page.content()
             assert 'processed' in content.lower() or '1' in content
@@ -251,7 +251,7 @@ async def test_upload_csv_with_mixed_case_headers(flask_app_running, csv_mixed_c
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_csv_flags_email_typos(flask_app_running, csv_with_email_typos):
+async def test_upload_csv_flags_email_typos(flask_app_database_mode, csv_with_email_typos):
     """Test that email typos are flagged during review (not rejected at upload)."""
     from playwright.async_api import async_playwright
 
@@ -260,8 +260,8 @@ async def test_upload_csv_flags_email_typos(flask_app_running, csv_with_email_ty
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(csv_with_email_typos))
@@ -271,10 +271,10 @@ async def test_upload_csv_flags_email_typos(flask_app_running, csv_with_email_ty
                 await submit_button.click()
 
             # Should upload successfully (validation happens in review phase)
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Navigate to review queue to see flagged records
-            review_button = await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
+            review_button = await page.wait_for_selector('.action-btn.primary', timeout=5000)
             if review_button:
                 await review_button.click()
 
@@ -291,7 +291,7 @@ async def test_upload_csv_flags_email_typos(flask_app_running, csv_with_email_ty
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_csv_format_consistency_across_uploads(flask_app_running, csv_lowercase_headers, csv_title_case_headers):
+async def test_csv_format_consistency_across_uploads(flask_app_database_mode, csv_lowercase_headers, csv_title_case_headers):
     """Test that different CSV formats process consistently."""
     from playwright.async_api import async_playwright
 
@@ -301,8 +301,8 @@ async def test_csv_format_consistency_across_uploads(flask_app_running, csv_lowe
 
         try:
             # Upload first CSV (lowercase headers)
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(csv_lowercase_headers))
@@ -311,12 +311,12 @@ async def test_csv_format_consistency_across_uploads(flask_app_running, csv_lowe
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
             content1 = await page.content()
 
             # Reset to upload page
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Upload second CSV (title case headers)
             file_input = await page.query_selector('input[type="file"]')
@@ -326,7 +326,7 @@ async def test_csv_format_consistency_across_uploads(flask_app_running, csv_lowe
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
             content2 = await page.content()
 
             # Both should process successfully
