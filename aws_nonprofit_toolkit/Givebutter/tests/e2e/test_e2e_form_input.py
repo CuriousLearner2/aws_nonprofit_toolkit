@@ -7,7 +7,7 @@ import asyncio
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_file_input_accepts_csv(flask_app_for_forms, temp_dir, sample_csv):
+async def test_file_input_accepts_csv(flask_app_database_mode, temp_dir, sample_csv):
     """Test that file input accepts CSV files."""
     from playwright.async_api import async_playwright
 
@@ -16,7 +16,7 @@ async def test_file_input_accepts_csv(flask_app_for_forms, temp_dir, sample_csv)
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
             file_input = await page.query_selector('input[type="file"]')
 
             assert file_input is not None
@@ -36,7 +36,7 @@ async def test_file_input_accepts_csv(flask_app_for_forms, temp_dir, sample_csv)
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_file_input_shows_feedback(flask_app_for_forms, temp_dir, sample_csv):
+async def test_file_input_shows_feedback(flask_app_database_mode, temp_dir, sample_csv):
     """Test that file selection shows user feedback."""
     from playwright.async_api import async_playwright
 
@@ -45,8 +45,8 @@ async def test_file_input_shows_feedback(flask_app_for_forms, temp_dir, sample_c
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -69,7 +69,7 @@ async def test_file_input_shows_feedback(flask_app_for_forms, temp_dir, sample_c
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_button_disabled_without_file(flask_app_for_forms):
+async def test_upload_button_disabled_without_file(flask_app_database_mode):
     """Test that upload button is disabled until file is selected."""
     from playwright.async_api import async_playwright
 
@@ -78,8 +78,8 @@ async def test_upload_button_disabled_without_file(flask_app_for_forms):
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Check submit button state (may be disabled or check file input)
             submit_buttons = await page.query_selector_all('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
@@ -96,7 +96,7 @@ async def test_upload_button_disabled_without_file(flask_app_for_forms):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_shows_loading_state(flask_app_for_forms, temp_dir, sample_csv):
+async def test_upload_shows_loading_state(flask_app_database_mode, temp_dir, sample_csv):
     """Test that upload shows loading/processing feedback."""
     from playwright.async_api import async_playwright
 
@@ -105,8 +105,8 @@ async def test_upload_shows_loading_state(flask_app_for_forms, temp_dir, sample_
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -115,7 +115,9 @@ async def test_upload_shows_loading_state(flask_app_for_forms, temp_dir, sample_
             if submit_button:
                 await submit_button.click()
 
-                # Check for loading indicator
+                # Check for loading indicator or results feedback
+                await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
+
                 content = await page.content()
                 has_loading_feedback = any(text in content.lower() for text in [
                     'processing', 'loading', 'uploading', 'please wait'
@@ -605,7 +607,7 @@ async def test_validation_tier_color_coded(flask_app_database_mode, temp_dir, sa
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_save_success_message(flask_app_for_forms, temp_dir, sample_csv):
+async def test_save_success_message(flask_app_database_mode, temp_dir, sample_csv):
     """Test that save shows clear success feedback."""
     from playwright.async_api import async_playwright
 
@@ -615,8 +617,8 @@ async def test_save_success_message(flask_app_for_forms, temp_dir, sample_csv):
 
         try:
             # Navigate to review and make decisions
-            await page.goto("http://127.0.0.1:8000/")
-            await page.wait_for_selector('div.drop-zone', timeout=5000)
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(sample_csv))
@@ -625,29 +627,41 @@ async def test_save_success_message(flask_app_for_forms, temp_dir, sample_csv):
             if submit_button:
                 await submit_button.click()
 
-            await page.wait_for_selector('text=/processed|records/', timeout=5000)
+            await page.wait_for_selector('text=/records|PASS|WARNING|FAIL/', timeout=5000)
 
             # Wait for review button to be visible before clicking
-            await page.wait_for_selector('button:has-text("Review"), a:has-text("Review")', timeout=5000)
-            review_button = await page.query_selector('button:has-text("Review"), a:has-text("Review")')
-            if review_button:
-                await review_button.click()
+            await page.wait_for_selector('.action-btn.primary', timeout=5000)
+            review_buttons = await page.query_selector_all('.action-btn.primary')
+            assert len(review_buttons) > 0, "Review button not found"
 
-                # Make some decisions
-                decision_selects = await page.query_selector_all('.decision-select')
-                if decision_selects:
-                    await decision_selects[0].select_option(value="approved")
+            # Get batch_id from button
+            batch_id_attr = await review_buttons[0].get_attribute('data-batch-id')
+            # Note: batch_id might be empty in fixture environment, but button should still work
 
-                    # Save
-                    save_button = await page.query_selector('button:has-text("Save")')
-                    if save_button:
-                        await save_button.click()
+            # Click the first review button
+            await review_buttons[0].click()
 
-                        # Should show success message
-                        await page.wait_for_selector('text=/saved|progress/', timeout=5000)
+            # Wait for navigation to validation page
+            await page.wait_for_url('**/validation', timeout=5000)
 
-                        content = await page.content()
-                        assert any(text in content.lower() for text in ['saved', 'success', 'progress'])
+            # Make some decisions
+            decision_selects = await page.query_selector_all('.row-status-dropdown')
+            if decision_selects:
+                # Handle any confirmation dialogs automatically
+                page.once("dialog", lambda dialog: dialog.accept())
+
+                await decision_selects[0].select_option(value="accept_as_is")
+
+                # Save
+                save_button = await page.query_selector('button:has-text("Save")')
+                if save_button:
+                    await save_button.click()
+
+                    # Should show success message
+                    await page.wait_for_selector('text=/saved|progress/', timeout=5000)
+
+                    content = await page.content()
+                    assert any(text in content.lower() for text in ['saved', 'success', 'progress'])
 
         finally:
             await browser.close()
