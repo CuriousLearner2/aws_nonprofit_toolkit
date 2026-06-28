@@ -89,7 +89,7 @@ def e2e_database_and_app():
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_warning_appears_for_deferred_household(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify export warning and confirmation checkbox appear when deferred households exist.
@@ -111,7 +111,7 @@ async def test_export_warning_appears_for_deferred_household(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -201,28 +201,7 @@ async def test_export_warning_appears_for_deferred_household(
 
         contact_id = contact.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-warning-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:

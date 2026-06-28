@@ -1859,43 +1859,44 @@ async def test_mixed_validation_household_export_warnings(e2e_database_and_app):
                     assert hh_warning is not None, "K3 FAILED: Household warning checkbox should be present"
                     print("✓ K3: Both warning checkboxes present (validation + household)")
 
-                    # K4: Verify export button is enabled (deferred issues don't block)
+                    # K4: Verify export button is disabled (deferred household requires checkbox)
                     export_btn = await page.query_selector('#generate-export-btn')
                     is_initially_disabled = await export_btn.is_disabled()
-                    assert not is_initially_disabled, "K4 FAILED: Export button should be enabled (deferred issues do not block)"
-                    print("✓ K4: Export button enabled (deferred issues do not block)")
+                    assert is_initially_disabled, "K4 FAILED: Export button should be disabled (household deferred + unchecked)"
+                    print("✓ K4: Export button disabled (deferred household requires confirmation)")
 
-                    # K5: Check ONLY validation checkbox
+                    # K5: Check ONLY validation checkbox (household still unchecked)
                     await val_warning.check()
                     await page.wait_for_timeout(200)  # Wait for JS state update
                     is_still_disabled = await export_btn.is_disabled()
-                    assert not is_still_disabled, \
-                        "K5 FAILED: Export button should remain enabled (deferred doesn't block)"
-                    print("✓ K5: Button remains enabled (deferred doesn't block)")
+                    assert is_still_disabled, \
+                        "K5 FAILED: Export button should remain disabled (household checkbox still unchecked)"
+                    print("✓ K5: Button remains disabled (household checkbox required)")
 
                     # K6: Now check household checkbox too
                     await hh_warning.check()
                     await page.wait_for_timeout(200)  # Wait for JS state update
                     is_now_enabled = not await export_btn.is_disabled()
                     assert is_now_enabled, \
-                        "K6 FAILED: Export button should remain enabled"
-                    print("✓ K6: Button remains enabled")
+                        "K6 FAILED: Export button should be enabled (household checkbox now checked)"
+                    print("✓ K6: Button enabled (household checkbox confirmed)")
 
-                    # K7: Verify independent unchecking
+                    # K7: Verify validation checkbox is independent (uncheck it, button stays enabled)
                     await val_warning.uncheck()
                     await page.wait_for_timeout(200)  # Wait for JS state update
-                    is_disabled_again = await export_btn.is_disabled()
-                    assert not is_disabled_again, \
-                        "K7 FAILED: Button should remain enabled (deferred doesn't block)"
-                    print("✓ K7: Button remains enabled (deferred doesn't block)")
+                    is_still_enabled = not await export_btn.is_disabled()
+                    assert is_still_enabled, \
+                        "K7 FAILED: Button should remain enabled (validation checkbox does not gate export)"
+                    print("✓ K7: Button remains enabled (validation checkbox independent)")
 
-                    # K8: Check validation again to re-enable
-                    await val_warning.check()
+                    # K8: Verify button stays enabled when both are unchecked (household is the only gate)
+                    # Actually, let's test the true gate: uncheck household checkbox
+                    await hh_warning.uncheck()
                     await page.wait_for_timeout(200)  # Wait for JS state update
-                    is_enabled_again = not await export_btn.is_disabled()
-                    assert is_enabled_again, \
-                        "K8 FAILED: Button should be enabled again when both re-checked"
-                    print("✓ K8: Button re-enabled when both confirmations checked again")
+                    is_now_disabled = await export_btn.is_disabled()
+                    assert is_now_disabled, \
+                        "K8 FAILED: Button should be disabled when household checkbox unchecked"
+                    print("✓ K8: Button disabled when household checkbox unchecked (confirms household gates export)")
 
                     print("\n=== TEST K: MIXED VALIDATION + HOUSEHOLD EXPORT WARNINGS PASSED ===")
 

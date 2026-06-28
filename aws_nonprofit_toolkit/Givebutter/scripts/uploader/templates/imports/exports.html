@@ -306,9 +306,15 @@ function updateExportButtonState() {
     {% endif %}
 
     if (preview) {
-        // Button is only disabled if there are BLOCKING issues, not deferred issues
-        // Deferred issues require confirmation checkboxes, but do not disable the button
-        const canExport = preview.blocked_count === 0;
+        // Button is disabled if there are BLOCKING issues
+        // OR if there are deferred households without confirmation
+        let canExport = preview.blocked_count === 0;
+
+        // Check if confirmation is required for deferred households only
+        if (preview.deferred_household_count > 0 && householdCheckbox && !householdCheckbox.checked) {
+            canExport = false;
+        }
+
         btn.disabled = !canExport;
         btn.style.opacity = canExport ? '1' : '0.6';
         btn.style.cursor = canExport ? 'pointer' : 'not-allowed';

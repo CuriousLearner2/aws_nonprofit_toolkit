@@ -109,8 +109,9 @@ def flask_app_database_mode():
     # NOT piping stdout/stderr so we can see logs for debugging
     # Use port 8001 to avoid conflicts with port 8000 (used by session-scoped fixture)
     app_path_str = str(app_path)
+    givebutter_dir = str(Path(app_path).parent.parent.parent)  # Givebutter root for scripts.householder imports
     process = subprocess.Popen(
-        [sys.executable, "-c", f"import sys; sys.path.insert(0, '{app_path_str.rsplit('/', 1)[0]}'); from app import app; app.run(host='127.0.0.1', port=8001, debug=False)"],
+        [sys.executable, "-c", f"import sys; sys.path.insert(0, '{givebutter_dir}'); sys.path.insert(0, '{app_path_str.rsplit('/', 1)[0]}'); from app import app; app.run(host='127.0.0.1', port=8001, debug=False)"],
         env=env,
         cwd=str(app_path.parent),
         preexec_fn=os.setsid  # Create new process group for cleanup
