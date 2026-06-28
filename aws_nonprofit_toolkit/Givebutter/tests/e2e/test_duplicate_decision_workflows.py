@@ -7,8 +7,9 @@ submission, status updates, navigation state.
 
 Infrastructure:
 - Database-backed Flask testing with ImportBatch/ReviewItem seeding
+- Shared flask_app_database_mode fixture starts Flask in subprocess on port 8001
 - Duplicate service uses database repository for review item queries
-- Flask runs in background thread, Playwright drives browser
+- Playwright drives browser
 
 Synchronization:
 - Use page.wait_for_selector() to poll for elements (not arbitrary sleeps)
@@ -26,9 +27,6 @@ See E2E_TEST_RELIABILITY.md and CLAUDE.md for patterns and guardrails.
 import pytest
 import asyncio
 import sys
-import tempfile
-import threading
-import os
 from pathlib import Path
 from datetime import datetime
 from sqlalchemy.orm import sessionmaker
@@ -37,49 +35,17 @@ from sqlalchemy.orm import sessionmaker
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.householder.database_models import (
-    Base,
     ImportBatch,
     RawImportRow,
     ImportContact,
     ReviewItem,
     create_db_engine,
 )
-from scripts.uploader.app import app
-
-
-@pytest.fixture
-def e2e_duplicates_database_and_app():
-    """
-    Create a database, seed it with duplicate test data, start Flask server in thread.
-
-    Returns:
-        Tuple of (database_url, db_path, app_instance)
-    """
-    # Create temporary database
-    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-    db_path = db_file.name
-    db_file.close()
-
-    database_url = f'sqlite:///{db_path}'
-    engine = create_db_engine(database_url)
-    Base.metadata.create_all(engine)
-
-    # Set environment for Flask
-    os.environ['HOUSEHOLDER_REPOSITORY'] = 'database'
-    os.environ['GIVEBUTTER_DATABASE_URL'] = database_url
-
-    # Configure Flask for testing
-    app.config['TESTING'] = True
-
-    yield database_url, db_path, app
-
-    # Cleanup
-    Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_same_person_decision_submission(e2e_duplicates_database_and_app):
+async def test_same_person_decision_submission(flask_app_database_mode):
     """
     GOAL: Verify "Mark as Same Person" button submits form and updates status.
 
@@ -94,7 +60,7 @@ async def test_same_person_decision_submission(e2e_duplicates_database_and_app):
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_duplicates_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -181,29 +147,6 @@ async def test_same_person_decision_submission(e2e_duplicates_database_and_app):
 
         session.close()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8002, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8002/imports/same-person-test/duplicates', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -211,7 +154,7 @@ async def test_same_person_decision_submission(e2e_duplicates_database_and_app):
 
             try:
                 # Navigate to duplicates page
-                await page.goto('http://127.0.0.1:8002/imports/same-person-test/duplicates')
+                await page.goto('http://127.0.0.1:8001/imports/same-person-test/duplicates')
 
                 # Wait for page to load
                 await page.wait_for_selector('div.card', timeout=5000)
@@ -267,7 +210,7 @@ async def test_same_person_decision_submission(e2e_duplicates_database_and_app):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_different_people_decision_submission(e2e_duplicates_database_and_app):
+async def test_different_people_decision_submission(flask_app_database_mode):
     """
     GOAL: Verify "Mark as Different People" button submits form and updates status.
 
@@ -281,7 +224,7 @@ async def test_different_people_decision_submission(e2e_duplicates_database_and_
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_duplicates_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -364,28 +307,6 @@ async def test_different_people_decision_submission(e2e_duplicates_database_and_
         session.commit()
         session.close()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8003, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server
-        import requests
-        for attempt in range(5):
-            try:
-                requests.get('http://127.0.0.1:8003/imports/different-people-test/duplicates', timeout=2)
-                break
-            except:
-                if attempt < 4:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -393,7 +314,7 @@ async def test_different_people_decision_submission(e2e_duplicates_database_and_
 
             try:
                 # Navigate to duplicates page
-                await page.goto('http://127.0.0.1:8003/imports/different-people-test/duplicates')
+                await page.goto('http://127.0.0.1:8001/imports/different-people-test/duplicates')
                 await page.wait_for_selector('div.card', timeout=5000)
 
                 # Find and click "Mark as Different People" button
@@ -425,7 +346,7 @@ async def test_different_people_decision_submission(e2e_duplicates_database_and_
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_defer_decision_with_notes_required(e2e_duplicates_database_and_app):
+async def test_defer_decision_with_notes_required(flask_app_database_mode):
     """
     GOAL: Verify "Defer" button with notes required validation.
 
@@ -439,7 +360,7 @@ async def test_defer_decision_with_notes_required(e2e_duplicates_database_and_ap
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_duplicates_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -522,28 +443,6 @@ async def test_defer_decision_with_notes_required(e2e_duplicates_database_and_ap
         session.commit()
         session.close()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8004, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server
-        import requests
-        for attempt in range(5):
-            try:
-                requests.get('http://127.0.0.1:8004/imports/defer-test/duplicates', timeout=2)
-                break
-            except:
-                if attempt < 4:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -551,7 +450,7 @@ async def test_defer_decision_with_notes_required(e2e_duplicates_database_and_ap
 
             try:
                 # Navigate to duplicates page
-                await page.goto('http://127.0.0.1:8004/imports/defer-test/duplicates')
+                await page.goto('http://127.0.0.1:8001/imports/defer-test/duplicates')
                 await page.wait_for_selector('div.card', timeout=5000)
 
                 # Verify notes textarea appears (conflicting evidence detected)
@@ -593,7 +492,7 @@ async def test_defer_decision_with_notes_required(e2e_duplicates_database_and_ap
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_buttons_remain_interactive_after_submission(e2e_duplicates_database_and_app):
+async def test_buttons_remain_interactive_after_submission(flask_app_database_mode):
     """
     GOAL: Verify that UI buttons remain interactive after a decision submission.
 
@@ -610,7 +509,7 @@ async def test_buttons_remain_interactive_after_submission(e2e_duplicates_databa
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_duplicates_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -656,28 +555,6 @@ async def test_buttons_remain_interactive_after_submission(e2e_duplicates_databa
         session.commit()
         session.close()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8005, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server
-        import requests
-        for attempt in range(5):
-            try:
-                requests.get('http://127.0.0.1:8005/imports/buttons-test/duplicates', timeout=2)
-                break
-            except:
-                if attempt < 4:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -685,7 +562,7 @@ async def test_buttons_remain_interactive_after_submission(e2e_duplicates_databa
 
             try:
                 # Navigate to duplicates page
-                await page.goto('http://127.0.0.1:8005/imports/buttons-test/duplicates')
+                await page.goto('http://127.0.0.1:8001/imports/buttons-test/duplicates')
                 await page.wait_for_selector('div.card', timeout=5000)
 
                 # Verify buttons are present BEFORE submission
@@ -733,7 +610,7 @@ async def test_buttons_remain_interactive_after_submission(e2e_duplicates_databa
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_previous_next_navigation_works(e2e_duplicates_database_and_app):
+async def test_previous_next_navigation_works(flask_app_database_mode):
     """
     GOAL: Verify that Previous/Next navigation links work and change the displayed pair.
 
@@ -753,7 +630,7 @@ async def test_previous_next_navigation_works(e2e_duplicates_database_and_app):
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_duplicates_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data with 3 duplicate pairs
     engine = create_db_engine(database_url)
@@ -840,28 +717,6 @@ async def test_previous_next_navigation_works(e2e_duplicates_database_and_app):
         session.commit()
         session.close()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8007, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server
-        import requests
-        for attempt in range(5):
-            try:
-                requests.get('http://127.0.0.1:8007/imports/nav-pairs-test/duplicates', timeout=2)
-                break
-            except:
-                if attempt < 4:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -869,7 +724,7 @@ async def test_previous_next_navigation_works(e2e_duplicates_database_and_app):
 
             try:
                 # Navigate to duplicates page
-                await page.goto('http://127.0.0.1:8007/imports/nav-pairs-test/duplicates')
+                await page.goto('http://127.0.0.1:8001/imports/nav-pairs-test/duplicates')
                 await page.wait_for_selector('div.card', timeout=5000)
 
                 # Step 1: Verify first pair is displayed
@@ -994,7 +849,7 @@ async def test_previous_next_navigation_works(e2e_duplicates_database_and_app):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_back_to_dashboard_navigation(e2e_duplicates_database_and_app):
+async def test_back_to_dashboard_navigation(flask_app_database_mode):
     """
     GOAL: Verify "Back to Dashboard" link exists and navigates correctly.
 
@@ -1006,7 +861,7 @@ async def test_back_to_dashboard_navigation(e2e_duplicates_database_and_app):
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_duplicates_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -1052,28 +907,6 @@ async def test_back_to_dashboard_navigation(e2e_duplicates_database_and_app):
         session.commit()
         session.close()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8006, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server
-        import requests
-        for attempt in range(5):
-            try:
-                requests.get('http://127.0.0.1:8006/imports/dashboard-nav-test/duplicates', timeout=2)
-                break
-            except:
-                if attempt < 4:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1081,7 +914,7 @@ async def test_back_to_dashboard_navigation(e2e_duplicates_database_and_app):
 
             try:
                 # Navigate to duplicates page
-                await page.goto('http://127.0.0.1:8006/imports/dashboard-nav-test/duplicates')
+                await page.goto('http://127.0.0.1:8001/imports/dashboard-nav-test/duplicates')
                 await page.wait_for_selector('div.card', timeout=5000)
 
                 # Verify Back to Dashboard link exists and points to correct URL
