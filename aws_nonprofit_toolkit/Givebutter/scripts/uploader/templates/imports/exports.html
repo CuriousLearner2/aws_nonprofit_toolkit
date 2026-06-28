@@ -308,10 +308,16 @@ function updateExportButtonState() {
     if (preview) {
         // Button is disabled if there are BLOCKING issues
         // OR if there are deferred households without confirmation
+        // OR if there are deferred duplicates without confirmation
         let canExport = preview.blocked_count === 0;
 
-        // Check if confirmation is required for deferred households only
+        // Check if confirmation is required for deferred households
         if (preview.deferred_household_count > 0 && householdCheckbox && !householdCheckbox.checked) {
+            canExport = false;
+        }
+
+        // Check if confirmation is required for deferred duplicates
+        if (preview.deferred_duplicate_count > 0 && duplicateCheckbox && !duplicateCheckbox.checked) {
             canExport = false;
         }
 
