@@ -11,8 +11,9 @@ CRITICAL WORKFLOWS TESTED:
 
 Infrastructure:
 - Database-backed Flask testing with ImportBatch/ReviewItem seeding
+- Shared flask_app_database_mode fixture starts Flask in subprocess on port 8001
 - Duplicates service calculates suggestions and decisions
-- Flask runs in background thread, Playwright drives browser
+- Playwright drives browser
 
 Synchronization:
 - Use page.wait_for_function() to poll DOM state
@@ -31,9 +32,6 @@ See E2E_TEST_RELIABILITY.md for patterns and troubleshooting.
 import pytest
 import asyncio
 import sys
-import tempfile
-import threading
-import os
 from pathlib import Path
 from datetime import datetime
 from sqlalchemy.orm import sessionmaker
@@ -51,37 +49,6 @@ from scripts.householder.database_models import (
     ReviewDecision,
     create_db_engine,
 )
-from scripts.uploader.app import app
-
-
-@pytest.fixture
-def e2e_database_and_app():
-    """
-    Create a database, seed it with test data, start Flask server in thread.
-
-    Returns:
-        Tuple of (database_url, db_path, app_instance)
-    """
-    # Create temporary database
-    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-    db_path = db_file.name
-    db_file.close()
-
-    database_url = f'sqlite:///{db_path}'
-    engine = create_db_engine(database_url)
-    Base.metadata.create_all(engine)
-
-    # Set environment for Flask
-    os.environ['HOUSEHOLDER_REPOSITORY'] = 'database'
-    os.environ['GIVEBUTTER_DATABASE_URL'] = database_url
-
-    # Configure Flask for testing
-    app.config['TESTING'] = True
-
-    yield database_url, db_path, app
-
-    # Cleanup
-    Path(db_path).unlink(missing_ok=True)
 
 
 # ==============================================================================
@@ -333,7 +300,7 @@ async def test_export_warning_appears_for_deferred_duplicate(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_blocked_when_duplicate_confirmation_unchecked(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify export is blocked when deferred duplicates exist and confirmation unchecked.
@@ -353,7 +320,7 @@ async def test_export_blocked_when_duplicate_confirmation_unchecked(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -479,29 +446,6 @@ async def test_export_blocked_when_duplicate_confirmation_unchecked(
         contact_a_id = contact_a.id
         contact_b_id = contact_b.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-dup-blocked-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -589,7 +533,7 @@ async def test_export_blocked_when_duplicate_confirmation_unchecked(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_proceeds_when_duplicate_confirmation_checked(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify export proceeds after duplicate confirmation checkbox is checked.
@@ -611,7 +555,7 @@ async def test_export_proceeds_when_duplicate_confirmation_checked(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -737,29 +681,6 @@ async def test_export_proceeds_when_duplicate_confirmation_checked(
         contact_a_id = contact_a.id
         contact_b_id = contact_b.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-dup-proceed-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -865,7 +786,7 @@ async def test_export_proceeds_when_duplicate_confirmation_checked(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_clean_export_skips_duplicate_confirmation(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify no duplicate confirmation required when all duplicates are resolved.
@@ -887,7 +808,7 @@ async def test_clean_export_skips_duplicate_confirmation(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -1015,29 +936,6 @@ async def test_clean_export_skips_duplicate_confirmation(
         contact_a_id = contact_a.id
         contact_b_id = contact_b.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-dup-clean-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1122,7 +1020,7 @@ async def test_clean_export_skips_duplicate_confirmation(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_warning_count_for_multiple_deferred_duplicates(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify export warning displays correct count for multiple deferred duplicate pairs.
@@ -1145,7 +1043,7 @@ async def test_export_warning_count_for_multiple_deferred_duplicates(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -1264,29 +1162,6 @@ async def test_export_warning_count_for_multiple_deferred_duplicates(
 
         contact_ids = [c.id for c in contacts]
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-dup-multiple-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
-
         # Launch browser
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -1385,7 +1260,7 @@ async def test_export_warning_count_for_multiple_deferred_duplicates(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_checkbox_uncheck_re_disables_button_for_duplicates(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify checkbox uncheck re-disables export button (bidirectional state).
@@ -1409,7 +1284,7 @@ async def test_export_checkbox_uncheck_re_disables_button_for_duplicates(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -1534,29 +1409,6 @@ async def test_export_checkbox_uncheck_re_disables_button_for_duplicates(
 
         contact_a_id = contact_a.id
         contact_b_id = contact_b.id
-
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-dup-bidirectional-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
 
         # Launch browser
         async with async_playwright() as p:
