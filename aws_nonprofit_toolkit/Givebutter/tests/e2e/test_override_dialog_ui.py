@@ -175,7 +175,7 @@ async def test_cancel_override_dialog(flask_app_running):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_fail_tier_records_identified_in_ui(flask_app_running):
+async def test_fail_tier_records_identified_in_ui(flask_app_database_mode):
     """Test that FAIL tier records are visually marked in the review table."""
     async with async_playwright() as p:
         browser = await p.chromium.launch()
@@ -183,10 +183,10 @@ async def test_fail_tier_records_identified_in_ui(flask_app_running):
 
         try:
             # Load test page with mixed PASS/FAIL records
-            await page.goto("http://127.0.0.1:8000/test-override-dialog")
+            await page.goto("http://127.0.0.1:8001/test-override-dialog")
 
             # Wait for review table
-            await page.wait_for_selector('table.review-table', timeout=5000)
+            await page.wait_for_selector('table.queue-table', timeout=5000)
 
             # Get page content to verify FAIL tiers are shown
             content = await page.content()
