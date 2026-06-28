@@ -29,9 +29,6 @@ See E2E_TEST_RELIABILITY.md for patterns and troubleshooting.
 import pytest
 import asyncio
 import sys
-import tempfile
-import threading
-import os
 from pathlib import Path
 from datetime import datetime
 from sqlalchemy.orm import sessionmaker
@@ -50,36 +47,6 @@ from scripts.householder.database_models import (
     create_db_engine,
 )
 from scripts.uploader.app import app
-
-
-@pytest.fixture
-def e2e_database_and_app():
-    """
-    Create a database, seed it with test data, start Flask server in thread.
-
-    Returns:
-        Tuple of (database_url, db_path, app_instance)
-    """
-    # Create temporary database
-    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-    db_path = db_file.name
-    db_file.close()
-
-    database_url = f'sqlite:///{db_path}'
-    engine = create_db_engine(database_url)
-    Base.metadata.create_all(engine)
-
-    # Set environment for Flask
-    os.environ['HOUSEHOLDER_REPOSITORY'] = 'database'
-    os.environ['GIVEBUTTER_DATABASE_URL'] = database_url
-
-    # Configure Flask for testing
-    app.config['TESTING'] = True
-
-    yield database_url, db_path, app
-
-    # Cleanup
-    Path(db_path).unlink(missing_ok=True)
 
 
 # ==============================================================================
@@ -293,7 +260,7 @@ async def test_export_warning_appears_for_deferred_household(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_blocked_when_confirmation_unchecked(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify export is blocked when deferred households exist and confirmation unchecked.
@@ -314,7 +281,7 @@ async def test_export_blocked_when_confirmation_unchecked(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -403,28 +370,7 @@ async def test_export_blocked_when_confirmation_unchecked(
 
         contact_id = contact.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-blocked-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -514,7 +460,7 @@ async def test_export_blocked_when_confirmation_unchecked(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_proceeds_when_confirmation_checked(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify export proceeds after confirmation checkbox is checked.
@@ -536,7 +482,7 @@ async def test_export_proceeds_when_confirmation_checked(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -625,28 +571,7 @@ async def test_export_proceeds_when_confirmation_checked(
 
         contact_id = contact.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-proceed-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -752,7 +677,7 @@ async def test_export_proceeds_when_confirmation_checked(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_clean_export_skips_confirmation(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify no confirmation required when all households are resolved (no deferred/unresolved).
@@ -774,7 +699,7 @@ async def test_clean_export_skips_confirmation(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -867,28 +792,7 @@ async def test_clean_export_skips_confirmation(
 
         contact_id = contact.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-clean-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -973,7 +877,7 @@ async def test_clean_export_skips_confirmation(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_warning_count_for_multiple_deferred_households(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify export warning displays correct count for multiple deferred households.
@@ -996,7 +900,7 @@ async def test_export_warning_count_for_multiple_deferred_households(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -1113,28 +1017,7 @@ async def test_export_warning_count_for_multiple_deferred_households(
 
         contact_ids = [c.id for c in contacts]
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-multiple-deferred-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -1237,7 +1120,7 @@ async def test_export_warning_count_for_multiple_deferred_households(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_checkbox_uncheck_re_disables_button(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     Verify checkbox uncheck re-disables export button (bidirectional state).
@@ -1261,7 +1144,7 @@ async def test_export_checkbox_uncheck_re_disables_button(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -1351,28 +1234,7 @@ async def test_export_checkbox_uncheck_re_disables_button(
 
         contact_id = contact.id
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-
-        # Wait for server
-        await asyncio.sleep(2)
-
-        # Verify server is accessible
-        import requests
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                requests.get('http://127.0.0.1:8001/imports/export-bidirectional-batch/exports', timeout=2)
-                break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start")
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
