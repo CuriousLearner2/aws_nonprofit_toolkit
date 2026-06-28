@@ -29,13 +29,9 @@ See E2E_TEST_RELIABILITY.md for patterns and troubleshooting.
 import pytest
 import asyncio
 import sys
-import tempfile
-import threading
-import os
 from pathlib import Path
 from datetime import datetime
 from sqlalchemy.orm import sessionmaker
-from werkzeug.serving import make_server
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -53,69 +49,6 @@ from scripts.householder.database_models import (
 from scripts.uploader.app import app
 
 
-async def wait_for_households_page_ready(url: str, timeout_seconds: int = 10) -> None:
-	"""
-	Wait for Flask server to be ready by polling a households page route.
-
-	Uses exponential backoff polling with a bounded timeout.
-
-	Args:
-		url: Full URL to poll (e.g., 'http://127.0.0.1:8001/imports/{batch_id}/households')
-		timeout_seconds: Total timeout in seconds (default 10)
-
-	Raises:
-		RuntimeError: If the server does not become ready within timeout_seconds
-	"""
-	import requests
-	import time
-
-	start_time = time.time()
-	wait_interval = 0.1
-
-	while time.time() - start_time < timeout_seconds:
-		try:
-			response = requests.get(url, timeout=2)
-			# Successful response means server is ready
-			return
-		except (requests.ConnectionError, requests.Timeout):
-			# Server not ready yet, wait and retry
-			await asyncio.sleep(wait_interval)
-			# Exponential backoff: 0.1 → 0.15 → 0.225 → ... → capped at 1.0
-			wait_interval = min(wait_interval * 1.5, 1.0)
-
-	raise RuntimeError(f"Flask server failed to become ready at {url} after {timeout_seconds}s")
-
-
-@pytest.fixture
-def e2e_database_and_app():
-    """
-    Create a database, seed it with test data, start Flask server in thread.
-
-    Returns:
-        Tuple of (database_url, db_path, app_instance)
-    """
-    # Create temporary database
-    db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-    db_path = db_file.name
-    db_file.close()
-
-    database_url = f'sqlite:///{db_path}'
-    engine = create_db_engine(database_url)
-    Base.metadata.create_all(engine)
-
-    # Set environment for Flask
-    os.environ['HOUSEHOLDER_REPOSITORY'] = 'database'
-    os.environ['GIVEBUTTER_DATABASE_URL'] = database_url
-
-    # Configure Flask for testing
-    app.config['TESTING'] = True
-
-    yield database_url, db_path, app
-
-    # Cleanup
-    Path(db_path).unlink(missing_ok=True)
-
-
 # ==============================================================================
 # TEST A: Previous/Next navigation without creating decisions
 # ==============================================================================
@@ -123,7 +56,7 @@ def e2e_database_and_app():
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_previous_next_navigation_no_decisions(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     GOAL: Verify Previous/Next navigation works without creating ReviewDecisions.
@@ -144,7 +77,7 @@ async def test_previous_next_navigation_no_decisions(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -280,13 +213,7 @@ async def test_previous_next_navigation_no_decisions(
         household_1_id = household_1.id
         household_2_id = household_2.id
 
-        # Start Flask server with explicit shutdown capability
-        server = make_server('127.0.0.1', 8001, flask_app)
-        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
-        flask_thread.start()
-
-        # Wait for server with bounded exponential backoff polling
-        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/nav-test-batch/households', timeout_seconds=10)
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -385,10 +312,6 @@ async def test_previous_next_navigation_no_decisions(
             finally:
                 await browser.close()
 
-        # Explicit server shutdown and thread cleanup
-        server.shutdown()
-        flask_thread.join(timeout=2)
-
     finally:
         session.close()
 
@@ -400,7 +323,7 @@ async def test_previous_next_navigation_no_decisions(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_defer_without_notes_warning_non_blocking(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     GOAL: Verify Defer decision triggers warning but allows submission without notes.
@@ -421,7 +344,7 @@ async def test_defer_without_notes_warning_non_blocking(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -500,13 +423,7 @@ async def test_defer_without_notes_warning_non_blocking(
         contact_id = contact.id
         household_id = household.id
 
-        # Start Flask server with explicit shutdown capability
-        server = make_server('127.0.0.1', 8001, flask_app)
-        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
-        flask_thread.start()
-
-        # Wait for server with bounded exponential backoff polling
-        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/defer-warning-batch/households', timeout_seconds=10)
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -588,10 +505,6 @@ async def test_defer_without_notes_warning_non_blocking(
             finally:
                 await browser.close()
 
-        # Explicit server shutdown and thread cleanup
-        server.shutdown()
-        flask_thread.join(timeout=2)
-
     finally:
         session.close()
 
@@ -603,7 +516,7 @@ async def test_defer_without_notes_warning_non_blocking(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_confirm_household_decision(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     GOAL: Verify Confirm decision records and persists.
@@ -619,7 +532,7 @@ async def test_confirm_household_decision(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -698,13 +611,7 @@ async def test_confirm_household_decision(
         contact_id = contact.id
         household_id = household.id
 
-        # Start Flask server with explicit shutdown capability
-        server = make_server('127.0.0.1', 8001, flask_app)
-        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
-        flask_thread.start()
-
-        # Wait for server with bounded exponential backoff polling
-        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/confirm-test-batch/households', timeout_seconds=10)
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -767,10 +674,6 @@ async def test_confirm_household_decision(
             finally:
                 await browser.close()
 
-        # Explicit server shutdown and thread cleanup
-        server.shutdown()
-        flask_thread.join(timeout=2)
-
     finally:
         session.close()
 
@@ -782,7 +685,7 @@ async def test_confirm_household_decision(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_reject_household_decision(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     GOAL: Verify Reject decision records and persists.
@@ -798,7 +701,7 @@ async def test_reject_household_decision(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -877,13 +780,7 @@ async def test_reject_household_decision(
         contact_id = contact.id
         household_id = household.id
 
-        # Start Flask server with explicit shutdown capability
-        server = make_server('127.0.0.1', 8001, flask_app)
-        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
-        flask_thread.start()
-
-        # Wait for server with bounded exponential backoff polling
-        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/reject-test-batch/households', timeout_seconds=10)
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -946,10 +843,6 @@ async def test_reject_household_decision(
             finally:
                 await browser.close()
 
-        # Explicit server shutdown and thread cleanup
-        server.shutdown()
-        flask_thread.join(timeout=2)
-
     finally:
         session.close()
 
@@ -961,7 +854,7 @@ async def test_reject_household_decision(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_redirect_chain_to_exports(
-    e2e_database_and_app,
+    flask_app_database_mode,
 ):
     """
     GOAL: Verify post-decision redirect chain works: decide -> next -> decide -> next -> exports.
@@ -981,7 +874,7 @@ async def test_redirect_chain_to_exports(
     """
     from playwright.async_api import async_playwright
 
-    database_url, db_path, flask_app = e2e_database_and_app
+    process, database_url, db_path = flask_app_database_mode
 
     # Seed test data
     engine = create_db_engine(database_url)
@@ -1062,13 +955,7 @@ async def test_redirect_chain_to_exports(
 
         household_ids = [h.id for h in households]
 
-        # Start Flask server with explicit shutdown capability
-        server = make_server('127.0.0.1', 8001, flask_app)
-        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
-        flask_thread.start()
-
-        # Wait for server with bounded exponential backoff polling
-        await wait_for_households_page_ready('http://127.0.0.1:8001/imports/redirect-chain-batch/households', timeout_seconds=10)
+        # Flask server is already started by the fixture on port 8001
 
         # Launch browser
         async with async_playwright() as p:
@@ -1198,10 +1085,6 @@ async def test_redirect_chain_to_exports(
 
             finally:
                 await browser.close()
-
-        # Explicit server shutdown and thread cleanup
-        server.shutdown()
-        flask_thread.join(timeout=2)
 
     finally:
         session.close()
