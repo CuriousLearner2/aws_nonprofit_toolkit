@@ -1,57 +1,11 @@
 """End-to-end tests for upload workflow with Playwright."""
 import pytest
-import sys
 import asyncio
-from pathlib import Path
-import subprocess
-import time
-import signal
-import os
-import requests
-
-
-@pytest.fixture(scope="session")
-def start_flask_app():
-    """Start Flask app for E2E testing."""
-    app_path = Path(__file__).parent.parent.parent / "scripts" / "uploader" / "app.py"
-    process = subprocess.Popen(
-        [sys.executable, str(app_path)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        preexec_fn=os.setsid  # Create new process group for cleanup
-    )
-
-    # Wait for Flask to be ready using exponential backoff (0.1s → 1.0s, 10s timeout)
-    start_time = time.time()
-    wait_interval = 0.1
-    max_interval = 1.0
-    timeout_seconds = 10
-
-    while time.time() - start_time < timeout_seconds:
-        try:
-            response = requests.get('http://127.0.0.1:8000/', timeout=2)
-            if response.status_code < 500:  # Accept any non-500 response (includes 200, 404, etc.)
-                break
-        except (requests.ConnectionError, requests.Timeout):
-            pass
-
-        time.sleep(wait_interval)
-        wait_interval = min(wait_interval * 1.5, max_interval)
-    else:
-        raise RuntimeError("Flask app failed to become ready at http://127.0.0.1:8000/ after 10s")
-
-    yield process
-
-    # Cleanup: kill the entire process group
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    except:
-        process.terminate()
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_valid_csv(start_flask_app, temp_dir, sample_csv):
+async def test_upload_valid_csv(flask_app_database_mode, temp_dir, sample_csv):
     """Test uploading a valid CSV file through the UI."""
     from playwright.async_api import async_playwright
 
@@ -61,7 +15,7 @@ async def test_upload_valid_csv(start_flask_app, temp_dir, sample_csv):
 
         try:
             # Navigate to upload page
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
 
             # Wait for page to load
             await page.wait_for_selector('.upload-card', timeout=5000)
@@ -85,7 +39,7 @@ async def test_upload_valid_csv(start_flask_app, temp_dir, sample_csv):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_displays_validation_results(start_flask_app, temp_dir):
+async def test_upload_displays_validation_results(flask_app_database_mode, temp_dir):
     """Test that upload displays validation results correctly."""
     from playwright.async_api import async_playwright
 
@@ -103,7 +57,7 @@ GB003,2026-05-25,Bob Wilson,invalid-email,75.00,Education Fund"""
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
             await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
@@ -126,7 +80,7 @@ GB003,2026-05-25,Bob Wilson,invalid-email,75.00,Education Fund"""
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_invalid_file_type(start_flask_app, temp_dir):
+async def test_upload_invalid_file_type(flask_app_database_mode, temp_dir):
     """Test uploading non-CSV file shows error."""
     from playwright.async_api import async_playwright
 
@@ -139,7 +93,7 @@ async def test_upload_invalid_file_type(start_flask_app, temp_dir):
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
             await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
@@ -159,7 +113,7 @@ async def test_upload_invalid_file_type(start_flask_app, temp_dir):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_processing_queue_displays_file(start_flask_app, temp_dir, sample_csv):
+async def test_processing_queue_displays_file(flask_app_database_mode, temp_dir, sample_csv):
     """Test that uploaded file appears in processing queue."""
     from playwright.async_api import async_playwright
 
@@ -169,7 +123,7 @@ async def test_processing_queue_displays_file(start_flask_app, temp_dir, sample_
 
         try:
             # Upload file first
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
             await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
@@ -192,7 +146,7 @@ async def test_processing_queue_displays_file(start_flask_app, temp_dir, sample_
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_page_loads_successfully(start_flask_app):
+async def test_page_loads_successfully(flask_app_database_mode):
     """Test that upload page loads without errors."""
     from playwright.async_api import async_playwright
 
@@ -201,7 +155,7 @@ async def test_page_loads_successfully(start_flask_app):
         page = await browser.new_page()
 
         try:
-            response = await page.goto("http://127.0.0.1:8000/")
+            response = await page.goto("http://127.0.0.1:8001/")
 
             # Check page loaded successfully
             assert response.status == 200
@@ -219,7 +173,7 @@ async def test_page_loads_successfully(start_flask_app):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_upload_csv_with_special_characters(start_flask_app, temp_dir):
+async def test_upload_csv_with_special_characters(flask_app_database_mode, temp_dir):
     """Test uploading CSV with special characters in filenames and data."""
     from playwright.async_api import async_playwright
 
@@ -235,7 +189,7 @@ GB002,2026-05-25,李明,li@gmail.com,50.00,Scholarship Fund"""
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
             await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
@@ -258,7 +212,7 @@ GB002,2026-05-25,李明,li@gmail.com,50.00,Scholarship Fund"""
 @pytest.mark.e2e
 @pytest.mark.asyncio
 @pytest.mark.slow
-async def test_upload_large_csv(start_flask_app, temp_dir):
+async def test_upload_large_csv(flask_app_database_mode, temp_dir):
     """Test uploading a larger CSV file."""
     from playwright.async_api import async_playwright
 
@@ -277,7 +231,7 @@ async def test_upload_large_csv(start_flask_app, temp_dir):
         page = await browser.new_page()
 
         try:
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
             await page.wait_for_selector('.upload-card', timeout=5000)
 
             file_input = await page.query_selector('input[type="file"]')
@@ -300,7 +254,7 @@ async def test_upload_large_csv(start_flask_app, temp_dir):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_import_queue_table_structure(start_flask_app, temp_dir, sample_csv):
+async def test_import_queue_table_structure(flask_app_database_mode, temp_dir, sample_csv):
     """Test that import queue displays with proper Status and Action columns."""
     from playwright.async_api import async_playwright
 
@@ -310,7 +264,7 @@ async def test_import_queue_table_structure(start_flask_app, temp_dir, sample_cs
 
         try:
             # Navigate to upload page
-            await page.goto("http://127.0.0.1:8000/")
+            await page.goto("http://127.0.0.1:8001/")
             await page.wait_for_selector('.upload-card', timeout=5000)
 
             # Verify import queue table structure exists
