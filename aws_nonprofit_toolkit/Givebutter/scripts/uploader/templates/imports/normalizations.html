@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Normalizations — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Normalizations</h1>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }}</p>
+
+<div class="safety-strip">Review field cleanup suggestions.</div>
+
+{% if message %}
+<p>{{ message }}</p>
+{% endif %}
+
+<!-- Bottom Navigation -->
+<div style="margin-top: 24px; display: flex; gap: 12px;">
+    <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
+    <a href="/imports" class="btn btn-secondary" style="text-decoration: none;">Back to Imports</a>
+</div>
+{% endblock %}

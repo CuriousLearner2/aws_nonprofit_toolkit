@@ -78,6 +78,7 @@ try:
         dashboard_service,
         validation_service,
         validation_decision_service,
+        normalizations_service,
         households_service,
         duplicates_service,
         duplicate_decision_service,
@@ -94,6 +95,7 @@ except ImportError:
         dashboard_service,
         validation_service,
         validation_decision_service,
+        normalizations_service,
         households_service,
         duplicates_service,
         duplicate_decision_service,
@@ -954,6 +956,12 @@ def import_validation(import_id):
     """Validation review for records with issues."""
     data = validation_service.get_validation_review(import_id)
     return render_template('imports/validation.html', **data)
+
+@app.route('/imports/<import_id>/normalizations')
+def import_normalizations(import_id):
+    """Normalizations review for field cleanup suggestions."""
+    data = normalizations_service.get_normalizations_review(import_id)
+    return render_template('imports/normalizations.html', **data)
 
 @app.route('/imports/<import_id>/validation/<int:review_item_id>/decision', methods=['POST'])
 def record_validation_decision(import_id, review_item_id):
