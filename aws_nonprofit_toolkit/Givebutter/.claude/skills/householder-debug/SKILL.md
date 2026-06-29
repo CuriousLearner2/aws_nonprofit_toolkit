@@ -97,6 +97,33 @@ Next human choices:
 3. Authorize a new implementation/debug task
 ```
 
+### E2E fail-fast rules
+
+E2E tests are slow (5-10 seconds per test, ~30 seconds for a suite) and async-heavy. To prevent 20–30 minute timeouts during failed rewrites, enforce fail-fast discipline:
+
+**Explicit timeout requirement:**
+- Every E2E command used as a gate must declare an explicit timeout.
+- Single-test proof: max 90 seconds.
+- Full-file gate: max 180 seconds.
+- Reliability loop iteration: max 90 seconds.
+- If a command hangs or exceeds its timeout, that is a failed gate.
+
+**Stop-on-first-failure (mandatory):**
+- Run each rewritten test individually under timeout before running full-file.
+- Full-file gate runs all tests in the file once; it does not continue past the first failing test.
+- Reliability loops (multi-run gates) stop on the first failed or timed-out iteration.
+- Do not continue to pre-commit gate, Reviewer invocation, or any downstream gate if any E2E command failed or timed out.
+
+**Hard assertions only:**
+- No soft assertions (`if element: assert ...` or conditional early returns).
+- No page-load-only replacement coverage (tests must meaningfully verify current product behavior).
+- No zombie deferred tests that pass without testing anything.
+- If current product behavior cannot be proven deterministically within the timeout, report product/test mismatch and stop instead of weakening the test.
+
+**Rewritten test preconditions:**
+- Every rewritten E2E test must use hard selector preconditions (verify expected elements exist before interaction).
+- Selector waits must be short (5 seconds max) and fail explicitly if the element does not appear.
+
 ### Shared-fixture gate rule
 
 Before declaring or running a multi-file gate for a shared fixture/helper change, verify that every file in the gate actually uses the intended shared fixture path.
