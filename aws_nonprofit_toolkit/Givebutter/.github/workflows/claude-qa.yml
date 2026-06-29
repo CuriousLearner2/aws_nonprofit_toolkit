@@ -48,6 +48,11 @@ jobs:
           pip install -e .
           pip install pytest pytest-asyncio
 
+      - name: Check for Artifacts
+        run: |
+          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          python scripts/ci/check_no_artifacts.py
+
       - name: Run Unit Tests
         id: unit-tests
         run: |
