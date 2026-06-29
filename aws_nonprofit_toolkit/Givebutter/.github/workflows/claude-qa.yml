@@ -56,16 +56,18 @@ jobs:
       - name: Run Unit Tests
         id: unit-tests
         run: |
+          set -o pipefail
           cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
-          python -m pytest tests/unit/ -v --tb=short 2>&1 | tee unit-test-results.txt
+          python scripts/ci/test_gate.py --timeout 600 -- python -m pytest tests/unit/ -v --tb=short 2>&1 | tee unit-test-results.txt
           echo "result=$?" >> $GITHUB_OUTPUT
         continue-on-error: true
 
       - name: Run Integration Tests
         id: integration-tests
         run: |
+          set -o pipefail
           cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
-          python -m pytest tests/integration/ -v --tb=short 2>&1 | tee integration-test-results.txt
+          python scripts/ci/test_gate.py --timeout 300 -- python -m pytest tests/integration/ -v --tb=short 2>&1 | tee integration-test-results.txt
           echo "result=$?" >> $GITHUB_OUTPUT
         continue-on-error: true
 
