@@ -4,6 +4,47 @@ description: Orchestrates a disciplined Householder / DonorTrust bug-fix loop us
 allowed-tools: Read, Grep, Glob, Bash, Task
 ---
 
+## RED RULES — ALWAYS OBEY
+
+1. **Assessment-only:** Orchestrator performs it directly. No child agents, no edits, and stop at the assessment report.
+2. **Any failed, hung, timed-out, interrupted, or exit-143 gate:** stop immediately. No diagnosis, retry, split, second fix, Reviewer, commit, or push without human authorization.
+3. **E2E gates require explicit wall-clock timeouts:** 90s single test, 180s full file, 90s per reliability iteration. Multi-test pytest gates must use `-x` or `--maxfail=1`.
+4. **Timeout equals failed gate.** Treat it exactly like a test failure and deliver a failed-gate stop report.
+5. **Rewritten E2E tests require hard assertions.** No soft guards, no `if element: assert ...`, no zombie tests, and no page-load-only replacement coverage.
+6. **Reviewer handoff:** For implementation flows requiring review, Implementer stops at ready-for-review and Orchestrator invokes Reviewer after passing gates. Do not invoke Reviewer for assessment-only, push-only, or status-only tasks unless explicitly required.
+7. **Terminal states stop:** assessment report, failed-gate report, cleanup completed, Reviewer verdict, commit, and push. Do not auto-start the next task.
+8. **Breaker is concrete-risk-based, not routine.** Invoke only for concrete P0/P1 invariant or process-integrity risk, or when the human asks.
+
+## Mandatory Task Contract
+
+Before any meaningful work, Orchestrator must instantiate this contract with explicit yes/no answers:
+
+```text
+Task contract:
+- Task type: Assessment only / Implementation only / Commit preparation / Push only
+- Allowed actions:
+- Forbidden actions:
+- Files in scope:
+- Product UX ambiguity present? yes/no
+- Product UX Gatekeeper required? yes/no
+- Reviewer required? yes/no
+- Why Reviewer is/is not required:
+- Breaker required? yes/no
+- Why Breaker is/is not required:
+- E2E involved? yes/no
+- E2E timeout required? yes/no
+- Gate command(s):
+- Stop condition:
+- Terminal state:
+```
+
+Rules:
+- Do not proceed until the contract is written.
+- Do not use generic phrases such as `Reviewer mandatory`; state whether Reviewer is required for this specific task.
+- If the task is assessment-only, push-only, or status-only, Reviewer must be `no` unless explicitly required by the human.
+- If the task is an implementation flow requiring review, Reviewer must be `yes`, and Orchestrator must invoke Reviewer after passing gates.
+- If any field is uncertain, stop and ask or classify as assessment-only.
+
 # Householder Debug Skill
 
 Use this skill for Householder / DonorTrust bug fixes, review-screen issues, autosave issues, validation issues, approval/export issues, E2E issues, workflow/docs updates, and small scoped implementation changes.
@@ -25,20 +66,13 @@ These rules are intentionally short and high-priority. Apply them before lower-l
 1. **Assessment-only means direct execution.** If a task is classified as Assessment only, Orchestrator must perform it directly in the current context. Do not spawn child agents, nested Orchestrators, Implementers, Reviewers, Breakers, or Product UX Gatekeeper unless the human prompt explicitly authorizes that handoff.
 2. **Assessment-only stops at the report.** Inspect, run bounded commands, collect evidence, recommend one next task, and stop. Do not debug, repair, split, retry, optimize, or implement.
 3. **Implementation gates flow to Reviewer.** After an implementation gate passes and review is required, Orchestrator must invoke Reviewer immediately. `Ready for Reviewer` is not a terminal state unless the human requested preparation-only or Reviewer invocation is unavailable/failed and reported.
-4. **Terminal states are hard stops.** Assessment delivered, failed-gate report delivered, cleanup completed, Reviewer verdict delivered, commit completed, and push completed are terminal states. Do not start the next logical task without explicit human authorization.
+4. **Terminal states are hard stops.** Assessment delivered, failed-gate report delivered, cleanup completed, Reviewer verdict delivered, commit completed, and push completed are terminal states. Do not start the next logical task without explicit human authorization. A passing implementation gate is not a terminal state when Reviewer is required; deliver the Reviewer verdict first.
 5. **Breaker is risk-based.** Invoke Breaker only for concrete P0/P1 invariant or process-integrity risk, or when the human asks. Do not use Breaker as routine extra review.
 
 
 ## Instruction Compliance Gate
 
-Before beginning meaningful work, identify the task contract:
-
-- task type,
-- allowed actions,
-- forbidden actions,
-- declared command or gate,
-- stop conditions,
-- terminal state.
+Before beginning meaningful work, instantiate the Mandatory Task Contract above. Do not use a shortened version; include the explicit yes/no fields for Product UX Gatekeeper, Reviewer, Breaker, and E2E timeout.
 
 Follow the narrowest reasonable interpretation of the human's instructions.
 
@@ -102,7 +136,7 @@ Next human choices:
 E2E tests are slow (5-10 seconds per test, ~30 seconds for a suite) and async-heavy. To prevent 20–30 minute timeouts during failed rewrites, enforce fail-fast discipline:
 
 **Explicit timeout requirement:**
-- Every E2E command used as a gate must declare an explicit timeout.
+- Every E2E command used as a gate must declare an explicit timeout and, when running more than one test, should include pytest stop-on-first-failure (`-x` or `--maxfail=1`).
 - Single-test proof: max 90 seconds.
 - Full-file gate: max 180 seconds.
 - Reliability loop iteration: max 90 seconds.
@@ -110,8 +144,8 @@ E2E tests are slow (5-10 seconds per test, ~30 seconds for a suite) and async-he
 
 **Stop-on-first-failure (mandatory):**
 - Run each rewritten test individually under timeout before running full-file.
-- Full-file gate runs all tests in the file once; it does not continue past the first failing test.
-- Reliability loops (multi-run gates) stop on the first failed or timed-out iteration.
+- Full-file gates should be run with pytest stop-on-first-failure (`-x` or `--maxfail=1`) plus the explicit wall-clock timeout, so they do not continue past the first failing test.
+- Reliability loops (multi-run gates) stop on the first failed or timed-out iteration; each pytest invocation in the loop should also use `-x` or `--maxfail=1` when running more than one test.
 - Do not continue to pre-commit gate, Reviewer invocation, or any downstream gate if any E2E command failed or timed out.
 
 **Hard assertions only:**
@@ -218,6 +252,8 @@ Terminal states include:
 - Reviewer verdict delivered,
 - commit completed,
 - push completed.
+
+Passing an implementation gate is not a terminal state when Reviewer is required. The Orchestrator must invoke Reviewer and stop only after the Reviewer verdict is delivered, unless the human explicitly requested preparation-only or Reviewer invocation is unavailable/failed and reported.
 
 After a terminal state, only report final status and readiness. Do not launch a new assessment, invoke agents, run tests, inspect new files, optimize, commit, push, or begin follow-up work unless the human explicitly asks.
 
@@ -473,9 +509,9 @@ For any lane requiring Reviewer:
 4. wait for final verdict,
 5. commit only if Reviewer returns clean `Accept` and commit gates are satisfied.
 
-Breaker is required after Reviewer `Accept` for high-risk invariant work touching validation review, inline editing/autosave, approval/export, decision modals, audit, raw-data immutability, recent P0/P1 paths, or browser-visible state consistency that could affect reviewer decisions.
+Breaker is required after Reviewer `Accept` only when the current change presents concrete P0/P1 invariant risk, or materially affects validation review, inline editing/autosave, approval/export, decision modals, audit, raw-data immutability, recent P0/P1 paths, or browser-visible state consistency in a way that could affect reviewer decisions.
 
-Do not invoke Breaker for every adjacent historical concern unless a concrete current-change risk appears.
+Breaker is optional for docs-only, test-only, workflow-only, commit-prep, and push-only unless the human asks, Reviewer flags a concrete invariant/process risk, or the change is masquerading as low-risk while altering product behavior. Do not invoke Breaker for every adjacent historical concern unless a concrete current-change risk appears.
 
 ## Workflow violation handling
 
