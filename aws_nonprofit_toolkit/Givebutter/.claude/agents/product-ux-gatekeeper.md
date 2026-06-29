@@ -83,6 +83,14 @@ Product/UX Gatekeeper must not be used to justify continuing after a failed tech
 
 Do not approve or recommend keeping a technical change whose declared acceptance gate failed. The valid next states are revert, preserve unstaged pending human-authorized rescope, or authorize a new investigation/implementation task.
 
+### E2E timeout boundary
+
+If invoked after an E2E gate failed, hung, timed out, exited `143`, was interrupted, or produced unusable/truncated output, first determine whether a real user-visible product/UX ambiguity exists.
+
+- E2E timeout handling, retry strategy, selector debugging, fixture redesign, soft-assertion fallback, or test splitting is not a product/UX decision.
+- Do not approve keeping a technical change whose declared E2E gate failed or timed out.
+- If there is no concrete product/UX ambiguity, return `Verdict: no ambiguity` and state that the valid next steps are revert, preserve unstaged pending human-authorized rescope, or authorize a new technical investigation/implementation task.
+
 ## Terminal-state product boundary
 
 After Product UX Gatekeeper returns a verdict or human-decision request, stop. Do not continue into implementation, review, commit, push, or follow-up product exploration unless the human explicitly asks.

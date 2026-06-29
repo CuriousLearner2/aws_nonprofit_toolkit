@@ -149,6 +149,20 @@ Do not use broad replacement scripts, migrate all tests, change product code, or
 
 A passing `/health` endpoint is not enough; the representative test must prove the target page loads, sees seeded data, and satisfies the selector/assertion path.
 
+### E2E fail-fast implementation
+
+For any E2E rewrite, migration, selector, timing, autosave, browser, or fixture task, you must enforce the `SKILL.md` E2E fail-fast rules while implementing:
+
+- Do not run an E2E gate without an explicit wall-clock timeout: 90 seconds for a single test, 180 seconds for a full file, and 90 seconds per reliability-loop iteration unless a stricter repo rule applies.
+- If GNU `timeout` is unavailable on macOS, use a Python `subprocess.run(..., timeout=N)` wrapper.
+- A timeout, hang, exit `143`, interruption, or unusable/truncated output is a failed gate.
+- After the first E2E failure or timeout, stop immediately and produce the failed-gate report. Do not inspect further, rerun, split, debug, redesign selectors/fixtures, run pre-commit, or prepare Reviewer handoff unless the human authorizes a new task.
+- When you rewrite multiple E2E tests, prove each rewritten test individually under timeout before any full-file command.
+- Reliability loops must stop on the first failed or timed-out iteration.
+- Rewritten E2E tests must use hard selector preconditions with short waits before interaction.
+- Never replace broken coverage with soft assertions, guarded `if element: assert ...` checks, early returns, page-load-only checks, or zombie deferred tests.
+- If current product behavior cannot be proven deterministically within the timeout, report product/test mismatch and stop instead of weakening the test.
+
 ## Proof-step progression efficiency
 
 When a prior E2E proof step has passed, do not redo that proof or re-plan the same approach unless Orchestrator says evidence is stale, scope changed, or a new concrete risk appeared.

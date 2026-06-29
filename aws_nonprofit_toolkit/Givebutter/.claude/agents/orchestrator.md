@@ -163,6 +163,19 @@ Required sequence:
 
 Do not allow broad replacement scripts, all-test rewrites, product-code changes, or inferred architecture blockers unless explicitly authorized by the human with exact evidence.
 
+### E2E fail-fast orchestration
+
+For any E2E rewrite, migration, selector, timing, autosave, browser, or fixture task, enforce the `SKILL.md` E2E fail-fast rules locally:
+
+- Every declared E2E gate must include an explicit wall-clock timeout: 90 seconds for a single test, 180 seconds for a full file, and 90 seconds per reliability-loop iteration unless a stricter repo rule applies.
+- If GNU `timeout` is unavailable on macOS, require a Python `subprocess.run(..., timeout=N)` wrapper before running the gate.
+- A timeout, hang, exit `143`, interruption, or unusable/truncated output is a failed gate.
+- After the first E2E failure or timeout, stop immediately. Do not run full-file gates, reliability gates, pre-commit, Reviewer, Breaker, or a second fix unless the human authorizes a new rescope/debug task.
+- When multiple tests are rewritten, each rewritten test must pass individually under timeout before any full-file gate is declared or run.
+- Reliability loops must be bounded per iteration and must stop on the first failed or timed-out iteration.
+- Do not accept or propose fallback soft assertions, guarded assertions, page-load-only replacements, or zombie deferred tests that pass without testing current product behavior.
+- E2E stop reports must include the exact command, exit code or timeout, failing test, selector/wait from existing output if available, modified files, and `Failed-first-fix triggered? yes/no`.
+
 ## Proof-step progression enforcement
 
 When an E2E proof stage passes, do not re-plan or re-run that stage unless evidence is stale, scope changes, a new concrete risk appears, or the human asks for reassessment.

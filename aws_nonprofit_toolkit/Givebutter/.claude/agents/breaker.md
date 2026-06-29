@@ -100,6 +100,16 @@ Flag:
 - second theory/fix after failed first fix without human authorization,
 - whole-file E2E migration before one representative test proof.
 
+### E2E fail-fast adversarial check
+
+For E2E rewrite, migration, selector, timing, autosave, browser, or fixture tasks, treat process drift around timeouts as a real risk:
+
+- Flag missing explicit wall-clock timeouts on E2E gates: 90 seconds for a single test, 180 seconds for a full file, and 90 seconds per reliability-loop iteration unless a stricter repo rule applies.
+- Flag any timeout, hang, exit `143`, interruption, or unusable/truncated output that was treated as acceptable evidence.
+- Flag workflows that ran full-file gates before each rewritten test passed individually under timeout.
+- Flag reliability loops that were not bounded per iteration or did not stop on first failure/timeout.
+- Flag any fallback to soft assertions, guarded checks, page-load-only replacement coverage, or zombie deferred tests.
+- Flag continued debugging, reruns, selector redesign, fixture redesign, pre-commit, Reviewer, Breaker, commit prep, or second fixes after the first E2E failure/timeout without explicit human authorization.
 
 ## Failed-gate evidence-boundary adversarial check
 

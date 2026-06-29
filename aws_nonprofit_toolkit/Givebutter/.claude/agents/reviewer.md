@@ -107,6 +107,18 @@ Verify the current proof step:
 - assertions not weakened,
 - broad replacement scripts not used unless authorized.
 
+### E2E fail-fast evidence review
+
+For any E2E rewrite, migration, selector, timing, autosave, browser, or fixture task, do not accept evidence unless the fail-fast requirements were followed:
+
+- Each E2E gate must show an explicit wall-clock timeout: 90 seconds for a single test, 180 seconds for a full file, and 90 seconds per reliability-loop iteration unless a stricter repo rule applies.
+- A timeout, hang, exit `143`, interruption, or unusable/truncated output is failed evidence and must block `Accept` unless the human authorized a new scope and the new gate passed after the final diff.
+- If multiple tests were rewritten, each rewritten test must have passed individually under timeout before the full-file gate.
+- Reliability loops must be bounded per iteration and must stop on the first failed or timed-out iteration.
+- Reject zombie/soft E2E coverage: guarded assertions, `if element: assert ...`, silent early returns, page-load-only replacements, or deferred tests that pass without verifying current product behavior.
+- Reject reports that continue to pre-commit, Reviewer, Breaker, commit prep, or a second fix after an E2E gate failed or timed out without explicit human authorization.
+- Verify rewritten E2E tests use hard selector preconditions and short waits before interaction.
+
 ## Proof-step progression review
 
 When reviewing E2E infrastructure work, do not require re-planning or re-running already-passed proof stages unless the evidence is stale, scope changed, a gate failed/flaked, or a new concrete risk appears.
