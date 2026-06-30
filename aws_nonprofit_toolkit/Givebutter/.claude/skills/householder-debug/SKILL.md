@@ -195,6 +195,49 @@ Hard guardrails:
 - Do not change schema/migrations unless explicitly authorized.
 - Do not approve broad unrelated refactors.
 
+## Pre-authorized workflow lanes
+
+Pre-authorized lanes define maximum allowed scope and required approval flow, but do not bypass gates or reduce safety:
+
+**Lane A — Assessment only**
+- Trigger: `Task type: Assessment only` in task contract
+- No edits, no child agents, stop at report
+- Never auto-continues; always terminal
+
+**Lane B — Test-only hardening**
+- Trigger: `Pre-authorized lane: test-only hardening` in task contract
+- Allowed: tests/** only; no product code
+- Scope guard: explicit expected test files via `check_scope.py --allow`
+- Auto-continue: implementation → gates → Reviewer (if ACCEPT + happy-path enabled) → commit
+- No push; commit requires `Happy-path auto-commit: enabled` exact phrase
+
+**Lane C — Workflow/CI automation**
+- Trigger: `Pre-authorized lane: workflow/CI automation` in task contract
+- Allowed: `.claude/**`, `.github/**`, `scripts/ci/**`, and tests for CI scripts only
+- Scope guard: explicit expected files via `check_scope.py --allow`
+- Auto-continue: implementation → gates → Reviewer (if ACCEPT + happy-path enabled) → commit
+- No push; no product code; commit requires `Happy-path auto-commit: enabled` exact phrase
+
+**Lane D — Product/invariant hardening**
+- Trigger: `Pre-authorized lane: product/invariant hardening` in task contract
+- Scope: explicitly declared per task (may span product/test/docs)
+- Product UX Gatekeeper: required if visible behavior or semantics are ambiguous
+- Auto-continue: implementation → gates → Reviewer (if ACCEPT) → Breaker if required (if PASS) → commit
+- No push; commit requires `Happy-path auto-commit: enabled` exact phrase
+
+**Lane E — Push only**
+- Trigger: `Task type: Push only` in task contract
+- No edits, no new commits; push only if explicitly authorized
+- Terminal state: after push
+
+Lane selection rules:
+- Orchestrator must verify lane classification matches task type and scope
+- Orchestrator must NOT infer a lane without the exact phrase
+- Scope guard must use task-specific expected files, not broad lane maximums
+- Reviewer must verify lane classification and changed files fit the declared lane
+- All existing terminal-state, fail-fast, and gate rules override lane permissions
+- Auto-commit still requires `Happy-path auto-commit: enabled` exact phrase
+
 ## Repository Automation Guardrails
 
 Three guardrail scripts enforce discipline during implementation and commit preparation:

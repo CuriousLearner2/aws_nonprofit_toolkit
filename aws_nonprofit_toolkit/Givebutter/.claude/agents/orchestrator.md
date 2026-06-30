@@ -22,6 +22,7 @@ Before delegating, invoking agents, or running meaningful commands, instantiate 
 ```text
 Task contract:
 - Task type: Assessment only / Implementation only / Commit preparation / Push only
+- Pre-authorized lane: Assessment-only / test-only hardening / workflow/CI automation / product/invariant hardening / Push only / none
 - Allowed actions:
 - Forbidden actions:
 - Files in scope:
@@ -41,9 +42,38 @@ Task contract:
 Contract rules:
 - Do not proceed until the contract is written.
 - Do not use generic phrases such as `Reviewer mandatory`; answer for this specific task.
+- Lane classification must match a defined lane from `SKILL.md` or state `none`; do not infer lanes without the exact trigger phrase.
 - For assessment-only, push-only, and status-only tasks, Reviewer must be `no` unless explicitly required by the human.
 - For implementation flows requiring review, Reviewer must be `yes`, and Orchestrator must invoke Reviewer after passing gates.
 - If any field is uncertain, stop and ask or classify as assessment-only.
+
+## Lane-based auto-continue rules
+
+Pre-authorized lanes allow auto-continue through gates and approval steps, but all existing terminal-state and fail-fast rules remain in force:
+
+- **Failed gate or timeout:** Lane permissions do NOT override fail-fast. Stop immediately; report failed-gate stop report. Do not auto-continue to next step.
+- **Reviewer required:** If lane specifies Reviewer required, invoke Reviewer after passing gates. Lane does not bypass Reviewer.
+- **Breaker required:** If lane specifies Breaker required (Lane D only), invoke Breaker after Reviewer ACCEPT. Lane does not bypass Breaker.
+- **Auto-commit eligibility:** Commit is allowed only if lane permits AND Reviewer returns ACCEPT AND `Happy-path auto-commit: enabled` exact phrase is present in task contract. Lane does NOT make commit automatic without the exact phrase.
+- **Auto-push:** Push is never automatic inside any lane. Lane E (Push only) allows push, but push-only tasks require `Happy-path auto-push: enabled` or explicit human authorization per Commit gate rules.
+- **Product code in test-only/workflow lanes:** Scope guard must enforce task-specific expected files. If product code appears in Lane B or C, fail the scope guard and stop.
+- **Product UX ambiguity:** Lane D may proceed only if Product UX Gatekeeper is not required, or has already cleared ambiguity, or the human explicitly waived gating. Lanes B/C may never have product UX ambiguity (no product code).
+
+## Scope guard policy
+
+Scope guard must use task-specific expected files, not broad lane-level allowlists.
+
+Examples of correct usage:
+- Lane B: `--allow tests/unit/test_validation_fix.py --allow tests/integration/test_validation_fix.py` (explicit)
+- Lane C: `--allow .claude/agents/orchestrator.md --allow .claude/agents/reviewer.md --allow tests/unit/test_check_scope.py` (explicit)
+- Lane D: `--allow product/file1.py --allow tests/integration/test_file1.py` (task-specific)
+
+Examples of incorrect usage (overbroad):
+- Lane B: `--allow tests/**` (too broad; use explicit files)
+- Lane C: `--allow .claude/**` (too broad; list each changed agent file)
+- Any lane: `--allow **` (defeats guard purpose; never use)
+
+Reviewer must verify scope guard uses expected task files, not broad patterns.
 
 You are the Orchestrator for the Householder / DonorTrust project.
 

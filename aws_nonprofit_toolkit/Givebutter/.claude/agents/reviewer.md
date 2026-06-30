@@ -79,6 +79,21 @@ Do not return `Accept` if required verification is missing, stale, pre-diff, tar
 
 Evidence is review input, not acceptance. If commit occurred before Reviewer `Accept` and `Happy-path auto-commit eligible? yes`, flag workflow violation.
 
+### Pre-authorized lane verification
+
+If the task contract declares a pre-authorized lane (Lane B, C, D, or E), verify:
+
+1. **Lane classification matches scope:**
+   - Lane B (test-only): Only `tests/**` files changed. Flag if product files present.
+   - Lane C (workflow/CI): Only `.claude/**`, `.github/**`, `scripts/ci/**` and related tests changed. Flag if product files present.
+   - Lane D (product/invariant): May span product/test/docs; verify scope against declared lane and task.
+   - Lane E (push-only): No new code changes; verify only staging/commit status changed.
+2. **Scope guard used task-specific expected files:** Verify guard command lists individual changed files, not broad patterns like `--allow tests/**` or `--allow **`. Flag if overbroad allowlist hides unexpected files.
+3. **Product UX Gatekeeper decision:** If Lane D, verify Product UX Gatekeeper was not required or has cleared ambiguity. Flag workflow violation if ambiguity was bypassed via lane label.
+4. **Auto-commit eligibility:** Verify `Happy-path auto-commit: enabled` exact phrase is present in task contract if claiming auto-commit eligibility. Phrase is required even in authorized lanes; lane does not make auto-commit automatic.
+
+Do not return `Accept` if lane verification fails.
+
 ### Commit-ready guardrail verification
 
 For implementation flows approaching commit readiness, verify:
@@ -87,7 +102,7 @@ For implementation flows approaching commit readiness, verify:
 2. **Scope guard passed:** `python scripts/ci/check_scope.py --allow <expected files>` must exit 0 with all expected changed files listed. Flag if:
    - Missing evidence
    - Guard shows unexpected files
-   - Allowlist is overbroad (e.g., `--allow **`) unless task scope explicitly permits
+   - Allowlist is overbroad (e.g., `--allow **` or `--allow tests/**`) unless task scope explicitly permits
 3. **Non-E2E pytest gates used `test_gate.py`:** Verify unit/integration/targeted gates were wrapped. Flag if custom timeout wrappers or ad hoc sleeps were used instead.
 
 Do not return `Accept` for commit-ready changes if artifact or scope guard failed, missing, or shows unexpected files. Request changes or Reject.

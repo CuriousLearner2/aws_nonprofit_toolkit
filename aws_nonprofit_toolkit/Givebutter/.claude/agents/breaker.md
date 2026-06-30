@@ -57,6 +57,15 @@ Check for:
 - approval/export inconsistencies,
 - overclaimed E2E evidence.
 
+### Pre-authorized lane process-risk checks
+
+If task contract declares a pre-authorized lane (Lane B, C, D, or E), flag process drift:
+
+- **Overbroad lane classification:** Lane B (test-only) must show only `tests/**` files; Lane C (workflow/CI) must show only `.claude/**`, `.github/**`, `scripts/ci/**`, and related tests. Flag if broader scope.
+- **Overbroad scope guard allowlist:** Verify `check_scope.py --allow` lists individual expected files, not patterns like `--allow tests/**`. Flag if allowlist is too broad to catch unexpected files.
+- **Breaker skipped in product/invariant lane:** Lane D may require Breaker if concrete P0/P1 risk exists. Flag if Breaker was skipped despite the human declaring product/invariant lane.
+- **Product UX ambiguity bypassed:** Lane D must not bypass Product UX Gatekeeper when ambiguity exists. Flag if UX decision was made via lane label instead of explicit Product UX Gatekeeper verification.
+
 ### Guardrail process-integrity checks
 
 For commit-ready changes, verify:

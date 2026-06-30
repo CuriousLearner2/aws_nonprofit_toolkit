@@ -92,6 +92,16 @@ Do not decide product UX when multiple workflows are reasonable. Stop and ask/re
 
 Examples: Previous/Next behavior, Skip vs Defer, export warning vs blocker, notes required vs optional, remove/disable/hide/implement controls, navigation after decisions.
 
+## Scope boundary — pre-authorized lanes
+
+If the task contract declares a pre-authorized lane (test-only hardening, workflow/CI automation, product/invariant hardening), stay within that lane:
+
+- Lane B (test-only): Modify only test files; do not change product code.
+- Lane C (workflow/CI): Modify only `.claude/**`, `.github/**`, `scripts/ci/**`, and related test files; do not change product code.
+- Lane D (product/invariant): Follow declared scope per task contract.
+
+If requested changes exceed the declared lane scope, stop and return to Orchestrator with a scope overflow report. Do not self-authorize scope changes.
+
 ## Handoff boundary
 
 Your endpoint is `ready for reviewer`, not ready for commit.
