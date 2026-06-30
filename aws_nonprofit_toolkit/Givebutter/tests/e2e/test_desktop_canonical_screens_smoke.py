@@ -5,13 +5,14 @@ Desktop-only screens covered (existing routable canonical screens):
 1. Imports/List (upload entry)
 2. Dashboard (summary view)
 3. Validation Review
-4. Duplicates
-5. Households
-6. Audit Log
-7. Export Console
+4. Normalizations (placeholder route with no workflow implementation)
+5. Duplicates
+6. Households
+7. Audit Log
+8. Export Console
 
-Note: Normalizations (/imports/<batch>/normalizations) is NOT routable in current
-codebase and is omitted as a planned/stale canonical screen.
+Note: Normalizations is a placeholder route with no workflow implementation.
+Smoke test verifies route is accessible and renders without error (read-only coverage only).
 
 Template bug fix: Households progress bar had ZeroDivisionError when total_households=0.
 Fixed with conditional in Jinja2 template (line 145 of households.html).
@@ -73,15 +74,12 @@ def e2e_database_and_app_smoke():
 @pytest.mark.asyncio
 async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
     """
-    Verify all 7 working canonical app screens render correctly and are navigable
+    Verify all 8 working canonical app screens render correctly and are navigable
     at 1440x900 desktop viewport. This is a smoke test for routing and basic
     rendering; it does not test functionality or responsive behavior.
 
     Screens tested:
-    - Imports/List, Dashboard, Validation Review, Duplicates, Households, Audit Log, Export Console
-
-    Screens excluded (known issues):
-    - Normalizations (route not implemented; marked as planned)
+    - Imports/List, Dashboard, Validation Review, Normalizations, Duplicates, Households, Audit Log, Export Console
     """
     from playwright.async_api import async_playwright
 
@@ -188,6 +186,7 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
                     ('Imports/List', 'http://127.0.0.1:8001/imports', ['import', 'upload']),
                     ('Dashboard', 'http://127.0.0.1:8001/imports/smoke-test-batch/dashboard', ['dashboard', 'batch']),
                     ('Validation Review', 'http://127.0.0.1:8001/imports/smoke-test-batch/validation', ['validation', 'review']),
+                    ('Normalizations', 'http://127.0.0.1:8001/imports/smoke-test-batch/normalizations', ['normalizations']),
                     ('Duplicates', 'http://127.0.0.1:8001/imports/smoke-test-batch/duplicates', ['duplicate']),
                     ('Households', 'http://127.0.0.1:8001/imports/smoke-test-batch/households', ['household']),
                     ('Audit Log', 'http://127.0.0.1:8001/imports/smoke-test-batch/audit', ['audit']),
@@ -196,8 +195,8 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
 
                 print("\n=== DESKTOP CANONICAL SCREENS SMOKE TEST ===")
                 print("Viewport: 1440x900 (desktop only)")
-                print("Coverage: 7 existing canonical screens (verified working)")
-                print("(Normalizations route is not implemented; status: planned)\n")
+                print("Coverage: 8 canonical screens (verified working)")
+                print("(Normalizations: route exists, placeholder content, no workflow impl)\n")
 
                 for i, (screen_name, url, expected_keywords) in enumerate(screens, 1):
                     # Navigate to screen - let exceptions fail the test
@@ -233,7 +232,7 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
                 assert viewport['width'] == 1440, f"Width should be 1440, got {viewport['width']}"
                 assert viewport['height'] == 900, f"Height should be 900, got {viewport['height']}"
 
-                print(f"\n✓ All 7 canonical screens verified at {viewport['width']}x{viewport['height']}")
+                print(f"\n✓ All 8 canonical screens verified at {viewport['width']}x{viewport['height']}")
                 print("✓ Desktop viewport confirmed")
                 print("✓ No destructive actions performed")
                 print("✓ No export generation triggered")
