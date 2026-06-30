@@ -238,6 +238,20 @@ Lane selection rules:
 - All existing terminal-state, fail-fast, and gate rules override lane permissions
 - Auto-commit still requires `Happy-path auto-commit: enabled` exact phrase
 
+### Feature Development Prompt Pattern
+
+Feature/product behavior work should normally use Orchestrator with `Pre-authorized lane: product/invariant hardening`.
+
+Feature prompts should name exact expected files whenever possible. Scope must be enforced with `scripts/ci/check_scope.py` using explicit `--allow` file paths, not broad patterns or lane-wide globs.
+
+Product changes must protect the core invariant: **The system suggests. The reviewer decides. Raw data stays unchanged.**
+
+Product changes must not introduce CRM/Givebutter API writeback, credentials/auth/RBAC, background jobs, bulk actions, new export formats, raw source-data mutation, contact merge/delete, `household_id` assignment, cross-import matching, master contacts/households, or schema/migration changes unless the human explicitly authorizes that scope.
+
+Non-E2E gates must be bounded through `scripts/ci/test_gate.py`. E2E gates must be bounded through `scripts/ci/e2e_gate.py` and follow repo-local E2E fail-fast and reliability rules.
+
+Browser-visible UX changes require Product UX Gatekeeper before commit. Reviewer verdict is required before commit. Happy-path auto-commit still requires the exact phrase `Happy-path auto-commit: enabled` and clean Reviewer eligibility. Push remains separate unless explicitly authorized.
+
 
 ### Reviewer completion rule for pre-authorized lanes
 
