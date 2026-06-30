@@ -82,6 +82,8 @@ def get_changed_files():
     """
     Get all changed files: staged, unstaged, and untracked.
 
+    For renamed files, uses the destination (new) path for scope matching.
+
     Returns: list of file paths (relative to current working directory)
     """
     changed_files = []
@@ -101,11 +103,26 @@ def get_changed_files():
             if not line:
                 continue
 
-            # Format: XY PATH
+            # Format: XY PATH  or  R<score> OLD_PATH -> NEW_PATH
             # First two chars are status, rest is path
-            # Lines we care about: M (modified), A (added), D (deleted), ?? (untracked)
+            # For renames: extract destination (new) path
             status = line[:2]
-            filepath = line[3:]
+
+            # Handle rename entries (R followed by similarity score)
+            if status[0] == 'R':
+                # Rename format: R<score> old -> new
+                # Extract the destination (new) path
+                remainder = line[3:]
+                if ' -> ' in remainder:
+                    # Split on ' -> ' and use the new path (after arrow)
+                    parts = remainder.split(' -> ')
+                    filepath = parts[-1].strip()
+                else:
+                    # Fallback if format differs (space-separated without arrow)
+                    filepath = remainder.strip()
+            else:
+                # Standard format: XY PATH
+                filepath = line[3:]
 
             # Include all non-empty paths from modified, staged, or untracked files
             if filepath:

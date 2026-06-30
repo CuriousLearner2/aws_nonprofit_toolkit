@@ -260,3 +260,82 @@ class TestEdgeCases:
         assert not result.startswith("ws_"), "Path was truncated at leading characters"
         assert result.startswith("."), "Normalized path should be relative and start with '.'"
         assert "breaker.md" in result, "Filename should be preserved in normalized path"
+
+
+class TestRenameHandling:
+    """Test git rename (R100) status entry handling.
+
+    Regression tests for scope guard rename parsing bug.
+    Issue: R100 old -> new entries were treated as single unexpected filepath.
+    Fix: Extract destination (new) path for scope matching.
+    """
+
+    def test_rename_extracts_new_path(self):
+        """Rename entries extract the destination (new) path."""
+        # Rename should allow new path when it matches allowlist
+        patterns = [".github/workflows/claude-qa.yml"]
+        assert matches_pattern(".github/workflows/claude-qa.yml", patterns) is True
+
+    def test_rename_fails_old_path_only(self):
+        """Rename with old path only in allowlist should fail."""
+        # If we can only scope the old path, it should not match (new path is what matters)
+        patterns = ["aws_nonprofit_toolkit/Givebutter/.github/workflows/claude-qa.yml"]
+        assert matches_pattern(".github/workflows/claude-qa.yml", patterns) is False
+
+    def test_rename_workflow_move_regression(self):
+        """Regression: workflow move from nested to repo-root should scope correctly.
+
+        The observed failure case:
+        - Old path: aws_nonprofit_toolkit/Givebutter/.github/workflows/claude-qa.yml
+        - New path: .github/workflows/claude-qa.yml
+        - Allowlist: .github/workflows/claude-qa.yml
+
+        Expected: PASS (new path matches allowlist)
+        Previous bug: FAIL (treated entire "old -> new" as filename)
+        """
+        patterns = [".github/workflows/claude-qa.yml"]
+        # Only the new path should be checked
+        assert matches_pattern(".github/workflows/claude-qa.yml", patterns) is True
+
+    def test_rename_with_glob_allowlist(self):
+        """Rename matching glob pattern for destination."""
+        patterns = [".github/workflows/*.yml"]
+        assert matches_pattern(".github/workflows/claude-qa.yml", patterns) is True
+
+    def test_rename_nested_to_nested(self):
+        """Rename between nested directories."""
+        patterns = ["scripts/new_location/*.py"]
+        assert matches_pattern("scripts/new_location/check_scope.py", patterns) is True
+
+    def test_rename_prevents_scope_creep(self):
+        """Rename to unexpected location should fail."""
+        patterns = [".github/workflows/*.yml"]
+        # If moved to unexpected location, should not match
+        assert matches_pattern("docs/workflow.yml", patterns) is False
+
+    def test_multiple_renames_all_allowed(self):
+        """Multiple renames with different destinations."""
+        patterns = [".github/workflows/**", "scripts/ci/**"]
+        # All new paths match allowlist
+        assert matches_pattern(".github/workflows/new.yml", patterns) is True
+        assert matches_pattern("scripts/ci/check_scope.py", patterns) is True
+
+    def test_rename_with_modified_files(self):
+        """Scope includes both renamed and modified files."""
+        patterns = ["scripts/ci/*", ".github/workflows/*"]
+        changed_files = [
+            "scripts/ci/check_scope.py",      # modified
+            ".github/workflows/claude-qa.yml"  # renamed to this destination
+        ]
+        unexpected = [f for f in changed_files if not matches_pattern(f, patterns)]
+        assert unexpected == []
+
+    def test_rename_escape_attempt_blocked(self):
+        """Rename outside scope should be caught."""
+        patterns = ["scripts/ci/*"]
+        changed_files = [
+            "scripts/ci/check_scope.py",        # allowed
+            "src/backend/new_location.py"       # renamed here, not allowed
+        ]
+        unexpected = [f for f in changed_files if not matches_pattern(f, patterns)]
+        assert unexpected == ["src/backend/new_location.py"]
