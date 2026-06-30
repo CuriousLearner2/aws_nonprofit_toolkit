@@ -238,6 +238,41 @@ Lane selection rules:
 - All existing terminal-state, fail-fast, and gate rules override lane permissions
 - Auto-commit still requires `Happy-path auto-commit: enabled` exact phrase
 
+
+### Reviewer completion rule for pre-authorized lanes
+
+When a pre-authorized lane permits an implementation/review/commit flow, the Reviewer handoff is not complete until the Reviewer verdict is returned and reported.
+
+The Orchestrator must complete this loop:
+
+1. Invoke Reviewer after declared gates pass.
+2. Wait for the Reviewer verdict.
+3. Report the verdict and readiness fields.
+4. If Reviewer returns clean `Accept`, `Happy-path auto-commit: enabled` is present, and commit gates are satisfied, commit only the expected files.
+5. Stop after the commit report.
+
+These are **not terminal states** for Orchestrator-led implementation/review flows:
+
+- `Ready for Reviewer`
+- `Invoking Reviewer`
+- Review Packet printed
+- Reviewer task started but verdict not reported
+
+Terminal states remain:
+
+- Reviewer verdict delivered, if auto-commit is not enabled or not eligible
+- Commit completed, if auto-commit is enabled and eligible
+- Reviewer `Request changes` / `Reject` delivered
+- Failed-gate report delivered
+
+### Reviewer verdict vs auto-commit clarification
+
+Reviewer verdict delivered is terminal only when auto-commit is not enabled or not eligible.
+
+If the task contract includes the exact phrase `Happy-path auto-commit: enabled`, and Reviewer returns clean `Accept` with `Happy-path auto-commit eligible? yes`, Orchestrator must proceed through the commit gate and commit the expected files. In that case, commit completed is the terminal state.
+
+Do not stop after Reviewer `Accept` when happy-path auto-commit is enabled and eligible, unless a commit gate fails, an unexpected file/scope issue appears, or another commit-readiness blocker is reported.
+
 ## Repository Automation Guardrails
 
 Three guardrail scripts enforce discipline during implementation and commit preparation:

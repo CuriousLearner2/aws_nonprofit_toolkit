@@ -59,6 +59,29 @@ Pre-authorized lanes allow auto-continue through gates and approval steps, but a
 - **Product code in test-only/workflow lanes:** Scope guard must enforce task-specific expected files. If product code appears in Lane B or C, fail the scope guard and stop.
 - **Product UX ambiguity:** Lane D may proceed only if Product UX Gatekeeper is not required, or has already cleared ambiguity, or the human explicitly waived gating. Lanes B/C may never have product UX ambiguity (no product code).
 
+
+## Reviewer completion rule for pre-authorized lanes
+
+When a pre-authorized lane permits `implementation → gates → Reviewer → commit`, the Orchestrator must complete the Reviewer loop. Do not stop at `Ready for Reviewer`, `Invoking Reviewer`, a Review Packet, or a started Reviewer task.
+
+Required sequence:
+
+1. Invoke Reviewer after declared gates pass.
+2. Wait for Reviewer verdict.
+3. Report Reviewer verdict fields.
+4. If Reviewer returns clean `Accept`, `Happy-path auto-commit: enabled` is present, and all commit gates pass, commit expected files only.
+5. Stop after the commit report.
+
+Terminal states for these flows are Reviewer verdict delivered, failed-gate report delivered, Reviewer `Request changes`/`Reject`, or commit completed. A Reviewer task that has started but not returned a verdict is not terminal.
+
+### Reviewer verdict vs auto-commit clarification
+
+Reviewer verdict delivered is terminal only when auto-commit is not enabled or not eligible.
+
+If the task contract includes the exact phrase `Happy-path auto-commit: enabled`, and Reviewer returns clean `Accept` with `Happy-path auto-commit eligible? yes`, Orchestrator must proceed through the commit gate and commit the expected files. In that case, commit completed is the terminal state.
+
+Do not stop after Reviewer `Accept` when happy-path auto-commit is enabled and eligible, unless a commit gate fails, an unexpected file/scope issue appears, or another commit-readiness blocker is reported.
+
 ## Scope guard policy
 
 Scope guard must use task-specific expected files, not broad lane-level allowlists.
