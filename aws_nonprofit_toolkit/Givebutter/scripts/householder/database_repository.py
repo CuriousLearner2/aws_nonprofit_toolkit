@@ -498,6 +498,148 @@ class DatabaseImportRepository:
         finally:
             session.close()
 
+    def get_normalizations(self, import_id: str, index: int = 0) -> NormalizationPageViewModel:
+        """
+        Return normalizations review page data as NormalizationPageViewModel.
+
+        Queries ImportBatch and normalization review_items to build normalization page
+        with current suggestion and navigation state. Returns view model ready
+        for template rendering.
+
+        Args:
+            import_id: Import batch ID to retrieve normalizations data for.
+            index: Zero-based index of normalization to display. Clamped to valid range.
+
+        Returns:
+            NormalizationPageViewModel with batch metadata, current suggestion, and index.
+
+        Raises:
+            Exception: If database connection fails.
+        """
+        session = get_db_session(self.database_url)
+        try:
+            # Query the batch
+            batch = session.query(ImportBatch).filter_by(id=import_id).first()
+            if not batch:
+                # Return empty normalization page if batch not found
+                return NormalizationPageViewModel(
+                    batch_id=import_id,
+                    filename='',
+                    progress=0,
+                    current_suggestion=NormalizationRow(
+                        id='',
+                        contact_name='',
+                        field_name='',
+                        original_value='',
+                        suggested_value='',
+                        normalization_type='',
+                        status='Pending',
+                        effective_status='pending',
+                    ),
+                    current_suggestion_index=1,
+                    total_suggestions=0,
+                )
+
+            # Compute progress
+            total_items = session.query(func.count(ReviewItem.id)).filter(
+                ReviewItem.batch_id == import_id
+            ).scalar() or 0
+
+            if total_items > 0:
+                decided_items = session.query(func.count(ReviewDecision.id)).filter(
+                    ReviewDecision.batch_id == import_id
+                ).scalar() or 0
+                progress = int((decided_items / total_items) * 100)
+            else:
+                progress = 0
+
+            # Query all normalization items, ordered by creation
+            normalization_items = session.query(ReviewItem).filter(
+                ReviewItem.batch_id == import_id,
+                ReviewItem.item_type == 'normalization'
+            ).order_by(ReviewItem.created_at.asc()).all()
+
+            total_suggestions = len(normalization_items)
+
+            # Clamp index to valid range
+            if total_suggestions == 0:
+                clamped_index = 0
+            else:
+                clamped_index = max(0, min(index, total_suggestions - 1))
+
+            # Get the normalization at clamped index as current suggestion
+            if normalization_items and clamped_index < len(normalization_items):
+                current_item = normalization_items[clamped_index]
+                payload = current_item.payload_json or {}
+
+                # Extract contact name from subject
+                contact_name = ''
+                subject = session.query(ReviewItemSubject).filter_by(
+                    review_item_id=current_item.id
+                ).first()
+                if subject and subject.subject_type == 'import_contact_snapshot':
+                    contact = session.query(ImportContact).filter_by(
+                        id=subject.subject_id
+                    ).first()
+                    if contact:
+                        if contact.first_name and contact.last_name:
+                            contact_name = f'{contact.first_name} {contact.last_name}'
+                        elif contact.first_name:
+                            contact_name = contact.first_name
+                        elif contact.last_name:
+                            contact_name = contact.last_name
+
+                # Derive effective status from latest ReviewDecision
+                latest_decision = (
+                    session.query(ReviewDecision)
+                    .filter_by(review_item_id=current_item.id)
+                    .order_by(ReviewDecision.created_at.desc())
+                    .first()
+                )
+                effective_status = 'pending'
+                if latest_decision:
+                    status_map = {
+                        'accept_normalization': 'accepted',
+                        'reject_normalization': 'rejected',
+                        'defer': 'deferred',
+                    }
+                    effective_status = status_map.get(latest_decision.decision, 'pending')
+
+                current_suggestion = NormalizationRow(
+                    id=payload.get('id', str(current_item.id)),
+                    contact_name=contact_name,
+                    field_name=payload.get('field_name', ''),
+                    original_value=payload.get('original_value', ''),
+                    suggested_value=payload.get('suggested_value', ''),
+                    normalization_type=payload.get('normalization_type', ''),
+                    status=payload.get('status', 'Pending'),
+                    effective_status=effective_status,
+                )
+            else:
+                # No normalizations - return empty suggestion
+                current_suggestion = NormalizationRow(
+                    id='',
+                    contact_name='',
+                    field_name='',
+                    original_value='',
+                    suggested_value='',
+                    normalization_type='',
+                    status='Pending',
+                    effective_status='pending',
+                )
+
+            return NormalizationPageViewModel(
+                batch_id=batch.id,
+                filename=batch.filename,
+                progress=progress,
+                current_suggestion=current_suggestion,
+                current_suggestion_index=clamped_index + 1,  # 1-based for display
+                total_suggestions=total_suggestions,
+            )
+
+        finally:
+            session.close()
+
     def get_households(self, import_id: str, index: int = 0) -> HouseholdPageViewModel:
         """
         Return household review page data as HouseholdPageViewModel.

@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 
 from .database_models import (
-    ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewDecision
+    ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewDecision, ReviewItemSubject
 )
 from .service_contracts import ExportRow, ExportPreviewResult
 
@@ -123,6 +123,18 @@ def build_export_preview(
                 batch_id=import_id
             ).all()
         }
+
+        # Map normalization items to their linked contact IDs via ReviewItemSubject
+        # This ensures a normalization is applied only to the contact it belongs to
+        normalization_to_contacts = {}
+        for subject in session.query(ReviewItemSubject).filter(
+            ReviewItemSubject.subject_type == 'import_contact_snapshot'
+        ).all():
+            item = review_items.get(subject.review_item_id)
+            if item and item.item_type == 'normalization':
+                if subject.review_item_id not in normalization_to_contacts:
+                    normalization_to_contacts[subject.review_item_id] = set()
+                normalization_to_contacts[subject.review_item_id].add(subject.subject_id)
 
         # Query all decisions by type
         validation_decisions = {}
@@ -251,11 +263,17 @@ def build_export_preview(
             if row_autosave_values:
                 field_values.update(row_autosave_values)
 
-            # Apply normalization decisions
+            # Apply normalization decisions only if linked to this contact
             for norm_item in review_items.values():
                 if norm_item.item_type != 'normalization':
                     continue
                 if norm_item.batch_id != import_id:
+                    continue
+
+                # Check if this normalization is linked to the current contact
+                linked_contacts = normalization_to_contacts.get(norm_item.id, set())
+                if contact.id not in linked_contacts:
+                    # This normalization doesn't apply to this contact; skip it
                     continue
 
                 norm_decision = normalization_decisions.get(norm_item.id)

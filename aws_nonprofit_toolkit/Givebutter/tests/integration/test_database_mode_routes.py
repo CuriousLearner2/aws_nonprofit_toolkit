@@ -48,7 +48,7 @@ class TestDatabaseModeRoutes:
         # Verify batch data from database appears in HTML
         assert 'IMP-TEST-001' in html
         assert 'donors_q1_2025.csv' in html
-        assert '50' in html  # Progress percentage (2 of 4 decisions made)
+        assert '40' in html  # Progress percentage (2 of 5 review items decided)
 
         # Verify queue navigation links exist (route content)
         assert '/imports/IMP-TEST-001/validation' in html

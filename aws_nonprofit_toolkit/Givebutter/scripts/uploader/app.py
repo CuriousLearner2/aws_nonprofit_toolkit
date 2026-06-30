@@ -959,8 +959,13 @@ def import_validation(import_id):
 
 @app.route('/imports/<import_id>/normalizations')
 def import_normalizations(import_id):
-    """Normalizations review for field cleanup suggestions."""
-    data = normalizations_service.get_normalizations_review(import_id)
+    """Normalizations review for field cleanup suggestions with optional index-based navigation."""
+    # Get optional index parameter from query string, default to 0
+    index = request.args.get('index', default=0, type=int)
+    # Ensure index is non-negative (Flask type=int can be negative)
+    index = max(0, index)
+
+    data = normalizations_service.get_normalizations_review(import_id, index=index)
     return render_template('imports/normalizations.html', **data)
 
 @app.route('/imports/<import_id>/validation/<int:review_item_id>/decision', methods=['POST'])
@@ -1445,6 +1450,30 @@ def record_household_decision(import_id, review_item_id):
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Error recording household decision: {str(e)}")
+        return jsonify({'error': 'Error recording decision'}), 500
+
+@app.route('/imports/<import_id>/normalizations/<int:review_item_id>/decision', methods=['POST'])
+def record_normalization_decision(import_id, review_item_id):
+    """Record a reviewer's normalization decision."""
+    decision = request.form.get('decision', '').strip()
+    notes = request.form.get('notes', '').strip() or None
+    reviewer = request.headers.get('X-Reviewer-ID') or None
+
+    try:
+        result = normalizations_service.record_normalization_decision(
+            import_id=import_id,
+            review_item_id=review_item_id,
+            decision=decision,
+            notes=notes,
+            reviewer=reviewer,
+        )
+        logger.info(f"Normalization decision recorded: {result.decision} for item {review_item_id}")
+        return redirect(f'/imports/{import_id}/normalizations')
+    except ValueError as e:
+        logger.warning(f"Validation error recording normalization decision: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error recording normalization decision: {str(e)}")
         return jsonify({'error': 'Error recording decision'}), 500
 
 @app.route('/imports/<import_id>/households')

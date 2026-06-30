@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.householder.export_preview_service import build_export_preview
 from scripts.householder.database_models import (
-    Base, ImportBatch, RawImportRow, ImportContact, ReviewItem, ReviewDecision
+    Base, ImportBatch, RawImportRow, ImportContact, ReviewItem, ReviewDecision, ReviewItemSubject
 )
 from sqlalchemy.orm import sessionmaker
 from scripts.householder.database_models import create_db_engine
@@ -159,6 +159,14 @@ class TestExportPreviewNormalizationDecisions:
         session.add(norm_item)
         session.flush()
 
+        # Link normalization to contact via ReviewItemSubject
+        subject = ReviewItemSubject(
+            review_item_id=norm_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact_id,
+        )
+        session.add(subject)
+
         # Create accept decision
         decision = ReviewDecision(
             batch_id=batch_id,
@@ -221,6 +229,14 @@ class TestExportPreviewNormalizationDecisions:
         session.add(norm_item)
         session.flush()
 
+        # Link normalization to contact via ReviewItemSubject
+        subject = ReviewItemSubject(
+            review_item_id=norm_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact_id,
+        )
+        session.add(subject)
+
         decision = ReviewDecision(
             batch_id=batch_id,
             review_item_id=norm_item.id,
@@ -250,6 +266,15 @@ class TestExportPreviewNormalizationDecisions:
             payload_json={'field': 'email', 'raw_value': 'john@example.com', 'normalized_value': 'john.smith@example.com'},
         )
         session.add(norm_item)
+        session.flush()
+
+        # Link normalization to contact via ReviewItemSubject
+        subject = ReviewItemSubject(
+            review_item_id=norm_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact_id,
+        )
+        session.add(subject)
         session.commit()
         session.close()
 

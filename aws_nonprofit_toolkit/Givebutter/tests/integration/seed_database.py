@@ -80,10 +80,25 @@ def seed_test_data(session):
 
     session.flush()  # Ensure contacts are inserted before review items reference them
 
-    # 4. Review items (4 items: validation, normalization, duplicate, household)
+    # 4. Review items (6 items: validation, 2x normalization, duplicate, household)
     review_items_data = [
         {'item_type': 'validation', 'payload': {'field': 'address', 'issue': 'Missing address on contact'}},
-        {'item_type': 'normalization', 'payload': {'field': 'email', 'issue': 'Email needs standardization'}},
+        {'item_type': 'normalization', 'payload': {
+            'id': 'NORM-001',
+            'field': 'email',
+            'raw_value': 'jon.smith@email.com',
+            'normalized_value': 'jon_smith@email.com',
+            'normalization_type': 'Email standardization',
+            'status': 'Pending'
+        }},
+        {'item_type': 'normalization', 'payload': {
+            'id': 'NORM-002',
+            'field': 'phone',
+            'raw_value': '(555) 123-4567',
+            'normalized_value': '+1-555-123-4567',
+            'normalization_type': 'Phone number formatting',
+            'status': 'Pending'
+        }},
         {'item_type': 'duplicate', 'payload': {'match_type': 'potential', 'evidence': ['same_address', 'similar_name']}},
         {'item_type': 'household', 'payload': {'suggested_label': 'Smith family', 'basis': 'same_address'}},
     ]
@@ -106,11 +121,12 @@ def seed_test_data(session):
     subject_mappings = [
         (0, 0, 'import_contact_snapshot'),  # VAL-001 -> contact 0 (John Smith)
         (0, 2, 'import_contact_snapshot'),  # VAL-001 -> contact 2 (Jane Doe)
-        (1, 1, 'import_contact_snapshot'),  # NORM-001 -> contact 1 (Jon Smith)
-        (2, 0, 'import_contact_snapshot'),  # DUP-001 -> contact 0 (John Smith)
-        (2, 1, 'import_contact_snapshot'),  # DUP-001 -> contact 1 (Jon Smith)
-        (3, 0, 'import_contact_snapshot'),  # HH-001 -> contact 0 (John Smith)
-        (3, 3, 'import_contact_snapshot'),  # HH-001 -> contact 3 (John Smith Jr.)
+        (1, 1, 'import_contact_snapshot'),  # NORM-001 -> contact 1 (Jon Smith) - email normalization
+        (2, 3, 'import_contact_snapshot'),  # NORM-002 -> contact 3 (John Smith Jr.) - phone normalization
+        (3, 0, 'import_contact_snapshot'),  # DUP-001 -> contact 0 (John Smith)
+        (3, 1, 'import_contact_snapshot'),  # DUP-001 -> contact 1 (Jon Smith)
+        (4, 0, 'import_contact_snapshot'),  # HH-001 -> contact 0 (John Smith)
+        (4, 3, 'import_contact_snapshot'),  # HH-001 -> contact 3 (John Smith Jr.)
     ]
 
     for item_idx, contact_idx, subject_type in subject_mappings:
@@ -128,13 +144,13 @@ def seed_test_data(session):
     decisions = [
         ReviewDecision(
             batch_id=batch.id,
-            review_item_id=review_items[2].id,  # DUP-001
+            review_item_id=review_items[3].id,  # DUP-001
             decision='same_person',
             reviewer='Sarah Lee',
         ),
         ReviewDecision(
             batch_id=batch.id,
-            review_item_id=review_items[3].id,  # HH-001
+            review_item_id=review_items[4].id,  # HH-001
             decision='confirmed',
             reviewer='James Martinez',
         ),
@@ -145,14 +161,22 @@ def seed_test_data(session):
 
     session.flush()  # Ensure decisions are inserted before audit entries reference them
 
-    # 7. Audit log entries (3 entries)
+    # 7. Audit log entries (5 entries including normalizations)
     audit_entries = [
+        AuditLogRecord(
+            batch_id=batch.id,
+            action_type='decision_recorded',
+            action_timestamp=datetime(2026, 6, 11, 10, 45, 0),
+            actor='Sarah Lee',
+            item_id=review_items[1].id,
+            details={'decision': 'accepted normalization', 'field': 'email', 'notes': 'Standardized email format'},
+        ),
         AuditLogRecord(
             batch_id=batch.id,
             action_type='decision_recorded',
             action_timestamp=datetime(2026, 6, 11, 10, 30, 0),
             actor='Sarah Lee',
-            item_id=review_items[2].id,
+            item_id=review_items[3].id,
             decision_id=decisions[0].id,
             details={'decision': 'marked as Same Person', 'evidence': 'Email variation consistent with household pattern'},
         ),
@@ -161,7 +185,7 @@ def seed_test_data(session):
             action_type='decision_recorded',
             action_timestamp=datetime(2026, 6, 11, 10, 15, 0),
             actor='James Martinez',
-            item_id=review_items[3].id,
+            item_id=review_items[4].id,
             decision_id=decisions[1].id,
             details={'decision': 'confirmed Household #HH-001', 'evidence': 'Smith family confirmed via manual lookup'},
         ),
@@ -172,6 +196,14 @@ def seed_test_data(session):
             actor='Bob Wilson',
             item_id=review_items[0].id,
             details={'action': 'flagged missing address', 'evidence': 'Contact record missing address field'},
+        ),
+        AuditLogRecord(
+            batch_id=batch.id,
+            action_type='item_created',
+            action_timestamp=datetime(2026, 6, 11, 9, 45, 0),
+            actor='Bob Wilson',
+            item_id=review_items[2].id,
+            details={'action': 'flagged phone format', 'evidence': 'Phone needs standardization'},
         ),
     ]
 
