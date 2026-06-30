@@ -19,7 +19,7 @@ import pytest
 import asyncio
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import sys
 import json
 
@@ -62,7 +62,7 @@ def test_batch(temp_db):
     batch = ImportBatch(
         id='e2e-test-batch',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
         status='pending_review',
         raw_row_count=1
     )

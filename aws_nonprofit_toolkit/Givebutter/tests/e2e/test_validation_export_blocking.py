@@ -37,7 +37,7 @@ import tempfile
 import threading
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 from werkzeug.serving import make_server
 
@@ -158,7 +158,7 @@ async def test_validation_blocker_appears_in_export_console(e2e_database_and_app
         batch = ImportBatch(
             id='validation-blocker-batch-a',
             filename='validation_blocker_a.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -331,7 +331,7 @@ async def test_clean_validation_export_proceeds(e2e_database_and_app):
         batch = ImportBatch(
             id='clean-validation-batch-c',
             filename='clean_validation_c.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -490,7 +490,7 @@ async def test_failed_autosave_values_not_exported(e2e_database_and_app):
         batch = ImportBatch(
             id='failed-autosave-batch-d',
             filename='failed_autosave_d.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -649,7 +649,7 @@ async def test_persisted_validation_override_allows_export(e2e_database_and_app)
         batch = ImportBatch(
             id='validation-override-batch-e',
             filename='validation_override_e.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -848,7 +848,7 @@ async def test_deferred_validation_remains_export_relevant(e2e_database_and_app)
         batch = ImportBatch(
             id='validation-deferred-batch-f',
             filename='validation_deferred_f.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1054,7 +1054,7 @@ async def test_export_warning_appears_for_deferred_validation(e2e_database_and_a
         batch = ImportBatch(
             id='validation-deferred-export-warning-g',
             filename='validation_deferred_export_g.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1221,7 +1221,7 @@ async def test_export_blocked_when_validation_confirmation_unchecked(e2e_databas
         batch = ImportBatch(
             id='validation-unchecked-h',
             filename='validation_unchecked_h.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1391,7 +1391,7 @@ async def test_export_button_enabled_when_validation_confirmation_checked(e2e_da
         batch = ImportBatch(
             id='validation-checked-i',
             filename='validation_checked_i.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1561,7 +1561,7 @@ async def test_clean_validation_export_skips_confirmation(e2e_database_and_app):
         batch = ImportBatch(
             id='clean-validation-export-j',
             filename='clean_validation_export_j.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1704,7 +1704,7 @@ async def test_mixed_validation_household_export_warnings(e2e_database_and_app):
         batch = ImportBatch(
             id='mixed-export-warnings-k',
             filename='mixed_export_warnings_k.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )

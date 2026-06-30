@@ -34,7 +34,7 @@ import tempfile
 import threading
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -94,7 +94,7 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
         batch = ImportBatch(
             id='smoke-test-batch',
             filename='smoke_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )

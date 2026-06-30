@@ -15,7 +15,7 @@ import csv
 import tempfile
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 from scripts.uploader.app import app
@@ -65,7 +65,7 @@ def flask_client_with_batch(temp_db_and_export_dir, monkeypatch):
     batch = ImportBatch(
         id='failed-autosave-test',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
         status='pending_review',
         raw_row_count=1
     )

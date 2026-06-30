@@ -14,7 +14,7 @@ For E2E modal UI tests, see tests/e2e/test_decision_modal_cancel_flows.py.
 import pytest
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -66,7 +66,7 @@ def flask_client_with_db(temp_db, monkeypatch):
     batch = ImportBatch(
         id='cancel-test-batch',
         filename='cancel_test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
         status='pending_review',
         raw_row_count=2
     )

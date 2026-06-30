@@ -5,7 +5,7 @@ Phase 2-Step 2: Implements ValidationDecisionWriter for database backend.
 """
 
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
@@ -120,13 +120,13 @@ class DatabaseValidationDecisionWriter:
                 decision=decision,
                 reviewed_values=final_reviewed_values,
                 reviewer=reviewer,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             session.add(decision_record)
             session.flush()  # Flush to get the ID
 
             decision_id = decision_record.id
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Create AuditLogRecord
             # Determine prior status (from latest previous decision)
@@ -320,13 +320,13 @@ class DatabaseNormalizationDecisionWriter:
                 decision=decision,
                 reviewed_values=reviewed_values,
                 reviewer=reviewer,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             session.add(decision_record)
             session.flush()  # Flush to get the ID
 
             decision_id = decision_record.id
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Create AuditLogRecord
             # Determine prior status (from latest previous decision)
@@ -524,13 +524,13 @@ class DatabaseDuplicateDecisionWriter:
                 decision=decision,
                 reviewed_values=reviewed_values,
                 reviewer=reviewer,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             session.add(decision_record)
             session.flush()  # Flush to get the ID
 
             decision_id = decision_record.id
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Update ReviewItem status to 'decided' so duplicates list moves to next pending pair
             item.status = 'decided'
@@ -747,13 +747,13 @@ class DatabaseHouseholdDecisionWriter:
                 decision=decision,
                 reviewed_values=reviewed_values,
                 reviewer=reviewer,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             session.add(decision_record)
             session.flush()  # Flush to get the ID
 
             decision_id = decision_record.id
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Create AuditLogRecord
             # Determine prior status (from latest previous decision)

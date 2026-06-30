@@ -33,7 +33,7 @@ import pytest
 import asyncio
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path for imports
@@ -92,7 +92,7 @@ async def test_export_warning_appears_for_deferred_duplicate(
         batch = ImportBatch(
             id='export-dup-warning-batch',
             filename='export_dup_warning.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -197,7 +197,7 @@ async def test_export_warning_appears_for_deferred_duplicate(
             batch_id='export-dup-warning-batch',
             review_item_id=duplicate.id,
             decision='defer',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={}
         )
         session.add(decision)
@@ -332,7 +332,7 @@ async def test_export_blocked_when_duplicate_confirmation_unchecked(
         batch = ImportBatch(
             id='export-dup-blocked-batch',
             filename='export_dup_blocked.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -436,7 +436,7 @@ async def test_export_blocked_when_duplicate_confirmation_unchecked(
             batch_id='export-dup-blocked-batch',
             review_item_id=duplicate.id,
             decision='defer',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={}
         )
         session.add(decision)
@@ -567,7 +567,7 @@ async def test_export_proceeds_when_duplicate_confirmation_checked(
         batch = ImportBatch(
             id='export-dup-proceed-batch',
             filename='export_dup_proceed.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -671,7 +671,7 @@ async def test_export_proceeds_when_duplicate_confirmation_checked(
             batch_id='export-dup-proceed-batch',
             review_item_id=duplicate.id,
             decision='defer',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={}
         )
         session.add(decision)
@@ -820,7 +820,7 @@ async def test_clean_export_skips_duplicate_confirmation(
         batch = ImportBatch(
             id='export-dup-clean-batch',
             filename='export_dup_clean.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -924,7 +924,7 @@ async def test_clean_export_skips_duplicate_confirmation(
             batch_id='export-dup-clean-batch',
             review_item_id=duplicate.id,
             decision='same_person',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={
                 'candidate_contact_ids': [contact_a.id, contact_b.id]
             }
@@ -1055,7 +1055,7 @@ async def test_export_warning_count_for_multiple_deferred_duplicates(
         batch = ImportBatch(
             id='export-dup-multiple-batch',
             filename='export_dup_multiple.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=6
         )
@@ -1142,7 +1142,7 @@ async def test_export_warning_count_for_multiple_deferred_duplicates(
                     batch_id='export-dup-multiple-batch',
                     review_item_id=duplicate.id,
                     decision='defer',
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                     reviewed_values={}
                 )
             else:
@@ -1150,7 +1150,7 @@ async def test_export_warning_count_for_multiple_deferred_duplicates(
                     batch_id='export-dup-multiple-batch',
                     review_item_id=duplicate.id,
                     decision='same_person',
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                     reviewed_values={
                         'candidate_contact_ids': [contact_a.id, contact_b.id]
                     }
@@ -1296,7 +1296,7 @@ async def test_export_checkbox_uncheck_re_disables_button_for_duplicates(
         batch = ImportBatch(
             id='export-dup-bidirectional-batch',
             filename='export_dup_bidirectional.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -1400,7 +1400,7 @@ async def test_export_checkbox_uncheck_re_disables_button_for_duplicates(
             batch_id='export-dup-bidirectional-batch',
             review_item_id=duplicate.id,
             decision='defer',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={}
         )
         session.add(decision)

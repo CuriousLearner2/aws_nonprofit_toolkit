@@ -16,7 +16,7 @@ import os
 import sys
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add scripts to path
 scripts_path = Path(__file__).resolve().parents[3] / 'scripts'
@@ -64,7 +64,7 @@ def sample_batch(test_db):
         batch = ImportBatch(
             id='BATCH-001',
             filename='test_batch.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='processing',
             raw_row_count=2
         )
@@ -261,7 +261,7 @@ class TestRowStatusDerivation:
             batch = ImportBatch(
                 id='CLEAN-BATCH',
                 filename='clean.csv',
-                upload_timestamp=datetime.utcnow(),
+                upload_timestamp=datetime.now(timezone.utc),
                 status='processing',
                 raw_row_count=1
             )

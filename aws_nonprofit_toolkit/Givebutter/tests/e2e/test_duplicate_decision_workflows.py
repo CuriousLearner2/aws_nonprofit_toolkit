@@ -28,7 +28,7 @@ import pytest
 import asyncio
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path for imports
@@ -72,7 +72,7 @@ async def test_same_person_decision_submission(flask_app_database_mode):
         batch = ImportBatch(
             id='same-person-test',
             filename='duplicates_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -236,7 +236,7 @@ async def test_different_people_decision_submission(flask_app_database_mode):
         batch = ImportBatch(
             id='different-people-test',
             filename='duplicates_diff.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -372,7 +372,7 @@ async def test_defer_decision_with_notes_required(flask_app_database_mode):
         batch = ImportBatch(
             id='defer-test',
             filename='duplicates_defer.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -521,7 +521,7 @@ async def test_buttons_remain_interactive_after_submission(flask_app_database_mo
         batch = ImportBatch(
             id='buttons-test',
             filename='buttons_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -642,7 +642,7 @@ async def test_previous_next_navigation_works(flask_app_database_mode):
         batch = ImportBatch(
             id='nav-pairs-test',
             filename='nav_pairs_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=6
         )
@@ -873,7 +873,7 @@ async def test_back_to_dashboard_navigation(flask_app_database_mode):
         batch = ImportBatch(
             id='dashboard-nav-test',
             filename='dashboard_nav_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )

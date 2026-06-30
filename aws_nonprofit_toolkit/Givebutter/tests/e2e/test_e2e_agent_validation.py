@@ -102,7 +102,7 @@ async def test_p0_2c_long_phone_number_confirmation(flask_app_database_mode):
         create_db_engine,
     )
     from sqlalchemy.orm import sessionmaker
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     process, database_url, db_path = flask_app_database_mode
 
@@ -116,7 +116,7 @@ async def test_p0_2c_long_phone_number_confirmation(flask_app_database_mode):
         batch = ImportBatch(
             id='long-phone-test',
             filename='long_phone_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -231,7 +231,7 @@ async def test_p0_4_email_fuzzy_matching(flask_app_database_mode):
         create_db_engine,
     )
     from sqlalchemy.orm import sessionmaker
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     process, database_url, db_path = flask_app_database_mode
 
@@ -245,7 +245,7 @@ async def test_p0_4_email_fuzzy_matching(flask_app_database_mode):
         batch = ImportBatch(
             id='email-fuzzy-test',
             filename='email_fuzzy_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )

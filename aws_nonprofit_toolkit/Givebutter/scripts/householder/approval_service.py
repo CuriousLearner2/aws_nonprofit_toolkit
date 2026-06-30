@@ -8,7 +8,7 @@ Ensures raw data and review items remain unchanged.
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -119,7 +119,7 @@ def approve_batch(
         batch.approval_status = approval_status
         if override_details:
             batch.override_details = override_details
-        batch.updated_at = datetime.utcnow()
+        batch.updated_at = datetime.now(timezone.utc)
 
         session.add(batch)
 
@@ -127,7 +127,7 @@ def approve_batch(
         audit_record = AuditLogRecord(
             batch_id=batch_id,
             action_type='batch_approved',
-            action_timestamp=datetime.utcnow(),
+            action_timestamp=datetime.now(timezone.utc),
             actor=reviewer,
             details={
                 'approval_status': approval_status,
@@ -146,7 +146,7 @@ def approve_batch(
             'batch_id': batch_id,
             'override_count': override_count,
             'audit_log_id': audit_record.id,
-            'timestamp': datetime.utcnow()
+            'timestamp': datetime.now(timezone.utc)
         }
 
     except Exception as e:

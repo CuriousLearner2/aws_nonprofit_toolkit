@@ -13,7 +13,7 @@ Usage:
 import json
 from pathlib import Path
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 import statistics
 import re
 
@@ -99,7 +99,7 @@ def build_reference_list():
     reference = {
         "version": "1.0",
         "description": "Reference list built from operator-approved donation records",
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "record_count": len(emails),
 
         "email_domains": sorted(list(domains)),
@@ -137,7 +137,7 @@ def load_default_reference():
     return {
         "version": "1.0",
         "description": "Default reference list (no approved records yet)",
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "record_count": 0,
         "email_domains": [],
         "email_tlds": ["com", "org", "net", "edu", "gov"],

@@ -8,7 +8,7 @@ import pytest
 import tempfile
 import csv
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -72,7 +72,7 @@ def setup_autosave_test_batch(database_url):
         batch = ImportBatch(
             id='autosave-export-test',
             filename='test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending',
             raw_row_count=1,
         )

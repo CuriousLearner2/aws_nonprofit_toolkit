@@ -29,7 +29,7 @@ import tempfile
 import threading
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path for imports
@@ -166,7 +166,7 @@ async def test_validation_inspect_modal_close_no_feedback(e2e_validation_databas
         batch = ImportBatch(
             id='validation-modal-test',
             filename='validation_modal.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -311,7 +311,7 @@ async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database
         batch = ImportBatch(
             id='approval-modal-test',
             filename='approval_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -591,7 +591,7 @@ async def test_duplicates_form_next_without_decision(e2e_duplicates_database_and
         batch = ImportBatch(
             id='duplicates-cancel-test',
             filename='duplicates_cancel.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=4
         )
@@ -736,7 +736,7 @@ async def test_households_form_next_without_decision(e2e_households_database_and
         batch = ImportBatch(
             id='households-cancel-test',
             filename='households_cancel.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )

@@ -18,7 +18,7 @@ import csv
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -124,7 +124,7 @@ def generate_batch_id(csv_file_contents: bytes, imported_at: Optional[datetime] 
     """
     # Use provided timestamp or current time
     if imported_at is None:
-        imported_at = datetime.utcnow()
+        imported_at = datetime.now(timezone.utc)
 
     # Calculate file hash (first 8 chars of SHA256, uppercase)
     file_hash = hashlib.sha256(csv_file_contents).hexdigest()[:8].upper()
@@ -461,7 +461,7 @@ def ingest_processed_csv(
     if uploader is None:
         uploader = "system"
     if imported_at is None:
-        imported_at = datetime.utcnow()
+        imported_at = datetime.now(timezone.utc)
 
     # ========================================================================
     # 1. Validate and load CSV
@@ -710,7 +710,7 @@ def ingest_processed_csv(
         audit_record = AuditLogRecord(
             batch_id=batch_id,
             action_type="batch_imported",
-            action_timestamp=datetime.utcnow(),
+            action_timestamp=datetime.now(timezone.utc),
             actor=uploader,
             details={
                 "source": "givebutter_export",

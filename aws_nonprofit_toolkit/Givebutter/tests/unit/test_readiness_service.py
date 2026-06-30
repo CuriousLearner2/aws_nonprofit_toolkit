@@ -8,7 +8,7 @@ No new business rules; uses existing preview logic as source of truth.
 import pytest
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -50,7 +50,7 @@ def seeded_batch(temp_db):
     batch = ImportBatch(
         id='IMP-2025-0101-A',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()

@@ -514,8 +514,8 @@ class ExportRow:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
-        from datetime import datetime
-        derived_at = self.export_derived_at if isinstance(self.export_derived_at, datetime) else datetime.utcnow()
+        from datetime import datetime, timezone
+        derived_at = self.export_derived_at if isinstance(self.export_derived_at, datetime) else datetime.now(timezone.utc)
         return {
             "source_row_index": self.source_row_index,
             "transaction_id": self.transaction_id,

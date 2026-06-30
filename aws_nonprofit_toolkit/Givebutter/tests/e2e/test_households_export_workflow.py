@@ -30,7 +30,7 @@ import pytest
 import asyncio
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path for imports
@@ -90,7 +90,7 @@ async def test_export_warning_appears_for_deferred_household(
         batch = ImportBatch(
             id='export-warning-batch',
             filename='export_warning.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -159,7 +159,7 @@ async def test_export_warning_appears_for_deferred_household(
             batch_id='export-warning-batch',
             review_item_id=household.id,
             decision='defer',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={}
         )
         session.add(decision)
@@ -293,7 +293,7 @@ async def test_export_blocked_when_confirmation_unchecked(
         batch = ImportBatch(
             id='export-blocked-batch',
             filename='export_blocked.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -361,7 +361,7 @@ async def test_export_blocked_when_confirmation_unchecked(
             batch_id='export-blocked-batch',
             review_item_id=household.id,
             decision='defer',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={}
         )
         session.add(decision)
@@ -494,7 +494,7 @@ async def test_export_proceeds_when_confirmation_checked(
         batch = ImportBatch(
             id='export-proceed-batch',
             filename='export_proceed.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -562,7 +562,7 @@ async def test_export_proceeds_when_confirmation_checked(
             batch_id='export-proceed-batch',
             review_item_id=household.id,
             decision='defer',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={}
         )
         session.add(decision)
@@ -711,7 +711,7 @@ async def test_clean_export_skips_confirmation(
         batch = ImportBatch(
             id='export-clean-batch',
             filename='export_clean.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -779,7 +779,7 @@ async def test_clean_export_skips_confirmation(
             batch_id='export-clean-batch',
             review_item_id=household.id,
             decision='confirm_household',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={
                 'candidate_household_id': 'hh-clean-1',
                 'suggested_household_label': 'Clean Test Household',
@@ -912,7 +912,7 @@ async def test_export_warning_count_for_multiple_deferred_households(
         batch = ImportBatch(
             id='export-multiple-deferred-batch',
             filename='export_multiple_deferred.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=5
         )
@@ -994,7 +994,7 @@ async def test_export_warning_count_for_multiple_deferred_households(
                     batch_id='export-multiple-deferred-batch',
                     review_item_id=household.id,
                     decision='defer',
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                     reviewed_values={}
                 )
             else:
@@ -1002,7 +1002,7 @@ async def test_export_warning_count_for_multiple_deferred_households(
                     batch_id='export-multiple-deferred-batch',
                     review_item_id=household.id,
                     decision='confirm_household',
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                     reviewed_values={
                         'candidate_household_id': f'hh-multi-{i+1}',
                         'suggested_household_label': f'Multiple Test Household {i+1}',
@@ -1156,7 +1156,7 @@ async def test_export_checkbox_uncheck_re_disables_button(
         batch = ImportBatch(
             id='export-bidirectional-batch',
             filename='export_bidirectional.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1225,7 +1225,7 @@ async def test_export_checkbox_uncheck_re_disables_button(
             batch_id='export-bidirectional-batch',
             review_item_id=household.id,
             decision='defer',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             reviewed_values={}
         )
         session.add(decision)

@@ -8,7 +8,7 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -84,7 +84,7 @@ def flask_client_with_validation_items(temp_db, monkeypatch):
     batch = ImportBatch(
         id='IMP-2025-0101-A',
         filename='test_upload.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()

@@ -12,7 +12,7 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -66,7 +66,7 @@ def setup_multi_issue_batch(database_url):
         batch = ImportBatch(
             id='test-multi-field',
             filename='test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending',
             raw_row_count=1,
         )

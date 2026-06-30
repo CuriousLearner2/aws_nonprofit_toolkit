@@ -7,7 +7,7 @@ Tests CSV generation, file operations, blocking behavior, and audit logging.
 import pytest
 import os
 import csv
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -67,7 +67,7 @@ def sample_export_row():
         household_warnings=(),
         export_warnings=(),
         export_blocked=False,
-        export_derived_at=datetime.utcnow(),
+        export_derived_at=datetime.now(timezone.utc),
     )
 
 
@@ -83,7 +83,7 @@ def mock_preview_ready(sample_export_row):
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
     )
 
 
@@ -99,7 +99,7 @@ def mock_preview_blocked(sample_export_row):
         blocked_count=1,
         warning_count=0,
         is_export_ready=False,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
     )
 
 
@@ -133,7 +133,7 @@ def mock_preview_with_warnings(sample_export_row):
         household_warnings=("Household grouping unresolved",),
         export_warnings=(),
         export_blocked=False,
-        export_derived_at=datetime.utcnow(),
+        export_derived_at=datetime.now(timezone.utc),
     )
 
     return ExportPreviewResult(
@@ -145,7 +145,7 @@ def mock_preview_with_warnings(sample_export_row):
         blocked_count=0,
         warning_count=2,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
     )
 
 
@@ -481,7 +481,7 @@ def test_audit_includes_confirmation_flags(mock_audit, mock_preview, temp_export
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
         deferred_validation_count=1,
         deferred_household_count=2,
         deferred_duplicate_count=0,
@@ -525,7 +525,7 @@ def test_audit_includes_deferred_counts(mock_audit, mock_preview, temp_export_di
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
         deferred_validation_count=3,
         deferred_household_count=2,
         deferred_duplicate_count=1,
@@ -630,7 +630,7 @@ def test_csv_golden_file_with_reviewed_normalization():
         household_warnings=(),
         export_warnings=(),
         export_blocked=False,
-        export_derived_at=datetime.utcnow(),
+        export_derived_at=datetime.now(timezone.utc),
     )
 
     csv_content = _generate_csv_content((row_with_reviewed_email,))
@@ -718,7 +718,7 @@ def test_csv_golden_file_multirow_preserves_order():
             household_warnings=(),
             export_warnings=(),
             export_blocked=False,
-            export_derived_at=datetime.utcnow(),
+            export_derived_at=datetime.now(timezone.utc),
         ),
         ExportRow(
             source_row_index=2,
@@ -747,7 +747,7 @@ def test_csv_golden_file_multirow_preserves_order():
             household_warnings=(),
             export_warnings=(),
             export_blocked=False,
-            export_derived_at=datetime.utcnow(),
+            export_derived_at=datetime.now(timezone.utc),
         ),
         ExportRow(
             source_row_index=3,
@@ -776,7 +776,7 @@ def test_csv_golden_file_multirow_preserves_order():
             household_warnings=(),
             export_warnings=(),
             export_blocked=False,
-            export_derived_at=datetime.utcnow(),
+            export_derived_at=datetime.now(timezone.utc),
         ),
     )
 
@@ -857,7 +857,7 @@ def test_csv_golden_file_mixed_decisions_effective_values():
             household_warnings=(),
             export_warnings=(),
             export_blocked=False,
-            export_derived_at=datetime.utcnow(),
+            export_derived_at=datetime.now(timezone.utc),
         ),
         # Row 2: Reviewed/effective values (decisions applied)
         ExportRow(
@@ -887,7 +887,7 @@ def test_csv_golden_file_mixed_decisions_effective_values():
             household_warnings=(),
             export_warnings=(),
             export_blocked=False,
-            export_derived_at=datetime.utcnow(),
+            export_derived_at=datetime.now(timezone.utc),
         ),
         # Row 3: Deferred decisions (awaiting resolution)
         ExportRow(
@@ -917,7 +917,7 @@ def test_csv_golden_file_mixed_decisions_effective_values():
             household_warnings=("Household membership deferred",),
             export_warnings=(),
             export_blocked=False,
-            export_derived_at=datetime.utcnow(),
+            export_derived_at=datetime.now(timezone.utc),
         ),
     )
 
@@ -997,7 +997,7 @@ def test_export_raises_if_unresolved_and_not_confirmed(mock_preview, temp_export
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
         deferred_household_count=2,
     )
     mock_preview.return_value = preview
@@ -1076,7 +1076,7 @@ def test_export_succeeds_if_unresolved_and_confirmed(mock_audit, mock_preview, t
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
         deferred_household_count=2,
     )
     mock_preview.return_value = preview
@@ -1109,7 +1109,7 @@ def test_export_succeeds_if_resolved_regardless_of_confirmation(mock_audit, mock
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
         deferred_household_count=0,
     )
     mock_preview.return_value = preview
@@ -1144,7 +1144,7 @@ def test_mixed_validation_household_deferred_rejects_without_both_confirmations(
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
         deferred_validation_count=1,
         deferred_household_count=1,
     )
@@ -1189,7 +1189,7 @@ def test_mixed_validation_household_deferred_succeeds_with_both_confirmations(mo
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
         deferred_validation_count=1,
         deferred_household_count=1,
     )

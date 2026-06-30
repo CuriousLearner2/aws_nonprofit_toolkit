@@ -16,7 +16,7 @@ Verifies:
 import pytest
 import tempfile
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -2643,14 +2643,14 @@ class TestRecentExportsLimit:
             batch = ImportBatch(
                 id='IMP-2025-0101-A',
                 filename='test_exports.csv',
-                upload_timestamp=datetime.utcnow(),
+                upload_timestamp=datetime.now(timezone.utc),
                 uploader='test_user'
             )
             session.add(batch)
             session.flush()
 
             # Create 60 audit log entries for export_generated (to test limit of 50)
-            base_time = datetime.utcnow()
+            base_time = datetime.now(timezone.utc)
             for i in range(60):
                 # Create entries with descending timestamps (newest first)
                 timestamp = base_time - timedelta(seconds=i)
@@ -2686,7 +2686,7 @@ class TestRecentExportsLimit:
     def test_get_recent_exports_newest_first_ordering(self, temp_db_with_many_exports):
         """Test that get_recent_exports returns entries sorted newest first by timestamp."""
         from scripts.householder.exports_service import get_recent_exports
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         result = get_recent_exports('IMP-2025-0101-A', config={'GIVEBUTTER_DATABASE_URL': temp_db_with_many_exports})
 

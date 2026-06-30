@@ -7,7 +7,7 @@ Audit trail preserves full correction history.
 """
 
 from typing import Optional, Mapping, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
@@ -101,7 +101,7 @@ def autosave_row_corrections(
             decision='accept_issue',
             effective_status='accepted',
             audit_log_id=0,  # Placeholder
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
 
     finally:

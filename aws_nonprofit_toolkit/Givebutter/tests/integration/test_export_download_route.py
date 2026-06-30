@@ -12,7 +12,7 @@ import csv
 import tempfile
 from pathlib import Path
 from io import BytesIO, StringIO
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -88,7 +88,7 @@ def test_download_returns_200_on_valid_record(client, tmp_path, sample_csv_conte
         f.write(sample_csv_content)
 
     with patch('scripts.householder.export_download_service.get_export_download_info') as mock_get_info:
-        from datetime import datetime
+        from datetime import datetime, timezone
         from scripts.householder.export_download_service import ExportDownloadInfo
 
         mock_get_info.return_value = ExportDownloadInfo(
@@ -150,7 +150,7 @@ def test_response_is_csv_attachment(client, tmp_path, sample_csv_content):
         f.write(sample_csv_content)
 
     with patch('scripts.householder.export_download_service.get_export_download_info') as mock_get_info:
-        from datetime import datetime
+        from datetime import datetime, timezone
         from scripts.householder.export_download_service import ExportDownloadInfo
 
         mock_get_info.return_value = ExportDownloadInfo(
@@ -183,7 +183,7 @@ def test_response_has_content_disposition_header(client, tmp_path, sample_csv_co
         f.write(sample_csv_content)
 
     with patch('scripts.householder.export_download_service.get_export_download_info') as mock_get_info:
-        from datetime import datetime
+        from datetime import datetime, timezone
         from scripts.householder.export_download_service import ExportDownloadInfo
 
         mock_get_info.return_value = ExportDownloadInfo(
@@ -270,7 +270,7 @@ def test_downloaded_csv_matches_generated_content(flask_client_with_db_for_expor
     batch = ImportBatch(
         id='IMP-EQUIV-001',
         filename='test_upload.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -412,7 +412,7 @@ def test_repeated_exports_create_separate_files_and_audit_records(flask_client_w
     batch = ImportBatch(
         id='IMP-LIFECYCLE-001',
         filename='test_upload.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -516,7 +516,7 @@ def test_deleted_export_file_returns_404_audit_persists(flask_client_with_db_for
     batch = ImportBatch(
         id='IMP-DELETE-001',
         filename='test_upload.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()

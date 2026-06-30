@@ -9,7 +9,7 @@ This test verifies that:
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 
@@ -37,7 +37,7 @@ async def test_validation_table_has_correct_header_columns(flask_app_database_mo
         batch = ImportBatch(
             id='validation-table-test',
             filename='validation_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -140,7 +140,7 @@ async def test_validation_table_data_rows_have_correct_cell_count(flask_app_data
         batch = ImportBatch(
             id='validation-rows-test',
             filename='validation_rows_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=3
         )
@@ -236,7 +236,7 @@ async def test_date_column_is_present(flask_app_database_mode):
         batch = ImportBatch(
             id='validation-date-test',
             filename='validation_date_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -351,7 +351,7 @@ async def test_validation_table_column_count_consistency(flask_app_database_mode
         batch = ImportBatch(
             id='validation-consistency-test',
             filename='validation_consistency_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )

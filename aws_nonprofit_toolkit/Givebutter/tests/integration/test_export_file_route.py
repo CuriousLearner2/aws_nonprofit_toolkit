@@ -8,7 +8,7 @@ import pytest
 import json
 import os
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timezone
 
 from scripts.householder.export_file_service import (
     ExportFileResult,
@@ -659,7 +659,7 @@ def test_export_audit_record_includes_confirmation_flags_and_deferred_counts(tmp
     batch = ImportBatch(
         id='IMP-AUDIT-001',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
         status='pending'
     )
     session.add(batch)

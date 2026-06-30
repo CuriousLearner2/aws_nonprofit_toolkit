@@ -35,7 +35,7 @@ import signal
 import time
 import requests
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path for imports
@@ -128,7 +128,7 @@ async def seed_validation_batch(
     batch = ImportBatch(
         id=batch_id,
         filename=filename,
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
         status='pending_review',
         raw_row_count=1
     )
@@ -247,7 +247,7 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
         batch = ImportBatch(
             id='email-test-batch',
             filename='email_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -451,7 +451,7 @@ async def test_validation_error_preserves_review_status_dropdown(
         batch = ImportBatch(
             id='dropdown-preserve-batch',
             filename='dropdown_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -672,7 +672,7 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
         batch = ImportBatch(
             id='approval-override-batch',
             filename='approval_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -881,7 +881,7 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
         batch = ImportBatch(
             id='inspect-modal-batch',
             filename='inspect_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1130,7 +1130,7 @@ async def test_needs_follow_up_notes_required_workflow(
         batch = ImportBatch(
             id='followup-e2e-batch',
             filename='followup_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1328,7 +1328,7 @@ async def test_defer_workflow_notes_optional(
         batch = ImportBatch(
             id='defer-e2e-batch',
             filename='defer_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1482,7 +1482,7 @@ async def test_inspect_modal_controls_comprehensive(
         batch = ImportBatch(
             id='modal-controls-batch',
             filename='modal_controls.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1671,7 +1671,7 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
         batch = ImportBatch(
             id='follow-up-test-batch',
             filename='follow_up_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -1848,7 +1848,7 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
         batch = ImportBatch(
             id='amount-test-batch',
             filename='amount_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -2032,7 +2032,7 @@ async def test_amount_validation_error_appears_in_issues_column(
         batch = ImportBatch(
             id='amount-test-batch',
             filename='amount_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -2253,7 +2253,7 @@ async def test_amount_and_email_multi_error_workflow(
         batch = ImportBatch(
             id='multi-error-workflow-batch',
             filename='multi_error_workflow_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -2503,7 +2503,7 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
         batch = ImportBatch(
             id='audit-e2e-batch',
             filename='audit_e2e_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -2589,7 +2589,7 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
                 print("✓ Selected 'Defer' decision")
 
                 # Step 4: Enter unique notes (optional for defer, but helps with audit visibility test)
-                unique_note = f"E2E audit visibility test {datetime.utcnow().isoformat()}"
+                unique_note = f"E2E audit visibility test {datetime.now(timezone.utc).isoformat()}"
                 notes_field = await page.query_selector('#record-modal textarea[id^="row-notes-"]')
                 if notes_field:
                     await notes_field.fill(unique_note)
@@ -2688,7 +2688,7 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
         batch = ImportBatch(
             id='cross-screen-audit-batch',
             filename='cross_screen_audit_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -2754,7 +2754,7 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
                 print("✓ Validation review page loaded")
 
                 # Step 2: Create Follow Up decision with unique notes
-                unique_notes = f"Cross-screen audit test - {datetime.utcnow().isoformat()}"
+                unique_notes = f"Cross-screen audit test - {datetime.now(timezone.utc).isoformat()}"
 
                 # Open Inspect modal
                 inspect_btn = await page.query_selector('a[data-action="inspect-record"]')
@@ -2874,7 +2874,7 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
         batch = ImportBatch(
             id='golden-path-batch',
             filename='golden_path.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
         )
         session.add(batch)
         session.flush()
@@ -2965,7 +2965,7 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
                 assert decision_select is not None, "Decision dropdown should exist"
                 await decision_select.select_option('needs_follow_up')
 
-                unique_notes = f"Golden path test - awaiting donor confirmation - {datetime.utcnow().isoformat()}"
+                unique_notes = f"Golden path test - awaiting donor confirmation - {datetime.now(timezone.utc).isoformat()}"
                 notes_field = await page.query_selector('textarea[id^="row-notes-"]')
                 assert notes_field is not None, "Notes field should exist"
                 await notes_field.fill(unique_notes)
@@ -3107,7 +3107,7 @@ async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
         batch = ImportBatch(
             id='escape-email-batch',
             filename='escape_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -3255,7 +3255,7 @@ async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
         batch = ImportBatch(
             id='escape-amount-batch',
             filename='escape_amount_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -3451,7 +3451,7 @@ async def test_escape_cancel_clears_status_and_does_not_show_saved(e2e_database_
         batch = ImportBatch(
             id='escape-no-saved-batch',
             filename='escape_no_saved_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -3651,7 +3651,7 @@ async def test_normal_autosave_still_works_after_escape_implementation(e2e_datab
         batch = ImportBatch(
             id='autosave-normal-batch',
             filename='autosave_normal_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -3811,7 +3811,7 @@ async def test_keyboard_interaction_escape_cancel_and_tab_save_workflow(
         batch = ImportBatch(
             id='keyboard-test-batch',
             filename='keyboard_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -4058,7 +4058,7 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
         batch = ImportBatch(
             id='desktop-layout-batch',
             filename='desktop_layout.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=3
         )
@@ -5001,7 +5001,7 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
         batch = ImportBatch(
             id='keyboard-test-batch',
             filename='keyboard_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -5388,7 +5388,7 @@ async def test_noop_blur_does_not_show_saved_feedback(
         batch = ImportBatch(
             id='noop-test-batch',
             filename='noop_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -5541,7 +5541,7 @@ async def test_changed_value_blur_saves_and_persists(
         batch = ImportBatch(
             id='change-test-batch',
             filename='change_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -5691,7 +5691,7 @@ async def test_sticky_action_bar_visible_while_scrolling(
         batch = ImportBatch(
             id='scroll-test-batch',
             filename='scroll_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=50
         )
@@ -5875,7 +5875,7 @@ async def test_sticky_action_bar_with_approval_modal(
         batch = ImportBatch(
             id='sticky-modal-test-batch',
             filename='sticky_modal_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=50
         )

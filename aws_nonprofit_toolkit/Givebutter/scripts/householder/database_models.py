@@ -20,7 +20,7 @@ All models use pure SQLAlchemy (no Flask-SQLAlchemy coupling).
 Database session management is isolated from models.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -39,8 +39,8 @@ class ImportBatch(Base):
     raw_row_count = Column(Integer, nullable=False, default=0)
     approval_status = Column(String(50), nullable=True)  # pending, approved, approved_with_overrides
     override_details = Column(JSON, nullable=True)  # {overrides: [{row_number, transaction_id, issue}, ...]}
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<ImportBatch {self.id}>'
@@ -54,7 +54,7 @@ class RawImportRow(Base):
     batch_id = Column(String(50), ForeignKey('import_batches.id'), nullable=False)
     row_index = Column(Integer, nullable=False)
     raw_csv_data = Column(JSON, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<RawImportRow {self.id} batch={self.batch_id}>'
@@ -77,7 +77,7 @@ class ImportContact(Base):
     state = Column(String(10), nullable=True)
     postal_code = Column(String(20), nullable=True)
     amount = Column(Float, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<ImportContact {self.id} {self.first_name} {self.last_name}>'
@@ -110,7 +110,7 @@ class ReviewItem(Base):
     status = Column(String(50), nullable=True)
     confidence = Column(Float, nullable=True)
     payload_json = Column(JSON, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<ReviewItem {self.id} type={self.item_type}>'
@@ -140,7 +140,7 @@ class ReviewItemSubject(Base):
     subject_type = Column(String(50), nullable=False)
     subject_id = Column(Integer, nullable=False)
     role = Column(String(50), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<ReviewItemSubject {self.id} type={self.subject_type} id={self.subject_id}>'
@@ -164,7 +164,7 @@ class ReviewDecision(Base):
     decision = Column(String(100), nullable=False)
     reviewed_values = Column(JSON, nullable=True)
     reviewer = Column(String(255), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<ReviewDecision {self.id} item={self.review_item_id} decision={self.decision}>'
@@ -180,12 +180,12 @@ class AuditLogRecord(Base):
     id = Column(Integer, primary_key=True)
     batch_id = Column(String(50), ForeignKey('import_batches.id'), nullable=False)
     action_type = Column(String(100), nullable=False)
-    action_timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+    action_timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     actor = Column(String(255), nullable=True)
     item_id = Column(Integer, ForeignKey('review_items.id'), nullable=True)
     decision_id = Column(Integer, ForeignKey('review_decisions.id'), nullable=True)
     details = Column(JSON, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<AuditLogRecord {self.id} {self.action_type}>'

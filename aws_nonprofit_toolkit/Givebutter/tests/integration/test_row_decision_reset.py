@@ -15,7 +15,7 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -62,7 +62,7 @@ def flask_client_with_rows(temp_db, monkeypatch):
     batch = ImportBatch(
         id='reset-test-batch',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
         status='pending_review',
         raw_row_count=3
     )

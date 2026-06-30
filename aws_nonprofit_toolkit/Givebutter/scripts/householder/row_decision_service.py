@@ -13,7 +13,7 @@ Decision types:
 """
 
 from typing import Optional, Mapping, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -115,7 +115,7 @@ def record_row_decision(
         session.flush()
 
         # Create audit log record for this decision
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         audit_details = {
             'decision_value': decision,
         }

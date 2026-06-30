@@ -10,7 +10,7 @@ import csv
 import json
 import logging
 from io import StringIO
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Optional, Mapping, Any
 from pathlib import Path
@@ -243,7 +243,7 @@ def _create_audit_record(
             "household_decisions": 0,
         },
         "generated_by": reviewer or "system",
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "confirmations": {
             "confirmed_unresolved_validations": confirmed_unresolved_validations,
             "confirmed_unresolved_households": confirmed_unresolved_households,
@@ -260,7 +260,7 @@ def _create_audit_record(
     record = AuditLogRecord(
         batch_id=import_id,
         action_type="export_generated",
-        action_timestamp=datetime.utcnow(),
+        action_timestamp=datetime.now(timezone.utc),
         actor=reviewer,
         item_id=None,
         decision_id=None,
@@ -356,7 +356,7 @@ def generate_export_file(
     _ensure_output_dir(output_dir)
 
     # Generate filename
-    timestamp = datetime.utcnow()
+    timestamp = datetime.now(timezone.utc)
     filename = _generate_safe_filename(import_id, timestamp)
     file_path = _get_safe_file_path(output_dir, filename)
 

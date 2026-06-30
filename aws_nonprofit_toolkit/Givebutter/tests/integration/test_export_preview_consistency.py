@@ -9,7 +9,7 @@ import sys
 import csv
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -74,7 +74,7 @@ def test_preview_row_count_matches_generated_csv(preview_consistency_db):
     batch = ImportBatch(
         id='IMP-PREVIEW-001',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -156,7 +156,7 @@ def test_preview_counts_match_audit_snapshot(preview_consistency_db):
     batch = ImportBatch(
         id='IMP-COUNTS-001',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -233,7 +233,7 @@ def test_preview_deferred_counts_match_audit_snapshot(preview_consistency_db):
     batch = ImportBatch(
         id='IMP-DEFERRED-001',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -327,7 +327,7 @@ def test_preview_warning_counts_match_audit_snapshot(preview_consistency_db):
     batch = ImportBatch(
         id='IMP-WARN-001',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -409,7 +409,7 @@ def test_deferred_validation_blocks_export_without_confirmation(preview_consiste
     batch = ImportBatch(
         id='IMP-DEFER-TEST-001',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -512,7 +512,7 @@ def test_generated_csv_includes_row_level_reviewed_values(preview_consistency_db
     batch = ImportBatch(
         id='IMP-EFFECTIVE-001',
         filename='test_effective.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -611,7 +611,7 @@ def test_household_decision_effective_values_in_generated_csv(preview_consistenc
     batch = ImportBatch(
         id='IMP-HH-EFFECTIVE-001',
         filename='test_household_effective.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -732,7 +732,7 @@ def test_duplicate_decision_effective_values_in_generated_csv(preview_consistenc
     batch = ImportBatch(
         id='IMP-DUP-EFFECTIVE-001',
         filename='test_duplicate_effective.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()
@@ -876,7 +876,7 @@ def test_export_parity_preview_to_audit_and_download(preview_consistency_db):
     batch = ImportBatch(
         id='IMP-PARITY-001',
         filename='parity_test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
     )
     session.add(batch)
     session.flush()

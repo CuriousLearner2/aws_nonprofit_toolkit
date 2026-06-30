@@ -5,7 +5,7 @@ Verifies immutability, audit logging, and no external system calls.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from scripts.householder.export_file_service import (
@@ -34,7 +34,7 @@ def test_no_csv_file_when_blockers_exist(tmp_path, monkeypatch):
         blocked_count=1,
         warning_count=0,
         is_export_ready=False,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
     )
 
     with patch('scripts.householder.export_file_service.build_export_preview', return_value=blocked_preview):
@@ -70,7 +70,7 @@ def test_no_audit_record_on_blockers(monkeypatch):
             blocked_count=1,
             warning_count=0,
             is_export_ready=False,
-            derived_at=datetime.utcnow(),
+            derived_at=datetime.now(timezone.utc),
         )
 
         with patch('scripts.householder.export_file_service.build_export_preview', return_value=blocked_preview):
@@ -122,7 +122,7 @@ def test_csv_generation_no_external_calls(monkeypatch, tmp_path):
         household_warnings=(),
         export_warnings=(),
         export_blocked=False,
-        export_derived_at=datetime.utcnow(),
+        export_derived_at=datetime.now(timezone.utc),
     )
 
     ready_preview = ExportPreviewResult(
@@ -134,7 +134,7 @@ def test_csv_generation_no_external_calls(monkeypatch, tmp_path):
         blocked_count=0,
         warning_count=0,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
     )
 
     export_dir = str(tmp_path / "exports")
@@ -174,7 +174,7 @@ def test_blocked_export_has_error_details(monkeypatch, tmp_path):
         blocked_count=2,
         warning_count=0,
         is_export_ready=False,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
     )
 
     export_dir = str(tmp_path / "exports")
@@ -228,7 +228,7 @@ def test_warnings_do_not_block_generation(monkeypatch, tmp_path):
         household_warnings=(),
         export_warnings=(),
         export_blocked=False,
-        export_derived_at=datetime.utcnow(),
+        export_derived_at=datetime.now(timezone.utc),
     )
 
     warning_preview = ExportPreviewResult(
@@ -240,7 +240,7 @@ def test_warnings_do_not_block_generation(monkeypatch, tmp_path):
         blocked_count=0,
         warning_count=1,
         is_export_ready=True,
-        derived_at=datetime.utcnow(),
+        derived_at=datetime.now(timezone.utc),
     )
 
     export_dir = str(tmp_path / "exports")

@@ -15,7 +15,7 @@ import sys
 import tempfile
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path
@@ -197,7 +197,7 @@ class TestValidationDecisionAuditVisibility:
             batch = ImportBatch(
                 id=batch_id,
                 filename='validation_override_audit.csv',
-                upload_timestamp=datetime.utcnow(),
+                upload_timestamp=datetime.now(timezone.utc),
                 status='pending_review',
                 raw_row_count=1
             )
@@ -313,7 +313,7 @@ class TestValidationDecisionAuditVisibility:
             batch = ImportBatch(
                 id=batch_id,
                 filename='validation_defer_audit.csv',
-                upload_timestamp=datetime.utcnow(),
+                upload_timestamp=datetime.now(timezone.utc),
                 status='pending_review',
                 raw_row_count=1
             )
@@ -434,7 +434,7 @@ class TestExportAuditVisibility:
             batch = ImportBatch(
                 id=batch_id,
                 filename='export_test.csv',
-                upload_timestamp=datetime.utcnow(),
+                upload_timestamp=datetime.now(timezone.utc),
                 status='export_ready',
                 raw_row_count=0
             )
@@ -520,7 +520,7 @@ class TestFollowUpNotesInAuditDisplay:
             batch = ImportBatch(
                 id=batch_id,
                 filename='follow_up_notes.csv',
-                upload_timestamp=datetime.utcnow(),
+                upload_timestamp=datetime.now(timezone.utc),
                 status='pending_review',
                 raw_row_count=1
             )
@@ -545,7 +545,7 @@ class TestFollowUpNotesInAuditDisplay:
             session.close()
 
             # Record Follow Up decision with notes
-            unique_notes = f"Awaiting phone confirmation - {datetime.utcnow().isoformat()}"
+            unique_notes = f"Awaiting phone confirmation - {datetime.now(timezone.utc).isoformat()}"
             result = record_row_decision(
                 batch_id=batch_id,
                 raw_import_row_id=row_id,

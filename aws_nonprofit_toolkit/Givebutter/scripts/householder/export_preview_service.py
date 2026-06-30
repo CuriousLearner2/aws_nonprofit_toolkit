@@ -6,7 +6,7 @@ Preview is read-only: no file generation, no audit log, no mutations.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Mapping, Any
 import hashlib
 import json
@@ -443,7 +443,7 @@ def build_export_preview(
                 household_warnings=tuple(household_warnings),
                 export_warnings=tuple(export_warnings),
                 export_blocked=len(row_blockers) > 0,
-                export_derived_at=datetime.utcnow(),
+                export_derived_at=datetime.now(timezone.utc),
             )
 
             rows.append(export_row)
@@ -470,7 +470,7 @@ def build_export_preview(
             blocked_count=blocked_count,
             warning_count=warning_count,
             is_export_ready=is_export_ready,
-            derived_at=datetime.utcnow(),
+            derived_at=datetime.now(timezone.utc),
             deferred_household_count=deferred_household_count,
             deferred_duplicate_count=deferred_duplicate_count,
             deferred_validation_count=deferred_validation_count,

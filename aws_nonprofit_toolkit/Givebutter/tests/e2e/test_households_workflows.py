@@ -30,7 +30,7 @@ import pytest
 import asyncio
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path for imports
@@ -89,7 +89,7 @@ async def test_previous_next_navigation_no_decisions(
         batch = ImportBatch(
             id='nav-test-batch',
             filename='nav_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=2
         )
@@ -356,7 +356,7 @@ async def test_defer_without_notes_warning_non_blocking(
         batch = ImportBatch(
             id='defer-warning-batch',
             filename='defer_warning.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -544,7 +544,7 @@ async def test_confirm_household_decision(
         batch = ImportBatch(
             id='confirm-test-batch',
             filename='confirm_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -713,7 +713,7 @@ async def test_reject_household_decision(
         batch = ImportBatch(
             id='reject-test-batch',
             filename='reject_test.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=1
         )
@@ -886,7 +886,7 @@ async def test_redirect_chain_to_exports(
         batch = ImportBatch(
             id='redirect-chain-batch',
             filename='redirect_chain.csv',
-            upload_timestamp=datetime.utcnow(),
+            upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
             raw_row_count=3
         )

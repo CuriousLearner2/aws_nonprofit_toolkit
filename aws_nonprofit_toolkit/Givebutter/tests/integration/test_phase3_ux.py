@@ -14,7 +14,7 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -79,7 +79,7 @@ def flask_client_phase3(temp_db_phase3, monkeypatch):
     batch = ImportBatch(
         id='demo-phase3-test',
         filename='phase3_test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
         status='processing',
         raw_row_count=3,
     )

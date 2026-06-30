@@ -4,7 +4,7 @@ import os
 import json
 from pathlib import Path
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 import shutil
 import logging
 import sys
@@ -1184,7 +1184,7 @@ def autosave_row_corrections(import_id):
             'effective_values': effective_values,
             'row_status': row_status,
             'issues': formatted_issues,
-            'saved_at': datetime.utcnow().isoformat(),
+            'saved_at': datetime.now(timezone.utc).isoformat(),
             'message': 'Autosave completed successfully'
         }), 200
     except ValueError as e:

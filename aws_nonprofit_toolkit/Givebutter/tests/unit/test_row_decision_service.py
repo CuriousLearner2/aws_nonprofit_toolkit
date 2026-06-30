@@ -13,7 +13,7 @@ Tests:
 import pytest
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -44,7 +44,7 @@ def temp_db():
     batch = ImportBatch(
         id='test-batch-001',
         filename='test.csv',
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=datetime.now(timezone.utc),
         status='pending_review',
         raw_row_count=3
     )
