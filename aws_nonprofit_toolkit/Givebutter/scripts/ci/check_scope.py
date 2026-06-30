@@ -53,16 +53,29 @@ def normalize_path(filepath, repo_root, current_dir):
     Normalize path to be relative to current working directory.
 
     If filepath is relative to repo root, adjust it to be relative to cwd.
+    Handles both absolute paths and repo-root-relative paths.
     """
-    # Convert to absolute path
-    abs_path = Path(repo_root) / filepath
+    repo_root_path = Path(repo_root).resolve()
+    current_dir_path = Path(current_dir).resolve()
 
-    # Try to make it relative to current directory
+    # Case 1: filepath is already absolute (provided as full path)
+    if Path(filepath).is_absolute():
+        filepath_abs = Path(filepath).resolve()
+        try:
+            relative = filepath_abs.relative_to(current_dir_path)
+            return str(relative).replace('\\', '/')
+        except ValueError:
+            return filepath.replace('\\', '/')
+
+    # Case 2: filepath is repo-root-relative (from git status)
+    # Construct the absolute path: repo_root + filepath
+    candidate = repo_root_path / filepath
     try:
-        return str(abs_path.relative_to(Path(current_dir).resolve()))
+        relative = candidate.relative_to(current_dir_path)
+        return str(relative).replace('\\', '/')
     except ValueError:
-        # If can't be relative to cwd, return as-is
-        return filepath
+        # Path is not under current_dir; return as-is
+        return filepath.replace('\\', '/')
 
 
 def get_changed_files():
@@ -84,7 +97,7 @@ def get_changed_files():
             check=True
         )
 
-        for line in result.stdout.strip().split('\n'):
+        for line in result.stdout.rstrip('\n').split('\n'):
             if not line:
                 continue
 

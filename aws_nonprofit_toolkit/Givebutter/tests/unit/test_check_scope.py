@@ -231,3 +231,32 @@ class TestEdgeCases:
         changed_files = [f"tests/unit/test{i}.py" for i in range(100)]
         unexpected = [f for f in changed_files if not matches_pattern(f, patterns)]
         assert unexpected == []
+
+    def test_path_normalization_nested_repo_with_repeated_prefix(self):
+        """Regression test: nested repo paths with repeated directory names don't truncate.
+
+        When running from aws_nonprofit_toolkit/Givebutter and git root is aws_nonprofit_toolkit,
+        git status returns paths like 'aws_nonprofit_toolkit/Givebutter/.claude/agents/breaker.md'.
+        Normalization must not truncate the path, especially the leading characters.
+        """
+        from check_scope import normalize_path
+
+        # Simulate the directory structure:
+        # git root: /path/to/aws_nonprofit_toolkit
+        # current dir: /path/to/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+        # git returns: aws_nonprofit_toolkit/Givebutter/.claude/agents/breaker.md
+
+        repo_root = "/path/to/aws_nonprofit_toolkit"
+        current_dir = "/path/to/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
+        filepath = "aws_nonprofit_toolkit/Givebutter/.claude/agents/breaker.md"
+
+        result = normalize_path(filepath, repo_root, current_dir)
+
+        # Expected: relative path from current_dir
+        expected = ".claude/agents/breaker.md"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+        # Verify no truncation: should not start with 'ws_' or partial path
+        assert not result.startswith("ws_"), "Path was truncated at leading characters"
+        assert result.startswith("."), "Normalized path should be relative and start with '.'"
+        assert "breaker.md" in result, "Filename should be preserved in normalized path"
