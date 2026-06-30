@@ -229,3 +229,12 @@ Reason if no:
 ```
 
 `Happy-path auto-commit eligible? yes` only when verdict is exactly clean `Accept`, all required evidence passed, no blocking issues, and all commit guardrails (artifact guard, scope guard, staged files match expected) are satisfied.
+
+
+### Request changes / Reject terminal enforcement
+
+When returning `Request changes` or `Reject`, explicitly state that the verdict is terminal for the current task and that Orchestrator must stop.
+
+Do not ask Orchestrator to continue to Implementer in the same task. Phrase fixes as human choices or requirements for a new human-authorized remediation task.
+
+If a subsequent review shows work continued after `Request changes` or `Reject` without explicit human authorization, report a blocking workflow violation. Do not return clean `Accept` until the human has explicitly authorized the new remediation scope, including any expanded expected-file list.

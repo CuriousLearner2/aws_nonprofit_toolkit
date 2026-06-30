@@ -298,6 +298,15 @@ If the task contract includes the exact phrase `Happy-path auto-commit: enabled`
 
 Do not stop after Reviewer `Accept` when happy-path auto-commit is enabled and eligible, unless a commit gate fails, an unexpected file/scope issue appears, or another commit-readiness blocker is reported.
 
+
+### Reviewer Request changes / Reject fix-loop boundary
+
+Reviewer `Request changes` and Reviewer `Reject` are terminal states for the current task. They are not permission to return to Implementer, apply an obvious fix, expand scope, rerun gates, invoke Breaker, commit, or push.
+
+After `Request changes` or `Reject`, Orchestrator must stop and report the verdict, blocking issues, changed files, and human choices. Any remediation requires a new explicit human-authorized task, even when the fix is clear, small, or necessary for the feature to work.
+
+If remediation would touch files outside the original expected-file allowlist, the new human authorization must name the expanded expected files before implementation resumes. Do not justify scope expansion after the fact.
+
 ## Repository Automation Guardrails
 
 Three guardrail scripts enforce discipline during implementation and commit preparation:
@@ -651,6 +660,8 @@ Examples:
 - unexpected files,
 - bypassed Reviewer/Breaker/Product UX Gatekeeper,
 - committing before Reviewer `Accept`,
+- returning to Implementer or applying fixes after Reviewer `Request changes` / `Reject` without explicit human authorization,
+- expanding changed-file scope after Reviewer `Request changes` / `Reject` without explicit human authorization,
 - skipping a required gate due to friction,
 - continuing after failed-first-fix without authorization.
 

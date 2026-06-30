@@ -82,6 +82,15 @@ If the task contract includes the exact phrase `Happy-path auto-commit: enabled`
 
 Do not stop after Reviewer `Accept` when happy-path auto-commit is enabled and eligible, unless a commit gate fails, an unexpected file/scope issue appears, or another commit-readiness blocker is reported.
 
+
+### Reviewer Request changes / Reject fix-loop boundary
+
+Reviewer `Request changes` and Reviewer `Reject` are terminal for the current Orchestrator task. Do not treat them as an instruction to fix and re-review.
+
+After `Request changes` or `Reject`, stop immediately after reporting the verdict, blocking issues, current changed files, and human choices. Do not delegate back to Implementer, apply an obvious fix, expand expected files, rerun gates, invoke Breaker, commit, or push without a new explicit human authorization.
+
+If the required fix would add files outside the original expected-file allowlist, report that expanded scope as a human decision. Do not retroactively classify additional files as in-scope.
+
 ## Scope guard policy
 
 Scope guard must use task-specific expected files, not broad lane-level allowlists.
@@ -308,7 +317,7 @@ Do not re-run prior proof gates, re-list proven tests, restate long history, or 
 
 Reviewer packets should normally be under 10 bullets and prepared in under about 60 seconds. Include changed files, prior blockers/proof history if relevant, exact current gate result, product-code/assertion status, scope notes, and Product UX Gatekeeper status.
 
-If Reviewer returns `Request changes` or `Reject` with concrete fixes and the human authorizes a fix task, delegate directly to Implementer. Do not start a new planning loop unless the fix is ambiguous or out of scope.
+If Reviewer returns `Request changes` or `Reject`, stop first. Only after the human explicitly authorizes a new fix task may you delegate directly to Implementer for the concrete blockers. Do not start a new planning loop unless the fix is ambiguous or out of scope.
 
 ### Reviewer handoff is an action, not a status
 

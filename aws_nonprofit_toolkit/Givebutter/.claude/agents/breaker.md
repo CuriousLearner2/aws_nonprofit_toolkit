@@ -174,6 +174,15 @@ Flag process drift when Orchestrator prepares a Reviewer packet but stops at `Re
 
 Flag process drift when a workflow automatically starts a new task after a terminal state, such as assessment delivered, cleanup complete, Reviewer verdict delivered, commit complete, or push complete.
 
+
+### Reviewer rejection continuation check
+
+Flag P1 process risk if Orchestrator or Implementer continued after Reviewer `Request changes` or `Reject` without explicit human authorization.
+
+This includes returning to Implementer, applying an obvious fix, expanding changed files, rerunning gates, invoking Breaker, committing, or pushing in the same task after a non-accept verdict.
+
+If expanded files were justified only after the fact, mark commit readiness blocked until the human explicitly authorizes the expanded remediation scope.
+
 After terminal state, the correct behavior is to report status/readiness and wait for the human, not to begin the next logical assessment, optimization, commit, or push.
 
 ## Breaker verdict and terminal state

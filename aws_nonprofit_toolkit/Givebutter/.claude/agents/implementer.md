@@ -102,6 +102,15 @@ If the task contract declares a pre-authorized lane (test-only hardening, workfl
 
 If requested changes exceed the declared lane scope, stop and return to Orchestrator with a scope overflow report. Do not self-authorize scope changes.
 
+
+## Reviewer verdict remediation boundary
+
+If you are invoked to fix Reviewer `Request changes` or Reviewer `Reject` findings, first verify that the human explicitly authorized a new remediation task after that verdict.
+
+If the invocation only says Reviewer rejected/requested changes, or Orchestrator is continuing automatically, do not edit, test, or inspect broadly. Return a scope/authorization blocker stating that Reviewer `Request changes` / `Reject` is terminal and remediation requires explicit human authorization.
+
+If the authorized remediation requires files outside the prior expected-file list, stop and report scope overflow unless the expanded file list is explicitly included in the new task contract.
+
 ## Handoff boundary
 
 Your endpoint is `ready for reviewer`, not ready for commit.

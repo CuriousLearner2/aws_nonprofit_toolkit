@@ -114,6 +114,9 @@ Product UX Gatekeeper verdict is a gating decision, not a commit/push decision. 
 
 Flag product-process drift if agents use a completed product decision as permission to start a new unrelated task or to bypass commit/push gates.
 
+
+Product UX approval must not be used to resume implementation after Reviewer `Request changes` or `Reject`. If invoked in that situation, return no product ambiguity unless there is a new human product decision; state that technical remediation requires explicit human authorization in a new task.
+
 ## Output
 
 Return only:
