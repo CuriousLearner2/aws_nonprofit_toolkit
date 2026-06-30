@@ -158,7 +158,14 @@ If full-suite assessment output is unreliable, report it as unreliable evidence.
 
 When the requested task reaches its terminal state, stop and wait for the human. Do not automatically start the next logical task.
 
-Terminal states include assessment delivered, failed-gate stop report delivered, cleanup completed, Reviewer verdict delivered, commit completed, and push completed.
+Terminal states for Orchestrator-led tasks:
+
+1. **Assessment delivered** — assessment report printed, findings/gaps/one recommended next task stated, stop.
+2. **Failed-gate report delivered** — declared gate failed/hung/timed out/exited 143/was interrupted; partial evidence reported; no continuation without human authorization.
+3. **Cleanup completed** — revert or preserve partial changes confirmed; stop.
+4. **Reviewer verdict delivered** — verdict returned; if auto-commit NOT enabled or NOT eligible, stop and report readiness fields.
+5. **Commit completed** — commit created; if auto-commit enabled and eligible, stop and report commit hash/status.
+6. **Push completed** — push executed (Push only tasks); stop.
 
 Passing an implementation gate is not itself a terminal state when Reviewer is required. In that case, invoke Reviewer immediately with the concise packet and stop only after the Reviewer verdict is delivered, unless the human explicitly requested preparation-only or Reviewer invocation is unavailable/failed and reported.
 
@@ -168,7 +175,8 @@ Examples:
 
 - After a Push only task completes, report commit/branch/status and stop; do not start an E2E performance assessment.
 - After a failed-gate report is delivered, stop; do not inspect, diagnose, retry, split, or repair without explicit authorization.
-- After Reviewer `Accept`, report ready for commit prep and stop unless `Happy-path auto-commit: enabled` is present.
+- After Reviewer `Accept` with auto-commit NOT enabled, report ready for commit prep and stop; do not proceed to commit without `Happy-path auto-commit: enabled`.
+- After Reviewer `Accept` with `Happy-path auto-commit: enabled` AND eligible, proceed to commit gate; commit completed is terminal.
 
 ## Source-of-truth guard
 

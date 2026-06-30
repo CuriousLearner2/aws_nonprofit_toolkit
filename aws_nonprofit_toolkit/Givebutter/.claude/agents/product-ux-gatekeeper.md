@@ -104,9 +104,15 @@ If invoked after an E2E gate failed, hung, timed out, exited `143`, was interrup
 
 ## Terminal-state product boundary
 
-After Product UX Gatekeeper returns a verdict or human-decision request, stop. Do not continue into implementation, review, commit, push, or follow-up product exploration unless the human explicitly asks.
+After Product UX Gatekeeper returns a verdict, stop. Do not continue into implementation, review, commit, push, or follow-up product exploration unless the human explicitly asks.
 
-Flag product-process drift if agents use a completed product decision as permission to start a new unrelated task.
+Product UX Gatekeeper verdict is a gating decision, not a commit/push decision. After Product UX clearance:
+
+- Orchestrator owns the implementation, Reviewer invocation, and commit/push authorization.
+- Product decision approval does not imply auto-commit or auto-push; those require `Happy-path auto-commit: enabled` and `Happy-path auto-push: enabled` exact phrases and meeting all other commit/push gates.
+- Implementation may proceed only if Product UX Gatekeeper returns `Implementation may proceed? yes`.
+
+Flag product-process drift if agents use a completed product decision as permission to start a new unrelated task or to bypass commit/push gates.
 
 ## Output
 

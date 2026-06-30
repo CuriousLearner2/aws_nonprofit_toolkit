@@ -176,6 +176,19 @@ Flag process drift when a workflow automatically starts a new task after a termi
 
 After terminal state, the correct behavior is to report status/readiness and wait for the human, not to begin the next logical assessment, optimization, commit, or push.
 
+## Breaker verdict and terminal state
+
+Breaker verdict is part of the review loop, not a separate commit gate. After Breaker returns a verdict, Orchestrator may proceed to commit only if:
+
+- Reviewer returned `Accept`,
+- Breaker returned `pass` or `P2 follow-up only`,
+- `Happy-path auto-commit: enabled` is present in task contract,
+- All commit guardrails (artifact guard, scope guard, staged files match expected) are satisfied.
+
+Breaker `P1 found` or `P0 found` blocks commit until the human explicitly authorizes a new investigation/fix task.
+
+After Breaker verdict, Orchestrator owns the commit/push decision, not Breaker. Breaker stops and waits for Orchestrator.
+
 ## Output
 
 Return:

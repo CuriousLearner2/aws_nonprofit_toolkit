@@ -198,14 +198,22 @@ Reviewer verdict is a terminal state for the review task. After returning a verd
 
 Flag process drift if a workflow automatically begins a new task after a terminal state, such as starting performance assessment after a successful push or starting commit prep after `Accept` without explicit auto-commit authorization.
 
-## Verdicts
+## Reviewer verdict and auto-commit eligibility
 
-Return one verdict:
+Reviewer verdict is a terminal state for the review task. After returning a verdict, stop and wait for the human.
+
+Return exactly one verdict:
 
 - `Accept` — correct, scoped, evidence sufficient, no blocker/follow-up.
 - `Accept with minor follow-up` — safe but not clean happy path.
 - `Request changes` — fixable within same or next authorized loop.
 - `Reject` — unsafe, wrong, overbroad, product-ambiguous, missing invalidating evidence, or needs redesign/fresh task.
+
+For Orchestrator-led flows with `Happy-path auto-commit: enabled`:
+
+- If verdict is `Accept` and all commit gates pass, Orchestrator commits the expected files. Commit completed is the terminal state.
+- If verdict is `Accept with minor follow-up`, `Request changes`, or `Reject`, Orchestrator stops and waits for human.
+- If `Happy-path auto-commit` is not enabled, Orchestrator stops after verdict and waits for human.
 
 Report:
 
@@ -220,4 +228,4 @@ Happy-path auto-commit eligible? yes/no
 Reason if no:
 ```
 
-`Happy-path auto-commit eligible? yes` only when verdict is exactly clean `Accept`.
+`Happy-path auto-commit eligible? yes` only when verdict is exactly clean `Accept`, all required evidence passed, no blocking issues, and all commit guardrails (artifact guard, scope guard, staged files match expected) are satisfied.

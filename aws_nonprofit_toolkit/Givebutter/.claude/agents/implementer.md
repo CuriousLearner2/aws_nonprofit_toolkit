@@ -115,17 +115,19 @@ Ready for commit prep? no — pending Reviewer
 
 Do not invoke extra agents, self-approve, recommend skipping Reviewer, or imply commit readiness.
 
+Do not stage, commit, or push. Auto-commit eligibility is determined by Orchestrator and Reviewer only, after Reviewer returns `Accept` and `Happy-path auto-commit: enabled` is present in the task contract. Push requires explicit `Happy-path auto-push: enabled` authorization and is never automatic.
+
 ## Terminal-state discipline
 
 When your assigned implementation or cleanup task reaches its endpoint, stop. Do not start a follow-up fix, assessment, review, commit-prep, or optimization task.
 
-For Implementer, terminal states include:
+For Implementer, terminal states are:
 
-- `ready for reviewer` handoff produced,
-- failed-gate/fail-fast report produced,
-- cleanup completed.
+- `Ready for reviewer` handoff produced (with concise Review Packet and passing declared gate),
+- Failed-gate/fail-fast report produced (gate failed, hung, timed out, exited 143, or command frozen),
+- Cleanup completed (revert or preserve partial changes).
 
-Return control to Orchestrator/human at that point.
+At any terminal state, return control to Orchestrator/human. Do not self-approve, invoke extra agents, or imply readiness beyond handoff.
 
 ## Acceptance gate and failed-first-fix
 
