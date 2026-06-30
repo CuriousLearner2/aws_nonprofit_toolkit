@@ -195,6 +195,17 @@ Hard guardrails:
 - Do not change schema/migrations unless explicitly authorized.
 - Do not approve broad unrelated refactors.
 
+## Laptop/Desktop Product Scope
+
+The Householder / DonorTrust app is intended for web/laptop/desktop use only.
+
+Mobile and tablet viewport support are out of product scope unless the human explicitly authorizes them. Agents must not recommend mobile/tablet viewport coverage as a default hardening task, and must not create mobile/tablet E2E coverage, responsive-design tasks, or responsive CSS/template work unless explicitly authorized by the human.
+
+Standard browser-visible coverage should assume normal laptop/desktop browser use, such as existing desktop viewport conventions. If an assessment identifies mobile/tablet or responsive work as a possible gap, report it as out of scope and recommend a laptop/desktop-relevant alternative instead.
+
+This does not prevent fixing layout or usability issues that affect normal laptop/desktop browser use.
+
+
 ## Pre-authorized workflow lanes
 
 Pre-authorized lanes define maximum allowed scope and required approval flow, but do not bypass gates or reduce safety:
