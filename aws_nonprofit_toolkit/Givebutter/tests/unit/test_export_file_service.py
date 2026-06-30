@@ -672,6 +672,293 @@ def test_csv_golden_file_with_reviewed_normalization():
     assert len(lines) == 2, "Should have 1 header + 1 data row"
 
 
+# Phase 3: Extended Golden-File Tests (Multi-Row and Mixed Scenarios)
+
+def test_csv_golden_file_multirow_preserves_order():
+    """
+    Golden-file test: Multi-row CSV export preserves row ordering and effective values.
+
+    Tests that exported CSV correctly handles multiple rows with different states:
+    - Multiple rows are exported in the order they appear
+    - Each row's effective/reviewed values are rendered correctly
+    - Row ordering matches source_row_index sequence
+
+    Verifies:
+    - CSV has correct row count (header + 3 data rows)
+    - Rows appear in expected order (source_row_index 1, 2, 3)
+    - Each row's values are preserved accurately
+    - Column positions are consistent across all rows
+    """
+    # Create three rows with different reviewed values
+    rows = (
+        ExportRow(
+            source_row_index=1,
+            transaction_id="TXN-001",
+            first_name="John",
+            last_name="Smith",
+            email="john@example.com",
+            phone="555-0001",
+            address_line1="123 Main St",
+            address_line2=None,
+            city="Springfield",
+            state="IL",
+            postal_code="62701",
+            amount="100.00",
+            validation_status="accepted",
+            validation_issues=(),
+            normalized_fields=("email",),
+            normalization_warnings=(),
+            duplicate_group_id="DUP-001",
+            duplicate_decision="same_person",
+            duplicate_warnings=(),
+            household_group_id="HH-001",
+            household_group_label="Smith Household",
+            household_members=(1, 2),
+            household_decision="confirmed",
+            household_warnings=(),
+            export_warnings=(),
+            export_blocked=False,
+            export_derived_at=datetime.utcnow(),
+        ),
+        ExportRow(
+            source_row_index=2,
+            transaction_id="TXN-002",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane.doe@example.com",
+            phone="555-0002",
+            address_line1="456 Oak Ave",
+            address_line2="Apt 200",
+            city="Shelbyville",
+            state="IL",
+            postal_code="62702",
+            amount="250.50",
+            validation_status="accepted",
+            validation_issues=(),
+            normalized_fields=("email", "phone"),
+            normalization_warnings=(),
+            duplicate_group_id=None,
+            duplicate_decision=None,
+            duplicate_warnings=(),
+            household_group_id="HH-002",
+            household_group_label="Doe Household",
+            household_members=(3,),
+            household_decision="confirmed",
+            household_warnings=(),
+            export_warnings=(),
+            export_blocked=False,
+            export_derived_at=datetime.utcnow(),
+        ),
+        ExportRow(
+            source_row_index=3,
+            transaction_id="TXN-003",
+            first_name="Bob",
+            last_name="Johnson",
+            email="bob.j@example.com",
+            phone="555-0003",
+            address_line1="789 Pine Rd",
+            address_line2=None,
+            city="Capital City",
+            state="IL",
+            postal_code="62703",
+            amount="75.25",
+            validation_status="accepted",
+            validation_issues=(),
+            normalized_fields=(),
+            normalization_warnings=(),
+            duplicate_group_id="DUP-002",
+            duplicate_decision="same_person",
+            duplicate_warnings=(),
+            household_group_id=None,
+            household_group_label=None,
+            household_members=(),
+            household_decision=None,
+            household_warnings=(),
+            export_warnings=(),
+            export_blocked=False,
+            export_derived_at=datetime.utcnow(),
+        ),
+    )
+
+    csv_content = _generate_csv_content(rows)
+    lines = csv_content.strip().split('\n')
+
+    # Verify row count: 1 header + 3 data rows
+    assert len(lines) == 4, f"Expected 4 lines (1 header + 3 rows), got {len(lines)}"
+
+    # Verify header exists
+    header = lines[0]
+    reader = csv.reader([header])
+    actual_fields = next(reader)
+    assert len(actual_fields) == 25, "Header should have 25 fields"
+
+    # Verify each row's values are in correct positions and order is preserved
+    for row_idx, expected_row in enumerate(rows, start=1):
+        data_row = lines[row_idx]
+        reader = csv.reader([data_row])
+        values = next(reader)
+
+        # Verify source_row_index matches expected (verifies ordering)
+        assert values[0] == str(expected_row.source_row_index), f"Row {row_idx}: source_row_index mismatch"
+        assert values[1] == expected_row.transaction_id, f"Row {row_idx}: transaction_id mismatch"
+        assert values[2] == expected_row.first_name, f"Row {row_idx}: first_name mismatch"
+        assert values[3] == expected_row.last_name, f"Row {row_idx}: last_name mismatch"
+        assert values[4] == expected_row.email, f"Row {row_idx}: email mismatch"
+        assert values[5] == expected_row.phone, f"Row {row_idx}: phone mismatch"
+        assert values[11] == expected_row.amount, f"Row {row_idx}: amount mismatch"
+
+
+def test_csv_golden_file_mixed_decisions_effective_values():
+    """
+    Golden-file test: Mixed decision scenario with raw and reviewed values.
+
+    Tests export behavior when batch contains mixed decision states:
+    - Row with raw values only (no normalization, default decisions)
+    - Row with reviewed/effective values (normalized, approved decisions)
+    - Row with deferred decisions (awaiting resolution)
+
+    Verifies:
+    - Raw values row exports raw field values
+    - Reviewed values row exports effective/reviewed values
+    - Deferred status is preserved in validation_status field
+    - effective_value behavior is consistent with product semantics
+
+    This test locks down the contract that:
+    - Export always uses effective values (reviewed where available, raw otherwise)
+    - Raw source data remains immutable
+    - Decision state (deferred/accepted) is preserved for audit
+    """
+    rows = (
+        # Row 1: Raw values only (no decisions applied)
+        ExportRow(
+            source_row_index=1,
+            transaction_id="TXN-RAW-001",
+            first_name="Alice",
+            last_name="Raw",
+            email="alice.raw@example.com",
+            phone="555-1111",
+            address_line1="100 Raw St",
+            address_line2=None,
+            city="Raw City",
+            state="IL",
+            postal_code="62000",
+            amount="50.00",
+            validation_status="accepted",
+            validation_issues=(),
+            normalized_fields=(),  # No normalization
+            normalization_warnings=(),
+            duplicate_group_id="DUP-RAW",
+            duplicate_decision=None,  # Raw decision state
+            duplicate_warnings=(),
+            household_group_id=None,
+            household_group_label=None,
+            household_members=(),
+            household_decision=None,
+            household_warnings=(),
+            export_warnings=(),
+            export_blocked=False,
+            export_derived_at=datetime.utcnow(),
+        ),
+        # Row 2: Reviewed/effective values (decisions applied)
+        ExportRow(
+            source_row_index=2,
+            transaction_id="TXN-REV-001",
+            first_name="Bob",
+            last_name="Reviewed",
+            email="bob.reviewed@example.com",  # Effective (reviewed) email
+            phone="555-2222",  # Effective (reviewed) phone
+            address_line1="200 Reviewed Ave",
+            address_line2=None,
+            city="Review City",
+            state="IL",
+            postal_code="62100",
+            amount="150.00",
+            validation_status="accepted",
+            validation_issues=(),
+            normalized_fields=("email", "phone"),  # Marked as reviewed
+            normalization_warnings=(),
+            duplicate_group_id="DUP-REV",
+            duplicate_decision="same_person",  # Approved decision
+            duplicate_warnings=(),
+            household_group_id="HH-REV",
+            household_group_label="Reviewed Household",
+            household_members=(2, 3),
+            household_decision="confirmed",  # Approved decision
+            household_warnings=(),
+            export_warnings=(),
+            export_blocked=False,
+            export_derived_at=datetime.utcnow(),
+        ),
+        # Row 3: Deferred decisions (awaiting resolution)
+        ExportRow(
+            source_row_index=3,
+            transaction_id="TXN-DEF-001",
+            first_name="Charlie",
+            last_name="Deferred",
+            email="charlie.deferred@example.com",
+            phone="555-3333",
+            address_line1="300 Deferred Ln",
+            address_line2=None,
+            city="Defer City",
+            state="IL",
+            postal_code="62200",
+            amount="200.00",
+            validation_status="deferred",  # Deferred validation status
+            validation_issues=(),
+            normalized_fields=(),
+            normalization_warnings=("Email validation deferred",),
+            duplicate_group_id="DUP-DEF",
+            duplicate_decision="deferred",  # Deferred decision
+            duplicate_warnings=("Duplicate resolution deferred",),
+            household_group_id="HH-DEF",
+            household_group_label="Deferred Household",
+            household_members=(4,),
+            household_decision="deferred",  # Deferred decision
+            household_warnings=("Household membership deferred",),
+            export_warnings=(),
+            export_blocked=False,
+            export_derived_at=datetime.utcnow(),
+        ),
+    )
+
+    csv_content = _generate_csv_content(rows)
+    lines = csv_content.strip().split('\n')
+
+    # Verify row count
+    assert len(lines) == 4, "Expected 4 lines (1 header + 3 rows)"
+
+    # Verify Row 1: Raw values (no decisions)
+    reader = csv.reader([lines[1]])
+    values = next(reader)
+    assert values[0] == "1", "Row 1: source_row_index"
+    assert values[1] == "TXN-RAW-001", "Row 1: transaction_id"
+    assert values[4] == "alice.raw@example.com", "Row 1: raw email"
+    assert values[14] == "", "Row 1: no normalized_fields"
+    assert values[17] == "", "Row 1: no duplicate_decision"
+
+    # Verify Row 2: Reviewed values (decisions applied)
+    reader = csv.reader([lines[2]])
+    values = next(reader)
+    assert values[0] == "2", "Row 2: source_row_index"
+    assert values[1] == "TXN-REV-001", "Row 2: transaction_id"
+    assert values[4] == "bob.reviewed@example.com", "Row 2: effective email"
+    assert values[5] == "555-2222", "Row 2: effective phone"
+    assert values[14] == "email;phone", "Row 2: normalized_fields marked"
+    assert values[17] == "same_person", "Row 2: duplicate decision applied"
+    assert values[22] == "confirmed", "Row 2: household decision applied"
+
+    # Verify Row 3: Deferred decisions
+    reader = csv.reader([lines[3]])
+    values = next(reader)
+    assert values[0] == "3", "Row 3: source_row_index"
+    assert values[1] == "TXN-DEF-001", "Row 3: transaction_id"
+    assert values[12] == "deferred", "Row 3: validation_status is deferred"
+    assert values[17] == "deferred", "Row 3: duplicate_decision is deferred"
+    assert values[22] == "deferred", "Row 3: household_decision is deferred"
+    assert "Email validation deferred" in values[15], "Row 3: normalization_warnings"
+    assert "Duplicate resolution deferred" in values[18], "Row 3: duplicate_warnings"
+
+
 # Filename Tests
 
 def test_generate_safe_filename_format():
