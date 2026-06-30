@@ -43,21 +43,21 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          cd aws_nonprofit_toolkit/Givebutter
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio
 
       - name: Check for Artifacts
         run: |
-          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          cd aws_nonprofit_toolkit/Givebutter
           python scripts/ci/check_no_artifacts.py
 
       - name: Run Unit Tests
         id: unit-tests
         run: |
           set -o pipefail
-          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          cd aws_nonprofit_toolkit/Givebutter
           python scripts/ci/test_gate.py --timeout 600 -- python -m pytest tests/unit/ -v --tb=short 2>&1 | tee unit-test-results.txt
           echo "result=$?" >> $GITHUB_OUTPUT
         continue-on-error: true
@@ -66,7 +66,7 @@ jobs:
         id: integration-tests
         run: |
           set -o pipefail
-          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          cd aws_nonprofit_toolkit/Givebutter
           python scripts/ci/test_gate.py --timeout 300 -- python -m pytest tests/integration/ -v --tb=short 2>&1 | tee integration-test-results.txt
           echo "result=$?" >> $GITHUB_OUTPUT
         continue-on-error: true
@@ -74,7 +74,7 @@ jobs:
       - name: Generate Test Summary
         if: always()
         run: |
-          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          cd aws_nonprofit_toolkit/Givebutter
 
           echo "=== QA Test Summary ===" | tee test-summary.txt
           echo "" >> test-summary.txt
@@ -104,13 +104,13 @@ jobs:
 
       - name: Upload Test Results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: qa-test-results
           path: |
-            aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/unit-test-results.txt
-            aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/integration-test-results.txt
-            aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/test-summary.txt
+            aws_nonprofit_toolkit/Givebutter/unit-test-results.txt
+            aws_nonprofit_toolkit/Givebutter/integration-test-results.txt
+            aws_nonprofit_toolkit/Givebutter/test-summary.txt
           retention-days: 30
 
       - name: Post QA Results Comment
@@ -122,7 +122,7 @@ jobs:
             let summary = '';
 
             try {
-              summary = fs.readFileSync('aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/test-summary.txt', 'utf8');
+              summary = fs.readFileSync('aws_nonprofit_toolkit/Givebutter/test-summary.txt', 'utf8');
             } catch (e) {
               summary = 'Could not read test summary';
             }
@@ -154,7 +154,7 @@ jobs:
 
       - name: Check for Forbidden Patterns
         run: |
-          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          cd aws_nonprofit_toolkit/Givebutter
 
           echo "=== Scanning for forbidden patterns ==="
 
@@ -173,7 +173,7 @@ jobs:
       - name: Verify No App Code Changed (Documentation Only PRs)
         run: |
           # Check if only docs changed
-          if git diff main --name-only | grep -E "^aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/(scripts|tests)/" > /dev/null; then
+          if git diff main --name-only | grep -E "^aws_nonprofit_toolkit/Givebutter/(scripts|tests)/" > /dev/null; then
             echo "⚠️  App code was modified - confirm in PR description"
           else
             echo "✅ Only documentation files changed"
@@ -199,7 +199,7 @@ jobs:
 
       - name: Install E2E Dependencies
         run: |
-          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          cd aws_nonprofit_toolkit/Givebutter
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio playwright
@@ -207,14 +207,14 @@ jobs:
 
       - name: Run E2E Smoke Test
         run: |
-          cd aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+          cd aws_nonprofit_toolkit/Givebutter
           python -m pytest tests/e2e/test_validation_review_dom.py::test_invalid_email_updates_visible_row_status_and_issues -q --tb=short 2>&1 | tee e2e-smoke-results.txt
         continue-on-error: true
 
       - name: Upload E2E Smoke Results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: e2e-smoke-results
-          path: aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/e2e-smoke-results.txt
+          path: aws_nonprofit_toolkit/Givebutter/e2e-smoke-results.txt
           retention-days: 30
