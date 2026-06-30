@@ -82,19 +82,6 @@ class TestCanonicalRoutesExist:
         assert "html" in html.lower()
 
 
-class TestDatabaseModeReadinessNote:
-    """
-    Placeholder note: Full database mode integration testing deferred to Phase 1C-Step 6.
-
-    Phase 1C-Step 6 will:
-    - Wire DatabaseImportRepository to Flask routes
-    - Replace fixture data with database queries
-    - Add full ingestion → routing integration tests
-    """
-
-    def test_database_mode_routing_deferred_to_step_6(self):
-        """Verify: Full database mode routing is Phase 1C-Step 6 work."""
-        # This is a documentation test noting the scope boundary
-        # Phase 1C-Step 5 verifies repository methods (integration tests)
-        # Phase 1C-Step 6 will wire those methods to Flask routes
-        assert True
+# NOTE: Phase 1C-Step 6 database-mode route testing has been moved to integration-level coverage.
+# See: tests/integration/test_ingestion_database_mode_routes.py
+# This provides explicit database-mode verification of all 8 canonical routes without requiring E2E overhead.
