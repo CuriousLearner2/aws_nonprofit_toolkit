@@ -57,6 +57,17 @@ Check for:
 - approval/export inconsistencies,
 - overclaimed E2E evidence.
 
+### Guardrail process-integrity checks
+
+For commit-ready changes, verify:
+
+- Artifact guard (`python scripts/ci/check_no_artifacts.py`) passed; no OS/editor/cache junk committed.
+- Scope guard (`python scripts/ci/check_scope.py --allow ...`) passed; scope guard allowlist matches declared changed files; no unexpected files hidden by broad patterns.
+- Non-E2E pytest gates wrapped with `test_gate.py` where applicable; no ad hoc timeout wrappers, sleep delays, or manual timeout logic.
+- Missing artifact/scope guard evidence for commit-ready changes blocks readiness.
+
+Flag workflow violations if any guard failed, was missing, or allowlist was overbroad without explicit task authorization.
+
 For validation-review UI changes, check at least one multi-issue scenario or report missing coverage.
 
 

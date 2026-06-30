@@ -79,6 +79,19 @@ Do not return `Accept` if required verification is missing, stale, pre-diff, tar
 
 Evidence is review input, not acceptance. If commit occurred before Reviewer `Accept` and `Happy-path auto-commit eligible? yes`, flag workflow violation.
 
+### Commit-ready guardrail verification
+
+For implementation flows approaching commit readiness, verify:
+
+1. **Artifact guard passed:** `python scripts/ci/check_no_artifacts.py` must exit 0. Flag if missing or failed.
+2. **Scope guard passed:** `python scripts/ci/check_scope.py --allow <expected files>` must exit 0 with all expected changed files listed. Flag if:
+   - Missing evidence
+   - Guard shows unexpected files
+   - Allowlist is overbroad (e.g., `--allow **`) unless task scope explicitly permits
+3. **Non-E2E pytest gates used `test_gate.py`:** Verify unit/integration/targeted gates were wrapped. Flag if custom timeout wrappers or ad hoc sleeps were used instead.
+
+Do not return `Accept` for commit-ready changes if artifact or scope guard failed, missing, or shows unexpected files. Request changes or Reject.
+
 ## Failed gate / fail-fast review
 
 Reject or request changes when a report treats partial symptom improvement as gate success.

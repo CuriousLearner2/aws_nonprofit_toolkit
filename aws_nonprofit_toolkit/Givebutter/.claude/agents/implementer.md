@@ -68,9 +68,21 @@ Then:
 
 1. add/update the smallest relevant test when appropriate,
 2. make the smallest implementation change,
-3. run targeted gate,
+3. run targeted gate using `test_gate.py` for non-E2E tests (see below),
 4. run nearby tests only after targeted proof,
 5. prepare a concise Review Packet.
+
+### Non-E2E pytest gate wrapper requirement
+
+For all unit, integration, and targeted non-E2E pytest gates, use `test_gate.py`:
+
+```bash
+python scripts/ci/test_gate.py --timeout <seconds> -- pytest <command>
+```
+
+Do not invent ad hoc `timeout` wrappers, `sleep` delays, or manual timeout logic. Use `test_gate.py` which enforces wall-clock timeout and returns clear exit codes (0=pass, 1=fail, 124=timeout).
+
+E2E gates continue using existing E2E fail-fast rules (90s/180s/90s with `-x`/`--maxfail=1`).
 
 Do not broaden into cleanup, product decisions, schema changes, or unrelated refactors.
 

@@ -163,6 +163,23 @@ Next allowed action:
 
 Do not redefine a gate after partial progress.
 
+### Non-E2E pytest gates must use test_gate.py
+
+For all unit, integration, and targeted non-E2E pytest gates in implementation flows, wrap with:
+
+```bash
+python scripts/ci/test_gate.py --timeout <seconds> -- pytest <command>
+```
+
+Timeout guidance:
+- Full unit + integration: 600 seconds
+- Integration-only: 300 seconds
+- Targeted groups (<20 tests): 180 seconds
+- Single test: 90 seconds
+
+E2E gates continue using explicit E2E timeout/maxfail rules: 90s single test, 180s full file, 90s per reliability-loop iteration, with pytest stop-on-first-failure (`-x` or `--maxfail=1`) for multi-test gates. No wrapper needed until E2E wrapper is implemented.
+
+If the wrapped command times out or exits nonzero, treat it as a failed gate. Stop immediately; do not split, rerun, or claim partial success.
 
 ## Failed-gate evidence boundary / post-failure command freeze
 
@@ -274,6 +291,14 @@ Auto-commit requires the exact prompt phrase:
 ```text
 Happy-path auto-commit: enabled
 ```
+
+Before commit (with or without auto-commit enabled):
+
+1. Run `python scripts/ci/check_no_artifacts.py` — must pass.
+2. Run `python scripts/ci/check_scope.py --allow <expected file> ...` with all expected changed files listed — must pass.
+   - For workflow file changes, explicitly allow each changed workflow file (e.g., `--allow .claude/agents/orchestrator.md`).
+   - Do not use broad patterns unless the task scope explicitly permits it.
+3. If either guard fails, stop immediately and report. Do not invoke Reviewer or proceed to commit.
 
 Even then, commit only after Reviewer returns clean `Accept` and `Happy-path auto-commit eligible? yes`, all required evidence passed, fast pre-commit passed, and staged files exactly match expected files.
 

@@ -195,6 +195,30 @@ Hard guardrails:
 - Do not change schema/migrations unless explicitly authorized.
 - Do not approve broad unrelated refactors.
 
+## Repository Automation Guardrails
+
+Three guardrail scripts enforce discipline during implementation and commit preparation:
+
+**A. Artifact Guard** (`python scripts/ci/check_no_artifacts.py`)
+- Blocks unintended files: OS metadata, editor artifacts, caches, test outputs, credentials.
+- Required: before commit prep, before claiming working tree is clean.
+- Failure: stop immediately and report; do not proceed to Reviewer or commit.
+
+**B. Test Gate Wrapper** (`python scripts/ci/test_gate.py --timeout N -- <pytest command>`)
+- Enforces explicit wall-clock timeout on non-E2E pytest gates; returns exit code 0 (pass), 1 (fail), or 124 (timeout).
+- Required: for all unit, integration, and targeted non-E2E pytest gates in implementation flows.
+- Timeout guidance: 600s (full suite), 300s (integration-only), 180s (targeted <20 tests), 90s (single test).
+- E2E gates remain governed by E2E fail-fast rules (separate 90s/180s/90s per-iteration timeouts with `-x`/`--maxfail=1`).
+- Failure: treat timeout as failed gate; stop immediately.
+
+**C. Scope Guard** (`python scripts/ci/check_scope.py --allow <expected file> ...`)
+- Validates only expected files changed; prevents scope creep or accidental commits.
+- Required: before commit prep; always list expected changed files explicitly.
+- Do not use broad allowlists (e.g., `--allow **`) unless the task scope explicitly permits it.
+- Failure: report unexpected files; stop immediately.
+
+All three guards are local-only. CI runs artifact guard and test_gate.py; scope guard requires task-specific allowlists and runs locally.
+
 ## Role ownership
 
 - **Orchestrator** owns lane selection, sequencing, gates, evidence, review-level selection, Product UX Gatekeeper routing/reporting, and commit/push authorization.
