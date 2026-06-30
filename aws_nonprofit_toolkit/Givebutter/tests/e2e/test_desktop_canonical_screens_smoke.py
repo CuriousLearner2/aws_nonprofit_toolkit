@@ -5,14 +5,13 @@ Desktop-only screens covered (existing routable canonical screens):
 1. Imports/List (upload entry)
 2. Dashboard (summary view)
 3. Validation Review
-4. Normalizations (placeholder route with no workflow implementation)
+4. Normalizations (field normalization suggestion workflow)
 5. Duplicates
 6. Households
 7. Audit Log
 8. Export Console
 
-Note: Normalizations is a placeholder route with no workflow implementation.
-Smoke test verifies route is accessible and renders without error (read-only coverage only).
+Smoke test verifies routes are accessible and render meaningful content without error (read-only coverage only).
 
 Template bug fix: Households progress bar had ZeroDivisionError when total_households=0.
 Fixed with conditional in Jinja2 template (line 145 of households.html).
@@ -186,7 +185,7 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
                     ('Imports/List', 'http://127.0.0.1:8001/imports', ['import', 'upload']),
                     ('Dashboard', 'http://127.0.0.1:8001/imports/smoke-test-batch/dashboard', ['dashboard', 'batch']),
                     ('Validation Review', 'http://127.0.0.1:8001/imports/smoke-test-batch/validation', ['validation', 'review']),
-                    ('Normalizations', 'http://127.0.0.1:8001/imports/smoke-test-batch/normalizations', ['normalizations']),
+                    ('Normalizations', 'http://127.0.0.1:8001/imports/smoke-test-batch/normalizations', ['normalizations', 'field', 'accept', 'reject', 'defer']),
                     ('Duplicates', 'http://127.0.0.1:8001/imports/smoke-test-batch/duplicates', ['duplicate']),
                     ('Households', 'http://127.0.0.1:8001/imports/smoke-test-batch/households', ['household']),
                     ('Audit Log', 'http://127.0.0.1:8001/imports/smoke-test-batch/audit', ['audit']),
@@ -195,8 +194,7 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
 
                 print("\n=== DESKTOP CANONICAL SCREENS SMOKE TEST ===")
                 print("Viewport: 1440x900 (desktop only)")
-                print("Coverage: 8 canonical screens (verified working)")
-                print("(Normalizations: route exists, placeholder content, no workflow impl)\n")
+                print("Coverage: 8 canonical screens (verified working)\n")
 
                 for i, (screen_name, url, expected_keywords) in enumerate(screens, 1):
                     # Navigate to screen - let exceptions fail the test
