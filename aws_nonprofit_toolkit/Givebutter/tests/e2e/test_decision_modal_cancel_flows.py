@@ -41,7 +41,9 @@ from scripts.householder.database_models import (
     RawImportRow,
     ImportContact,
     ReviewItem,
+    ReviewItemSubject,
     ReviewDecision,
+    AuditLogRecord,
     create_db_engine,
 )
 from scripts.uploader.app import app
@@ -279,17 +281,23 @@ async def test_validation_inspect_modal_close_no_feedback(e2e_validation_databas
 # NOTE: This test requires product-approved approval flow design.
 # Skipping pending clarification on when approval modal should display.
 
-@pytest.mark.skip(reason="Approval modal flow requires product design clarification")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database_and_app):
     """
     T3: Clicking Cancel button in Approval modal should:
     1. Close the modal
-    2. NOT save any decision
+    2. NOT save any decision or approval status
     3. Batch status should remain unchanged
+    4. No audit entry created for cancel action
+
+    APPROVED PRODUCT BEHAVIOR:
+    - Click "Approve File" with remaining issues → modal opens
+    - Click Cancel → modal closes, batch unchanged, no audit entry, stay on validation page
+    - Click "Approve with Overrides" → batch persists as approved_with_overrides, audit entry created, redirect
     """
     from playwright.async_api import async_playwright
+    from scripts.householder.database_models import AuditLogRecord
 
     database_url, db_path, flask_app = e2e_validation_database_and_app
 
@@ -299,7 +307,7 @@ async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database
     session = Session()
 
     try:
-        # Create batch
+        # Create batch with one row that has validation issues
         batch = ImportBatch(
             id='approval-modal-test',
             filename='approval_test.csv',
@@ -310,13 +318,14 @@ async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database
         session.add(batch)
         session.flush()
 
-        # Create raw row
+        # Create raw row WITH INVALID EMAIL to trigger validation issue
+        # This ensures approval modal will show (because there are remaining issues)
         raw_row = RawImportRow(
             batch_id='approval-modal-test',
             row_index=1,
             raw_csv_data={
                 'name': 'Test User',
-                'email': 'test@example.com',
+                'email': 'invalid-email',  # Invalid format → triggers validation issue
                 'phone': '(555) 123-4567',
                 'amount': '100.00',
                 'address': '123 Main St'
@@ -325,21 +334,65 @@ async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database
         session.add(raw_row)
         session.flush()
 
-        # Create import contact
+        # Create import contact (with same invalid email)
         contact = ImportContact(
             batch_id='approval-modal-test',
             raw_import_row_id=raw_row.id,
             first_name='Test',
             last_name='User',
-            email='test@example.com',
+            email='invalid-email',
             phone='(555) 123-4567',
             amount=100.00,
             address_line1='123 Main St'
         )
         session.add(contact)
+        session.flush()
+
+        # Create ReviewItem for the validation issue (invalid email format)
+        # This is what the approval modal will check for remaining issues
+        review_item = ReviewItem(
+            batch_id='approval-modal-test',
+            item_type='validation',
+            status='pending',
+            payload_json={
+                'field': 'email',
+                'reason': 'format',  # Invalid email format
+                'description': 'Invalid email format',
+                'severity': 'error'
+            }
+        )
+        session.add(review_item)
+        session.flush()
+
+        # Link the review item to the contact via ReviewItemSubject
+        subject = ReviewItemSubject(
+            review_item_id=review_item.id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact.id
+        )
+        session.add(subject)
         session.commit()
 
+        # Capture baseline state before test (for P1 invariant verification)
         original_batch_status = batch.status
+        original_approval_status = batch.approval_status
+        original_override_details = batch.override_details
+        original_updated_at = batch.updated_at
+
+        # Capture raw data for immutability check (P1)
+        original_raw_csv_data = dict(raw_row.raw_csv_data) if raw_row.raw_csv_data else {}
+        original_contact_email = contact.email
+        original_contact_phone = contact.phone
+        original_contact_amount = contact.amount
+
+        # Count audit and decision records at baseline
+        baseline_audit_count = session.query(AuditLogRecord).filter(
+            AuditLogRecord.batch_id == 'approval-modal-test'
+        ).count()
+        baseline_decision_count = session.query(ReviewDecision).filter(
+            ReviewDecision.batch_id == 'approval-modal-test'
+        ).count()
+
         session.close()
 
         # Start Flask
@@ -358,21 +411,35 @@ async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database
                 # Load validation page
                 await page.goto('http://127.0.0.1:8004/imports/approval-modal-test/validation')
 
-                # Wait for page load
+                # Wait for approval button to be ready
                 await page.wait_for_selector('button#approve-file-btn', timeout=5000)
 
-                # Click Approve File button
+                # Click Approve File button (triggers MODE 2 check)
                 approve_btn = await page.query_selector('#approve-file-btn')
+                assert approve_btn is not None, "Approve File button should exist"
                 await approve_btn.click()
 
-                # Wait for approval modal to open
+                # Wait for approval modal to open (contains issue list and buttons)
                 await page.wait_for_selector('#approval-modal', timeout=5000)
+                modal = await page.query_selector('#approval-modal')
+                modal_visible = await modal.is_visible()
+                assert modal_visible, "Approval modal should be visible after clicking Approve File"
+
+                # Verify modal content shows specific issue list (P1: Modal content verification)
+                modal_content = await page.query_selector('#modal-approval-content')
+                content_text = await modal_content.inner_text()
+                assert 'unresolved' in content_text.lower() or 'issue' in content_text.lower(), \
+                    f"Modal should show issue list, got: {content_text}"
+                # Hard assertion: modal should show the specific field error (email validation error)
+                assert 'email' in content_text.lower() or 'row' in content_text.lower(), \
+                    f"Modal should display specific issue details (email/row), got: {content_text}"
 
                 # Find and click Cancel button in approval modal
+                # Cancel button is in the modal footer with text "Cancel"
                 cancel_button = await page.query_selector(
                     '#approval-modal button:has-text("Cancel")'
                 )
-                assert cancel_button is not None, "Cancel button should exist"
+                assert cancel_button is not None, "Cancel button should exist in approval modal"
                 await cancel_button.click()
 
                 # Wait for modal to close
@@ -382,21 +449,113 @@ async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database
                     timeout=5000
                 )
 
-                # Verify we're still on validation page
+                # Hard assertion: modal should be closed
+                modal_after_cancel = await page.query_selector('#approval-modal')
+                modal_is_closed = await page.evaluate(
+                    "(el) => !el || !el.style.display || el.style.display === 'none'",
+                    modal_after_cancel
+                )
+                assert modal_is_closed, "Approval modal should be closed after clicking Cancel"
+
+                # Hard assertion: should still be on validation page
                 current_url = page.url
                 assert 'validation' in current_url, \
                     f"Should remain on validation page after Cancel, got: {current_url}"
 
-                # Verify batch status unchanged in database
+                # Hard assertion: page should still show approval button (not redirected)
+                approve_btn_still_exists = await page.query_selector('#approve-file-btn')
+                assert approve_btn_still_exists is not None, \
+                    "Approve File button should still be visible after Cancel"
+
+                # P1 INVARIANT: Modal reopenability after cancel (test that workflow remains intact)
+                # Click Approve File button again to verify modal can reopen
+                await approve_btn_still_exists.click()
+                await page.wait_for_selector('#approval-modal', timeout=5000)
+                modal_reopened = await page.query_selector('#approval-modal')
+                modal_reopened_visible = await modal_reopened.is_visible()
+                assert modal_reopened_visible, \
+                    "Approval modal should reopen after clicking Approve File again (workflow integrity)"
+
+                # Verify reopened modal shows same issue content
+                modal_content_reopened = await page.query_selector('#modal-approval-content')
+                content_text_reopened = await modal_content_reopened.inner_text()
+                assert 'unresolved' in content_text_reopened.lower() or 'issue' in content_text_reopened.lower(), \
+                    f"Reopened modal should show issue list again, got: {content_text_reopened}"
+
+                # Close modal again to clean up
+                cancel_button_reopened = await page.query_selector(
+                    '#approval-modal button:has-text("Cancel")'
+                )
+                assert cancel_button_reopened is not None, "Cancel button should exist in reopened modal"
+                await cancel_button_reopened.click()
+                await page.wait_for_function(
+                    "() => !document.querySelector('#approval-modal').style.display || "
+                    "document.querySelector('#approval-modal').style.display === 'none'",
+                    timeout=5000
+                )
+
+                # Verify database state unchanged (P1 INVARIANTS - Breaker requirements)
                 session = Session()
+
+                # Retrieve final batch state
                 batch_after = session.query(ImportBatch).filter(
                     ImportBatch.id == 'approval-modal-test'
                 ).first()
+                assert batch_after is not None, "Batch should still exist"
+
+                # P1-1: Batch status should not change
                 assert batch_after.status == original_batch_status, \
-                    "Batch status should not change after Cancel"
+                    f"Batch status should remain '{original_batch_status}', got '{batch_after.status}'"
+
+                # P1-2: Batch approval_status should not change (should be NULL/None)
+                assert batch_after.approval_status == original_approval_status, \
+                    f"Batch approval_status should remain unchanged, was '{original_approval_status}', now '{batch_after.approval_status}'"
+
+                # P1-3: batch.override_details should not be populated (should remain None)
+                assert batch_after.override_details == original_override_details, \
+                    f"Batch override_details should remain unchanged (should be None), was '{original_override_details}', now '{batch_after.override_details}'"
+
+                # P1-4: batch.updated_at should not be modified (Cancel should not update timestamp)
+                assert batch_after.updated_at == original_updated_at, \
+                    f"Batch updated_at timestamp should not change on Cancel: before '{original_updated_at}', after '{batch_after.updated_at}'"
+
+                # P1-5: No audit entry should be created for cancel
+                audit_count_after = session.query(AuditLogRecord).filter(
+                    AuditLogRecord.batch_id == 'approval-modal-test'
+                ).count()
+                assert audit_count_after == baseline_audit_count, \
+                    f"No audit entry should be created on Cancel: baseline={baseline_audit_count}, after={audit_count_after}"
+
+                # P1-6: No ReviewDecision records should be created for cancel
+                decision_count_after = session.query(ReviewDecision).filter(
+                    ReviewDecision.batch_id == 'approval-modal-test'
+                ).count()
+                assert decision_count_after == baseline_decision_count, \
+                    f"No ReviewDecision should be created on Cancel: baseline={baseline_decision_count}, after={decision_count_after}"
+
+                # P1-7: Raw data immutability - RawImportRow should not be mutated
+                raw_row_after = session.query(RawImportRow).filter(
+                    RawImportRow.id == raw_row.id
+                ).first()
+                assert raw_row_after is not None, "Raw import row should still exist"
+                assert dict(raw_row_after.raw_csv_data or {}) == original_raw_csv_data, \
+                    f"RawImportRow.raw_csv_data should not be mutated on Cancel: before {original_raw_csv_data}, after {raw_row_after.raw_csv_data}"
+
+                # P1-8: Raw data immutability - ImportContact snapshot should not be mutated
+                contact_after = session.query(ImportContact).filter(
+                    ImportContact.id == contact.id
+                ).first()
+                assert contact_after is not None, "Import contact should still exist"
+                assert contact_after.email == original_contact_email, \
+                    f"ImportContact.email should not be mutated: was '{original_contact_email}', now '{contact_after.email}'"
+                assert contact_after.phone == original_contact_phone, \
+                    f"ImportContact.phone should not be mutated: was '{original_contact_phone}', now '{contact_after.phone}'"
+                assert contact_after.amount == original_contact_amount, \
+                    f"ImportContact.amount should not be mutated: was '{original_contact_amount}', now '{contact_after.amount}'"
+
                 session.close()
 
-                print("✓ T3: Approval Modal - Cancel without override works")
+                print("✓ T3: Approval Modal - Cancel without override works (no persist, no audit)")
 
             finally:
                 await browser.close()
