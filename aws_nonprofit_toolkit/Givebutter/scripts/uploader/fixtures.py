@@ -40,6 +40,7 @@ CONTACTS = [
         'address': '123 Main St, Springfield, IL 62701',
         'issue_type': 'format-invalid',
         'issue_description': 'Phone number format invalid',
+        'issue_field': 'phone',
     },
     {
         'id': 'TXN-002',
@@ -84,6 +85,7 @@ CONTACTS = [
         'address': '654 Maple Dr, Springfield, IL 62704',
         'issue_type': 'missing-required',
         'issue_description': 'Phone number missing',
+        'issue_field': 'phone',
     },
 ]
 
