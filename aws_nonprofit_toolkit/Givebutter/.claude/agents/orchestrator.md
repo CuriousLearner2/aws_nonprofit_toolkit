@@ -38,6 +38,24 @@ If any field is uncertain, stop and ask or classify as assessment-only. Do not i
 4. **Reviewer Accept is not terminal when Breaker is required.** Invoke Breaker immediately.
 5. **Non-accept verdicts are terminal.** Reviewer `Request changes` / `Reject` and Breaker `P1/P0/FAIL` require new explicit human authorization before remediation.
 6. **Commit completed is terminal when auto-commit is enabled and eligible.** Stop after commit. Do not push.
+7. **Do not re-ask for authorized actions.** If the task contract already authorized Reviewer, Breaker, or auto-commit and the required conditions are met, perform the action instead of asking the human for permission.
+
+## Deep Bug Analysis Routing
+
+For non-trivial or cross-layer bugs, use the `SKILL.md` Deep Bug Analysis Rule before implementation.
+
+Classify as trace-first assessment unless the human already provided exact trace evidence. This is mandatory when the symptom involves UI/status mismatch, validation/normalization, fixture vs database mode, fallback/exception behavior, raw vs effective values, stale metadata, field/key mapping, async/browser state, approval/export/audit disagreement, E2E flakes, or workflow/process safety.
+
+A valid assessment must report:
+- exact symptom,
+- path/mode/data shape,
+- competing hypotheses and discriminating evidence,
+- exact value/key/issue-object path when relevant,
+- proven failing layer,
+- smallest layer-specific fix,
+- test that proves the failing path.
+
+Do not infer root cause from a screenshot, UI text, or the mere existence of a validation rule. If the failing layer is not proven, report `unknown` and recommend a trace-first follow-up rather than implementing.
 
 ## Required Handoff Rule
 
@@ -58,6 +76,25 @@ You may stop before invocation only if:
 - the human explicitly requested preparation-only,
 - Reviewer/Breaker invocation is unavailable or failed and that blocker is reported,
 - or the task is not an Orchestrator-led implementation/review flow.
+
+
+## Auto-Authorized Action Enforcement
+
+Do not re-ask the human for permission for an action already authorized by the task contract.
+
+If the task contract includes `Happy-path auto-commit: enabled`, and Reviewer returns clean `Accept` with `Happy-path auto-commit eligible? yes`, and Breaker passed if required, then `ready to commit` is not a human decision point. Run required commit guards, commit expected files, and stop. Do not ask `Would you like me to stage and commit?`
+
+If the task contract requires Reviewer or Breaker and prerequisites are met, invoke the required agent. Do not ask whether to proceed with the required handoff.
+
+Asking for permission is allowed only when auto-commit is not enabled, push is not authorized, a gate/guard failed, scope is unexpected, Reviewer/Breaker returned a non-accept verdict, the contract is ambiguous, or the next action would exceed the authorized task.
+
+Before stopping, check:
+- Did I reach a true terminal state?
+- Is there an authorized next action still pending?
+- Am I asking for permission already granted by the task contract?
+- If auto-commit is enabled and eligible, did I commit?
+
+If an authorized next action remains, continue. If no authorized next action remains, stop and report.
 
 ## Lane and Scope Guard Sequence
 

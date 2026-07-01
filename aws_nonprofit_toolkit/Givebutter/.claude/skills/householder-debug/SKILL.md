@@ -17,7 +17,7 @@ Apply rules in this order:
 3. **Failed gates stop immediately.** No diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without new human authorization.
 4. **Required handoffs are actions.** Passing gates means invoke required Reviewer/Breaker; `Ready for Reviewer` is not terminal.
 5. **Non-accept verdicts are terminal.** Reviewer `Request changes` / `Reject` and Breaker `P1/P0/FAIL` require a new human-authorized remediation task.
-6. **Commit and push remain separate.** Auto-commit requires the exact phrase `Happy-path auto-commit: enabled`; push requires separate explicit authorization.
+6. **Commit and push remain separate.** Auto-commit requires the exact phrase `Happy-path auto-commit: enabled`; push requires separate explicit authorization. Do not re-ask for permission to perform an action already authorized by the task contract.
 
 ## RED RULES — ALWAYS OBEY
 
@@ -190,6 +190,81 @@ Next human choices:
 3. Authorize a new implementation/debug task
 ```
 
+## Deep Bug Analysis Rule
+
+Use this rule for non-trivial bugs, cross-layer bugs, regressions, flakes, fallback/exception behavior, mode-specific behavior, or any defect that affects reviewer decisions, validation, normalization, approval, export, audit, raw/effective values, browser state, or workflow/process safety.
+
+Do not jump from symptom → plausible cause → fix. First prove the causal chain:
+
+```text
+symptom → observed facts → competing hypotheses → discriminating evidence → proven failing layer → smallest fix
+```
+
+Before naming root cause or implementing a fix, answer:
+
+1. What is the exact observed symptom?
+2. What path, mode, and data shape produced it?
+3. What are at least two plausible causes, unless the cause is already proven by direct evidence?
+4. What evidence distinguishes those causes?
+5. What exact files/functions/data prove the actual cause?
+6. What layer owns the fix?
+7. What is the smallest fix that addresses that layer?
+8. What test proves the failing path, not merely a nearby rule?
+
+### Cross-layer value and issue tracing
+
+When a bug involves UI display, templates, row status, Issues text, validation, fixture mode, database mode, fallback paths, raw values, effective values, stale metadata, field/key mapping, approval/export readiness, or audit records, trace the exact value and issue object through every relevant layer.
+
+Required trace questions:
+- What exact value is stored?
+- What exact value is rendered?
+- Is the rendered value clipped/truncated, or is the stored value actually truncated?
+- What exact value is passed into the validator/service?
+- What exact key name is used at each layer?
+- What key name does the receiving function expect?
+- Is the issue freshly generated or stale persisted/fixture metadata?
+- What exact issue object is produced, including field/source/severity/message?
+- Why does the UI render the displayed field label/severity/message?
+- Is the path database mode, fixture mode, fallback mode, or mixed?
+- Does the same value behave differently across modes?
+
+Required cautions:
+- Do not infer root cause from UI symptom alone.
+- Do not implement until the trace identifies the layer where value/status/issue changes.
+- If trace evidence is unavailable, report `unknown` rather than guessing.
+- `Looks clipped in UI` is not evidence of stored truncation.
+- `Validator exists` is not evidence that the failing path invokes it.
+- `Issue shown in UI` is not evidence that the issue was freshly generated.
+- `E2E passed` is not evidence that the failing mode, fallback, data shape, or state transition was covered.
+
+### Shallow vs deep examples
+
+- Shallow: UI shows `Phone invalid`, so the phone number is invalid.
+  Deep: Trace stored value → rendered value → validation input → expected field key → generated issue object → template rendering.
+
+- Shallow: A validation rule exists, so validation must be running.
+  Deep: Prove the failing runtime path invokes that rule. Check database mode, fixture mode, fallback path, and exception handling.
+
+- Shallow: Button is disabled, so export gating is correct.
+  Deep: Verify all reviewer-facing signals agree: traffic light, status text, warning, checkbox, disabled state, backend blocker, and audit record.
+
+- Shallow: E2E passed, so behavior is correct.
+  Deep: Confirm the E2E covers the failing mode, data shape, state transition, and assertion. A database-mode E2E does not prove fixture-mode fallback.
+
+- Shallow: Issue appears in UI, so it was freshly calculated.
+  Deep: Determine whether the issue came from fresh recalculation, saved ReviewDecision, fixture metadata, stale persisted issue_type, or template default.
+
+- Shallow: The screenshot shows a truncated value, so the data is truncated.
+  Deep: Verify stored value separately. UI clipping is not data truncation.
+
+- Shallow: Reviewer accepted, so no Breaker is needed.
+  Deep: If the change affects approval/export/audit/raw-data/status consistency, determine whether concrete P0/P1 invariant risk remains.
+
+- Shallow: A failed gate probably needs a quick fix.
+  Deep: Failed gate is terminal. Do not diagnose or repair unless the human authorizes a new task.
+
+Deep analysis is not a license for open-ended debugging. It is a bounded proof step. Once the failing layer is identified, implement the smallest fix and prove the failing path.
+
 ## E2E Proof-Step Rules
 
 For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, use:
@@ -232,6 +307,41 @@ Non-terminal status phrases:
 - `Breaker required but not invoked`
 
 If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns clean Accept and Breaker is required, invoke Breaker. These are required actions, not optional human approvals.
+
+
+## Auto-Authorized Action Enforcement Rule
+
+Human authorization is resolved by the task contract, not by the agent's comfort level at each step.
+
+Do not re-ask for permission for an action already authorized by the task contract. If the task contract includes the relevant authorization and all required gates/verdicts have passed, Orchestrator must continue to the next authorized action instead of stopping to ask the human.
+
+Examples:
+- If `Happy-path auto-commit: enabled` is present, Reviewer returned clean `Accept`, `Happy-path auto-commit eligible? yes`, Breaker passed when required, and commit guards passed, Orchestrator must commit expected files and stop. Do not ask `Would you like me to commit?`
+- If Reviewer is required and implementation gates passed, invoke Reviewer. Do not ask whether to start review.
+- If Breaker is required after Reviewer `Accept`, invoke Breaker. Do not ask whether to start Breaker.
+
+Asking for permission at `ready to commit`, `ready for Reviewer`, or `ready for Breaker` is a workflow violation unless one of these blockers exists:
+- auto-commit was not enabled,
+- Reviewer has not returned clean `Accept`,
+- Breaker is required and has not passed,
+- a declared gate or guard failed,
+- unexpected scope or dirty files appeared,
+- a non-accept Reviewer verdict or Breaker P1/P0/FAIL occurred,
+- the task contract is ambiguous,
+- the action is push and `Happy-path auto-push: enabled` or explicit push authorization is absent.
+
+### Pre-stop Checklist
+
+Before stopping, Orchestrator must verify:
+
+1. Did I reach a real terminal state from this file's state machine?
+2. Is there a required next gate, handoff, review, Breaker invocation, commit, or push already authorized by the task contract?
+3. Am I asking the human for permission that the task contract already gave?
+4. If `Happy-path auto-commit: enabled` is present, did Reviewer return clean `Accept` and `Happy-path auto-commit eligible? yes`?
+5. If Breaker was required, did Breaker return `pass` or `P2 follow-up only`?
+6. If the commit path is eligible, did I commit expected files and stop?
+
+If a required authorized next action remains, continue to that action. Stop only at a true terminal state or an explicit blocker.
 
 ## Reviewer Request Changes / Reject Boundary
 

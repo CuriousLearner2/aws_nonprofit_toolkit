@@ -46,6 +46,19 @@ For non-E2E gates, verify `test_gate.py` was used. For E2E gates, verify `e2e_ga
 
 Reject zombie/soft E2E coverage: guarded assertions, `if element: assert ...`, silent early returns, print-only success, networkidle-only success, or page-load-only replacement coverage.
 
+## Deep Bug Analysis Review
+
+For non-trivial or cross-layer bug fixes, verify the root-cause claim follows the `SKILL.md` Deep Bug Analysis Rule.
+
+Request changes or reject when:
+- the fix claims root cause from a UI symptom without proving the failing path,
+- the evidence proves a rule exists but not that the failing path invokes it,
+- the test covers only the nearby validation/helper logic and not the mode/fallback/state path that failed,
+- key names, raw/effective values, issue-object provenance, or rendered status are asserted rather than traced,
+- database-mode evidence is used to prove fixture-mode or fallback behavior without a direct test.
+
+Reviewer must verify that tests prove the failing path and that the smallest fix is applied at the proven failing layer.
+
 ## Process Compliance
 
 Flag workflow violations when agents:

@@ -35,6 +35,20 @@ Prioritize:
 - cross-contact/cross-row value leakage,
 - overclaimed E2E coverage that masks real product risk.
 
+## Deep Bug / Shallow Analysis Risk
+
+For non-trivial or cross-layer bugs, flag P1 process or product risk when shallow analysis could leave the reviewer misled even though a local rule/test passes.
+
+Examples:
+- UI/status/issue/value disagreement that can affect reviewer decisions.
+- A fix proves a validation rule but not the path that skipped or corrupted the rule.
+- Database-mode evidence is used to claim fixture-mode/fallback behavior is safe.
+- Stale fixture/persisted metadata may override freshly calculated issues.
+- Export, audit, approval, or traffic-light UI signals disagree.
+- Raw/effective value provenance is unclear.
+
+Breaker should not redo routine Reviewer evidence review, but should challenge fixes that do not prove the real-use path behind a P0/P1 invariant.
+
 ## Process Checks Only When Risk-Relevant
 
 Do not duplicate routine Reviewer evidence review. Check process only when it affects commit readiness or P0/P1 risk:

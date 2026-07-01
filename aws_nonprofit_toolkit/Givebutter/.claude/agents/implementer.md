@@ -35,6 +35,18 @@ Do not start by editing. First identify:
 
 If the task is assessment-only, report that assessment-only work must be executed directly by Orchestrator and return control.
 
+## Deep Bug Implementation Boundary
+
+For non-trivial or cross-layer bugs, do not edit until the failing layer has been identified using the `SKILL.md` Deep Bug Analysis Rule.
+
+If invoked without trace evidence for a bug involving UI/status mismatch, validation/normalization, fixture vs database mode, fallback behavior, raw vs effective values, stale metadata, field/key mapping, async/browser state, approval/export/audit disagreement, E2E flakes, or workflow/process safety:
+- stop,
+- do not inspect broadly,
+- do not guess a plausible fix,
+- request a trace-first assessment from Orchestrator.
+
+When implementing after trace evidence exists, fix the proven failing layer only. The test must cover the failing path, not merely a nearby rule.
+
 ## Scope Boundaries by Lane
 
 - **Test-only hardening:** tests only; no product/templates/routes/seed/workflow/CI changes.
