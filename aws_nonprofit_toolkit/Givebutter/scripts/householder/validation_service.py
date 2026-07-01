@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, Mapping
 import os
 
 from .repository_provider import get_import_repository
-from .issue_recalculation_service import recalculate_row_issues
+from .issue_recalculation_service import recalculate_row_issues, _validate_effective_values
 from .row_status_service import derive_row_status
 
 
@@ -66,8 +66,9 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
             except (ValueError, Exception):
                 # Fall back to fixture-provided data if batch/row not in database
                 # (e.g., when using fixture repository with synthetic row IDs)
-                # Format fixture-provided issue_type/issue_description to issues list
+                # First check if fixture has an issue_type
                 if record.get('issue_type') and not record.get('issues'):
+                    # Format fixture-provided issue_type/issue_description to issues list
                     record['issues'] = [
                         {
                             'field': record.get('issue_field', 'unknown'),
@@ -75,7 +76,24 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                             'severity': 'error' if record.get('issue_type') == 'missing-required' else 'warning'
                         }
                     ]
-                elif not record.get('issues'):
+                elif not record.get('issue_type'):
+                    # No fixture-provided issue_type; validate fixture fields to detect issues
+                    fixture_values = {
+                        'amount': record.get('amount'),
+                        'email': record.get('email'),
+                        'phone': record.get('phone'),
+                    }
+                    validation_issues = _validate_effective_values(fixture_values)
+                    record['issues'] = [
+                        {
+                            'field': issue.get('field', 'unknown'),
+                            'reason': issue.get('description', 'Issue detected'),
+                            'severity': issue.get('severity', 'warning')
+                        }
+                        for issue in validation_issues
+                    ]
+                else:
+                    # Shouldn't reach here, but be safe
                     record['issues'] = []
 
                 # Set row_status based on whether there are issues

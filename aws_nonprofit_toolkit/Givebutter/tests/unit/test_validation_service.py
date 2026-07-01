@@ -24,7 +24,7 @@ class TestValidationRow:
             date="2026-05-15",
             name="John Smith",
             email="john@example.com",
-            phone="(555) 123-4567",
+            phone="(212) 555-1234",
             amount="$500.00",
             address="123 Main St, Springfield, IL 62701",
             issue_type="format-invalid",
@@ -41,7 +41,7 @@ class TestValidationRow:
             date="2026-05-15",
             name="John Smith",
             email="john@example.com",
-            phone="(555) 123-4567",
+            phone="(212) 555-1234",
             amount="$500.00",
             address="123 Main St, Springfield, IL 62701",
             issue_type="format-invalid",
@@ -57,7 +57,7 @@ class TestValidationRow:
             date="2026-05-15",
             name="John Smith",
             email="john@example.com",
-            phone="(555) 123-4567",
+            phone="(212) 555-1234",
             amount="$500.00",
             address="123 Main St, Springfield, IL 62701",
             issue_type="format-invalid",
@@ -76,7 +76,7 @@ class TestValidationRow:
             date="2026-05-18",
             name="Mary Johnson",
             email="mary.j@company.org",
-            phone="(555) 555-5555",
+            phone="(212) 555-9999",
             amount="$750.00",
             address="321 Pine Rd, Springfield, IL 62703",
         )
@@ -97,7 +97,7 @@ class TestValidationPageViewModel:
                 date="2026-05-15",
                 name="John Smith",
                 email="john@example.com",
-                phone="(555) 123-4567",
+                phone="(212) 555-1234",
                 amount="$500.00",
                 address="123 Main St, Springfield, IL 62701",
                 issue_type="format-invalid",
@@ -125,7 +125,7 @@ class TestValidationPageViewModel:
                 date="2026-05-15",
                 name="John Smith",
                 email="john@example.com",
-                phone="(555) 123-4567",
+                phone="(212) 555-1234",
                 amount="$500.00",
                 address="123 Main St, Springfield, IL 62701",
                 issue_type="format-invalid",
@@ -168,7 +168,7 @@ class TestValidationPageViewModel:
                 date="2026-05-15",
                 name="John Smith",
                 email="john@example.com",
-                phone="(555) 123-4567",
+                phone="(212) 555-1234",
                 amount="$500.00",
                 address="123 Main St, Springfield, IL 62701",
             ),
@@ -377,3 +377,221 @@ class TestValidationServiceProviderWiring:
         # Verify no ORM objects
         assert not hasattr(result, '__table__')
         assert not hasattr(result["batch"], '__table__')
+
+
+
+
+class TestValidationServiceFixtureFallbackValidation:
+    """Test fixture-mode fallback validation when issue_type is None."""
+
+    def test_fixture_fallback_catches_negative_amount(self):
+        """Test that negative amount is caught even when fixture issue_type is None."""
+        from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
+        from scripts.householder.validation_service import get_validation_review
+        from unittest.mock import patch, MagicMock
+        
+        # Create a test row with negative amount and no fixture issue_type
+        test_row = ValidationRow(
+            id="TXN-NEG-AMT",
+            raw_import_row_id=999,  # Trigger the database path (will fail and fall back)
+            date="2026-05-20",
+            name="Negative Amount Test",
+            email="valid@example.com",
+            phone="(212) 555-1234",
+            amount="-100.00",
+            address="123 Test St, Springfield, IL 62701",
+            issue_type=None,
+            issue_description=None,
+        )
+        
+        test_vm = ValidationPageViewModel(
+            batch_id="IMP-TEST-NEG",
+            filename="test_negative.csv",
+            progress=50,
+            validation_rows=(test_row,),
+            validation_issues_count=1,
+            total_records=1,
+        )
+        
+        # Mock the repository to return our test data
+        with patch('scripts.householder.validation_service.get_import_repository') as mock_get_repo:
+            mock_repo = MagicMock()
+            mock_repo.get_validation.return_value = test_vm
+            mock_get_repo.return_value = mock_repo
+            
+            # Call get_validation_review
+            result = get_validation_review("IMP-TEST-NEG")
+            
+            # Verify the negative amount was caught
+            issues = result['validation_issues'][0]['issues']
+            assert len(issues) > 0, "Expected issues to be detected for negative amount"
+            assert any('amount' in issue['field'].lower() for issue in issues), \
+                f"Expected amount issue but got: {issues}"
+            
+            # Verify row status is Blocking (not "No issues")
+            row_status = result['validation_issues'][0]['row_status']
+            assert row_status == 'Blocking', f"Expected 'Blocking' but got '{row_status}'"
+
+    def test_fixture_fallback_catches_invalid_email(self):
+        """Test that invalid email is caught even when fixture issue_type is None."""
+        from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
+        from scripts.householder.validation_service import get_validation_review
+        from unittest.mock import patch, MagicMock
+        
+        # Create a test row with invalid email and no fixture issue_type
+        test_row = ValidationRow(
+            id="TXN-BAD-EMAIL",
+            raw_import_row_id=998,
+            date="2026-05-21",
+            name="Bad Email Test",
+            email="not-an-email",  # Missing @domain
+            phone="(212) 555-1234",
+            amount="$500.00",
+            address="123 Test St, Springfield, IL 62701",
+            issue_type=None,
+            issue_description=None,
+        )
+        
+        test_vm = ValidationPageViewModel(
+            batch_id="IMP-TEST-BAD-EMAIL",
+            filename="test_bad_email.csv",
+            progress=50,
+            validation_rows=(test_row,),
+            validation_issues_count=1,
+            total_records=1,
+        )
+        
+        # Mock the repository to return our test data
+        with patch('scripts.householder.validation_service.get_import_repository') as mock_get_repo:
+            mock_repo = MagicMock()
+            mock_repo.get_validation.return_value = test_vm
+            mock_get_repo.return_value = mock_repo
+            
+            # Call get_validation_review
+            result = get_validation_review("IMP-TEST-BAD-EMAIL")
+            
+            # Verify the invalid email was caught
+            issues = result['validation_issues'][0]['issues']
+            assert len(issues) > 0, "Expected issues to be detected for invalid email"
+            assert any('email' in issue['field'].lower() for issue in issues), \
+                f"Expected email issue but got: {issues}"
+            
+            # Verify row status is Blocking
+            row_status = result['validation_issues'][0]['row_status']
+            assert row_status == 'Blocking', f"Expected 'Blocking' but got '{row_status}'"
+
+    def test_fixture_fallback_catches_missing_amount(self):
+        """Test that missing amount is caught even when fixture issue_type is None."""
+        from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
+        from scripts.householder.validation_service import get_validation_review
+        from unittest.mock import patch, MagicMock
+        
+        # Create a test row with missing amount and no fixture issue_type
+        test_row = ValidationRow(
+            id="TXN-NO-AMT",
+            raw_import_row_id=997,
+            date="2026-05-22",
+            name="Missing Amount Test",
+            email="valid@example.com",
+            phone="(212) 555-1234",
+            amount="",  # Empty amount
+            address="123 Test St, Springfield, IL 62701",
+            issue_type=None,
+            issue_description=None,
+        )
+        
+        test_vm = ValidationPageViewModel(
+            batch_id="IMP-TEST-NO-AMT",
+            filename="test_no_amount.csv",
+            progress=50,
+            validation_rows=(test_row,),
+            validation_issues_count=1,
+            total_records=1,
+        )
+        
+        # Mock the repository to return our test data
+        with patch('scripts.householder.validation_service.get_import_repository') as mock_get_repo:
+            mock_repo = MagicMock()
+            mock_repo.get_validation.return_value = test_vm
+            mock_get_repo.return_value = mock_repo
+            
+            # Call get_validation_review
+            result = get_validation_review("IMP-TEST-NO-AMT")
+            
+            # Verify the missing amount was caught
+            issues = result['validation_issues'][0]['issues']
+            assert len(issues) > 0, "Expected issues to be detected for missing amount"
+            assert any('amount' in issue['field'].lower() for issue in issues), \
+                f"Expected amount issue but got: {issues}"
+            
+            # Verify row status is Blocking
+            row_status = result['validation_issues'][0]['row_status']
+            assert row_status == 'Blocking', f"Expected 'Blocking' but got '{row_status}'"
+
+    def test_fixture_fallback_valid_row_still_no_issues(self):
+        """Test that valid fixture rows with issue_type=None still render as 'No issues'."""
+        from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
+        from scripts.householder.validation_service import get_validation_review
+        from unittest.mock import patch, MagicMock
+        
+        # Create a test row with valid data and no fixture issue_type
+        test_row = ValidationRow(
+            id="TXN-VALID",
+            raw_import_row_id=996,
+            date="2026-05-23",
+            name="Valid Row Test",
+            email="valid@example.com",
+            phone="(212) 555-1234",
+            amount="$250.00",
+            address="123 Test St, Springfield, IL 62701",
+            issue_type=None,
+            issue_description=None,
+        )
+        
+        test_vm = ValidationPageViewModel(
+            batch_id="IMP-TEST-VALID",
+            filename="test_valid.csv",
+            progress=50,
+            validation_rows=(test_row,),
+            validation_issues_count=0,
+            total_records=1,
+        )
+        
+        # Mock the repository to return our test data
+        with patch('scripts.householder.validation_service.get_import_repository') as mock_get_repo:
+            mock_repo = MagicMock()
+            mock_repo.get_validation.return_value = test_vm
+            mock_get_repo.return_value = mock_repo
+            
+            # Call get_validation_review
+            result = get_validation_review("IMP-TEST-VALID")
+            
+            # Verify no issues were detected
+            issues = result['validation_issues'][0]['issues']
+            assert len(issues) == 0, f"Expected no issues for valid row but got: {issues}"
+            
+            # Verify row status is "No issues"
+            row_status = result['validation_issues'][0]['row_status']
+            assert row_status == 'No issues', f"Expected 'No issues' but got '{row_status}'"
+
+    def test_fixture_fallback_existing_row_txn004_still_valid(self):
+        """Test that existing TXN-004 (Mary Johnson) still renders as 'No issues'."""
+        # This verifies that the fallback validation doesn't break existing behavior
+        result = get_validation_review("IMP-2025-0101-A")
+        
+        # Find TXN-004
+        row_004 = None
+        for issue in result['validation_issues']:
+            if issue['id'] == 'TXN-004':
+                row_004 = issue
+                break
+        
+        assert row_004 is not None, "TXN-004 not found in validation results"
+        
+        # Verify it still has no issues (valid data, issue_type=None)
+        assert len(row_004['issues']) == 0, \
+            f"TXN-004 should have no issues but got: {row_004['issues']}"
+        
+        # Verify row status is "No issues"
+        assert row_004['row_status'] == 'No issues', \
+            f"TXN-004 should have 'No issues' status but got '{row_004['row_status']}'"

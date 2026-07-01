@@ -35,7 +35,7 @@ CONTACTS = [
         'date': '2026-05-15',
         'name': 'John Smith',
         'email': 'john@example.com',
-        'phone': '(555) 123-4567',
+        'phone': '(212) 555-1234',
         'amount': '$500.00',
         'address': '123 Main St, Springfield, IL 62701',
         'issue_type': 'format-invalid',
@@ -46,7 +46,7 @@ CONTACTS = [
         'date': '2026-05-16',
         'name': 'Jane Doe',
         'email': 'jane.doe@email.com',
-        'phone': '(555) 987-6543',
+        'phone': '(212) 555-5678',
         'amount': '$1,250.00',
         'address': '456 Oak Ave, Springfield, IL 62702',
         'issue_type': 'missing-required',
@@ -57,7 +57,7 @@ CONTACTS = [
         'date': '2026-05-17',
         'name': 'Robert Smith',
         'email': 'rsmith@email.com',
-        'phone': '555-123-4567',
+        'phone': '212-555-1234',
         'amount': '$250.00',
         'address': '789 Elm St, Springfield IL',
         'issue_type': 'format-invalid',
@@ -68,7 +68,7 @@ CONTACTS = [
         'date': '2026-05-18',
         'name': 'Mary Johnson',
         'email': 'mary.j@company.org',
-        'phone': '(555) 555-5555',
+        'phone': '(212) 555-9999',
         'amount': '$750.00',
         'address': '321 Pine Rd, Springfield, IL 62703',
         'issue_type': None,
@@ -79,7 +79,7 @@ CONTACTS = [
         'date': '2026-05-19',
         'name': 'Michael Brown',
         'email': 'mbrown@email.com',
-        'phone': '(555) 444-3333',
+        'phone': '(212) 555-8765',
         'amount': '$2,000.00',
         'address': '654 Maple Dr, Springfield, IL 62704',
         'issue_type': 'missing-required',
@@ -98,14 +98,14 @@ DUPLICATE_CANDIDATES = [
             'id': 'P-001',
             'name': 'John Smith',
             'email': 'john@example.com',
-            'phone': '(555) 123-4567',
+            'phone': '(212) 555-1234',
             'address': '123 Main St, Springfield, IL 62701',
         },
         'contact_b': {
             'id': 'P-006',
             'name': 'John Smith',
             'email': 'jsmith@email.com',
-            'phone': '(555) 123-4567',
+            'phone': '(212) 555-1234',
             'address': '123 Main Street, Springfield, IL 62701',
         },
         'supporting_evidence': [
@@ -124,14 +124,14 @@ DUPLICATE_CANDIDATES = [
             'id': 'P-003',
             'name': 'robert smith',
             'email': 'rsmith@email.com',
-            'phone': '555-123-4567',
+            'phone': '212-555-1234',
             'address': '789 Elm St, Springfield IL',
         },
         'contact_b': {
             'id': 'P-007',
             'name': 'Robert Smith',
             'email': 'rsmith@email.com',
-            'phone': '(555) 123-4567',
+            'phone': '(212) 555-1234',
             'address': '789 Elm Street, Springfield, IL 62705',
         },
         'supporting_evidence': [
@@ -190,8 +190,8 @@ NORMALIZATION_SUGGESTIONS = [
         'id': 'NORM-002',
         'contact_name': 'Robert Smith',
         'field_name': 'Phone',
-        'original_value': '555-123-4567',
-        'suggested_value': '(555) 123-4567',
+        'original_value': '212-555-1234',
+        'suggested_value': '(212) 555-1234',
         'normalization_type': 'Format Standardization',
         'status': 'Pending',
     },
@@ -226,8 +226,8 @@ NORMALIZATION_SUGGESTIONS = [
         'id': 'NORM-006',
         'contact_name': 'Mary Johnson',
         'field_name': 'Phone',
-        'original_value': '(555) 555-5555',
-        'suggested_value': '(555) 555-5555',
+        'original_value': '(212) 555-9999',
+        'suggested_value': '(212) 555-9999',
         'normalization_type': 'No Change Needed',
         'status': 'Pending',
     },
@@ -439,4 +439,60 @@ QUEUE_STATUS = {
     'validation_issues': 8,
     'normalizations_pending': 6,
     'households_pending': 5,
+}
+
+
+# ============================================================================
+# FALLBACK VALIDATION TEST DATA (for test_validation_service.py)
+# ============================================================================
+# Rows with issue_type=None to test fixture-mode fallback validation logic.
+# These are NOT part of the main CONTACTS fixture batch; they're for unit tests only.
+# Tests that use these should create their own fixture batch or mock the repository.
+
+NEGATIVE_AMOUNT_ROW = {
+    'id': 'TXN-TEST-NEG',
+    'date': '2026-05-20',
+    'name': 'Test Negative Amount',
+    'email': 'valid@example.com',
+    'phone': '(212) 555-1234',
+    'amount': '-100.00',
+    'address': '789 Test St, Springfield, IL 62701',
+    'issue_type': None,
+    'issue_description': None,
+}
+
+INVALID_EMAIL_ROW = {
+    'id': 'TXN-TEST-BAD-EMAIL',
+    'date': '2026-05-21',
+    'name': 'Test Invalid Email',
+    'email': 'not-an-email',
+    'phone': '(212) 555-1234',
+    'amount': '$500.00',
+    'address': '790 Test St, Springfield, IL 62701',
+    'issue_type': None,
+    'issue_description': None,
+}
+
+MISSING_AMOUNT_ROW = {
+    'id': 'TXN-TEST-NO-AMT',
+    'date': '2026-05-22',
+    'name': 'Test Missing Amount',
+    'email': 'valid@example.com',
+    'phone': '(212) 555-1234',
+    'amount': '',
+    'address': '791 Test St, Springfield, IL 62701',
+    'issue_type': None,
+    'issue_description': None,
+}
+
+VALID_ROW_NO_ISSUE = {
+    'id': 'TXN-TEST-VALID',
+    'date': '2026-05-23',
+    'name': 'Test Valid Row',
+    'email': 'valid@example.com',
+    'phone': '(212) 555-1234',
+    'amount': '$250.00',
+    'address': '792 Test St, Springfield, IL 62701',
+    'issue_type': None,
+    'issue_description': None,
 }
