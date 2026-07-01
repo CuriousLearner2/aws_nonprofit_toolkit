@@ -84,8 +84,8 @@ class TestValidationRoute:
     def test_validation_contains_phone_column(self, client_with_fixture):
         """Test that validation table displays phone numbers."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
-        assert b'(212) 555-1234' in response.data
-        assert b'(212) 555-5678' in response.data
+        assert b'(415) 555-1234' in response.data
+        assert b'(415) 555-5678' in response.data
 
     def test_validation_contains_amount_column(self, client_with_fixture):
         """Test that validation table displays amounts."""

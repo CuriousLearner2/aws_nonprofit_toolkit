@@ -862,7 +862,7 @@ class TestDatabaseGetValidation:
                 first_name='John',
                 last_name='Smith',
                 email='john@example.com',
-                phone='(212) 555-1234',
+                phone='(415) 555-1234',
                 address_line1='123 Main St',
                 city='Springfield',
                 state='IL',
@@ -888,7 +888,7 @@ class TestDatabaseGetValidation:
                 first_name='Robert',
                 last_name='Smith',
                 email='rsmith@email.com',
-                phone='212-555-1234',
+                phone='(415) 555-1234',
                 address_line1='789 Elm St',
                 city='Springfield',
                 state='IL',
@@ -1143,7 +1143,7 @@ class TestDatabaseGetValidation:
         john_row = result.validation_rows[0]
         assert john_row.name == 'John Smith'
         assert john_row.email == 'john@example.com'
-        assert john_row.phone == '(212) 555-1234'
+        assert john_row.phone == '(415) 555-1234'
         assert john_row.amount == '$500.00'
         assert john_row.issue_type == 'format-invalid'
         assert john_row.issue_description == 'Phone number format invalid'
@@ -1605,14 +1605,14 @@ class TestDatabaseGetDuplicates:
                         'id': 'P-001',
                         'name': 'John Smith',
                         'email': 'john@example.com',
-                        'phone': '(212) 555-1234',
+                        'phone': '(415) 555-1234',
                         'address': '123 Main St, Springfield, IL 62701',
                     },
                     'contact_b': {
                         'id': 'P-006',
                         'name': 'John Smith',
                         'email': 'jsmith@email.com',
-                        'phone': '(212) 555-1234',
+                        'phone': '(415) 555-1234',
                         'address': '123 Main Street, Springfield, IL 62701',
                     },
                     'supporting_evidence': [
@@ -1639,14 +1639,14 @@ class TestDatabaseGetDuplicates:
                         'id': 'P-003',
                         'name': 'robert smith',
                         'email': 'rsmith@email.com',
-                        'phone': '212-555-1234',
+                        'phone': '(415) 555-1234',
                         'address': '789 Elm St, Springfield IL',
                     },
                     'contact_b': {
                         'id': 'P-007',
                         'name': 'Robert Smith',
                         'email': 'rsmith@email.com',
-                        'phone': '(212) 555-1234',
+                        'phone': '(415) 555-1234',
                         'address': '789 Elm Street, Springfield, IL 62705',
                     },
                     'supporting_evidence': [
@@ -1820,7 +1820,7 @@ class TestDatabaseGetDuplicates:
         assert contact_a.id == 'P-001'
         assert contact_a.name == 'John Smith'
         assert contact_a.email == 'john@example.com'
-        assert contact_a.phone == '(212) 555-1234'
+        assert contact_a.phone == '(415) 555-1234'
         assert contact_a.address == '123 Main St, Springfield, IL 62701'
 
     def test_get_duplicates_contact_b_fields(self, temp_db_with_duplicates_data):
@@ -1833,7 +1833,7 @@ class TestDatabaseGetDuplicates:
         assert contact_b.id == 'P-006'
         assert contact_b.name == 'John Smith'
         assert contact_b.email == 'jsmith@email.com'
-        assert contact_b.phone == '(212) 555-1234'
+        assert contact_b.phone == '(415) 555-1234'
         assert contact_b.address == '123 Main Street, Springfield, IL 62701'
 
     def test_get_duplicates_supporting_evidence(self, temp_db_with_duplicates_data):
