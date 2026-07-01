@@ -4,24 +4,40 @@ description: Orchestrates a disciplined Householder / DonorTrust bug-fix loop us
 allowed-tools: Read, Grep, Glob, Bash, Task
 ---
 
+# Householder Debug Skill
+
+This is the canonical workflow policy for the Householder / DonorTrust project. Agent files are role-specific summaries and must not override this file.
+
+## Start Here / Priority Order
+
+Apply rules in this order:
+
+1. **Task contract first.** Classify task, lane, allowed files/actions, required agents, gates, and terminal state before meaningful work.
+2. **Project invariants always win.** The system suggests. The reviewer decides. Raw data stays unchanged.
+3. **Failed gates stop immediately.** No diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without new human authorization.
+4. **Required handoffs are actions.** Passing gates means invoke required Reviewer/Breaker; `Ready for Reviewer` is not terminal.
+5. **Non-accept verdicts are terminal.** Reviewer `Request changes` / `Reject` and Breaker `P1/P0/FAIL` require a new human-authorized remediation task.
+6. **Commit and push remain separate.** Auto-commit requires the exact phrase `Happy-path auto-commit: enabled`; push requires separate explicit authorization.
+
 ## RED RULES — ALWAYS OBEY
 
 1. **Assessment-only:** Orchestrator performs it directly. No child agents, no edits, and stop at the assessment report.
-2. **Any failed, hung, timed-out, interrupted, or exit-143 gate:** stop immediately. No diagnosis, retry, split, second fix, Reviewer, commit, or push without human authorization.
-3. **E2E gates require explicit wall-clock timeouts:** 90s single test, 180s full file, 90s per reliability iteration. Multi-test pytest gates must use `-x` or `--maxfail=1`.
+2. **Any failed, hung, timed-out, interrupted, unusable/truncated, or exit-143 gate:** stop immediately. No diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without human authorization.
+3. **E2E gates require explicit wall-clock timeouts:** 90s single test, 180s full file, 90s per reliability iteration unless a stricter task-specific gate is declared. Multi-test pytest gates must use `-x` or `--maxfail=1`.
 4. **Timeout equals failed gate.** Treat it exactly like a test failure and deliver a failed-gate stop report.
-5. **Rewritten E2E tests require hard assertions.** No soft guards, no `if element: assert ...`, no zombie tests, and no page-load-only replacement coverage.
+5. **Rewritten E2E tests require hard assertions.** No soft guards, no `if element: assert ...`, no print/networkidle-only success, no zombie tests, and no page-load-only replacement coverage.
 6. **Reviewer handoff:** For implementation flows requiring review, Implementer stops at ready-for-review and Orchestrator invokes Reviewer after passing gates. Do not invoke Reviewer for assessment-only, push-only, or status-only tasks unless explicitly required.
-7. **Terminal states stop:** assessment report, failed-gate report, cleanup completed, Reviewer verdict, commit, and push. Do not auto-start the next task.
-8. **Breaker is concrete-risk-based, not routine.** Invoke only for concrete P0/P1 invariant or process-integrity risk, or when the human asks.
+7. **Terminal states stop:** assessment report, failed-gate report, cleanup completed, non-accept Reviewer verdict, Breaker P1/P0/FAIL, commit, and push. Do not auto-start the next task.
+8. **Breaker is concrete-risk-based, not routine.** Invoke only for concrete P0/P1 invariant or process-integrity risk, when Lane D/product risk requires it, or when the human asks.
 
 ## Mandatory Task Contract
 
-Before any meaningful work, Orchestrator must instantiate this contract with explicit yes/no answers:
+Before meaningful work, Orchestrator must instantiate this contract with explicit yes/no answers:
 
 ```text
 Task contract:
 - Task type: Assessment only / Implementation only / Commit preparation / Push only
+- Pre-authorized lane: Assessment-only / test-only hardening / workflow/CI automation / product/invariant hardening / Push only / none
 - Allowed actions:
 - Forbidden actions:
 - Files in scope:
@@ -40,76 +56,118 @@ Task contract:
 
 Rules:
 - Do not proceed until the contract is written.
-- Do not use generic phrases such as `Reviewer mandatory`; state whether Reviewer is required for this specific task.
+- If any field is uncertain, stop and ask or classify as assessment-only.
 - If the task is assessment-only, push-only, or status-only, Reviewer must be `no` unless explicitly required by the human.
 - If the task is an implementation flow requiring review, Reviewer must be `yes`, and Orchestrator must invoke Reviewer after passing gates.
-- If any field is uncertain, stop and ask or classify as assessment-only.
+- Lane classification must match an exact lane trigger phrase; do not infer a lane.
 
-# Householder Debug Skill
+## Core Project Invariants
 
-Use this skill for Householder / DonorTrust bug fixes, review-screen issues, autosave issues, validation issues, approval/export issues, E2E issues, workflow/docs updates, and small scoped implementation changes.
+The system suggests. The reviewer decides. Raw data stays unchanged.
 
-## Operating model
+Hard boundaries:
+- No CRM/Givebutter API calls or writeback.
+- No credentials, auth/RBAC changes, background jobs, bulk actions, or new export formats.
+- No raw source-data mutation.
+- No contact merge/delete, household_id assignment, cross-import matching, or master contacts/households.
+- Preserve append-only audit behavior.
+- Do not change schema/migrations unless explicitly authorized.
+- Do not approve broad unrelated refactors.
 
-The workflow is deliberately simple:
+## Laptop/Desktop Product Scope
+
+The Householder / DonorTrust app is intended for web/laptop/desktop use only. Mobile and tablet viewport support are out of product scope unless the human explicitly authorizes them.
+
+Agents must not recommend mobile/tablet viewport coverage as a default hardening task, and must not create mobile/tablet E2E coverage, responsive-design tasks, or responsive CSS/template work unless explicitly authorized. Standard browser-visible coverage should assume normal laptop/desktop browser use. This does not prevent fixing layout or usability issues that affect normal laptop/desktop browser use.
+
+## Source of Truth
+
+Repo-local workflow files are authoritative:
 
 ```text
-Classify → declare gate → make one proof step → verify gate → stop or proceed
+.claude/skills/householder-debug/SKILL.md
+.claude/agents/orchestrator.md
+.claude/agents/implementer.md
+.claude/agents/reviewer.md
+.claude/agents/breaker.md
+.claude/agents/product-ux-gatekeeper.md
 ```
 
-Do not drift into open-ended debugging. Do not reinterpret failed gates as partial success.
+Global files under `~/.claude/` are optional mirrors only. Do not modify workflow files during product implementation. Workflow-file edits are handled by ChatGPT unless the human explicitly authorizes a Claude workflow-configuration task.
 
-## Core non-negotiables
+## Pre-authorized Workflow Lanes
 
-These rules are intentionally short and high-priority. Apply them before lower-level workflow details.
+Lanes define maximum allowed scope and approval flow. They do not bypass gates, Reviewer, Breaker, lane scope, exact scope, or terminal-state rules.
 
-1. **Assessment-only means direct execution.** If a task is classified as Assessment only, Orchestrator must perform it directly in the current context. Do not spawn child agents, nested Orchestrators, Implementers, Reviewers, Breakers, or Product UX Gatekeeper unless the human prompt explicitly authorizes that handoff.
-2. **Assessment-only stops at the report.** Inspect, run bounded commands, collect evidence, recommend one next task, and stop. Do not debug, repair, split, retry, optimize, or implement.
-3. **Implementation gates flow to Reviewer.** After an implementation gate passes and review is required, Orchestrator must invoke Reviewer immediately. `Ready for Reviewer` is not a terminal state unless the human requested preparation-only or Reviewer invocation is unavailable/failed and reported.
-4. **Terminal states are hard stops.** Assessment delivered, failed-gate report delivered, cleanup completed, Reviewer verdict delivered, commit completed, and push completed are terminal states. Do not start the next logical task without explicit human authorization. A passing implementation gate is not a terminal state when Reviewer is required; deliver the Reviewer verdict first.
-5. **Breaker is risk-based.** Invoke Breaker only for concrete P0/P1 invariant or process-integrity risk, or when the human asks. Do not use Breaker as routine extra review.
+**Lane A — Assessment only**
+- Trigger: `Task type: Assessment only`
+- No edits, no child agents, stop at assessment report.
 
+**Lane B — Test-only hardening**
+- Trigger: `Pre-authorized lane: test-only hardening`
+- Allowed: explicit test files only.
+- No product code, templates, routes, workflow files, CI scripts, or schema changes.
+- Flow: implementation → gates → Reviewer → commit if clean and auto-commit enabled.
 
-## Instruction Compliance Gate
+**Lane C — Workflow/CI automation**
+- Trigger: `Pre-authorized lane: workflow/CI automation`
+- Allowed: explicit `.claude/**`, `.github/**`, `scripts/ci/**`, and related tests only.
+- No product code.
+- Flow: implementation → gates → Reviewer → commit if clean and auto-commit enabled.
 
-Before beginning meaningful work, instantiate the Mandatory Task Contract above. Do not use a shortened version; include the explicit yes/no fields for Product UX Gatekeeper, Reviewer, Breaker, and E2E timeout.
+**Lane D — Product/invariant hardening**
+- Trigger: `Pre-authorized lane: product/invariant hardening`
+- Scope: explicit per task; may include product/test/docs.
+- Product UX Gatekeeper required when visible behavior/semantics are ambiguous.
+- Breaker required after Reviewer Accept for concrete P0/P1 invariant risk, export/audit/raw-data risk, or when declared in the task.
+- Flow: implementation → gates → Reviewer → Breaker if required → commit if clean and auto-commit enabled.
 
-Follow the narrowest reasonable interpretation of the human's instructions.
+**Lane E — Push only**
+- Trigger: `Task type: Push only`
+- No edits or new commits; push only if explicitly authorized.
 
-If a command failure, hang, timeout, interruption, unusable/truncated output, or exit `143` matches a declared stop condition, stop command execution and report partial evidence. Do not rerun, debug, split, repair, recover, optimize, or work around the failure unless the human explicitly authorizes that recovery work.
+Intentional tradeoff: `Happy-path auto-commit: enabled` is required for all lanes, including Lane B/C. This preserves safety over speed because test-only/workflow-only tasks can still create false confidence, evidence gaps, or process drift.
 
-For assessment-only tasks, failure evidence is valid evidence. Do not convert an assessment into implementation, debugging, output-capture repair, optimization, or process management.
+## Repository Automation Guardrails
 
-### One-shot assessment rule
+Run guardrails in this order for implementation and commit-prep flows:
 
-For assessment-only tasks, each explicitly listed command may be run at most once unless the human explicitly authorizes retries.
+**A. Artifact Guard**
+```bash
+python scripts/ci/check_no_artifacts.py
+```
 
-If an assessment command fails, hangs, times out, exits `143`, is interrupted, or produces unusable/truncated output:
+**B. Lane Scope Guard**
+```bash
+python scripts/ci/check_lane_scope.py --lane <lane>
+```
+Lane mapping: `assessment`, `test-only`, `workflow-ci`, `product`, `push-only`. If it fails, stop and report; do not recategorize, clean up, or continue without human authorization.
 
-- mark that command's evidence unavailable or unreliable,
-- do not rerun it,
-- do not try alternate output capture,
-- do not start or poll background jobs,
-- do not split the suite or narrow the command,
-- do not inspect files to debug the command failure,
-- proceed directly to the assessment report using reliable evidence already captured.
+**C. Scope Guard**
+```bash
+python scripts/ci/check_scope.py --allow <expected file> ...
+```
+Must list each expected changed file explicitly. Do not use broad patterns like `--allow tests/**`, `.claude/**`, or `**` unless explicitly authorized.
 
-### No recovery work in assessment
+**D. Test Gate Wrapper**
+```bash
+python scripts/ci/test_gate.py --timeout N -- pytest <args>
+```
+Required for unit, integration, and targeted non-E2E pytest gates in implementation flows. Timeout exit code 124 is a failed gate.
 
-In assessment-only tasks, recovery work is out of scope unless explicitly requested.
+**E. E2E Gate Wrapper**
+```bash
+python scripts/ci/e2e_gate.py --timeout N -- pytest <args>
+```
+Required for E2E gates. Multi-test E2E gates must use `-x` or `--maxfail=1`.
 
-Do not improve command structure, add timeouts, change shell redirection, change fixture strategy, modify output capture, split test batches, or investigate why a command failed. Report the failure as part of the assessment baseline.
+## Gate Rules
 
+A declared gate is binary. It passes only when the declared command exits 0. If it exits nonzero, hangs, times out, exits 143, is interrupted, or produces unusable/truncated output, it failed unless the task was explicitly assessment-only or failures are proven pre-existing and unrelated with baseline evidence.
 
-### Failed-gate evidence boundary and post-failure command freeze
+After a failed gate: stop command execution, do not inspect/grep/rerun/split/diagnose/repair/continue, do not invoke Reviewer/Breaker, and do not commit or push.
 
-After any declared gate fails, hangs, times out, exits `143`, is interrupted, or produces unusable/truncated output, stop command execution immediately.
-
-The agent may report only the failed command output already produced and the mechanical stop-report fields required by this workflow. Do not run new commands, inspect additional files, grep for root cause, open related fixtures, diagnose beyond the failed command output, revise the gate, rerun, split, debug, repair, recover, or recommend keeping the change as correct unless the human explicitly authorizes a rescope/debug task.
-
-When a declared acceptance gate fails, the implementation is not accepted. Do not claim the change is correct, ready for Reviewer, ready for commit, or should be kept. Report only the available options: revert, preserve unstaged pending human-authorized rescope, or authorize a new investigation/implementation task.
-
-A failed-gate stop report must stay mechanical:
+Failed-gate report:
 
 ```text
 Failed Gate Stop Report
@@ -122,6 +180,7 @@ Modified files:
 Gate accepted? no
 Failed-first-fix triggered? yes/no
 Reviewer allowed? no
+Breaker allowed? no
 Commit allowed? no
 Push allowed? no
 No further diagnosis performed because the gate failed.
@@ -131,586 +190,124 @@ Next human choices:
 3. Authorize a new implementation/debug task
 ```
 
-### E2E fail-fast rules
+## E2E Proof-Step Rules
 
-E2E tests are slow (5-10 seconds per test, ~30 seconds for a suite) and async-heavy. To prevent 20–30 minute timeouts during failed rewrites, enforce fail-fast discipline:
-
-**Explicit timeout requirement:**
-- Every E2E command used as a gate must declare an explicit timeout and, when running more than one test, should include pytest stop-on-first-failure (`-x` or `--maxfail=1`).
-- Single-test proof: max 90 seconds.
-- Full-file gate: max 180 seconds.
-- Reliability loop iteration: max 90 seconds.
-- If a command hangs or exceeds its timeout, that is a failed gate.
-
-**Stop-on-first-failure (mandatory):**
-- Run each rewritten test individually under timeout before running full-file.
-- Full-file gates should be run with pytest stop-on-first-failure (`-x` or `--maxfail=1`) plus the explicit wall-clock timeout, so they do not continue past the first failing test.
-- Reliability loops (multi-run gates) stop on the first failed or timed-out iteration; each pytest invocation in the loop should also use `-x` or `--maxfail=1` when running more than one test.
-- Do not continue to pre-commit gate, Reviewer invocation, or any downstream gate if any E2E command failed or timed out.
-
-**Hard assertions only:**
-- No soft assertions (`if element: assert ...` or conditional early returns).
-- No page-load-only replacement coverage (tests must meaningfully verify current product behavior).
-- No zombie deferred tests that pass without testing anything.
-- If current product behavior cannot be proven deterministically within the timeout, report product/test mismatch and stop instead of weakening the test.
-
-**Rewritten test preconditions:**
-- Every rewritten E2E test must use hard selector preconditions (verify expected elements exist before interaction).
-- Selector waits must be short (5 seconds max) and fail explicitly if the element does not appear.
-
-### Shared-fixture gate rule
-
-Before declaring or running a multi-file gate for a shared fixture/helper change, verify that every file in the gate actually uses the intended shared fixture path.
-
-If fixture/helper usage is unclear, use collect-only or a single-file proof gate first. Do not mix files with local subprocess fixtures, different ports, different app/database fixture paths, or unknown startup semantics in the same acceptance gate unless that broader fixture architecture work is explicitly authorized by the human.
-
-## Source of truth
-
-Repo-local workflow files are authoritative for this project:
+For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, use:
 
 ```text
-.claude/skills/householder-debug/SKILL.md
-.claude/agents/orchestrator.md
-.claude/agents/implementer.md
-.claude/agents/reviewer.md
-.claude/agents/breaker.md
-.claude/agents/product-ux-gatekeeper.md
+Assessment → one-test proof → small batch → whole file → reliability evidence → Reviewer
 ```
 
-Global files under `~/.claude/` are optional mirrors only and must not override repo-local files.
+Rules:
+- Prove one representative test before modifying a whole E2E file.
+- Do not re-plan/re-run passed stages unless evidence is stale, scope changed, a gate failed/flaked, or a new concrete risk appears.
+- Every rewritten E2E test must use hard selector preconditions and hard assertions.
+- Reliability loops must use explicit timeout, fail-fast, and stop on first failure.
+- If product behavior cannot be proven deterministically, report product/test mismatch and stop instead of weakening the test.
 
-Do not create, move, overwrite, or modify Claude workflow/configuration files during product implementation. For this project, workflow-file edits are handled by ChatGPT unless the human explicitly authorizes a Claude workflow-configuration task.
+## Required Handoff State Machine
 
-## Core project principle
+```text
+Implementer ready-for-review + gates passed
+→ Orchestrator invokes Reviewer
+→ Reviewer Accept?
+   no: stop (Request changes/Reject is terminal)
+   yes: Breaker required?
+       no: commit if auto-commit eligible
+       yes: Orchestrator invokes Breaker
+           Breaker PASS/P2 follow-up only?
+              no: stop (Breaker P1/P0/FAIL is terminal)
+              yes: commit if auto-commit eligible
+→ commit completed is terminal
+```
 
-The system suggests. The reviewer decides. Raw data stays unchanged.
+Non-terminal status phrases:
+- `Ready for Reviewer`
+- `Ready for review`
+- `Review Packet prepared`
+- `Awaiting Reviewer verification`
+- `Implementation complete`
+- `Ready for Reviewer + Breaker verification`
+- `Reviewer task started but verdict not reported`
+- `Breaker required but not invoked`
 
-Hard guardrails:
+If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns clean Accept and Breaker is required, invoke Breaker. These are required actions, not optional human approvals.
 
-- No CRM/Givebutter API calls or writeback.
-- No credentials, auth/RBAC changes, background jobs, bulk actions, or new export formats.
-- No raw source-data mutation.
-- No contact merge/delete, household_id assignment, cross-import matching, or master contacts/households.
-- Preserve append-only audit behavior.
-- Do not change schema/migrations unless explicitly authorized.
-- Do not approve broad unrelated refactors.
+## Reviewer Request Changes / Reject Boundary
 
-## Laptop/Desktop Product Scope
+Reviewer `Request changes` and `Reject` are terminal states for the current task. They are not permission to return to Implementer, apply an obvious fix, expand scope, rerun gates, invoke Breaker, commit, or push.
 
-The Householder / DonorTrust app is intended for web/laptop/desktop use only.
+Any remediation requires a new explicit human-authorized task. If remediation touches files outside the prior expected-file allowlist, the new human authorization must name the expanded files.
 
-Mobile and tablet viewport support are out of product scope unless the human explicitly authorizes them. Agents must not recommend mobile/tablet viewport coverage as a default hardening task, and must not create mobile/tablet E2E coverage, responsive-design tasks, or responsive CSS/template work unless explicitly authorized by the human.
+## Breaker P1/P0/FAIL Boundary
 
-Standard browser-visible coverage should assume normal laptop/desktop browser use, such as existing desktop viewport conventions. If an assessment identifies mobile/tablet or responsive work as a possible gap, report it as out of scope and recommend a laptop/desktop-relevant alternative instead.
+Breaker `P1 found`, `P0 found`, or `FAIL` blocks commit. Do not fix, rerun, or commit until the human explicitly authorizes a new remediation task. Breaker PASS or P2 follow-up only may proceed to commit if Reviewer accepted and commit gates are satisfied.
 
-This does not prevent fixing layout or usability issues that affect normal laptop/desktop browser use.
+## Product UX Gatekeeper Triggers
 
+Invoke Product UX Gatekeeper when a real product/UX decision is unresolved. Deterministic triggers:
+- new visible control,
+- changed control label,
+- changed status/warning/blocker semantics,
+- approval/export behavior change,
+- notes required vs optional,
+- navigation after a reviewer decision,
+- disabling/hiding/removing visible controls,
+- Defer vs Skip or system state vs human disposition choices,
+- confirmation/checkbox/modal behavior,
+- any “should/how/best UX/would it be better” question.
 
-## Pre-authorized workflow lanes
+Do not invoke Product UX Gatekeeper for mechanical implementation of an already-approved decision, code correctness, docs-only, test-only, commit-prep, or push-only work unless a concrete product ambiguity remains. Product UX approval does not bypass Reviewer, Breaker, commit, or push gates.
 
-Pre-authorized lanes define maximum allowed scope and required approval flow, but do not bypass gates or reduce safety:
+## Review Levels
 
-**Lane A — Assessment only**
-- Trigger: `Task type: Assessment only` in task contract
-- No edits, no child agents, stop at report
-- Never auto-continues; always terminal
+**Level 1 Fast Review** — docs-only, workflow-only, test-only, or tiny low-risk changes with complete evidence. Delta review only.
 
-**Lane B — Test-only hardening**
-- Trigger: `Pre-authorized lane: test-only hardening` in task contract
-- Allowed: tests/** only; no product code
-- Scope guard: explicit expected test files via `check_scope.py --allow`
-- Auto-continue: implementation → gates → Reviewer (if ACCEPT + happy-path enabled) → commit
-- No push; commit requires `Happy-path auto-commit: enabled` exact phrase
+**Level 2 Standard Review** — normal product/test changes, review-screen UI, autosave, modals, export warnings, audit visibility, and E2E infrastructure.
 
-**Lane C — Workflow/CI automation**
-- Trigger: `Pre-authorized lane: workflow/CI automation` in task contract
-- Allowed: `.claude/**`, `.github/**`, `scripts/ci/**`, and tests for CI scripts only
-- Scope guard: explicit expected files via `check_scope.py --allow`
-- Auto-continue: implementation → gates → Reviewer (if ACCEPT + happy-path enabled) → commit
-- No push; no product code; commit requires `Happy-path auto-commit: enabled` exact phrase
+**Level 3 Deep Review** — export correctness, raw-data immutability, audit integrity, state machines, persistence architecture, schema/data-model, generated CSV, or multi-file architecture.
 
-**Lane D — Product/invariant hardening**
-- Trigger: `Pre-authorized lane: product/invariant hardening` in task contract
-- Scope: explicitly declared per task (may span product/test/docs)
-- Product UX Gatekeeper: required if visible behavior or semantics are ambiguous
-- Auto-continue: implementation → gates → Reviewer (if ACCEPT) → Breaker if required (if PASS) → commit
-- No push; commit requires `Happy-path auto-commit: enabled` exact phrase
+Reviewers/Breakers report verified items, unverified items, blockers, and readiness impact. Timebox language is guidance, not a reason to skip required checks.
 
-**Lane E — Push only**
-- Trigger: `Task type: Push only` in task contract
-- No edits, no new commits; push only if explicitly authorized
-- Terminal state: after push
+## Role Ownership
 
-Lane selection rules:
-- Orchestrator must verify lane classification matches task type and scope
-- Orchestrator must NOT infer a lane without the exact phrase
-- Scope guard must use task-specific expected files, not broad lane maximums
-- Reviewer must verify lane classification and changed files fit the declared lane
-- All existing terminal-state, fail-fast, and gate rules override lane permissions
-- Auto-commit still requires `Happy-path auto-commit: enabled` exact phrase
+- **Orchestrator:** task contract, lane selection, sequencing, gates, evidence, Product UX routing, Reviewer/Breaker invocation, commit/push authorization.
+- **Implementer:** smallest safe change, test-first discipline, targeted gates, ready-for-review handoff. No staging, commit, or push.
+- **Reviewer:** implementation correctness, evidence validity, scope/lane verification, gate compliance, hard assertions, and auto-commit eligibility.
+- **Breaker:** P0/P1 adversarial invariant risks: raw data mutation, audit append-only, export correctness, approval/export bypass, failed autosave leakage, misleading UI state, and overclaimed coverage that affects readiness.
+- **Product UX Gatekeeper:** product/UX ambiguity decisions only. Human remains final product authority.
 
-### Feature Development Prompt Pattern
+## Feature Development Prompt Pattern
 
 Feature/product behavior work should normally use Orchestrator with `Pre-authorized lane: product/invariant hardening`.
 
-Feature prompts should name exact expected files whenever possible. Scope must be enforced with `scripts/ci/check_scope.py` using explicit `--allow` file paths, not broad patterns or lane-wide globs.
+Feature prompts should name exact expected files whenever possible and enforce lane scope, exact scope, bounded tests through `test_gate.py`/`e2e_gate.py`, Product UX Gatekeeper when triggers apply, Reviewer before commit, and Breaker after Reviewer Accept when P0/P1 risk exists.
 
-Product changes must protect the core invariant: **The system suggests. The reviewer decides. Raw data stays unchanged.**
+Product changes must protect: **The system suggests. The reviewer decides. Raw data stays unchanged.**
 
-Product changes must not introduce CRM/Givebutter API writeback, credentials/auth/RBAC, background jobs, bulk actions, new export formats, raw source-data mutation, contact merge/delete, `household_id` assignment, cross-import matching, master contacts/households, or schema/migration changes unless the human explicitly authorizes that scope.
+## Commit Gate
 
-Non-E2E gates must be bounded through `scripts/ci/test_gate.py`. E2E gates must be bounded through `scripts/ci/e2e_gate.py` and follow repo-local E2E fail-fast and reliability rules.
-
-Browser-visible UX changes require Product UX Gatekeeper before commit. Reviewer verdict is required before commit. Happy-path auto-commit still requires the exact phrase `Happy-path auto-commit: enabled` and clean Reviewer eligibility. Push remains separate unless explicitly authorized.
-
-
-### Reviewer completion rule for pre-authorized lanes
-
-When a pre-authorized lane permits an implementation/review/commit flow, the Reviewer handoff is not complete until the Reviewer verdict is returned and reported.
-
-The Orchestrator must complete this loop:
-
-1. Invoke Reviewer after declared gates pass.
-2. Wait for the Reviewer verdict.
-3. Report the verdict and readiness fields.
-4. If Reviewer returns clean `Accept`, `Happy-path auto-commit: enabled` is present, and commit gates are satisfied, commit only the expected files.
-5. Stop after the commit report.
-
-These are **not terminal states** for Orchestrator-led implementation/review flows:
-
-- `Ready for Reviewer`
-- `Invoking Reviewer`
-- Review Packet printed
-- Reviewer task started but verdict not reported
-
-Terminal states remain:
-
-- Reviewer verdict delivered, if auto-commit is not enabled or not eligible
-- Commit completed, if auto-commit is enabled and eligible
-- Reviewer `Request changes` / `Reject` delivered
-- Failed-gate report delivered
-
-### Reviewer verdict vs auto-commit clarification
-
-Reviewer verdict delivered is terminal only when auto-commit is not enabled or not eligible.
-
-If the task contract includes the exact phrase `Happy-path auto-commit: enabled`, and Reviewer returns clean `Accept` with `Happy-path auto-commit eligible? yes`, Orchestrator must proceed through the commit gate and commit the expected files. In that case, commit completed is the terminal state.
-
-Do not stop after Reviewer `Accept` when happy-path auto-commit is enabled and eligible, unless a commit gate fails, an unexpected file/scope issue appears, or another commit-readiness blocker is reported.
-
-
-### Reviewer Request changes / Reject fix-loop boundary
-
-Reviewer `Request changes` and Reviewer `Reject` are terminal states for the current task. They are not permission to return to Implementer, apply an obvious fix, expand scope, rerun gates, invoke Breaker, commit, or push.
-
-After `Request changes` or `Reject`, Orchestrator must stop and report the verdict, blocking issues, changed files, and human choices. Any remediation requires a new explicit human-authorized task, even when the fix is clear, small, or necessary for the feature to work.
-
-If remediation would touch files outside the original expected-file allowlist, the new human authorization must name the expanded expected files before implementation resumes. Do not justify scope expansion after the fact.
-
-## Repository Automation Guardrails
-
-Four guardrail scripts enforce discipline during implementation and commit preparation:
-
-**A. Artifact Guard** (`python scripts/ci/check_no_artifacts.py`)
-- Blocks unintended files: OS metadata, editor artifacts, caches, test outputs, credentials.
-- Required: before commit prep, before claiming working tree is clean.
-- Failure: stop immediately and report; do not proceed to Reviewer or commit.
-
-**B. Test Gate Wrapper** (`python scripts/ci/test_gate.py --timeout N -- <pytest command>`)
-- Enforces explicit wall-clock timeout on non-E2E pytest gates; returns exit code 0 (pass), 1 (fail), or 124 (timeout).
-- Required: for all unit, integration, and targeted non-E2E pytest gates in implementation flows.
-- Timeout guidance: 600s (full suite), 300s (integration-only), 180s (targeted <20 tests), 90s (single test).
-- E2E gates remain governed by E2E fail-fast rules (separate 90s/180s/90s per-iteration timeouts with `-x`/`--maxfail=1`).
-- Failure: treat timeout as failed gate; stop immediately.
-
-**C. Lane Scope Guard** (`python scripts/ci/check_lane_scope.py --lane <lane>`)
-- Validates dirty-tree categories against the declared lane before exact file allowlists are checked.
-- Required: before `check_scope.py` in implementation and commit-prep flows.
-- Lane mapping:
-  - Assessment only: `python scripts/ci/check_lane_scope.py --lane assessment`
-  - Test-only hardening: `python scripts/ci/check_lane_scope.py --lane test-only`
-  - Workflow/CI automation: `python scripts/ci/check_lane_scope.py --lane workflow-ci`
-  - Product/invariant hardening: `python scripts/ci/check_lane_scope.py --lane product`
-  - Push only: `python scripts/ci/check_lane_scope.py --lane push-only`
-- Blocks incompatible lane mixtures, especially product changes mixed with `.claude/**`, `.github/**`, or `scripts/ci/**` workflow/CI changes.
-- Assessment-only and push-only lanes require a clean working tree.
-- Test-only lane allows tests only and blocks product, workflow, CI, schema, docs, and other files.
-- Workflow/CI lane allows workflow/CI files and related CI tests, and blocks product and schema files.
-- Product lane allows product, tests, and docs, and blocks workflow/CI files; schema changes require explicit human authorization and `--allow-schema`.
-- Failure: stop immediately and report the mixed categories. Do not fix, recategorize, clean up, or expand scope without human authorization.
-
-**D. Scope Guard** (`python scripts/ci/check_scope.py --allow <expected file> ...`)
-- Validates only expected files changed; prevents scope creep or accidental commits.
-- Required: before commit prep; always list expected changed files explicitly.
-- Do not use broad allowlists (e.g., `--allow **`) unless the task scope explicitly permits it.
-- Failure: report unexpected files; stop immediately.
-
-`check_lane_scope.py` does not replace `check_scope.py`: lane scope catches category/lane conflicts, while scope guard enforces the exact expected-file allowlist.
-
-All four guards are local-only. CI runs artifact guard and test_gate.py; lane scope and scope guard require task-specific lane/allowlist inputs and run locally.
-
-## Role ownership
-
-- **Orchestrator** owns lane selection, sequencing, gates, evidence, review-level selection, Product UX Gatekeeper routing/reporting, and commit/push authorization.
-- **Implementer** owns the smallest safe fix, test-first discipline, targeted evidence, and ready-for-review handoff.
-- **Reviewer** owns implementation correctness, scope control, evidence validity, required verification, and final review verdict.
-- **Breaker** owns adversarial QA for P0/P1 invariant failures and overclaimed coverage. Breaker is not a second Reviewer.
-- **Product UX Gatekeeper** owns product/UX ambiguity only. The human is final product authority.
-
-## Task types and terminal states
-
-Classify every task before work begins.
-
-### Assessment only
-
-Use for diagnosis, planning, verification of assumptions, or workflow comprehension.
-
-- No edits, staging, commits, pushes, or implementation agents.
-- Run only commands needed to answer the assessment.
-- Return facts, gaps, and one narrow recommended next task.
-
-### Implementation only
-
-Use for one confirmed gap.
-
-- Orchestrator delegates to Implementer, then invokes Reviewer when the declared implementation gate passes.
-- Do not broaden into related cleanup, product reassessment, schema changes, or alternate theories.
-- Use targeted tests first.
-- Stop if the first fix fails the declared gate.
-
-### Commit preparation
-
-Use after clean review/evidence.
-
-- Do not re-investigate the bug or re-assess product behavior.
-- Verify changed/staged files only.
-- Commit only expected files and only when commit authorization is satisfied.
-
-### Push only
-
-Use only when the human explicitly asks to push or enables auto-push.
-
-- No edits, staging, or new commits.
-- Verify intended commits, then push only if explicitly authorized.
-
-
-## Terminal-state stop rule
-
-When a requested task reaches its terminal state, stop and wait for the human. Do not automatically begin the next logical task, even if it seems obvious or useful.
-
-Terminal states include:
-
-- assessment report delivered,
-- failed-gate or fail-fast stop report delivered,
-- cleanup completed,
-- Reviewer verdict delivered,
-- commit completed,
-- push completed.
-
-Passing an implementation gate is not a terminal state when Reviewer is required. The Orchestrator must invoke Reviewer and stop only after the Reviewer verdict is delivered, unless the human explicitly requested preparation-only or Reviewer invocation is unavailable/failed and reported.
-
-After a terminal state, only report final status and readiness. Do not launch a new assessment, invoke agents, run tests, inspect new files, optimize, commit, push, or begin follow-up work unless the human explicitly asks.
-
-Examples:
-
-- Bad: after pushing CI changes, immediately start E2E performance assessment.
-- Good: after pushing CI changes, report pushed commit/status and stop.
-- Bad: after Reviewer `Accept`, start commit prep without `Happy-path auto-commit: enabled`.
-- Good: after Reviewer `Accept`, report ready for commit prep and stop.
-
-## Agent selection
-
-Use the smallest sufficient agent set.
-
-- Assessment/status: Orchestrator only.
-- Small direct implementation without review/commit: Implementer only if the human explicitly chose Implementer.
-- Code/test change with review or commit-if-clean: Orchestrator → Implementer → Reviewer.
-- Product/UX ambiguity: Product UX Gatekeeper before implementation.
-- High-risk invariant work: Breaker after Reviewer `Accept`.
-- Docs/workflow-only: Level 1 Reviewer; Breaker only for concrete process-integrity risk.
-- Push-only: Orchestrator only.
-
-Do not over-delegate to optional agents without concrete need. Do not under-delegate by having Orchestrator self-implement.
-
-## Product/UX gate
-
-Invoke Product UX Gatekeeper when product/UX ambiguity exists, including choices about visible controls, status semantics, warnings/blockers, notes requirements, approval/export confirmation, navigation, decision semantics, or “should/how/best UX” questions.
-
-Do not invoke Product UX Gatekeeper when the human already made the product decision, or for mechanical test-only/docs-only/commit-prep/push-only work.
-
-Always report:
-
-```text
-Product ambiguity present? yes/no
-Product UX Gatekeeper invoked? yes/no
-If not invoked, reason:
-Human product decision needed? yes/no
-```
-
-## Review packet
-
-Before Reviewer/Breaker handoff, Orchestrator must collect a concise Review Packet:
-
-- task type and review level,
-- changed files/functions/tests,
-- intended behavior and explicit non-goals,
-- affected invariant categories,
-- exact test/evidence commands and results,
-- caveats, proven claims, claims not being made,
-- Product UX Gatekeeper status.
-
-Use anchors first. Avoid broad narrative.
-
-## Acceptance gates
-
-A declared gate is binary.
-
-If the declared command exits nonzero, hangs, times out, exits `143`, or is interrupted, the gate failed unless the task was explicitly assessment-only or exact failures are proven pre-existing and unrelated with baseline evidence.
-
-Partial symptom improvement is not gate success.
-
-Examples:
-
-- `No port errors` is not success if the targeted E2E file still has assertion failures.
-- `One test passed` is not success if the declared full-file command failed.
-- `/health` passing is not proof that the target page sees seeded test data.
-- Complete evidence is not success if Reviewer was required but not invoked.
-
-When a declared gate fails, stop and report:
-
-- gate name,
-- exact command and exit code/timeout,
-- passed/failed/skipped count,
-- failing tests or failure group,
-- whether failures are proven pre-existing and unrelated,
-- blocking issue,
-- whether failed-first-fix is triggered,
-- next allowed action.
-
-Do not redefine the gate after partial progress. If the gate was wrong or too broad, stop and ask the human to approve a new gate.
-
-## Failed-first-fix and fail-fast rules
-
-For implementation tasks, the first attempted fix gets one declared gate.
-
-Stop if:
-
-- the first targeted verification fails,
-- the command hangs, times out, exits `143`, or is interrupted,
-- more than about 8 minutes pass after the first edit without a passing declared gate,
-- the root-cause theory changes materially,
-- the next likely fix is broader than authorized.
-
-Do not continue into a second theory, second fix, selector redesign, fixture redesign, subprocess rewrite, product-code change, broad test repair, repeated hanging rerun, Reviewer, Breaker, commit, or push unless the human explicitly authorizes a new task or waives the gate.
-
-Stop report must include:
-
-- files changed,
-- exact failed/hung command,
-- last observed output/test count,
-- first attempted fix,
-- why it failed,
-- current hypothesis,
-- why the next step exceeds scope,
-- partial-change recommendation: revert / preserve / ask human,
-- next proposed human-authorized task.
-
-## E2E proof-step rule
-
-For E2E infrastructure work, do not migrate or rewrite a whole E2E file until one representative test proves the new pattern.
-
-This applies to changes involving Flask/browser startup, Playwright setup, E2E fixtures, database isolation, server lifecycle, ports, waits/timeouts/selectors, subprocess/thread/process cleanup, or pytest-xdist readiness.
-
-Required sequence:
-
-1. **Assessment**
-   - Identify one representative test.
-   - Identify its fixture/startup path, URL, route, seeded data, database, and selector.
-   - Define a one-test acceptance gate.
-
-2. **One-test proof**
-   - Change only the minimum code needed for that representative test.
-   - Do not modify all tests.
-   - Do not use broad replacement scripts.
-   - Do not change product code or assertions except mechanical URL/base_url plumbing.
-   - The one-test command must exit 0.
-
-3. **Small batch**
-   - Only after the one-test proof passes may a 3–5 test batch be migrated.
-   - The small-batch gate must exit 0.
-
-4. **Whole file**
-   - Only after the small batch passes may the full affected E2E file be migrated.
-   - The full-file gate must exit 0 before Reviewer.
-
-Prohibited:
-
-- Migrating all tests before one-test proof.
-- Broad automated replacement scripts unless explicitly authorized after a passing proof step.
-- Treating `/health` as proof of page/data readiness.
-- Inferring architecture blockers without exact command/traceback evidence.
-- Proceeding to Reviewer after a failed proof-step gate.
-
-Failed proof-step report must include:
-
-```text
-Representative test or batch:
-Exact command:
-Exit code / timeout:
-Passed/failed/skipped:
-First failing test:
-Failing URL / route / selector if known:
-Server health passed? yes/no
-Seeded data visible to page? yes/no/unknown
-First attempted fix:
-Why it failed:
-Next smallest testable step:
-Ready for Reviewer? no
-Ready for commit prep? no
-```
-
-## Proof-step progression rule
-
-When a task uses a staged proof sequence, do not re-plan a stage that already passed.
-
-For E2E infrastructure work, the normal progression is:
-
-```text
-Assessment → one-test proof → small batch → whole file → Reviewer
-```
-
-After a stage passes, Orchestrator may proceed directly to the next human-authorized stage without re-running prior proof gates, re-listing already-proven tests, re-arguing the approach, or invoking extra planning agents.
-
-Reassessment is required only when:
-
-- a declared gate fails, hangs, times out, exits `143`, or flakes,
-- prior evidence is stale or predates the current diff,
-- the next step materially changes scope,
-- product code or product behavior becomes necessary,
-- a new concrete risk appears,
-- or the human asks for reassessment.
-
-If none of those conditions apply, proceed to the next authorized proof step with a brief classification, one direct implementation delegation, one declared gate, and a stop report if the gate fails.
-
-## Post-gate handoff rule
-
-After a required implementation gate exits 0, the next required handoff is not a new planning phase.
-
-If the workflow requires Reviewer after the gate, Orchestrator should invoke Reviewer immediately with a concise packet. Do not re-run prior proof gates, re-plan the already-approved approach, restate long history, or ask for another decision unless evidence is stale, scope changed, the gate failed/flaked, product code became necessary, a new concrete risk appeared, or the human asked for reassessment.
-
-The handoff packet should normally be under 10 bullets and take under about 60 seconds to prepare. Include only:
-
-- changed files,
-- prior blocking issues or proof history when relevant,
-- exact current gate command/result,
-- product code changed? yes/no,
-- assertions changed? yes/no,
-- scope/invariant notes needed for review,
-- Product UX Gatekeeper status.
-
-If Reviewer returns `Request changes` or `Reject` with concrete blocking fixes and the human authorizes a fix task, Orchestrator should delegate directly to Implementer. Do not start a new planning loop unless the requested fix is ambiguous or out of scope.
-
-### Reviewer handoff is an action, not a status
-
-When Reviewer is required and the declared implementation gates have passed, Orchestrator must invoke the Reviewer agent. Preparing or printing a Review Packet, saying `Ready for Reviewer`, or asking the human to review is not a terminal state and is not sufficient.
-
-For an Orchestrator-led implementation/review flow, the terminal state is Reviewer verdict delivered, not Reviewer packet prepared. Orchestrator may stop at `Ready for Reviewer` only when the human explicitly requested preparation-only, Reviewer invocation is unavailable or fails, or the task type is not an Orchestrator-led implementation/review flow.
-
-## E2E evidence lanes
-
-### Lane 1 fast evidence
-
-Allowed only for localized UI/CSS/template work when product decision is explicit and the change does not affect validation logic, autosave/persistence, approval/export, audit, raw data, decision semantics, modal state machines, selectors/timing infrastructure, fixtures, or recently fixed P0/P1 paths.
-
-Requires:
-
-- focused E2E once,
-- full affected E2E file once.
-
-Five-run is required if the human asks, a run fails/flakes, waits/selectors/timing/fixtures/browser infrastructure changed, Reviewer flags reliability risk, or the task no longer fits Lane 1.
-
-### Standard/high-risk five-run
-
-Full-file five-run E2E is mandatory when changes affect validation logic, autosave/persistence, approval/export gating, audit, raw data, decision semantics, modal state machines, flaky timing/selectors, fixtures, or recently fixed P0/P1 paths.
-
-Report exact command/results and whether five-run was required.
-
-## Review levels
-
-### Level 1 Fast Review
-
-Use for docs-only, workflow-only, test-only, or tiny low-risk changes with complete evidence. Delta review only. Target about 90 seconds per agent.
-
-### Level 2 Standard Review
-
-Use for normal product/test changes, Validation Review UI, autosave, row status, modals, export blockers/warnings, audit visibility, and E2E infrastructure changes. Use anchored review. Reviewer target 2–3 minutes; Breaker target 3–4 minutes; hard stop/report at 6 minutes.
-
-### Level 3 Deep Review
-
-Use for export correctness, raw-data immutability, audit integrity, approval/defer state machines, autosave/persistence architecture, schema/data-model changes, generated CSV behavior, or multi-file architectural changes. Start with 3–4 minute risk triage, then 7–8 minute focused review. Hard stop/report at 12 minutes unless the human authorizes more.
-
-Reviewer/Breaker must self-stop at timebox and report verified items, unverified items, blocker/caveat/follow-up status, and whether readiness is blocked.
-
-## Reviewer and Breaker gates
-
-Evidence is input to Reviewer, not a substitute for Reviewer.
-
-For any lane requiring Reviewer:
-
-1. collect evidence,
-2. validate gates,
-3. invoke Reviewer,
-4. wait for final verdict,
-5. commit only if Reviewer returns clean `Accept` and commit gates are satisfied.
-
-Breaker is required after Reviewer `Accept` only when the current change presents concrete P0/P1 invariant risk, or materially affects validation review, inline editing/autosave, approval/export, decision modals, audit, raw-data immutability, recent P0/P1 paths, or browser-visible state consistency in a way that could affect reviewer decisions.
-
-Breaker is optional for docs-only, test-only, workflow-only, commit-prep, and push-only unless the human asks, Reviewer flags a concrete invariant/process risk, or the change is masquerading as low-risk while altering product behavior. Do not invoke Breaker for every adjacent historical concern unless a concrete current-change risk appears.
-
-## Workflow violation handling
-
-A workflow violation blocks auto-commit and auto-push until resolved or explicitly waived by the human.
-
-Examples:
-
-- unauthorized push,
-- missing required evidence,
-- unexpected files,
-- bypassed Reviewer/Breaker/Product UX Gatekeeper,
-- committing before Reviewer `Accept`,
-- returning to Implementer or applying fixes after Reviewer `Request changes` / `Reject` without explicit human authorization,
-- expanding changed-file scope after Reviewer `Request changes` / `Reject` without explicit human authorization,
-- skipping a required gate due to friction,
-- continuing after failed-first-fix without authorization.
-
-The Reviewer may still judge code correctness, but workflow is not clean until the violation is resolved or waived.
-
-## Commit gate
-
-Happy-path auto-commit is disabled unless the prompt includes exactly:
+Auto-commit is disabled unless the prompt includes exactly:
 
 ```text
 Happy-path auto-commit: enabled
 ```
 
-Auto-commit may run only when all are true:
-
+Commit only when all are true:
 - Reviewer verdict is exactly `Accept`.
 - Reviewer states `Happy-path auto-commit eligible? yes`.
-- All required tests/E2E gates passed.
+- Breaker PASS/P2 follow-up only if Breaker was required.
+- All required gates passed.
+- Artifact guard passed.
+- Lane scope guard passed with the declared lane.
+- Scope guard passed with exact expected files.
 - Fast pre-commit passed: `pytest tests/unit tests/integration -q --tb=short`.
-- Working tree contains only expected files.
-- No product-code files unless authorized.
-- No workflow files unless this is a workflow-config task.
-- No generated junk, credentials, caches, screenshots, traces, exports, DBs, `.DS_Store`, or unexpected untracked files.
-- No required test failures, blocking issues, unresolved product questions, schema concerns, or failed-first-fix violation.
 - Staged files exactly match expected files.
+- No unresolved product questions, schema concerns, failed-first-fix violation, or workflow violation.
 
-If any condition fails, do not commit. Report reason and human decision needed.
+Do not commit on `Accept with minor follow-up`, `Request changes`, `Reject`, Breaker P1/P0/FAIL, missing evidence, failed tests, unexpected files, or unresolved product questions.
 
-`Accept with minor follow-up`, `Request changes`, and `Reject` are not clean happy path.
-
-## Push gate
+## Push Gate
 
 Auto-push is disabled unless the prompt includes exactly:
 
@@ -718,15 +315,11 @@ Auto-push is disabled unless the prompt includes exactly:
 Happy-path auto-push: enabled
 ```
 
-`Ready to push? yes` is only a status report, never permission.
+`Ready to push? yes` is a status report, never permission. Push only in a push-only task or when the human explicitly authorizes it.
 
-Do not infer push authorization from tests, Reviewer Accept, commit success, clean branch, or branch ahead of origin.
+## Output Discipline
 
-## Output discipline
-
-Reports should be short, structured, and evidence-based. Prefer exact commands, exit codes, file names, and gate status over narrative.
-
-Required readiness fields when relevant:
+Keep reports short, structured, and evidence-based. Include readiness fields when relevant:
 
 ```text
 Acceptance gate passed? yes/no
@@ -734,6 +327,7 @@ Failed-first-fix triggered? yes/no
 Reviewer invoked? yes/no
 Reviewer verdict:
 Breaker invoked? yes/no
+Breaker verdict:
 Ready for Reviewer? yes/no
 Ready for commit prep? yes/no
 Ready to push? yes/no
