@@ -309,7 +309,7 @@ If remediation would touch files outside the original expected-file allowlist, t
 
 ## Repository Automation Guardrails
 
-Three guardrail scripts enforce discipline during implementation and commit preparation:
+Four guardrail scripts enforce discipline during implementation and commit preparation:
 
 **A. Artifact Guard** (`python scripts/ci/check_no_artifacts.py`)
 - Blocks unintended files: OS metadata, editor artifacts, caches, test outputs, credentials.
@@ -323,13 +323,31 @@ Three guardrail scripts enforce discipline during implementation and commit prep
 - E2E gates remain governed by E2E fail-fast rules (separate 90s/180s/90s per-iteration timeouts with `-x`/`--maxfail=1`).
 - Failure: treat timeout as failed gate; stop immediately.
 
-**C. Scope Guard** (`python scripts/ci/check_scope.py --allow <expected file> ...`)
+**C. Lane Scope Guard** (`python scripts/ci/check_lane_scope.py --lane <lane>`)
+- Validates dirty-tree categories against the declared lane before exact file allowlists are checked.
+- Required: before `check_scope.py` in implementation and commit-prep flows.
+- Lane mapping:
+  - Assessment only: `python scripts/ci/check_lane_scope.py --lane assessment`
+  - Test-only hardening: `python scripts/ci/check_lane_scope.py --lane test-only`
+  - Workflow/CI automation: `python scripts/ci/check_lane_scope.py --lane workflow-ci`
+  - Product/invariant hardening: `python scripts/ci/check_lane_scope.py --lane product`
+  - Push only: `python scripts/ci/check_lane_scope.py --lane push-only`
+- Blocks incompatible lane mixtures, especially product changes mixed with `.claude/**`, `.github/**`, or `scripts/ci/**` workflow/CI changes.
+- Assessment-only and push-only lanes require a clean working tree.
+- Test-only lane allows tests only and blocks product, workflow, CI, schema, docs, and other files.
+- Workflow/CI lane allows workflow/CI files and related CI tests, and blocks product and schema files.
+- Product lane allows product, tests, and docs, and blocks workflow/CI files; schema changes require explicit human authorization and `--allow-schema`.
+- Failure: stop immediately and report the mixed categories. Do not fix, recategorize, clean up, or expand scope without human authorization.
+
+**D. Scope Guard** (`python scripts/ci/check_scope.py --allow <expected file> ...`)
 - Validates only expected files changed; prevents scope creep or accidental commits.
 - Required: before commit prep; always list expected changed files explicitly.
 - Do not use broad allowlists (e.g., `--allow **`) unless the task scope explicitly permits it.
 - Failure: report unexpected files; stop immediately.
 
-All three guards are local-only. CI runs artifact guard and test_gate.py; scope guard requires task-specific allowlists and runs locally.
+`check_lane_scope.py` does not replace `check_scope.py`: lane scope catches category/lane conflicts, while scope guard enforces the exact expected-file allowlist.
+
+All four guards are local-only. CI runs artifact guard and test_gate.py; lane scope and scope guard require task-specific lane/allowlist inputs and run locally.
 
 ## Role ownership
 

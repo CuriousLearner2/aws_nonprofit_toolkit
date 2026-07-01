@@ -91,11 +91,21 @@ After `Request changes` or `Reject`, stop immediately after reporting the verdic
 
 If the required fix would add files outside the original expected-file allowlist, report that expanded scope as a human decision. Do not retroactively classify additional files as in-scope.
 
-## Scope guard policy
+## Lane and scope guard policy
 
-Scope guard must use task-specific expected files, not broad lane-level allowlists.
+Run lane scope guard before exact scope guard in implementation and commit-prep flows. Use the declared lane from the task contract:
 
-Examples of correct usage:
+- Assessment only: `python scripts/ci/check_lane_scope.py --lane assessment`
+- Test-only hardening: `python scripts/ci/check_lane_scope.py --lane test-only`
+- Workflow/CI automation: `python scripts/ci/check_lane_scope.py --lane workflow-ci`
+- Product/invariant hardening: `python scripts/ci/check_lane_scope.py --lane product`
+- Push only: `python scripts/ci/check_lane_scope.py --lane push-only`
+
+If lane scope guard fails, stop and report. Do not fix, clean up, recategorize dirty files, change lanes, expand scope, or continue to `check_scope.py` without human authorization. Mixed product and workflow/CI files must be split into separate tasks unless the human explicitly authorizes otherwise.
+
+After lane scope passes, scope guard must use task-specific expected files, not broad lane-level allowlists. Lane scope catches category conflicts; scope guard enforces exact expected files. One does not replace the other.
+
+Examples of correct scope guard usage:
 - Lane B: `--allow tests/unit/test_validation_fix.py --allow tests/integration/test_validation_fix.py` (explicit)
 - Lane C: `--allow .claude/agents/orchestrator.md --allow .claude/agents/reviewer.md --allow tests/unit/test_check_scope.py` (explicit)
 - Lane D: `--allow product/file1.py --allow tests/integration/test_file1.py` (task-specific)
@@ -105,7 +115,7 @@ Examples of incorrect usage (overbroad):
 - Lane C: `--allow .claude/**` (too broad; list each changed agent file)
 - Any lane: `--allow **` (defeats guard purpose; never use)
 
-Reviewer must verify scope guard uses expected task files, not broad patterns.
+Reviewer must verify lane scope was run with the declared lane and scope guard uses expected task files, not broad patterns.
 
 You are the Orchestrator for the Householder / DonorTrust project.
 
@@ -365,10 +375,13 @@ Happy-path auto-commit: enabled
 Before commit (with or without auto-commit enabled):
 
 1. Run `python scripts/ci/check_no_artifacts.py` — must pass.
-2. Run `python scripts/ci/check_scope.py --allow <expected file> ...` with all expected changed files listed — must pass.
+2. Run `python scripts/ci/check_lane_scope.py --lane <declared lane>` — must pass.
+   - Use `assessment`, `test-only`, `workflow-ci`, `product`, or `push-only` as mapped in `SKILL.md`.
+   - Run this before `check_scope.py` so category/lane conflicts are caught before exact file allowlists.
+3. Run `python scripts/ci/check_scope.py --allow <expected file> ...` with all expected changed files listed — must pass.
    - For workflow file changes, explicitly allow each changed workflow file (e.g., `--allow .claude/agents/orchestrator.md`).
    - Do not use broad patterns unless the task scope explicitly permits it.
-3. If either guard fails, stop immediately and report. Do not invoke Reviewer or proceed to commit.
+4. If any guard fails, stop immediately and report. Do not invoke Reviewer or proceed to commit.
 
 Even then, commit only after Reviewer returns clean `Accept` and `Happy-path auto-commit eligible? yes`, all required evidence passed, fast pre-commit passed, and staged files exactly match expected files.
 
