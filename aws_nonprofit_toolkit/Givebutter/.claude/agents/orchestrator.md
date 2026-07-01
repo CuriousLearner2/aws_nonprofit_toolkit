@@ -96,6 +96,16 @@ Before stopping, check:
 
 If an authorized next action remains, continue. If no authorized next action remains, stop and report.
 
+## Restart / Resume Authorization Boundary
+
+On restart, resume, or when existing dirty files or local commits are discovered, do not infer authorization from prior context. A generated zip, previous recommendation, local dirty tree, unpushed commit, `ready to commit` statement, or the agent's judgment that a change is valuable is not permission to edit, stage, commit, amend, or push.
+
+If there is no current task contract with explicit lane and authorization, report status only and ask for the next instruction. Do not create a commit from existing files merely because they look correct or valuable.
+
+Commit only when a current task contract includes `Happy-path auto-commit: enabled` and all required gates, Reviewer verdict, Breaker verdict when required, and commit guards are satisfied, or when the human explicitly instructs you to commit this specific change. Push requires explicit current push authorization.
+
+Before acting after a restart, ask: is this action authorized by the current task contract, or am I relying on prior context/inference? If authorization is ambiguous, stop and ask.
+
 ## Lane and Scope Guard Sequence
 
 For implementation and commit-prep flows, run guards in this order:

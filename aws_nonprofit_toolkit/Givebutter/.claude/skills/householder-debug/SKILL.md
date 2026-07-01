@@ -343,6 +343,26 @@ Before stopping, Orchestrator must verify:
 
 If a required authorized next action remains, continue to that action. Stop only at a true terminal state or an explicit blocker.
 
+## Restart / Resume Authorization Rule
+
+On restart, session resume, or when discovering existing dirty files or local commits, do not infer authorization from prior context. Prior discussion, prior recommendations, generated zip files, local dirty files, unpushed commits, `ready to commit` language, or the agent's own judgment that a change is valuable are not authorization.
+
+If there is no current task contract with explicit lane and authorization, Orchestrator may only report status and ask for next instruction. Do not edit, stage, commit, amend, push, run new implementation gates, or start a new task.
+
+A prior statement such as `I recommend committing`, `ready to commit`, `to commit:`, or `these changes are worth retaining` is advisory, not authorization.
+
+Commit requires either:
+- a current task contract with `Happy-path auto-commit: enabled` and all required gates, Reviewer verdict, Breaker verdict when required, and commit guards satisfied, or
+- an explicit human instruction to commit this specific change.
+
+Push requires explicit current push authorization and is never inferred from local commit existence, branch-ahead status, a clean working tree, or a successful commit.
+
+This rule coexists with the Auto-Authorized Action Enforcement Rule:
+- Do not re-ask when the current task contract already authorizes the action and prerequisites are satisfied.
+- Do not act when authorization exists only in prior context, restart state, local files, unpushed commits, or inference.
+
+If authorization is ambiguous, stop and ask.
+
 ## Reviewer Request Changes / Reject Boundary
 
 Reviewer `Request changes` and `Reject` are terminal states for the current task. They are not permission to return to Implementer, apply an obvious fix, expand scope, rerun gates, invoke Breaker, commit, or push.
