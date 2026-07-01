@@ -62,6 +62,14 @@ class ExportUnresolvedValidationWarningError(ExportError):
         super().__init__(self.message)
 
 
+class ExportUnresolvedNormalizationWarningError(ExportError):
+    """Export requires confirmation for unresolved normalizations."""
+    def __init__(self, deferred_count: int):
+        self.deferred_count = deferred_count
+        self.message = f"Export has {deferred_count} unresolved normalization suggestion(s) — confirmation required"
+        super().__init__(self.message)
+
+
 class ExportIOError(ExportError):
     """File I/O error during export generation."""
     pass
@@ -224,6 +232,7 @@ def _create_audit_record(
     confirmed_unresolved_validations: bool = False,
     confirmed_unresolved_households: bool = False,
     confirmed_unresolved_duplicates: bool = False,
+    confirmed_unresolved_normalizations: bool = False,
 ) -> int:
     """Create audit log record for export generation."""
     # Build details JSON
@@ -248,11 +257,13 @@ def _create_audit_record(
             "confirmed_unresolved_validations": confirmed_unresolved_validations,
             "confirmed_unresolved_households": confirmed_unresolved_households,
             "confirmed_unresolved_duplicates": confirmed_unresolved_duplicates,
+            "confirmed_unresolved_normalizations": confirmed_unresolved_normalizations,
         },
         "deferred_counts": {
             "deferred_validation_count": getattr(preview, 'deferred_validation_count', 0),
             "deferred_household_count": getattr(preview, 'deferred_household_count', 0),
             "deferred_duplicate_count": getattr(preview, 'deferred_duplicate_count', 0),
+            "deferred_normalization_count": getattr(preview, 'deferred_normalization_count', 0),
         },
     }
 
@@ -281,6 +292,7 @@ def generate_export_file(
     confirmed_unresolved_households: bool = False,
     confirmed_unresolved_duplicates: bool = False,
     confirmed_unresolved_validations: bool = False,
+    confirmed_unresolved_normalizations: bool = False,
 ) -> ExportFileResult:
     """
     Generate CSV export file from derived preview.
@@ -296,6 +308,7 @@ def generate_export_file(
         confirmed_unresolved_households: Whether user confirmed unresolved households
         confirmed_unresolved_duplicates: Whether user confirmed unresolved duplicates
         confirmed_unresolved_validations: Whether user confirmed deferred validations
+        confirmed_unresolved_normalizations: Whether user confirmed unresolved normalizations
 
     Returns:
         ExportFileResult with file metadata and audit log reference
@@ -306,6 +319,7 @@ def generate_export_file(
         ExportUnresolvedHouseholdWarningError: If unresolved households exist and not confirmed
         ExportUnresolvedDuplicateWarningError: If unresolved duplicates exist and not confirmed
         ExportUnresolvedValidationWarningError: If deferred validations exist and not confirmed
+        ExportUnresolvedNormalizationWarningError: If unresolved normalizations exist and not confirmed
         ExportIOError: For filesystem or other errors
     """
     if not config:
@@ -352,6 +366,10 @@ def generate_export_file(
     if preview.deferred_validation_count > 0 and not confirmed_unresolved_validations:
         raise ExportUnresolvedValidationWarningError(preview.deferred_validation_count)
 
+    # Check for unresolved normalizations
+    if preview.deferred_normalization_count > 0 and not confirmed_unresolved_normalizations:
+        raise ExportUnresolvedNormalizationWarningError(preview.deferred_normalization_count)
+
     # Ensure output directory exists
     _ensure_output_dir(output_dir)
 
@@ -385,6 +403,7 @@ def generate_export_file(
             confirmed_unresolved_validations,
             confirmed_unresolved_households,
             confirmed_unresolved_duplicates,
+            confirmed_unresolved_normalizations,
         )
     finally:
         session.close()

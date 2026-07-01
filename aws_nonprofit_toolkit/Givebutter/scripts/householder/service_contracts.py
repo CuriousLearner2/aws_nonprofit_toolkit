@@ -567,6 +567,7 @@ class ExportPreviewResult:
     deferred_household_count: int = 0
     deferred_duplicate_count: int = 0
     deferred_validation_count: int = 0
+    deferred_normalization_count: int = 0
 
     def to_template_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -584,4 +585,5 @@ class ExportPreviewResult:
             "deferred_household_count": self.deferred_household_count,
             "deferred_duplicate_count": self.deferred_duplicate_count,
             "deferred_validation_count": self.deferred_validation_count,
+            "deferred_normalization_count": self.deferred_normalization_count,
         }

@@ -29,17 +29,17 @@
 
 <!-- Export Preview Status — Traffic Light UX -->
 {% if preview_available %}
-<div style="margin-bottom: 30px; padding: 20px; border-radius: 4px; {% if preview.blocked_count > 0 %}background-color: #fee; border-left: 4px solid #dc2626;{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}background-color: #fffbeb; border-left: 4px solid #eab308;{% else %}background-color: #f0fdf4; border-left: 4px solid #10b981;{% endif %}">
+<div style="margin-bottom: 30px; padding: 20px; border-radius: 4px; {% if preview.blocked_count > 0 %}background-color: #fee; border-left: 4px solid #dc2626;{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 or preview.deferred_normalization_count > 0 %}background-color: #fffbeb; border-left: 4px solid #eab308;{% else %}background-color: #f0fdf4; border-left: 4px solid #10b981;{% endif %}">
     <!-- Traffic Light Status Badge -->
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-        <span style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; {% if preview.blocked_count > 0 %}background-color: #dc2626; color: white;{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}background-color: #eab308; color: #000;{% else %}background-color: #10b981; color: white;{% endif %} font-size: 20px; font-weight: bold;">
-            {% if preview.blocked_count > 0 %}🔴{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}🟡{% else %}🟢{% endif %}
+        <span style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; {% if preview.blocked_count > 0 %}background-color: #dc2626; color: white;{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 or preview.deferred_normalization_count > 0 %}background-color: #eab308; color: #000;{% else %}background-color: #10b981; color: white;{% endif %} font-size: 20px; font-weight: bold;">
+            {% if preview.blocked_count > 0 %}🔴{% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 or preview.deferred_normalization_count > 0 %}🟡{% else %}🟢{% endif %}
         </span>
         <div>
             <h3 style="margin: 0 0 4px 0;">
                 {% if preview.blocked_count > 0 %}
                     Export Blocked
-                {% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}
+                {% elif preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 or preview.deferred_normalization_count > 0 %}
                     Export Ready with Confirmations
                 {% else %}
                     Export Ready
@@ -72,7 +72,7 @@
     {% endif %}
 
     <!-- Warnings/Deferred Section (Yellow) -->
-    {% if preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 %}
+    {% if preview.warning_count > 0 or preview.deferred_household_count > 0 or preview.deferred_duplicate_count > 0 or preview.deferred_validation_count > 0 or preview.deferred_normalization_count > 0 %}
     <div style="background-color: #fef3c7; padding: 12px; border-radius: 3px; margin-bottom: 12px;">
         <p style="font-size: 12px; color: #78350f; margin: 0 0 8px 0; font-weight: 600;">🟡 WARNINGS/DEFERRED ITEMS (exportable with confirmation):</p>
 
@@ -174,6 +174,24 @@
                 onchange="updateExportButtonState()"
             />
             <span>I confirm {{ preview.deferred_validation_count }} validation issue(s) are deferred and will review/resolve them in a follow-up</span>
+        </label>
+    </div>
+    {% endif %}
+
+    <!-- Unresolved Normalizations Warning and Confirmation -->
+    {% if preview_available and preview.deferred_normalization_count > 0 %}
+    <div style="background-color: #fef3c7; padding: 12px; border-radius: 3px; margin-bottom: 16px;">
+        <p style="font-size: 12px; color: #78350f; margin: 0 0 12px 0; font-weight: 600;">
+            ⚠️ {{ preview.deferred_normalization_count }} normalization suggestion(s) remain unresolved
+        </p>
+        <label style="display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 13px; color: #78350f;">
+            <input
+                type="checkbox"
+                id="confirm-unresolved-normalizations-checkbox"
+                style="margin-top: 3px; cursor: pointer;"
+                onchange="updateExportButtonState()"
+            />
+            <span>I have reviewed and confirmed all normalization suggestions. Unresolved suggestions will use original values.</span>
         </label>
     </div>
     {% endif %}
@@ -299,6 +317,7 @@ function updateExportButtonState() {
     const householdCheckbox = document.getElementById('confirm-unresolved-households-checkbox');
     const duplicateCheckbox = document.getElementById('confirm-unresolved-duplicates-checkbox');
     const validationCheckbox = document.getElementById('confirm-unresolved-validations-checkbox');
+    const normalizationCheckbox = document.getElementById('confirm-unresolved-normalizations-checkbox');
     {% if preview_available and preview %}
     const preview = {{ preview | tojson }};
     {% else %}
@@ -307,8 +326,7 @@ function updateExportButtonState() {
 
     if (preview) {
         // Button is disabled if there are BLOCKING issues
-        // OR if there are deferred households without confirmation
-        // OR if there are deferred duplicates without confirmation
+        // OR if there are deferred households/duplicates/normalizations without confirmation
         let canExport = preview.blocked_count === 0;
 
         // Check if confirmation is required for deferred households
@@ -318,6 +336,11 @@ function updateExportButtonState() {
 
         // Check if confirmation is required for deferred duplicates
         if (preview.deferred_duplicate_count > 0 && duplicateCheckbox && !duplicateCheckbox.checked) {
+            canExport = false;
+        }
+
+        // Check if confirmation is required for deferred normalizations
+        if (preview.deferred_normalization_count > 0 && normalizationCheckbox && !normalizationCheckbox.checked) {
             canExport = false;
         }
 
@@ -332,10 +355,12 @@ function generateExportFile() {
     const householdCheckbox = document.getElementById('confirm-unresolved-households-checkbox');
     const duplicateCheckbox = document.getElementById('confirm-unresolved-duplicates-checkbox');
     const validationCheckbox = document.getElementById('confirm-unresolved-validations-checkbox');
+    const normalizationCheckbox = document.getElementById('confirm-unresolved-normalizations-checkbox');
     const batchId = '{{ batch.id }}';
     const confirmedHouseholds = householdCheckbox && householdCheckbox.checked ? 'true' : 'false';
     const confirmedDuplicates = duplicateCheckbox && duplicateCheckbox.checked ? 'true' : 'false';
     const confirmedValidations = validationCheckbox && validationCheckbox.checked ? 'true' : 'false';
+    const confirmedNormalizations = normalizationCheckbox && normalizationCheckbox.checked ? 'true' : 'false';
 
     // Show loading state
     btn.disabled = true;
@@ -346,6 +371,7 @@ function generateExportFile() {
     formData.append('confirmed_unresolved_households', confirmedHouseholds);
     formData.append('confirmed_unresolved_duplicates', confirmedDuplicates);
     formData.append('confirmed_unresolved_validations', confirmedValidations);
+    formData.append('confirmed_unresolved_normalizations', confirmedNormalizations);
 
     fetch(`/imports/${batchId}/exports/generate`, {
         method: 'POST',
@@ -368,6 +394,10 @@ function generateExportFile() {
             btn.disabled = false;
             btn.textContent = originalText;
         } else if (data.status === 'warning' && data.action_required === 'confirm_unresolved_validations') {
+            alert(`Please confirm: ${data.message}`);
+            btn.disabled = false;
+            btn.textContent = originalText;
+        } else if (data.status === 'warning' && data.action_required === 'confirm_unresolved_normalizations') {
             alert(`Please confirm: ${data.message}`);
             btn.disabled = false;
             btn.textContent = originalText;

@@ -218,6 +218,19 @@ def build_export_preview(
             if val_decision and val_decision.decision == 'defer':
                 deferred_validation_count += 1
 
+        # Count deferred/unresolved normalizations (mirror household/duplicate/validation pattern)
+        deferred_normalization_count = 0
+        for norm_item in session.query(ReviewItem).filter(
+            ReviewItem.batch_id == import_id,
+            ReviewItem.item_type == 'normalization'
+        ).all():
+            norm_decision = normalization_decisions.get(norm_item.id)
+            if norm_decision is None:
+                # No decision - counts as unresolved
+                deferred_normalization_count += 1
+            elif norm_decision.decision == 'defer':
+                deferred_normalization_count += 1
+
         # Build preview rows
         rows = []
         blockers = []
@@ -492,6 +505,7 @@ def build_export_preview(
             deferred_household_count=deferred_household_count,
             deferred_duplicate_count=deferred_duplicate_count,
             deferred_validation_count=deferred_validation_count,
+            deferred_normalization_count=deferred_normalization_count,
         )
 
         return result
