@@ -55,7 +55,24 @@ A valid assessment must report:
 - smallest layer-specific fix,
 - test that proves the failing path.
 
+Repo-specific grounding is required. Before naming likely files/functions as real repo paths, use `Read`, `Grep`, or `Glob` to confirm them. If the task is hypothetical or repo inspection is not allowed, label likely files/functions as `conceptual/provisional` and provide discovery commands instead of inventing paths. Do not use generic architecture names such as React components unless they exist in the repo.
+
 Do not infer root cause from a screenshot, UI text, or the mere existence of a validation rule. If the failing layer is not proven, report `unknown` and recommend a trace-first follow-up rather than implementing.
+
+
+## E2E Proof-Stage Routing
+
+For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, Orchestrator must declare the current E2E proof stage in the task contract before delegating. Use only one current stage unless the human explicitly authorized a staged sequence in the same task contract:
+
+- `assessment`
+- `one-test proof`
+- `small batch`
+- `whole file`
+- `reliability evidence`
+
+Passing one stage is not permission to skip to a later stage. After one-test proof passes, the next allowed implementation stage is the declared small batch. After small batch passes, the next allowed implementation stage is the declared whole file. Do not invoke Reviewer for an E2E migration until the current authorized stage and required evidence are complete.
+
+Review Packets for E2E work must state: current proof stage, prior stage evidence if relied on, exact command/result, rewritten tests, timeout, `-x`/`--maxfail=1` for multi-test gates, and whether reliability evidence was required.
 
 ## Required Handoff Rule
 

@@ -237,6 +237,17 @@ Required cautions:
 - `Issue shown in UI` is not evidence that the issue was freshly generated.
 - `E2E passed` is not evidence that the failing mode, fallback, data shape, or state transition was covered.
 
+### Repo-specific grounding rule
+
+Deep analysis must stay grounded in the actual repository.
+
+- Do not invent file paths, class names, route names, frontend components, services, or test files.
+- Ground likely files/functions with `Read`, `Grep`, or `Glob` before presenting them as repo-specific.
+- If repo inspection is not allowed or the scenario is hypothetical, label file names as `conceptual/provisional` and provide the repo-discovery commands or patterns that would verify the real paths.
+- Do not describe this Flask/Jinja app using generic React-style names such as `ExportPage`, `ValidationReview`, or `IssuesList` unless those exact symbols exist in the repo.
+- Expected files for implementation must be based on inspected repo paths. If the failing layer is known only conceptually, the next task should be trace-first assessment, not implementation.
+- Do not create new files merely because a conceptual name appeared in an assessment. First locate the existing architecture.
+
 ### Shallow vs deep examples
 
 - Shallow: UI shows `Phone invalid`, so the phone number is invalid.
@@ -267,14 +278,27 @@ Deep analysis is not a license for open-ended debugging. It is a bounded proof s
 
 ## E2E Proof-Step Rules
 
-For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, use:
+For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, use this stage sequence:
 
 ```text
 Assessment → one-test proof → small batch → whole file → reliability evidence → Reviewer
 ```
 
+### E2E proof-stage enforcement
+
+The sequence is a gate, not background guidance. The task contract must declare the current E2E proof stage before implementation begins. Valid stages are:
+
+- `assessment` — identify representative test, fixture/startup path, route, seeded data, selector, and one-test gate. No edits.
+- `one-test proof` — modify only the minimum needed for one representative test and run that one-test gate.
+- `small batch` — after one-test proof passes, migrate only the authorized 3–5 test batch and run that batch gate.
+- `whole file` — after small batch passes, migrate only the authorized affected file and run the full-file gate.
+- `reliability evidence` — after whole-file gate passes, run the declared reliability loop if required.
+
 Rules:
-- Prove one representative test before modifying a whole E2E file.
+- Orchestrator must name the current E2E proof stage in the task contract and Review Packet.
+- Implementer may perform only the authorized current stage. Do not skip from assessment or one-test proof to whole-file migration unless the human explicitly authorized that broader stage in the current task contract.
+- Passing one stage authorizes only the next declared stage; it does not authorize broad migration, reliability loops, Reviewer, Breaker, commit, or push unless those actions are already included in the task contract and required gates passed.
+- Reviewer must request changes or reject when whole-file E2E work was done without required one-test/small-batch proof, when the proof-stage evidence is missing/stale, or when tests were rewritten without individual proof under timeout.
 - Do not re-plan/re-run passed stages unless evidence is stale, scope changed, a gate failed/flaked, or a new concrete risk appears.
 - Every rewritten E2E test must use hard selector preconditions and hard assertions.
 - Reliability loops must use explicit timeout, fail-fast, and stop on first failure.

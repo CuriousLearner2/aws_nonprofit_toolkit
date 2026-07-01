@@ -47,6 +47,8 @@ If invoked without trace evidence for a bug involving UI/status mismatch, valida
 
 When implementing after trace evidence exists, fix the proven failing layer only. The test must cover the failing path, not merely a nearby rule.
 
+Do not edit based on conceptual or invented file names from an assessment. If likely files/functions were not grounded with `Read`, `Grep`, or `Glob`, first locate the actual repo paths inside the authorized scope or return a blocker requesting a repo-grounded trace. Do not create new files just because a conceptual path was named.
+
 ## Scope Boundaries by Lane
 
 - **Test-only hardening:** tests only; no product/templates/routes/seed/workflow/CI changes.
@@ -72,6 +74,9 @@ python scripts/ci/test_gate.py --timeout <seconds> -- pytest <args>
 
 - For E2E gates, use `scripts/ci/e2e_gate.py` with explicit timeout; multi-test E2E gates require `-x` or `--maxfail=1`.
 - E2E tests must use hard selector preconditions and hard assertions. No soft guards, print-only success, networkidle-only success, page-load-only coverage, or silent early returns.
+- For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, implement only the E2E proof stage named in the task contract: `one-test proof`, `small batch`, `whole file`, or `reliability evidence`.
+- Do not skip proof stages. Do not migrate a whole file when only one-test proof or small batch was authorized. Do not add extra E2E files or broaden the batch without human authorization.
+- If the task contract does not name the current E2E proof stage for E2E infrastructure work, stop and return a blocker requesting Orchestrator to declare the stage.
 
 ## Failed Gate Boundary
 

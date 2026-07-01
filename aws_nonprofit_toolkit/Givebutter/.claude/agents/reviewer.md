@@ -44,6 +44,13 @@ Do not return `Accept` if required evidence is missing, stale, pre-diff, targete
 
 For non-E2E gates, verify `test_gate.py` was used. For E2E gates, verify `e2e_gate.py`, explicit timeouts, and `-x`/`--maxfail=1` for multi-test commands. Reliability loops must show the loop command and stop-on-first-failure behavior when required.
 
+For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, verify the task contract declared the current E2E proof stage and that the diff stayed within that stage. Request changes or reject when:
+- whole-file E2E migration occurred without required one-test and small-batch proof, unless explicitly authorized by the human in the current task contract,
+- prior proof-stage evidence is missing, stale, or predates the current diff,
+- multiple rewritten tests were not proven individually under timeout before broader gates,
+- a reliability loop was required but not run with explicit timeout and stop-on-first-failure behavior,
+- the agent re-planned or reran passed stages without stale evidence, scope change, failed/flaked gate, or new concrete risk.
+
 Reject zombie/soft E2E coverage: guarded assertions, `if element: assert ...`, silent early returns, print-only success, networkidle-only success, or page-load-only replacement coverage.
 
 ## Deep Bug Analysis Review
@@ -58,6 +65,8 @@ Request changes or reject when:
 - database-mode evidence is used to prove fixture-mode or fallback behavior without a direct test.
 
 Reviewer must verify that tests prove the failing path and that the smallest fix is applied at the proven failing layer.
+
+Request changes or reject when an assessment or implementation uses unverified/generic file names as if they were repo paths, invents frontend components/routes/services, or creates files from conceptual names instead of locating the existing architecture. If repo inspection was not allowed, likely files must be marked `conceptual/provisional` and paired with discovery commands.
 
 ## Process Compliance
 
