@@ -38,9 +38,8 @@ CONTACTS = [
         'phone': '(415) 555-1234',
         'amount': '$500.00',
         'address': '123 Main St, Springfield, IL 62701',
-        'issue_type': 'format-invalid',
-        'issue_description': 'Phone number format invalid',
-        'issue_field': 'phone',
+        'issue_type': None,
+        'issue_description': None,
     },
     {
         'id': 'TXN-002',
@@ -50,8 +49,8 @@ CONTACTS = [
         'phone': '(415) 555-5678',
         'amount': '$1,250.00',
         'address': '456 Oak Ave, Springfield, IL 62702',
-        'issue_type': 'missing-required',
-        'issue_description': 'Missing campaign field',
+        'issue_type': None,
+        'issue_description': None,
     },
     {
         'id': 'TXN-003',

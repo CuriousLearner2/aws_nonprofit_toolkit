@@ -222,7 +222,7 @@ class TestFixtureImportRepository:
         assert first_row.id == "TXN-001"
         assert first_row.name == "John Smith"
         assert first_row.email == "john@example.com"
-        assert first_row.issue_type == "format-invalid"
+        assert first_row.issue_type is None  # TXN-001 is now a clean fixture row
 
     def test_get_validation_rows_with_no_issues(self):
         """Test that rows can have null issue fields."""

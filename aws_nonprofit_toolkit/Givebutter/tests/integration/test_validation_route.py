@@ -169,6 +169,54 @@ class TestValidationRoute:
         assert response.status_code == 200
 
 
+class TestValidationCleanRows:
+    """Test that clean fixture rows render without false Blocking issues."""
+
+    def test_txn_001_clean_row_no_false_phone_issue(self, client_with_fixture):
+        """Test that TXN-001 (clean row with valid phone) does not render false phone issue.
+
+        TXN-001 has valid phone (415) 555-1234 with no pre-seeded issue_type.
+        Should render as "No issues" / "None", not "phone — Phone number format invalid".
+
+        This test proves the fixture data correction: TXN-001 is no longer corrupted
+        with false phone issue metadata.
+        """
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
+        assert response.status_code == 200
+
+        response_text = response.data.decode('utf-8')
+
+        # Verify TXN-001 appears in response
+        assert 'TXN-001' in response_text, "TXN-001 should appear in response"
+
+        # Verify the false phone issue is NOT rendered
+        # The old fixture had: 'issue_type': 'format-invalid', 'issue_description': 'Phone number format invalid'
+        # This assertion ensures that's gone
+        assert 'phone — Phone number format invalid' not in response_text
+
+    def test_txn_002_clean_row_no_false_campaign_issue(self, client_with_fixture):
+        """Test that TXN-002 (clean row) does not render false 'Missing campaign field' issue.
+
+        TXN-002 is a clean row with valid data and no pre-seeded issue_type.
+        Should render as "No issues" / "None", not "missing-required — Missing campaign field".
+
+        This test proves the fixture data correction: TXN-002 is no longer corrupted
+        with false campaign field issue metadata.
+        """
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
+        assert response.status_code == 200
+
+        response_text = response.data.decode('utf-8')
+
+        # Verify TXN-002 appears in response
+        assert 'TXN-002' in response_text, "TXN-002 should appear in response"
+
+        # Verify the false campaign field issue is NOT rendered
+        # The old fixture had: 'issue_type': 'missing-required', 'issue_description': 'Missing campaign field'
+        # This assertion ensures that's gone
+        assert 'Missing campaign field' not in response_text
+
+
 class TestValidationIssuesRendering:
     """Test that Issues column renders correctly through route/template/view-model path."""
 
