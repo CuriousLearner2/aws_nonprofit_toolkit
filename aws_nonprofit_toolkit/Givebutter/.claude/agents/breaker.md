@@ -46,6 +46,7 @@ Examples:
 - Stale fixture/persisted metadata may override freshly calculated issues.
 - Export, audit, approval, or traffic-light UI signals disagree.
 - Raw/effective value provenance is unclear.
+- A manual browser/UI bug fix changed a nearby fixture/rule/helper but did not prove the exact displayed row/path/object changed.
 
 Breaker should not redo routine Reviewer evidence review, but should challenge fixes that do not prove the real-use path behind a P0/P1 invariant.
 

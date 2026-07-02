@@ -66,6 +66,8 @@ Request changes or reject when:
 
 Reviewer must verify that tests prove the failing path and that the smallest fix is applied at the proven failing layer.
 
+For manually observed browser/UI bugs, request changes or reject when the fix is not tied to the exact displayed row/control/screen and runtime source. A fix that changes a plausible fixture, rule, helper, or metadata field is not sufficient unless evidence shows that the observed row/path uses it and that the rendered symptom changes. Require route/template/unit/E2E evidence that exercises the manual path, or a clear report that the manual path could not be reproduced and why.
+
 Request changes or reject when an assessment or implementation uses unverified/generic file names as if they were repo paths, invents frontend components/routes/services, or creates files from conceptual names instead of locating the existing architecture. If repo inspection was not allowed, likely files must be marked `conceptual/provisional` and paired with discovery commands.
 
 ## Process Compliance

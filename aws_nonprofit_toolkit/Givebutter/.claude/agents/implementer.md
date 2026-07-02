@@ -47,6 +47,8 @@ If invoked without trace evidence for a bug involving UI/status mismatch, valida
 
 When implementing after trace evidence exists, fix the proven failing layer only. The test must cover the failing path, not merely a nearby rule.
 
+For manually observed browser/UI bugs, do not edit unless the trace identifies the exact displayed row/control/screen, the runtime source, and the object delivered to the template/browser. If the trace only proves a nearby fixture/rule/helper defect but not that it affects the observed row/path, stop and request a runtime trace or reproduction.
+
 Do not edit based on conceptual or invented file names from an assessment. If likely files/functions were not grounded with `Read`, `Grep`, or `Glob`, first locate the actual repo paths inside the authorized scope or return a blocker requesting a repo-grounded trace. Do not create new files just because a conceptual path was named.
 
 ## Scope Boundaries by Lane

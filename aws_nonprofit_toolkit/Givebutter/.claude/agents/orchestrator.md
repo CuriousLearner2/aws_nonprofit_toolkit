@@ -59,6 +59,8 @@ Repo-specific grounding is required. Before naming likely files/functions as rea
 
 Do not infer root cause from a screenshot, UI text, or the mere existence of a validation rule. If the failing layer is not proven, report `unknown` and recommend a trace-first follow-up rather than implementing.
 
+For manually observed browser/UI bugs, the assessment must also tie the proposed root cause to the exact displayed row/control/screen and runtime path. Report the record id/import id when available, the runtime source (fixture, database, saved decision, fallback, cache, or stale server/browser), the exact object delivered to the template/browser, and whether the proposed fix changes that same path. If the observed row/path is not proven, stop with a trace gap rather than authorizing implementation.
+
 
 ## E2E Proof-Stage Routing
 

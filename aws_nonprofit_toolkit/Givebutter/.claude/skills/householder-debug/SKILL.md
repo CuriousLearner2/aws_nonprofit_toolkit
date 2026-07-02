@@ -248,6 +248,29 @@ Deep analysis must stay grounded in the actual repository.
 - Expected files for implementation must be based on inspected repo paths. If the failing layer is known only conceptually, the next task should be trace-first assessment, not implementation.
 - Do not create new files merely because a conceptual name appeared in an assessment. First locate the existing architecture.
 
+
+### Manually observed UI bug runtime verification rule
+
+For manually observed browser/UI bugs, a plausible code or fixture defect is not enough. Agents must prove that the proposed fix targets the exact row, screen, mode, and runtime path that produced the observed symptom.
+
+Before implementing or accepting a fix for a manually observed UI bug, answer:
+- What exact displayed row/control/screen is being investigated, including transaction id/import id/record id when available?
+- What exact runtime source produced it: fixture data, database row, saved decision, cached data, fallback path, or stale server/browser state?
+- Is the current server/browser using the commit or file changes being assessed? If unknown, report `stale runtime unknown` rather than assuming.
+- What exact issue/status/value object is delivered to the template or browser for that displayed row?
+- Does the object contain the exact key that the template/JavaScript reads?
+- Did the proposed fix change that same row/path/object, or only a nearby fixture/rule/helper?
+- What route/template/unit/E2E evidence proves the observed symptom changed after the fix?
+
+Required cautions:
+- `Fixture file was fixed` is not evidence that the browser is using that fixture row.
+- `A metadata defect exists` is not evidence that it caused the observed row.
+- `Tests pass` is not evidence that the manual browser path was exercised.
+- `Commit exists` is not evidence that the running server/browser is using it.
+- `Nearby row fixed` is not evidence that the displayed row was fixed.
+
+If the exact displayed row/path cannot be tied to the proposed fix, stop with a trace gap. The next task must be runtime trace or reproduction, not implementation.
+
 ### Shallow vs deep examples
 
 - Shallow: UI shows `Phone invalid`, so the phone number is invalid.
