@@ -271,6 +271,31 @@ Required cautions:
 
 If the exact displayed row/path cannot be tied to the proposed fix, stop with a trace gap. The next task must be runtime trace or reproduction, not implementation.
 
+This rule works together with the Fixture/data-layer UI verification rule below: when the proposed fix changes fixture, seed, import, cached, or other data-layer inputs for a manually observed UI symptom, prove both the exact displayed path and the before/after runtime behavior when feasible.
+
+
+### Fixture/data-layer UI verification rule
+
+When a fixture, seed data, import data, cached data, or other data-layer change is proposed to fix a manually observed UI/display bug, code inspection alone is not sufficient when the app can be run or the route/template path can be exercised.
+
+Required sequence when feasible:
+1. **Before the fix:** verify or reproduce the running UI/route/template path that shows the observed symptom, including the exact row/control/screen and runtime source.
+2. **After the fix:** verify the same path again and show that the displayed symptom changed.
+
+If running-browser verification is unavailable, the agent must use the closest direct proof that exercises the same runtime path, such as a route/template/unit test that builds the same view model for the same row/source. The report must explicitly state that browser verification was unavailable and must not claim the manual UI bug is fixed unless the chosen proof exercises the same path.
+
+Examples of acceptable direct proof when browser verification is unavailable:
+- a route integration test that exercises the same fixture/database row and asserts the rendered response or view model,
+- a unit test that builds the same view model consumed by the template for the same row/source,
+- a template/render assertion using the same issue/status object shape and keys,
+- a narrow E2E/browser check of the same screen and row when browser verification is feasible.
+
+Required cautions:
+- Do not rely on fixture-file inspection alone for a visible UI bug.
+- Do not ask the human to verify a change that the agent could verify locally in the running app or route/template path.
+- Do not claim a manual UI bug is fixed until the same observed path is verified after the change, or the report clearly states that runtime verification was not possible.
+
+
 ### Shallow vs deep examples
 
 - Shallow: UI shows `Phone invalid`, so the phone number is invalid.

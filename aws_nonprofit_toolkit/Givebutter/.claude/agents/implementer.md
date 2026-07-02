@@ -49,6 +49,9 @@ When implementing after trace evidence exists, fix the proven failing layer only
 
 For manually observed browser/UI bugs, do not edit unless the trace identifies the exact displayed row/control/screen, the runtime source, and the object delivered to the template/browser. If the trace only proves a nearby fixture/rule/helper defect but not that it affects the observed row/path, stop and request a runtime trace or reproduction.
 
+
+For fixture, seed, cached-data, or other data-layer changes that affect visible UI, verify the observed running UI/route/template path before editing when feasible, then verify the same path after editing before claiming the bug is fixed. If running-browser verification is unavailable, use a direct proof that exercises the same row/source/view model, such as a route integration assertion, a unit test that builds the same template view model, or a template/render assertion using the same issue/status object shape. State the limitation. Do not substitute fixture-file inspection for runtime-path proof, and do not rely on the human to perform verification that the agent can perform locally.
+
 Do not edit based on conceptual or invented file names from an assessment. If likely files/functions were not grounded with `Read`, `Grep`, or `Glob`, first locate the actual repo paths inside the authorized scope or return a blocker requesting a repo-grounded trace. Do not create new files just because a conceptual path was named.
 
 ## Scope Boundaries by Lane

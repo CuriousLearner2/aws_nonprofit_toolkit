@@ -62,6 +62,9 @@ Do not infer root cause from a screenshot, UI text, or the mere existence of a v
 For manually observed browser/UI bugs, the assessment must also tie the proposed root cause to the exact displayed row/control/screen and runtime path. Report the record id/import id when available, the runtime source (fixture, database, saved decision, fallback, cache, or stale server/browser), the exact object delivered to the template/browser, and whether the proposed fix changes that same path. If the observed row/path is not proven, stop with a trace gap rather than authorizing implementation.
 
 
+For fixture/data-layer changes that affect visible UI, require before/after runtime-path verification when feasible: observe or exercise the running UI/route/template path before the fix, then verify the same path after the fix. This works together with the manually observed UI bug rule: prove the exact displayed path and the before/after runtime behavior. If browser verification is unavailable, require a direct route/template/unit proof that exercises the same row/source/view model, such as a route integration response/view-model assertion, a unit test that builds the same template view model, or a template/render assertion using the same issue/status object shape. State the limitation. Do not let an Implementer patch fixture/data files and ask the human to test when the agent can verify the running path locally.
+
+
 ## E2E Proof-Stage Routing
 
 For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, Orchestrator must declare the current E2E proof stage in the task contract before delegating. Use only one current stage unless the human explicitly authorized a staged sequence in the same task contract:
