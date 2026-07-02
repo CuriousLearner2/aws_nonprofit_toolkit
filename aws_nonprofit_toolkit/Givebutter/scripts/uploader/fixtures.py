@@ -63,6 +63,7 @@ CONTACTS = [
         'address': '789 Elm St, Springfield IL',
         'issue_type': 'format-invalid',
         'issue_description': 'Address incomplete (missing ZIP)',
+        'issue_field': 'address',
     },
     {
         'id': 'TXN-004',

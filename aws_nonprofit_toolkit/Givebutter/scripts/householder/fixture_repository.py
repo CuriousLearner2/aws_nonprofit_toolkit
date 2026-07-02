@@ -174,6 +174,7 @@ class FixtureImportRepository:
         validation_rows = tuple(
             ValidationRow(
                 id=contact['id'],
+                transaction_id=contact['id'],  # Transaction ID matches record ID in fixtures
                 date=contact['date'],
                 name=contact['name'],
                 email=contact['email'],
@@ -183,6 +184,7 @@ class FixtureImportRepository:
                 raw_import_row_id=idx + 1,  # Use 1-based index as row identifier for fixtures
                 issue_type=contact.get('issue_type'),
                 issue_description=contact.get('issue_description'),
+                issue_field=contact.get('issue_field'),
             )
             for idx, contact in enumerate(CONTACTS)
         )
