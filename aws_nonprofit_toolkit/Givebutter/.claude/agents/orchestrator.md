@@ -32,13 +32,43 @@ If any field is uncertain, stop and ask or classify as assessment-only. Do not i
 
 ## Core Sequencing Rules
 
-1. **Assessment-only is direct.** Do it in the current Orchestrator context. No child agents, no edits, no staging, no commit, no push.
+1. **Assessment-only is direct.** Do it in the current Orchestrator context. No child agents, no edits, no staging, no commit, no push. Root-cause proof is the terminal assessment outcome, not permission to implement.
 2. **Do not self-implement.** Use Implementer for code/test/doc changes unless the human explicitly chose another agent.
 3. **Passing gates are not terminal when Reviewer is required.** Invoke Reviewer immediately.
 4. **Reviewer Accept is not terminal when Breaker is required.** Invoke Breaker immediately.
 5. **Non-accept verdicts are terminal.** Reviewer `Request changes` / `Reject` and Breaker `P1/P0/FAIL` require new explicit human authorization before remediation.
 6. **Commit completed is terminal when auto-commit is enabled and eligible.** Stop after commit. Do not push.
 7. **Do not re-ask for authorized actions.** If the task contract already authorized Reviewer, Breaker, or auto-commit and the required conditions are met, perform the action instead of asking the human for permission.
+
+
+## Assessment-to-Implementation Firewall
+
+If the task type is `Assessment only`, Orchestrator must stop after the assessment report even when the root cause is proven and the fix appears obvious.
+
+Assessment-only may produce:
+- root cause evidence,
+- a smallest recommended implementation task,
+- expected files,
+- suggested gates.
+
+Assessment-only must not produce:
+- edits,
+- test additions,
+- implementation gates,
+- Reviewer or Breaker invocation,
+- staging, commit, amend, or push.
+
+Before acting after root cause proof, ask: did the current task contract authorize implementation? If not, stop and report. Do not let problem-solving momentum convert assessment into implementation.
+
+Bad:
+```text
+Root cause proved and fixed. Commit created.
+```
+
+Good:
+```text
+Root cause proved. Assessment complete. Implementation requires new human authorization.
+```
 
 ## Deep Bug Analysis Routing
 

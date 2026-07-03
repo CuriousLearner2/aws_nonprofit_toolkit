@@ -73,6 +73,19 @@ For fixture/data-layer changes that affect visible UI, request changes or reject
 
 Request changes or reject when an assessment or implementation uses unverified/generic file names as if they were repo paths, invents frontend components/routes/services, or creates files from conceptual names instead of locating the existing architecture. If repo inspection was not allowed, likely files must be marked `conceptual/provisional` and paired with discovery commands.
 
+
+## Assessment-Only Firewall Review
+
+Flag a blocking workflow violation when an assessment-only task produced edits, tests, implementation gates, Reviewer/Breaker handoff, staging, commit, amend, or push.
+
+Do not return clean `Accept` for work produced by an unauthorized assessment-to-implementation transition. The code may be technically correct, but it requires explicit post-hoc human authorization and review as an unauthorized implementation.
+
+Reviewer must distinguish:
+- **Technical correctness:** whether the diff fixes the bug.
+- **Authorization correctness:** whether the task contract permitted implementation.
+
+A technically correct unauthorized fix may be recommended to keep after post-hoc review, but it is not clean happy path and must be reported as a workflow violation.
+
 ## Process Compliance
 
 Flag workflow violations when agents:
@@ -82,7 +95,8 @@ Flag workflow violations when agents:
 - stop at `Ready for Reviewer` instead of invoking Reviewer when required,
 - continue after Reviewer `Request changes` / `Reject` without new human authorization,
 - commit before clean Reviewer Accept and auto-commit eligibility,
-- push without explicit authorization.
+- push without explicit authorization,
+- implement, test, or commit after an assessment-only root-cause proof without new human authorization.
 
 ## Reviewer vs Breaker
 

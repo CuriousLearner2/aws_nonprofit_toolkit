@@ -33,7 +33,22 @@ Do not start by editing. First identify:
 4. smallest relevant code area,
 5. declared gate and stop condition.
 
-If the task is assessment-only, report that assessment-only work must be executed directly by Orchestrator and return control.
+If the task is assessment-only, report that assessment-only work must be executed directly by Orchestrator and return control. Do not treat a proven root cause or obvious fix as implementation authorization.
+
+
+## Assessment-Only Firewall
+
+If invoked from an assessment-only task, or if the only authorization is `prove root cause`, do not edit. A proven cause, obvious patch, or likely passing test is not authorization to implement.
+
+Return a blocker stating:
+
+```text
+Assessment-only task: implementation not authorized.
+Root cause proof should be reported by Orchestrator.
+A new human-authorized implementation task is required before edits.
+```
+
+Do not add tests, run fix gates, stage, commit, or prepare Reviewer handoff from an assessment-only invocation.
 
 ## Deep Bug Implementation Boundary
 

@@ -51,6 +51,11 @@ Examples:
 
 Breaker should not redo routine Reviewer evidence review, but should challenge fixes that do not prove the real-use path behind a P0/P1 invariant.
 
+
+## Assessment-Only Drift Risk
+
+When asked to evaluate work that began as assessment-only, flag process risk if root-cause proof turned into edits, tests, commit, or push without a new human-authorized implementation task. This is risk-relevant when the unauthorized fix affects reviewer-facing state, export, audit, validation, approval, raw/effective values, or other P0/P1 surfaces.
+
 ## Process Checks Only When Risk-Relevant
 
 Do not duplicate routine Reviewer evidence review. Check process only when it affects commit readiness or P0/P1 risk:

@@ -12,7 +12,7 @@ This is the canonical workflow policy for the Householder / DonorTrust project. 
 
 Apply rules in this order:
 
-1. **Task contract first.** Classify task, lane, allowed files/actions, required agents, gates, and terminal state before meaningful work.
+1. **Task contract first.** Classify task, lane, allowed files/actions, required agents, gates, and terminal state before meaningful work. Assessment-only classification creates an implementation firewall: proving root cause does not authorize edits.
 2. **Project invariants always win.** The system suggests. The reviewer decides. Raw data stays unchanged.
 3. **Failed gates stop immediately.** No diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without new human authorization.
 4. **Required handoffs are actions.** Passing gates means invoke required Reviewer/Breaker; `Ready for Reviewer` is not terminal.
@@ -60,6 +60,42 @@ Rules:
 - If the task is assessment-only, push-only, or status-only, Reviewer must be `no` unless explicitly required by the human.
 - If the task is an implementation flow requiring review, Reviewer must be `yes`, and Orchestrator must invoke Reviewer after passing gates.
 - Lane classification must match an exact lane trigger phrase; do not infer a lane.
+
+
+## Assessment-to-Implementation Firewall
+
+Assessment-only tasks are terminal at the assessment report. Proving root cause, identifying an obvious fix, finding a low-risk patch, or knowing the exact tests to add does **not** authorize implementation.
+
+In any task classified as `Assessment only`:
+
+- do not edit files,
+- do not write or update tests,
+- do not stage, commit, amend, or push,
+- do not invoke Implementer, Reviewer, or Breaker,
+- do not run implementation gates for a proposed fix,
+- do not continue from `root cause proven` into `fix applied`, even if the fix is small, obvious, and likely correct.
+
+The correct terminal report is:
+
+```text
+Assessment complete.
+Root cause proven? yes/no
+Smallest recommended implementation task:
+Expected files:
+Suggested gates:
+Human authorization required before any edit.
+```
+
+Forbidden assessment-only transitions:
+
+```text
+root cause proven → edit files
+root cause proven → add tests
+root cause proven → run fix gates
+root cause proven → commit
+```
+
+If the human wants the fix, they must authorize a new implementation task or provide a current task contract that permits implementation. A technically correct unauthorized fix is still a workflow violation and must be treated as post-hoc review, not clean happy path.
 
 ## Core Project Invariants
 
