@@ -1194,10 +1194,67 @@ def autosave_row_corrections(import_id):
         }), 200
     except ValueError as e:
         logger.warning(f"Autosave validation error: {str(e)}")
-        return jsonify({'error': str(e)}), 400
+        # Ensure error response includes issues/row_status so JavaScript can sync UI
+        # This prevents disconnect between inline field error and row status display
+        try:
+            issues = recalculate_row_issues(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id
+            )
+            row_status = derive_row_status(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id,
+                issues=issues
+            )
+            formatted_issues = [
+                {
+                    'field': issue.get('field', 'unknown'),
+                    'reason': issue.get('description', 'Issue detected'),
+                    'severity': issue.get('severity', 'warning')
+                }
+                for issue in issues
+            ]
+        except Exception:
+            # If we can't get issues (e.g., row doesn't exist in fixture mode),
+            # return empty issues but still include the field for JavaScript to process
+            formatted_issues = []
+            row_status = 'Blocking'
+
+        return jsonify({
+            'error': str(e),
+            'issues': formatted_issues,
+            'row_status': row_status
+        }), 400
     except Exception as e:
         logger.error(f"Error during autosave: {str(e)}")
-        return jsonify({'error': 'Autosave failed'}), 500
+        # Ensure error response includes issues/row_status so JavaScript can sync UI
+        try:
+            issues = recalculate_row_issues(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id
+            )
+            row_status = derive_row_status(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id,
+                issues=issues
+            )
+            formatted_issues = [
+                {
+                    'field': issue.get('field', 'unknown'),
+                    'reason': issue.get('description', 'Issue detected'),
+                    'severity': issue.get('severity', 'warning')
+                }
+                for issue in issues
+            ]
+        except Exception:
+            formatted_issues = []
+            row_status = 'Blocking'
+
+        return jsonify({
+            'error': 'Autosave failed',
+            'issues': formatted_issues,
+            'row_status': row_status
+        }), 500
 
 
 @app.route('/imports/<import_id>/row-decision', methods=['POST'])
