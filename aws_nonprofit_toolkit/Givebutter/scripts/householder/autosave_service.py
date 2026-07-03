@@ -243,3 +243,130 @@ def validate_corrected_values(
         return False, errors
     else:
         return True, None
+
+
+def build_fixture_autosave_response(
+    batch_id: str,
+    raw_import_row_id: int,
+    corrected_values: Mapping[str, Any],
+    config: Optional[Mapping[str, Any]] = None,
+) -> dict:
+    """
+    Build a fixture-mode autosave response without requiring a database.
+
+    Fixture mode remains read-only, so autosave behaves as an in-memory
+    validation and UI sync path: valid corrections return clean row state,
+    invalid corrections return the same error shape as the database-backed
+    autosave endpoint.
+    """
+    from .issue_recalculation_service import _validate_effective_values
+    from .validation_service import get_validation_review
+
+    fixture_config = dict(config or {})
+    fixture_config["HOUSEHOLDER_REPOSITORY"] = "fixture"
+
+    review = get_validation_review(batch_id, config=fixture_config)
+    record = next(
+        (
+            row for row in review.get("validation_issues", [])
+            if row.get("raw_import_row_id") == raw_import_row_id
+        ),
+        None,
+    )
+
+    if not record:
+        return {
+            "status_code": 400,
+            "success": False,
+            "error": f"Raw import row {raw_import_row_id} not found",
+            "issues": [
+                {
+                    "field": "raw_import_row_id",
+                    "reason": f"Raw import row {raw_import_row_id} not found",
+                    "severity": "error",
+                }
+            ],
+            "row_status": "Blocking",
+            "message": "Corrections not saved - please fix validation errors",
+        }
+
+    current_values = {
+        field: record.get(field)
+        for field in ("date", "name", "email", "phone", "amount", "address")
+    }
+    effective_values = dict(current_values)
+    effective_values.update(corrected_values)
+
+    current_issues = list(record.get("issues") or [])
+    is_valid, errors = validate_corrected_values(corrected_values)
+
+    if not is_valid:
+        validation_issues = [
+            {
+                "field": field,
+                "reason": error_msg,
+                "severity": "error",
+            }
+            for field, error_msg in errors.items()
+        ]
+        issues = _merge_issues(validation_issues + current_issues)
+        row_status = _derive_row_status_from_issues(issues)
+
+        return {
+            "status_code": 400,
+            "success": False,
+            "error": "Validation failed",
+            "validation_errors": errors,
+            "message": "Corrections not saved - please fix validation errors",
+            "row_status": row_status,
+            "issues": issues,
+        }
+
+    resolved_fields = {
+        field for field in corrected_values.keys()
+        if field
+    }
+    remaining_current_issues = [
+        issue for issue in current_issues
+        if issue.get("field") not in resolved_fields
+    ]
+    new_validation_issues = _validate_effective_values(effective_values)
+    issues = _merge_issues(remaining_current_issues + new_validation_issues)
+    row_status = _derive_row_status_from_issues(issues)
+
+    return {
+        "status_code": 200,
+        "success": True,
+        "decision_id": 0,
+        "effective_values": effective_values,
+        "row_status": row_status,
+        "issues": issues,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "message": "Autosave completed successfully",
+    }
+
+
+def _merge_issues(issues: list[dict]) -> list[dict]:
+    """Deduplicate issues by field while preserving the last occurrence."""
+    merged: dict[str, dict] = {}
+    fallback_index = 0
+
+    for issue in issues:
+        field = issue.get("field")
+        if field:
+            merged[field] = issue
+        else:
+            merged[f"__issue_{fallback_index}"] = issue
+            fallback_index += 1
+
+    return list(merged.values())
+
+
+def _derive_row_status_from_issues(issues: list[dict]) -> str:
+    """Derive row status from issue severities without requiring a database."""
+    has_error = any(issue.get("severity") == "error" for issue in issues)
+    if has_error:
+        return "Blocking"
+    if issues:
+        return "Warning"
+    return "No issues"

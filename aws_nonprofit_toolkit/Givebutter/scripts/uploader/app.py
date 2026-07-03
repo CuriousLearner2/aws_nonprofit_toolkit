@@ -1080,7 +1080,11 @@ def autosave_row_corrections(import_id):
         'message': str
     }
     """
-    from householder.autosave_service import autosave_row_corrections, get_effective_values
+    from householder.autosave_service import (
+        autosave_row_corrections,
+        build_fixture_autosave_response,
+        get_effective_values,
+    )
     from householder.row_status_service import derive_row_status
     from householder.issue_recalculation_service import recalculate_row_issues
     from datetime import datetime
@@ -1089,9 +1093,19 @@ def autosave_row_corrections(import_id):
     raw_import_row_id = data.get('raw_import_row_id')
     corrected_values = data.get('corrected_values', {})
     reviewer = request.headers.get('X-Reviewer-ID')
+    repository_mode = os.environ.get('HOUSEHOLDER_REPOSITORY', 'fixture').lower()
 
     if not raw_import_row_id:
         return jsonify({'error': 'raw_import_row_id required'}), 400
+
+    if repository_mode == 'fixture':
+        fixture_result = build_fixture_autosave_response(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id,
+            corrected_values=corrected_values,
+        )
+        status_code = fixture_result.pop('status_code', 200)
+        return jsonify(fixture_result), status_code
 
     try:
         # Validate corrections BEFORE saving

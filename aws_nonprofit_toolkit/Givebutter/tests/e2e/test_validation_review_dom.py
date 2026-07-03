@@ -4289,6 +4289,81 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
                 pass
         session.close()
 
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_fixture_mode_txn_001_phone_noop_autosave_preserves_clean_state():
+    """
+    Fixture-mode Validation Review should not show a false inline Error for a clean TXN-001 phone no-op save.
+    """
+    from playwright.async_api import async_playwright
+
+    base_url = 'http://127.0.0.1:8002'
+    batch_id = 'IMP-2025-0101-A'
+    env = os.environ.copy()
+    env['HOUSEHOLDER_REPOSITORY'] = 'fixture'
+    env.pop('GIVEBUTTER_DATABASE_URL', None)
+    env['FLASK_ENV'] = 'development'
+
+    flask_cmd = (
+        'from scripts.uploader.app import app; '
+        'app.run(host="127.0.0.1", port=8002, debug=False, use_reloader=False, threaded=True)'
+    )
+    flask_process = subprocess.Popen(
+        [get_venv_python(), '-c', flask_cmd],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        preexec_fn=os.setsid,
+    )
+
+    try:
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('[data-testid="phone-input-TXN-001"]', timeout=5000)
+
+                phone_input = page.locator('[data-testid="phone-input-TXN-001"]')
+                phone_status = page.locator('[data-testid="phone-status-TXN-001"]')
+                row_status = page.locator('[data-testid="row-status-dropdown-TXN-001"]')
+                issues_cell = page.locator('[data-testid="issues-cell-TXN-001"]')
+
+                assert await phone_input.input_value() == '(415) 555-1234'
+                assert (await row_status.locator('option:first-child').text_content()).strip() == 'No issues'
+                assert 'None' in (await issues_cell.inner_text())
+
+                await phone_input.click()
+                await phone_input.press('Enter')
+
+                await page.wait_for_function(
+                    "() => {"
+                    "const status = document.querySelector('[data-testid=\"phone-status-TXN-001\"]');"
+                    "return status && status.textContent.trim() !== 'Saving...';"
+                    "}",
+                    timeout=5000,
+                )
+
+                status_text = (await phone_status.text_content() or '').strip()
+                row_status_text = (await row_status.locator('option:first-child').text_content() or '').strip()
+                issues_text = (await issues_cell.inner_text() or '').strip()
+
+                assert status_text != 'Error', f"Inline phone status should not be Error, got: {status_text}"
+                assert row_status_text == 'No issues', f"Expected No issues, got: {row_status_text}"
+                assert issues_text == 'None', f"Expected Issues to remain None, got: {issues_text}"
+
+            finally:
+                await browser.close()
+    finally:
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
+
     print("\n=== DESKTOP DENSE-TABLE LAYOUT TEST COMPLETE ===")
     print("✓ All supported desktop widths verified")
 

@@ -57,6 +57,10 @@ class TestAutosaveErrorResponseStructure:
         assert isinstance(error_data['issues'], list), (
             f"'issues' field must be a list, got {type(error_data['issues'])}"
         )
+        assert len(error_data['issues']) > 0, (
+            "Missing-row fixture autosave must surface at least one blocking issue "
+            "so the browser does not collapse Row Status back to No issues."
+        )
 
     def test_autosave_error_response_includes_row_status_field(self, client_with_fixture):
         """Test that autosave error response includes 'row_status' field.
@@ -87,6 +91,7 @@ class TestAutosaveErrorResponseStructure:
         assert isinstance(error_data['row_status'], str), (
             f"'row_status' field must be a string, got {type(error_data['row_status'])}"
         )
+        assert error_data['row_status'] == 'Blocking'
 
     def test_autosave_validation_error_response_includes_issues(self, client_with_fixture):
         """Test that autosave error responses always include 'issues' field.
@@ -119,6 +124,12 @@ class TestAutosaveErrorResponseStructure:
 
         # PROOF: 'issues' is always a list structure
         assert isinstance(error_data['issues'], list)
+        assert len(error_data['issues']) > 0
+
+        first_issue = error_data['issues'][0]
+        assert first_issue.get('field')
+        assert first_issue.get('reason')
+        assert first_issue.get('severity') == 'error'
 
     def test_autosave_success_response_includes_issues(self, client_with_fixture):
         """Test that successful autosave response includes 'issues' field.
@@ -179,3 +190,50 @@ class TestAutosaveErrorResponseStructure:
                 )
                 assert isinstance(issue['field'], str)
                 assert isinstance(issue['reason'], str)
+
+
+class TestFixtureModeAutosave:
+    """Test fixture/no-DB autosave behavior for the Validation Review page."""
+
+    def test_fixture_mode_valid_noop_phone_autosave_returns_clean_state(
+        self,
+        client_with_fixture,
+    ):
+        """A valid no-op phone autosave in fixture mode stays clean and does not error."""
+        response = client_with_fixture.post(
+            '/imports/IMP-2025-0101-A/autosave',
+            json={
+                'raw_import_row_id': 1,
+                'corrected_values': {'phone': '(415) 555-1234'},
+            }
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+
+        assert data['success'] is True
+        assert data['row_status'] == 'No issues'
+        assert data['issues'] == []
+        assert data['effective_values']['phone'] == '(415) 555-1234'
+        assert data['effective_values']['name'] == 'John Smith'
+
+    def test_fixture_mode_invalid_phone_autosave_still_shows_error_state(
+        self,
+        client_with_fixture,
+    ):
+        """Fixture mode still surfaces real validation failures for invalid phone edits."""
+        response = client_with_fixture.post(
+            '/imports/IMP-2025-0101-A/autosave',
+            json={
+                'raw_import_row_id': 1,
+                'corrected_values': {'phone': '123'},
+            }
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+
+        assert data['success'] is False
+        assert data['row_status'] == 'Blocking'
+        assert any(issue.get('field') == 'phone' for issue in data['issues'])
+        assert any(issue.get('severity') == 'error' for issue in data['issues'])
