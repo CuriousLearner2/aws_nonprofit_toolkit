@@ -528,6 +528,96 @@ class TestValidationServiceFixtureFallbackValidation:
             row_status = result['validation_issues'][0]['row_status']
             assert row_status == 'Blocking', f"Expected 'Blocking' but got '{row_status}'"
 
+    def test_fixture_fallback_date_is_currently_unsupported_in_validation_review(self):
+        """Test that Validation Review fallback currently does not validate date-only issues."""
+        from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
+        from scripts.householder.validation_service import get_validation_review
+        from unittest.mock import patch, MagicMock
+
+        test_row = ValidationRow(
+            id="TXN-UNSUPPORTED-DATE",
+            raw_import_row_id=995,
+            date="not-a-real-date",
+            name="Date Unsupported Test",
+            email="valid@example.com",
+            phone="(212) 555-1234",
+            amount="$250.00",
+            address="123 Test St, Springfield, IL 62701",
+            issue_type=None,
+            issue_description=None,
+        )
+
+        test_vm = ValidationPageViewModel(
+            batch_id="IMP-TEST-UNSUPPORTED-DATE",
+            filename="test_date_unsupported.csv",
+            progress=50,
+            validation_rows=(test_row,),
+            validation_issues_count=0,
+            total_records=1,
+        )
+
+        with patch('scripts.householder.validation_service.get_import_repository') as mock_get_repo:
+            mock_repo = MagicMock()
+            mock_repo.get_validation.return_value = test_vm
+            mock_get_repo.return_value = mock_repo
+
+            result = get_validation_review("IMP-TEST-UNSUPPORTED-DATE")
+
+            row = result['validation_issues'][0]
+            assert row['issues'] == [], (
+                "Validation Review fallback currently ignores date-only issues, "
+                f"but got: {row['issues']}"
+            )
+            assert row['row_status'] == 'No issues', (
+                "Validation Review fallback currently treats invalid-looking dates as clean, "
+                f"but got row_status={row['row_status']}"
+            )
+
+    def test_fixture_fallback_address_is_currently_unsupported_in_validation_review(self):
+        """Test that Validation Review fallback currently does not validate address-only issues."""
+        from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
+        from scripts.householder.validation_service import get_validation_review
+        from unittest.mock import patch, MagicMock
+
+        test_row = ValidationRow(
+            id="TXN-UNSUPPORTED-ADDRESS",
+            raw_import_row_id=994,
+            date="2026-05-24",
+            name="Address Unsupported Test",
+            email="valid@example.com",
+            phone="(212) 555-1234",
+            amount="$250.00",
+            address="789 Elm St, Springfield IL",
+            issue_type=None,
+            issue_description=None,
+        )
+
+        test_vm = ValidationPageViewModel(
+            batch_id="IMP-TEST-UNSUPPORTED-ADDRESS",
+            filename="test_address_unsupported.csv",
+            progress=50,
+            validation_rows=(test_row,),
+            validation_issues_count=0,
+            total_records=1,
+        )
+
+        with patch('scripts.householder.validation_service.get_import_repository') as mock_get_repo:
+            mock_repo = MagicMock()
+            mock_repo.get_validation.return_value = test_vm
+            mock_get_repo.return_value = mock_repo
+
+            result = get_validation_review("IMP-TEST-UNSUPPORTED-ADDRESS")
+
+            row = result['validation_issues'][0]
+            assert row['issues'] == [], (
+                "Validation Review fallback currently ignores address-only issues, "
+                f"but got: {row['issues']}"
+            )
+            assert row['row_status'] == 'No issues', (
+                "Validation Review fallback currently treats malformed addresses as clean, "
+                f"but got row_status={row['row_status']}"
+            )
+
     def test_fixture_fallback_valid_row_still_no_issues(self):
         """Test that valid fixture rows with issue_type=None still render as 'No issues'."""
         from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel

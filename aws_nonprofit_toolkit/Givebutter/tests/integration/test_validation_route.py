@@ -346,3 +346,55 @@ class TestValidationIssuesRendering:
         finally:
             # Restore original CONTACTS
             fixtures.CONTACTS[:] = original_contacts
+
+    def test_validation_route_fixture_fallback_date_and_address_issue_type_none_remains_clean(self, client_with_fixture, monkeypatch):
+        """Test that Validation Review fallback currently leaves invalid-looking date/address rows clean.
+
+        This documents the present Validation Review contract: when issue_type is None,
+        the fallback path currently validates amount/email/phone only and does not
+        generate date/address issues for this screen.
+        """
+        from scripts.uploader import fixtures
+
+        original_contacts = fixtures.CONTACTS.copy()
+
+        try:
+            test_contact = {
+                'id': 'TEST-UNSUPPORTED-DATE-ADDRESS',
+                'date': 'not-a-real-date',
+                'name': 'Unsupported Date Address Test',
+                'email': 'valid@example.com',
+                'phone': '(415) 555-0000',
+                'amount': '$100.00',
+                'address': '789 Elm St, Springfield IL',
+                'issue_type': None,
+                'issue_description': None,
+            }
+
+            fixtures.CONTACTS.append(test_contact)
+
+            response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
+            assert response.status_code == 200
+
+            response_text = response.data.decode('utf-8')
+            assert 'TEST-UNSUPPORTED-DATE-ADDRESS' in response_text
+
+            row_start = response_text.find('data-testid="row-TEST-UNSUPPORTED-DATE-ADDRESS"')
+            assert row_start != -1, "Expected validation row to render for unsupported date/address test contact"
+            row_end = response_text.find('</tr>', row_start)
+            assert row_end != -1, "Expected closing row tag for unsupported date/address test contact"
+            row_section = response_text[row_start:row_end]
+
+            assert 'No issues' in row_section, (
+                "Validation Review fallback currently leaves invalid-looking date/address rows clean, "
+                f"but got row section: {row_section}"
+            )
+            assert '<span style="color: #9ca3af; font-style: italic;">None</span>' in row_section, (
+                "Validation Review fallback currently renders no generated issues for date/address-only rows, "
+                f"but got row section: {row_section}"
+            )
+            assert 'Invalid date' not in row_section
+            assert 'Address incomplete' not in row_section
+
+        finally:
+            fixtures.CONTACTS[:] = original_contacts
