@@ -86,6 +86,27 @@ Reviewer must distinguish:
 
 A technically correct unauthorized fix may be recommended to keep after post-hoc review, but it is not clean happy path and must be reported as a workflow violation.
 
+
+## Orchestrator-Led Completion Review
+
+Flag a workflow violation when an Orchestrator-led implementation task stops after implementation completion, passed gates, or dirty scoped files instead of invoking Reviewer when Reviewer was required.
+
+Reviewer should treat the following as non-terminal status reports, not completed workflow states:
+
+- `Ready for Reviewer`
+- `Implementation complete`
+- `All gates passed`
+- `working tree dirty only with expected files`
+- `Review Packet prepared`
+
+If gates passed and Reviewer was required, Orchestrator should have invoked Reviewer. The correct transition is:
+
+```text
+Implementer ready-for-review + gates passed → Orchestrator invokes Reviewer
+```
+
+This check does not apply to Implementer acting alone; Implementer may stop at ready-for-review. It applies when the current task is Orchestrator-led or auto-commit/review flow was authorized.
+
 ## Process Compliance
 
 Flag workflow violations when agents:

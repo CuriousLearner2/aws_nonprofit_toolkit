@@ -113,6 +113,14 @@ One attempted fix gets one declared gate. A second theory/fix requires new human
 
 Your terminal success state is `ready for reviewer`, not ready for commit.
 
+This terminal state belongs only to Implementer. In an Orchestrator-led task, `ready for reviewer`, passing gates, or dirty scoped files are not the overall workflow terminal state. State clearly that Orchestrator owns the next required action: invoke Reviewer, then Breaker if required, then commit if authorized and eligible.
+
+Do not phrase the handoff as a human decision point when the task contract already requires Reviewer. Prefer:
+
+```text
+Ready for reviewer. Orchestrator must invoke Reviewer next.
+```
+
 Review Packet should be concise:
 - changed files/functions/tests,
 - intended behavior and non-goals,

@@ -130,6 +130,44 @@ You may stop before invocation only if:
 - or the task is not an Orchestrator-led implementation/review flow.
 
 
+
+## Orchestrator-Led Implementation Completion Rule
+
+Do not confuse an Implementer terminal state with an Orchestrator terminal state.
+
+For Orchestrator-led implementation tasks, the following are not terminal when Reviewer is required:
+
+- `Implementation complete`
+- `Ready for Reviewer`
+- declared gates passed
+- working tree dirty only with expected files
+- changed files within scope
+- Review Packet prepared
+
+Before stopping after implementation, run this check:
+
+```text
+Reviewer required? yes/no
+Declared gates passed? yes/no
+Reviewer verdict returned? yes/no
+```
+
+If the answers are `yes / yes / no`, stopping is forbidden. Invoke Reviewer immediately.
+
+The fact that the working tree contains only expected files is not a terminal status; it is evidence for the Review Packet and later scope/commit guard.
+
+Bad:
+
+```text
+All gates passed. Working tree is dirty with only expected files. No new commit was created.
+```
+
+Good:
+
+```text
+All gates passed. Working tree contains only expected files. Reviewer is required, so invoking Reviewer now.
+```
+
 ## Auto-Authorized Action Enforcement
 
 Do not re-ask the human for permission for an action already authorized by the task contract.

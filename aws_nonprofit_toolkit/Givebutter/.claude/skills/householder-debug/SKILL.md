@@ -417,6 +417,45 @@ Non-terminal status phrases:
 If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns clean Accept and Breaker is required, invoke Breaker. These are required actions, not optional human approvals.
 
 
+
+## Orchestrator-Led Implementation Completion Rule
+
+For Orchestrator-led implementation tasks, implementation completion is not a terminal state when review is required.
+
+These are evidence for the Review Packet, not stopping points:
+
+- implementation complete,
+- declared gates passed,
+- working tree dirty only with expected files,
+- all changed files are within scope,
+- ready-for-review handoff produced by Implementer.
+
+If all are true:
+
+```text
+Reviewer required? yes
+Declared gates passed? yes
+Reviewer verdict returned? no
+```
+
+then stopping is forbidden. Orchestrator must invoke Reviewer immediately.
+
+Implementer may stop at `ready for reviewer`; that terminal state belongs only to Implementer. Orchestrator must consume the handoff and continue through required Reviewer/Breaker/commit flow already authorized by the task contract.
+
+Bad:
+
+```text
+All gates passed. Working tree is dirty with only expected files. Ready for Reviewer.
+```
+
+Good:
+
+```text
+All gates passed. Working tree contains only expected files. Reviewer is required, so invoking Reviewer now.
+```
+
+After Reviewer `Accept`, invoke Breaker if required. If the task contract includes `Happy-path auto-commit: enabled` and the commit path is eligible, commit expected files and stop. Do not push unless separately authorized.
+
 ## Auto-Authorized Action Enforcement Rule
 
 Human authorization is resolved by the task contract, not by the agent's comfort level at each step.
