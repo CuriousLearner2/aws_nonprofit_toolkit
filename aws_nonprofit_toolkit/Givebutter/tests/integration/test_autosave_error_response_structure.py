@@ -8,15 +8,18 @@ This test proves that all autosave error responses include these fields, even wh
 validation fails or exceptions occur.
 """
 
+import os
 import pytest
 import sys
 from pathlib import Path
 import json
+from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.uploader.app import app
+from scripts.householder.database_models import RawImportRow, create_db_engine
 
 
 class TestAutosaveErrorResponseStructure:
@@ -237,3 +240,54 @@ class TestFixtureModeAutosave:
         assert data['row_status'] == 'Blocking'
         assert any(issue.get('field') == 'phone' for issue in data['issues'])
         assert any(issue.get('severity') == 'error' for issue in data['issues'])
+
+
+class TestDatabaseModeAutosaveFallback:
+    """Test database-mode autosave fallback stays internally consistent."""
+
+    def test_database_mode_exception_fallback_returns_renderable_blocking_issue(
+        self,
+        client_with_database,
+        monkeypatch,
+    ):
+        """Force the database fallback branch and verify the response is still renderable.
+
+        The fallback must never return row_status='Blocking' with an empty issues list,
+        because validation.html collapses an empty Issues payload back to No issues.
+        """
+
+        def explode(*_args, **_kwargs):
+            raise RuntimeError("forced recalc failure")
+
+        monkeypatch.setattr(
+            "householder.issue_recalculation_service.recalculate_row_issues",
+            explode,
+        )
+
+        database_url = os.environ["GIVEBUTTER_DATABASE_URL"]
+        engine = create_db_engine(database_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        try:
+            raw_import_row_id = session.query(RawImportRow.id).order_by(RawImportRow.id.asc()).first()[0]
+        finally:
+            session.close()
+
+        response = client_with_database.post(
+            '/imports/IMP-TEST-001/autosave',
+            json={
+                'raw_import_row_id': raw_import_row_id,
+                'corrected_values': {'email': 'invalid-email'},
+            },
+        )
+
+        assert response.status_code == 500
+        data = json.loads(response.data)
+
+        assert data['row_status'] == 'Blocking'
+        assert len(data['issues']) > 0
+
+        first_issue = data['issues'][0]
+        assert first_issue.get('field')
+        assert first_issue.get('reason')
+        assert first_issue.get('severity') == 'error'

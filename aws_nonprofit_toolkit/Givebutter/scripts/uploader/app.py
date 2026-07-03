@@ -1098,6 +1098,14 @@ def autosave_row_corrections(import_id):
     if not raw_import_row_id:
         return jsonify({'error': 'raw_import_row_id required'}), 400
 
+    def _build_blocking_autosave_issue(error_message: str) -> dict:
+        """Return a renderable blocking issue for autosave fallback errors."""
+        return {
+            'field': 'raw_import_row_id',
+            'reason': f'Autosave failed: {error_message}',
+            'severity': 'error',
+        }
+
     if repository_mode == 'fixture':
         fixture_result = build_fixture_autosave_response(
             batch_id=import_id,
@@ -1234,6 +1242,10 @@ def autosave_row_corrections(import_id):
             formatted_issues = []
             row_status = 'Blocking'
 
+        if row_status == 'Blocking' and not formatted_issues:
+            formatted_issues = [_build_blocking_autosave_issue(str(e))]
+            row_status = 'Blocking'
+
         return jsonify({
             'error': str(e),
             'issues': formatted_issues,
@@ -1262,6 +1274,10 @@ def autosave_row_corrections(import_id):
             ]
         except Exception:
             formatted_issues = []
+            row_status = 'Blocking'
+
+        if row_status == 'Blocking' and not formatted_issues:
+            formatted_issues = [_build_blocking_autosave_issue(str(e))]
             row_status = 'Blocking'
 
         return jsonify({
