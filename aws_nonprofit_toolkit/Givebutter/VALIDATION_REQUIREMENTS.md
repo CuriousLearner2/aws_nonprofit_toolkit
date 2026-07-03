@@ -27,6 +27,14 @@ These fields are accepted but not actively validated for content (though some ar
 | **Campaign** | Accepted via fuzzy matching (Campaign Title, Fund, Campaign, Gift Fund) but content not validated. |
 | **Custom Fields** | All unmapped columns pass through unchanged. |
 
+## Validation Review Contract
+Validation Review is a review/edit surface, not a second full import revalidator.
+
+- The review screen dynamically validates `amount`, `email`, and `phone` as fields are edited.
+- `date` and `address` validation remain at the processor/import stage.
+- `campaign` is not part of the dynamic Validation Review model.
+- Any future decision to add dynamic `date` or `address` validation on the review screen must be made explicitly and updated across the review UI, autosave validation, export/approval gating, and the relevant tests.
+
 ## Validation Tier Logic
 
 ### FAIL (Hard Error)
