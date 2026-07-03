@@ -74,6 +74,19 @@ For fixture/data-layer changes that affect visible UI, request changes or reject
 Request changes or reject when an assessment or implementation uses unverified/generic file names as if they were repo paths, invents frontend components/routes/services, or creates files from conceptual names instead of locating the existing architecture. If repo inspection was not allowed, likely files must be marked `conceptual/provisional` and paired with discovery commands.
 
 
+
+## Session Review-Capability Review
+
+When reviewing an Orchestrator-led implementation or auto-commit-capable task, verify that required Reviewer/Breaker invocation capability was available before implementation began, or that the human explicitly waived the unavailable agent for this specific task.
+
+Flag a workflow violation when:
+- the agent proceeded with implementation even though Reviewer was required and not callable,
+- the agent substituted self-review or `Reviewer-style` review for a required Reviewer without explicit human waiver,
+- the agent auto-committed while required Reviewer/Breaker invocation was unavailable,
+- the report treats the presence of reviewer.md or breaker.md on disk as proof that invocation was available.
+
+Tooling unavailability can be reported as a blocker. It is not permission to bypass required review.
+
 ## Assessment-Only Firewall Review
 
 Flag a blocking workflow violation when an assessment-only task produced edits, tests, implementation gates, Reviewer/Breaker handoff, staging, commit, amend, or push.

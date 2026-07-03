@@ -36,6 +36,13 @@ Do not start by editing. First identify:
 If the task is assessment-only, report that assessment-only work must be executed directly by Orchestrator and return control. Do not treat a proven root cause or obvious fix as implementation authorization.
 
 
+
+## Session Review-Capability Boundary
+
+If you are invoked for implementation in an Orchestrator-led task that requires Reviewer or Breaker, and the current session cannot invoke the required review agents, stop before editing and return control to Orchestrator with a session review capability blocker.
+
+Do not implement on the assumption that a later self-review can replace a required Reviewer or Breaker. Reviewer/Breaker may be waived only by explicit human authorization for that specific task.
+
 ## Assessment-Only Firewall
 
 If invoked from an assessment-only task, or if the only authorization is `prove root cause`, do not edit. A proven cause, obvious patch, or likely passing test is not authorization to implement.

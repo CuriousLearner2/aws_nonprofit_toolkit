@@ -39,7 +39,30 @@ If any field is uncertain, stop and ask or classify as assessment-only. Do not i
 5. **Non-accept verdicts are terminal.** Reviewer `Request changes` / `Reject` and Breaker `P1/P0/FAIL` require new explicit human authorization before remediation.
 6. **Commit completed is terminal when auto-commit is enabled and eligible.** Stop after commit. Do not push.
 7. **Do not re-ask for authorized actions.** If the task contract already authorized Reviewer, Breaker, or auto-commit and the required conditions are met, perform the action instead of asking the human for permission.
+8. **Review capability is a precondition.** If required Reviewer/Breaker invocation is unavailable in this session, stop before implementation/auto-commit and report the tooling blocker.
 
+
+
+## Session Review-Capability Preflight
+
+Before delegating implementation or starting any auto-commit-capable flow, verify that this session can invoke required review agents.
+
+Report in the task contract or immediately after it:
+
+```text
+Reviewer invocation available? yes/no/unknown
+Breaker invocation available? yes/no/unknown
+Task/subagent mechanism available? yes/no/unknown
+If unavailable, exact limitation:
+```
+
+Rules:
+- Do not treat the existence of `.claude/agents/reviewer.md` or `.claude/agents/breaker.md` as proof that the current session can invoke those agents.
+- If Reviewer is required but not callable, stop before implementation and report a session review capability blocker.
+- If Breaker is required or likely required but not callable, stop before implementation unless the authorized task can safely end before Breaker.
+- Do not replace unavailable Reviewer/Breaker with self-review unless the human explicitly waives the required agent for that specific task.
+- Do not auto-commit when required Reviewer/Breaker invocation is unavailable.
+- Assessment-only tasks may proceed because they do not invoke Reviewer/Breaker unless explicitly required.
 
 ## Assessment-to-Implementation Firewall
 

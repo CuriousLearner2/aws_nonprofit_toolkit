@@ -52,6 +52,13 @@ Examples:
 Breaker should not redo routine Reviewer evidence review, but should challenge fixes that do not prove the real-use path behind a P0/P1 invariant.
 
 
+
+## Session Review-Capability Risk
+
+Flag process risk when a task that required Breaker proceeded even though Breaker invocation was unavailable, or when a `Breaker-style` self-review was used without explicit human waiver.
+
+The presence of `breaker.md` on disk is not proof that Breaker was callable in the current session. Missing Breaker capability blocks commit for tasks with concrete P0/P1 invariant risk unless the human explicitly waives Breaker for that specific task.
+
 ## Assessment-Only Drift Risk
 
 When asked to evaluate work that began as assessment-only, flag process risk if root-cause proof turned into edits, tests, commit, or push without a new human-authorized implementation task. This is risk-relevant when the unauthorized fix affects reviewer-facing state, export, audit, validation, approval, raw/effective values, or other P0/P1 surfaces.

@@ -17,7 +17,8 @@ Apply rules in this order:
 3. **Failed gates stop immediately.** No diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without new human authorization.
 4. **Required handoffs are actions.** Passing gates means invoke required Reviewer/Breaker; `Ready for Reviewer` is not terminal.
 5. **Non-accept verdicts are terminal.** Reviewer `Request changes` / `Reject` and Breaker `P1/P0/FAIL` require a new human-authorized remediation task.
-6. **Commit and push remain separate.** Auto-commit requires the exact phrase `Happy-path auto-commit: enabled`; push requires separate explicit authorization. Do not re-ask for permission to perform an action already authorized by the task contract.
+6. **Review capability first for implementation.** If Reviewer/Breaker are required, the session must be able to invoke them before implementation or auto-commit-capable work begins.
+7. **Commit and push remain separate.** Auto-commit requires the exact phrase `Happy-path auto-commit: enabled`; push requires separate explicit authorization. Do not re-ask for permission to perform an action already authorized by the task contract.
 
 ## RED RULES — ALWAYS OBEY
 
@@ -61,6 +62,45 @@ Rules:
 - If the task is an implementation flow requiring review, Reviewer must be `yes`, and Orchestrator must invoke Reviewer after passing gates.
 - Lane classification must match an exact lane trigger phrase; do not infer a lane.
 
+
+
+## Session Review-Capability Preflight
+
+Before any implementation, commit-capable, or Orchestrator-led review flow begins, Orchestrator must verify whether the current session can actually invoke the required review agents.
+
+This is a tooling readiness check, not a product decision.
+
+Required preflight for implementation and auto-commit-capable tasks:
+
+```text
+Reviewer invocation available? yes/no/unknown
+Breaker invocation available? yes/no/unknown
+Task/subagent mechanism available? yes/no/unknown
+If unavailable, exact limitation:
+```
+
+Rules:
+- The presence of `.claude/agents/reviewer.md` or `.claude/agents/breaker.md` on disk proves the policy files exist; it does **not** prove the current session can invoke those agents.
+- If Reviewer is required but not callable in the current session, stop before implementation or commit-capable work and report the environment limitation.
+- If Breaker is required or likely required for P0/P1/product-invariant risk but not callable, stop before implementation unless the task can safely proceed only through assessment or Reviewer and then stop before Breaker.
+- Do not silently downgrade to self-review, Reviewer-style review, or Breaker-style review.
+- Do not auto-commit when required Reviewer/Breaker invocation is unavailable.
+- Reviewer or Breaker may be waived only by explicit human authorization for that specific task, after the unavailability is reported.
+- Assessment-only tasks may proceed without Reviewer/Breaker invocation capability, because Reviewer and Breaker are not invoked unless explicitly required.
+
+If the required review capability is unavailable, the correct terminal report is:
+
+```text
+Session review capability blocker.
+Reviewer invocation available? no/unknown
+Breaker invocation available? no/unknown
+Required by task? yes/no
+Implementation/commit allowed? no
+Next human choices:
+1. Restart/open a session with Reviewer/Breaker capability
+2. Convert to assessment-only
+3. Explicitly waive Reviewer/Breaker for this specific task
+```
 
 ## Assessment-to-Implementation Firewall
 
