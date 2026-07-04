@@ -94,7 +94,7 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
             id='smoke-test-batch',
             filename='smoke_test.csv',
             upload_timestamp=datetime.now(timezone.utc),
-            status='pending_review',
+            status='in-review',
             raw_row_count=2
         )
         session.add(batch)
@@ -153,6 +153,26 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
             amount=250.00
         )
         session.add(contact_2)
+
+        # Seed the imports list with the two additional statuses needed for
+        # browser-executed filter coverage on the /imports screen.
+        import_batch_complete_1 = ImportBatch(
+            id='smoke-complete-batch-a',
+            filename='smoke_complete_a.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='Complete',
+            raw_row_count=0
+        )
+        session.add(import_batch_complete_1)
+
+        import_batch_complete_2 = ImportBatch(
+            id='smoke-complete-batch-b',
+            filename='smoke_complete_b.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='Complete',
+            raw_row_count=0
+        )
+        session.add(import_batch_complete_2)
         session.commit()
 
         # Start Flask server
@@ -222,6 +242,65 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
                     has_keyword = any(kw.lower() in content_lower for kw in expected_keywords)
                     assert has_keyword, \
                         f"{screen_name}: page should contain one of {expected_keywords}"
+
+                    if screen_name == 'Imports/List':
+                        # Browser-executed proof for the client-side filter controls.
+                        original_url = page.url
+                        filter_bar = page.get_by_test_id('imports-status-filter-controls')
+                        all_button = page.get_by_test_id('imports-status-filter-all')
+                        in_review_button = page.get_by_test_id('imports-status-filter-in-review')
+                        complete_button = page.get_by_test_id('imports-status-filter-complete')
+                        empty_state = page.get_by_test_id('imports-status-filter-empty-state')
+                        rows = page.locator('[data-import-row]')
+
+                        assert await filter_bar.count() == 1, "Imports/List: filter bar should render"
+                        assert await all_button.get_attribute('type') == 'button', "Imports/List: All imports control should be a button"
+                        assert await in_review_button.get_attribute('type') == 'button', "Imports/List: In Review control should be a button"
+                        assert await complete_button.get_attribute('type') == 'button', "Imports/List: Complete control should be a button"
+                        assert await page.locator('form').count() == 0, "Imports/List: page should not submit a form for filtering"
+                        assert page.url == original_url, "Imports/List: default URL should remain unchanged"
+                        assert await rows.count() == 3, "Imports/List: fixture should render three import rows"
+                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
+                            "Imports/List: default All imports view should show all rows"
+                        assert await page.locator('a.table-action:visible').count() == 3, \
+                            "Imports/List: visible review links should remain present in the default view"
+                        assert await empty_state.count() == 1, "Imports/List: empty-state container should render"
+                        assert await empty_state.is_hidden(), "Imports/List: empty-state container should be hidden by default"
+
+                        await in_review_button.click()
+                        assert page.url == original_url, "Imports/List: clicking filters should not change the URL"
+                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 1, \
+                            "Imports/List: In Review filter should hide non-matching rows"
+                        assert await rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 2, \
+                            "Imports/List: In Review filter should hide the other two rows"
+                        assert await page.locator('a.table-action:visible').count() == 1, \
+                            "Imports/List: visible review link should remain for the matching row"
+                        assert await empty_state.is_hidden(), \
+                            "Imports/List: empty state should remain hidden when matches exist"
+
+                        await all_button.click()
+                        assert page.url == original_url, "Imports/List: All imports should not change the URL"
+                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
+                            "Imports/List: All imports should restore all rows"
+                        assert await page.locator('a.table-action:visible').count() == 3, \
+                            "Imports/List: All visible review links should be restored"
+                        assert await empty_state.is_hidden(), \
+                            "Imports/List: empty state should stay hidden when all rows match"
+
+                        await complete_button.click()
+                        assert page.url == original_url, "Imports/List: clicking filters should keep the URL stable"
+                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 2, \
+                            "Imports/List: Complete filter should show the two matching rows"
+                        assert await rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 1, \
+                            "Imports/List: Complete filter should hide the non-matching row"
+                        assert await page.locator('a.table-action:visible').count() == 2, \
+                            "Imports/List: visible review links should remain for matching rows"
+                        assert await empty_state.is_hidden(), \
+                            "Imports/List: fixture does not expose a no-match filter, so the empty state container should exist and stay hidden"
+
+                        await all_button.click()
+                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
+                            "Imports/List: All imports should restore visibility after filtering"
 
                     print(f"✓ {i}. {screen_name} renders correctly")
 

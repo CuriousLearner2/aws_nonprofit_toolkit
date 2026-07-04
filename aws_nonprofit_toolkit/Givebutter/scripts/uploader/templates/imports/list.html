@@ -10,9 +10,30 @@
     <strong>How to read this list:</strong> Imports are reviewed before export. Status and progress badges show the current review state. Review opens the import review workflow. Raw source data remains unchanged.
 </div>
 
+{% set import_filter_state = namespace(has_in_review=false, has_complete=false) %}
+{% for import_item in imports %}
+    {% set normalized_status = import_item.status|lower|replace(' ', '-') %}
+    {% if normalized_status == 'in-review' %}
+        {% set import_filter_state.has_in_review = true %}
+    {% elif normalized_status == 'complete' %}
+        {% set import_filter_state.has_complete = true %}
+    {% endif %}
+{% endfor %}
+
 <!-- Upload Button -->
 <div style="margin-bottom: 24px;">
     <a href="/" class="btn btn-primary" style="text-decoration: none;">Upload New Import</a>
+</div>
+
+<div class="imports-status-filter-bar" data-testid="imports-status-filter-controls" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 16px 0;">
+    <span style="font-size: 12px; font-weight: 600; color: #374151;">Show imports:</span>
+    <button type="button" class="imports-status-filter-button is-active" data-import-status-filter="all" data-testid="imports-status-filter-all" style="padding: 6px 10px; border: 1px solid #2563eb; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: 12px; font-weight: 600; cursor: pointer;">All imports</button>
+    {% if import_filter_state.has_in_review %}
+    <button type="button" class="imports-status-filter-button" data-import-status-filter="in-review" data-testid="imports-status-filter-in-review" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">In Review</button>
+    {% endif %}
+    {% if import_filter_state.has_complete %}
+    <button type="button" class="imports-status-filter-button" data-import-status-filter="complete" data-testid="imports-status-filter-complete" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">Complete</button>
+    {% endif %}
 </div>
 
 <!-- Imports Table -->
@@ -31,7 +52,8 @@
         </thead>
         <tbody>
             {% for import_item in imports %}
-            <tr>
+            {% set normalized_status = import_item.status|lower|replace(' ', '-') %}
+            <tr data-import-row data-import-status="{{ normalized_status }}" data-import-progress="{{ import_item.progress }}">
                 <td style="font-weight: 600; color: #2563eb;">{{ import_item.id }}</td>
                 <td style="font-size: 13px;">{{ import_item.filename }}</td>
                 <td style="text-align: center;">{{ import_item.record_count }}</td>
@@ -56,6 +78,9 @@
                 </td>
             </tr>
             {% endfor %}
+            <tr id="imports-status-filter-empty-state" data-testid="imports-status-filter-empty-state" hidden>
+                <td colspan="7" style="text-align: center; color: #666; padding: 20px;">No imports match this filter.</td>
+            </tr>
         </tbody>
     </table>
 </div>
@@ -65,4 +90,52 @@
     <p style="color: #999; font-size: 14px; margin: 0;">No imports yet. Upload your first CSV to get started.</p>
 </div>
 {% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const filterButtons = Array.from(document.querySelectorAll('[data-import-status-filter]'));
+    const rows = Array.from(document.querySelectorAll('[data-import-row]'));
+    const emptyState = document.getElementById('imports-status-filter-empty-state');
+
+    if (!filterButtons.length || !rows.length) {
+        return;
+    }
+
+    function setActiveButton(activeValue) {
+        filterButtons.forEach(button => {
+            const isActive = button.dataset.importStatusFilter === activeValue;
+            button.classList.toggle('is-active', isActive);
+            button.style.background = isActive ? '#eff6ff' : '#fff';
+            button.style.borderColor = isActive ? '#2563eb' : '#d1d5db';
+            button.style.color = isActive ? '#1d4ed8' : '#374151';
+        });
+    }
+
+    function applyImportStatusFilter(statusValue) {
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const matches = statusValue === 'all' || row.dataset.importStatus === statusValue;
+            row.hidden = !matches;
+            if (matches) {
+                visibleCount += 1;
+            }
+        });
+
+        if (emptyState) {
+            emptyState.hidden = visibleCount !== 0;
+        }
+
+        setActiveButton(statusValue);
+    }
+
+    filterButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            applyImportStatusFilter(this.dataset.importStatusFilter || 'all');
+        });
+    });
+
+    applyImportStatusFilter('all');
+});
+</script>
 {% endblock %}
