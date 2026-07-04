@@ -168,6 +168,22 @@ class TestValidationDecisionUI:
         assert 'data-import-stage-fields="date,address"' in html
         assert 'data-unsupported-fields="campaign"' in html
 
+    def test_validation_page_shows_issue_severity_legend(self, flask_client_with_validation_items):
+        """Validation page explains issue chip colors with a compact legend."""
+        client, database_url, engine, Session, validation_items = flask_client_with_validation_items
+
+        response = client.get('/imports/IMP-2025-0101-A/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        assert 'data-testid="issue-severity-legend"' in html
+        assert 'data-severity="blocking"' in html
+        assert 'data-severity="warning"' in html
+        assert 'Issue colors:' in html
+        assert 'Blocking issues' in html
+        assert 'Warnings' in html
+        assert 'Row Status' in html
+
     def test_approval_modal_explains_blocking_vs_warning(self, flask_client_with_validation_items):
         """Approval modal explains that blocking issues require override confirmation."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
