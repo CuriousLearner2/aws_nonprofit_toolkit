@@ -1445,6 +1445,7 @@ def approve_import_batch(import_id):
                         'remaining_issues': remaining_issues_by_row,
                         'message': f'Batch has {len(remaining_issues_by_row)} row(s) with unresolved issues. Please confirm override.'
                     }), 200
+                approval_status = 'approved'
             except ValueError as e:
                 return jsonify({'error': str(e)}), 404
 

@@ -265,18 +265,23 @@ def check_batch_remaining_issues(
                 raw_import_row_id=row.id,
                 database_url=database_url
             )
+            blocking_issues = [
+                issue for issue in issues
+                if issue.get('severity', 'warning') == 'error'
+            ]
             row_status = derive_row_status(
                 batch_id=batch_id,
                 raw_import_row_id=row.id,
                 database_url=database_url
             )
 
-            # Include row if it has validation issues
-            if issues:
+            # Include row only if it has blocking validation issues.
+            # Warning-only rows may remain non-blocking during approval.
+            if blocking_issues:
                 remaining_issues_by_row.append({
                     'raw_import_row_id': row.id,
                     'row_index': row.row_index,
-                    'issues': issues,
+                    'issues': blocking_issues,
                     'row_status': row_status
                 })
             # Or include if it has a pending follow-up decision

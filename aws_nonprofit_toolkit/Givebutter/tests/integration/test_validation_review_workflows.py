@@ -290,6 +290,113 @@ def _seed_unresolved_validation_issue(Session, batch_id, raw_import_row_id, fiel
         session.close()
 
 
+def _seed_warning_only_validation_issue(Session, batch_id, raw_import_row_id):
+    """Seed a warning-tier validation issue for approval gating tests."""
+    session = Session()
+    try:
+        raw_row = session.query(RawImportRow).filter_by(id=raw_import_row_id).first()
+        contact = session.query(ImportContact).filter_by(
+            raw_import_row_id=raw_import_row_id
+        ).first()
+
+        if raw_row:
+            raw_data = dict(raw_row.raw_csv_data or {})
+            raw_data['email'] = 'gmial.com'
+            raw_row.raw_csv_data = raw_data
+
+        if contact:
+            contact.email = 'gmial.com'
+
+            issue = session.query(ReviewItem).join(ReviewItemSubject).filter(
+                ReviewItem.batch_id == batch_id,
+                ReviewItem.item_type == 'validation',
+                ReviewItemSubject.subject_type == 'import_contact_snapshot',
+                ReviewItemSubject.subject_id == contact.id,
+            ).first()
+
+            if issue:
+                issue.payload_json = {
+                    'field': 'email',
+                    'reason': 'possible_typo',
+                    'description': 'Possible typo',
+                    'severity': 'warning',
+                }
+
+        session.commit()
+    finally:
+        session.close()
+
+
+def _seed_isolated_warning_only_batch(Session):
+    """Create an isolated batch containing only a warning-tier validation issue."""
+    session = Session()
+    batch_id = 'warning-only-approval-test-batch'
+    try:
+        batch = ImportBatch(
+            id=batch_id,
+            filename='warning_only_test.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id=batch_id,
+            row_index=1,
+            raw_csv_data={
+                'name': 'Warning Only',
+                'date': '2026-01-15',
+                'email': 'gmial.com',
+                'phone': '(555) 123-4567',
+                'amount': '100.00',
+                'address': '123 Main St',
+            },
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id=batch_id,
+            raw_import_row_id=raw_row.id,
+            first_name='Warning',
+            last_name='Only',
+            email='gmial.com',
+            phone='(555) 123-4567',
+            amount=100.0,
+            address_line1='123 Main St',
+        )
+        session.add(contact)
+        session.flush()
+
+        review_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='validation',
+            status='pending',
+            payload_json={
+                'field': 'email',
+                'reason': 'possible_typo',
+                'description': 'Possible typo',
+                'severity': 'warning',
+            },
+        )
+        session.add(review_item)
+        session.flush()
+        session.add(
+            ReviewItemSubject(
+                review_item_id=review_item.id,
+                subject_type='import_contact_snapshot',
+                subject_id=contact.id,
+            )
+        )
+
+        session.commit()
+        return batch_id, raw_row.id
+    finally:
+        session.close()
+
+
 # ==============================================================================
 # TEST 1: Email validation and row status sync
 # ==============================================================================
@@ -720,6 +827,51 @@ class TestApprovalWarnings:
         assert data.get('success') is not True, (
             f"Approval must not silently succeed when unresolved FAIL issues remain, got: {data}"
         )
+
+    def test_warning_only_validation_issues_do_not_require_override_confirmation(
+        self, flask_client_with_validation_batch
+    ):
+        """Warning-tier validation issues should not trigger override confirmation."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id, raw_id = _seed_isolated_warning_only_batch(Session)
+
+        session = Session()
+        try:
+            original_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            original_raw_data = dict(original_row.raw_csv_data)
+        finally:
+            session.close()
+
+        response = client.post(
+            f'/imports/{batch_id}/approve-batch',
+            json={
+                'approval_status': 'approved_with_overrides',
+                'rows_with_overrides': []
+            }
+        )
+
+        assert response.status_code == 200, (
+            f"Warning-only approval should not be blocked, got {response.status_code}: {response.get_json()}"
+        )
+        data = response.get_json()
+        assert data.get('requires_override_confirmation') is not True, (
+            f"Warning-only validation issues must not require override confirmation, got: {data}"
+        )
+        assert data.get('success') is True, (
+            f"Warning-only validation issues should allow approval to proceed, got: {data}"
+        )
+        assert data.get('approval_status') == 'approved', (
+            f"Warning-only approval should proceed as approved, got: {data}"
+        )
+
+        session = Session()
+        try:
+            current_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            assert current_row.raw_csv_data == original_raw_data, (
+                f"Raw CSV data must remain unchanged, got: {current_row.raw_csv_data}"
+            )
+        finally:
+            session.close()
 
 
 # ==============================================================================
