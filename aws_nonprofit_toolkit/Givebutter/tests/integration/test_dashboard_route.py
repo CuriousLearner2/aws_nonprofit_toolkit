@@ -43,6 +43,22 @@ class TestDashboardRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/dashboard')
         assert b'42%' in response.data
 
+    def test_dashboard_shows_attention_banner(self, client_with_fixture):
+        """Test that dashboard renders a compact needs-attention banner."""
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/dashboard')
+        html = response.data.decode('utf-8')
+
+        assert 'data-testid="dashboard-attention-banner"' in html
+        assert 'data-attention-queue="validation"' in html
+        assert 'Possible Duplicates' in html
+        assert 'Validation Review' in html
+        assert 'Normalizations' in html
+        assert 'Households' in html
+        assert '/imports/IMP-2025-0101-A/validation' in html
+        assert '/imports/IMP-2025-0101-A/duplicates' in html
+        assert '/imports/IMP-2025-0101-A/normalizations' in html
+        assert '/imports/IMP-2025-0101-A/households' in html
+
     def test_dashboard_contains_duplicates_queue(self, client_with_fixture):
         """Test that dashboard contains duplicates review queue."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/dashboard')
