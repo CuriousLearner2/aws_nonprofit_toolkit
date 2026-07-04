@@ -7,6 +7,9 @@
 <p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Total Entries:</strong> {{ audit_log|length }}</p>
 
 <div class="safety-strip">Complete record of all reviewer decisions and system actions for this import. Immutable reference for compliance.</div>
+<div class="safety-strip" data-testid="audit-filter-orientation" style="margin-top: 12px;">
+    The action filter narrows the rows shown here. Audit entries are append-only reviewer/system actions. If no rows match, no matching audit events are currently displayed.
+</div>
 
 <!-- Filter & Export -->
 <div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">
@@ -74,7 +77,7 @@
             </tr>
             {% endfor %}
             <tr id="audit-empty-state" hidden>
-                <td colspan="4" style="text-align: center; color: #666; padding: 20px;">No audit entries match this action filter.</td>
+                <td colspan="4" style="text-align: center; color: #666; padding: 20px;">No audit entries match this action filter. Audit history is append-only, so no matching audit events are currently displayed.</td>
             </tr>
         </tbody>
     </table>

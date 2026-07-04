@@ -49,6 +49,11 @@ class TestDashboardRoute:
         html = response.data.decode('utf-8')
 
         assert 'data-testid="dashboard-attention-banner"' in html
+        assert 'data-testid="dashboard-next-step-note"' in html
+        assert 'Handle review queues before export.' in html
+        assert 'Blockers require attention before export under existing rules.' in html
+        assert 'Warnings are review-relevant but distinct from blockers.' in html
+        assert 'Raw source rows remain unchanged.' in html
         assert 'data-attention-queue="validation"' in html
         assert 'Possible Duplicates' in html
         assert 'Validation Review' in html
