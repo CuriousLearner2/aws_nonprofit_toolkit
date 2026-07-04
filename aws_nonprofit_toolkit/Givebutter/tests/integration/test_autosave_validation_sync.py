@@ -84,8 +84,93 @@ def flask_client_with_batch(temp_db, monkeypatch):
         yield client, database_url, engine, Session, rows
 
 
+@pytest.fixture
+def flask_client_with_batch_database_mode(temp_db, monkeypatch):
+    """Flask client with batch seeded in explicit database mode."""
+    database_url, engine = temp_db
+
+    app.config['TESTING'] = True
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    batch = ImportBatch(
+        id='sync-test-batch',
+        filename='test.csv',
+        upload_timestamp=datetime.now(timezone.utc),
+        status='pending_review',
+        raw_row_count=2
+    )
+    session.add(batch)
+    session.flush()
+
+    rows = []
+    for i in range(1, 3):
+        row = RawImportRow(
+            batch_id='sync-test-batch',
+            row_index=i,
+            raw_csv_data={'name': f'Person {i}', 'email': f'person{i}@gmail.com'}
+        )
+        session.add(row)
+        session.flush()
+        rows.append(row.id)
+
+    session.commit()
+    session.close()
+
+    with app.test_client() as client:
+        yield client, database_url, engine, Session, rows
+
+
 class TestAutosaveValidationSync:
     """Test autosave validation synchronization."""
+
+    @pytest.mark.parametrize(
+        "fixture_name, corrected_values, expected_field",
+        [
+            ("flask_client_with_batch", {"email": "invalid-email"}, "email"),
+            ("flask_client_with_batch", {"phone": "123"}, "phone"),
+            ("flask_client_with_batch_database_mode", {"email": "invalid-email"}, "email"),
+            ("flask_client_with_batch_database_mode", {"phone": "123"}, "phone"),
+        ],
+    )
+    def test_autosave_response_shape_parity_across_repository_modes(
+        self,
+        request,
+        fixture_name,
+        corrected_values,
+        expected_field,
+    ):
+        """Fixture and database modes should present the same reviewer-facing error shape."""
+        client, database_url, engine, Session, rows = request.getfixturevalue(fixture_name)
+        raw_id = rows[0]
+
+        response = client.post(
+            f'/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': corrected_values
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+
+        assert data['success'] is False
+        assert 'row_status' in data
+        assert data['row_status'] == 'Blocking'
+        assert 'issues' in data
+        assert isinstance(data['issues'], list)
+        assert len(data['issues']) > 0
+        assert any(issue.get('field') == expected_field for issue in data['issues']), (
+            f"Expected {expected_field} issue in {fixture_name}, got: {data['issues']}"
+        )
+        assert (
+            'error' in data
+            or 'validation_errors' in data
+        ), f"Expected error details in {fixture_name}, got: {data}"
 
     def test_autosave_validation_error_response_includes_status(self, flask_client_with_batch):
         """Autosave error response includes row_status and issues for UI sync."""
