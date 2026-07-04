@@ -50,11 +50,20 @@ class TestDashboardRoute:
 
         assert 'data-testid="dashboard-attention-banner"' in html
         assert 'data-testid="dashboard-next-step-note"' in html
+        assert 'data-testid="dashboard-jump-strip"' in html
+        assert 'data-testid="dashboard-jump-validation"' in html
+        assert 'data-testid="dashboard-jump-duplicates"' in html
+        assert 'data-testid="dashboard-jump-normalizations"' in html
+        assert 'data-testid="dashboard-jump-households"' in html
         assert 'Review queues should be handled before export.' in html
         assert 'Blockers require attention before export under existing rules.' in html
         assert 'Warnings are review-relevant but distinct from blockers.' in html
         assert 'Raw source rows remain unchanged.' in html
         assert 'data-attention-queue="validation"' in html
+        assert 'href="#dashboard-validation-review"' in html
+        assert 'href="#dashboard-possible-duplicates"' in html
+        assert 'href="#dashboard-normalizations"' in html
+        assert 'href="#dashboard-households"' in html
         assert 'Possible Duplicates' in html
         assert 'Validation Review' in html
         assert 'Normalizations' in html
@@ -63,6 +72,10 @@ class TestDashboardRoute:
         assert '/imports/IMP-2025-0101-A/duplicates' in html
         assert '/imports/IMP-2025-0101-A/normalizations' in html
         assert '/imports/IMP-2025-0101-A/households' in html
+        assert 'id="dashboard-validation-review"' in html
+        assert 'id="dashboard-possible-duplicates"' in html
+        assert 'id="dashboard-normalizations"' in html
+        assert 'id="dashboard-households"' in html
 
     def test_dashboard_contains_duplicates_queue(self, client_with_fixture):
         """Test that dashboard contains duplicates review queue."""
@@ -107,6 +120,23 @@ class TestDashboardRoute:
         assert b'/imports/IMP-2025-0101-A/audit' in response.data
         assert b'/imports/IMP-2025-0101-A/exports' in response.data
         assert b'/imports' in response.data  # Back link
+
+    def test_dashboard_jump_strip_targets_are_stable(self, client_with_fixture):
+        """Test that jump links point to real in-page queue section ids."""
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/dashboard')
+        html = response.data.decode('utf-8')
+
+        jump_targets = {
+            'dashboard-validation-review': 'Validation Review',
+            'dashboard-possible-duplicates': 'Possible Duplicates',
+            'dashboard-normalizations': 'Normalizations',
+            'dashboard-households': 'Households',
+        }
+
+        for target_id, label in jump_targets.items():
+            assert f'id="{target_id}"' in html
+            assert f'href="#{target_id}"' in html
+            assert label in html
 
     def test_imports_route_still_works(self, client_with_fixture):
         """Test that /imports route still works (Step 1 regression check)."""
