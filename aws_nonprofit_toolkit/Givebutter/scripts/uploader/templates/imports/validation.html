@@ -7,7 +7,13 @@
     <h1>Validation Review</h1>
     <p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Total Records:</strong> {{ total_records }} | <strong>Issues Found:</strong> {{ queue_status.validation_issues }}</p>
 
-    <div class="safety-strip">All records with validation issues flagged below. Edit inline fields (autosaves on blur), or inspect details.</div>
+    <div class="safety-strip"
+         data-testid="validation-scope-banner"
+         data-dynamic-fields="amount,email,phone"
+         data-import-stage-fields="date,address"
+         data-unsupported-fields="campaign">
+        Dynamic review checks run for amount, email, and phone edits. Date and address checks come from import-stage validation, and campaign is not dynamically revalidated on this screen.
+    </div>
 
     <!-- Filter & Controls -->
     <div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">

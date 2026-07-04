@@ -155,6 +155,19 @@ class TestValidationDecisionUI:
         assert 'decision' in html or 'Decision' in html
         assert 'notes' in html or 'Notes' in html
 
+    def test_validation_page_shows_scope_banner(self, flask_client_with_validation_items):
+        """Validation page explains the dynamic validation scope."""
+        client, database_url, engine, Session, validation_items = flask_client_with_validation_items
+
+        response = client.get('/imports/IMP-2025-0101-A/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        assert 'data-testid="validation-scope-banner"' in html
+        assert 'data-dynamic-fields="amount,email,phone"' in html
+        assert 'data-import-stage-fields="date,address"' in html
+        assert 'data-unsupported-fields="campaign"' in html
+
     def test_validation_page_displays_row_status(self, flask_client_with_validation_items):
         """Validation page shows row status from Phase 2 derivation (Phase 3)."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
