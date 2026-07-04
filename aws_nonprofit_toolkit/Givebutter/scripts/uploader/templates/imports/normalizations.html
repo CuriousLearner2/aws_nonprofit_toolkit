@@ -10,6 +10,34 @@
 
 <!-- Normalization Suggestion Card -->
 {% if total_suggestions > 0 %}
+{% set normalization_status_label = 'Pending' %}
+{% if current_suggestion.effective_status == 'accepted' %}
+    {% set normalization_status_label = 'Accepted' %}
+{% elif current_suggestion.effective_status == 'rejected' %}
+    {% set normalization_status_label = 'Rejected' %}
+{% elif current_suggestion.effective_status == 'deferred' %}
+    {% set normalization_status_label = 'Deferred' %}
+{% endif %}
+
+<div class="review-summary-strip" data-testid="normalization-summary-strip" style="display: flex; flex-wrap: wrap; gap: 16px; margin: 18px 0 24px 0; padding: 12px 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px;">
+    <div data-summary-metric="contact" style="font-size: 13px;">
+        <span>Suggested for</span>
+        <strong data-summary-contact="{{ current_suggestion.contact_name }}">{{ current_suggestion.contact_name }}</strong>
+    </div>
+    <div data-summary-metric="field" style="font-size: 13px;">
+        <span>Field</span>
+        <strong data-summary-field="{{ current_suggestion.field_name }}">{{ current_suggestion.field_name }}</strong>
+    </div>
+    <div data-summary-metric="reason" style="font-size: 13px;">
+        <span>Reason</span>
+        <strong data-summary-reason="{{ current_suggestion.normalization_type }}">{{ current_suggestion.normalization_type }}</strong>
+    </div>
+    <div data-summary-metric="status" style="font-size: 13px;">
+        <span>Current status</span>
+        <strong data-summary-status="{{ normalization_status_label }}">{{ normalization_status_label }}</strong>
+    </div>
+</div>
+
 <div class="card" style="margin-bottom: 30px;">
     <!-- Contact Label -->
     <div style="margin-bottom: 20px;">

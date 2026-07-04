@@ -86,6 +86,7 @@ def seed_test_data(session):
         {'item_type': 'normalization', 'payload': {
             'id': 'NORM-001',
             'field': 'email',
+            'field_name': 'Email',
             'raw_value': 'jon.smith@email.com',
             'normalized_value': 'jon_smith@email.com',
             'normalization_type': 'Email standardization',

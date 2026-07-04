@@ -55,6 +55,29 @@ class TestNormalizationsRoute:
         html = response.get_data(as_text=True)
         assert 'Raw import rows remain unchanged' in html
 
+    def test_normalizations_page_shows_summary_strip(self, client_with_database):
+        """Normalizations page renders a compact suggestion summary strip."""
+        response = client_with_database.get('/imports/IMP-TEST-001/normalizations')
+        html = response.get_data(as_text=True)
+
+        assert 'data-testid="normalization-summary-strip"' in html
+        assert 'data-summary-metric="contact"' in html
+        assert 'data-summary-metric="field"' in html
+        assert 'data-summary-metric="reason"' in html
+        assert 'data-summary-metric="status"' in html
+        assert 'data-summary-contact="Jon Smith"' in html
+        assert 'data-summary-field="Email"' in html
+        assert 'data-summary-reason="Email standardization"' in html
+        assert 'data-summary-status="Pending"' in html
+        assert 'Suggested for' in html
+        assert 'Field' in html
+        assert 'Reason' in html
+        assert 'Current status' in html
+        assert 'Jon Smith' in html
+        assert 'Email' in html
+        assert 'Email standardization' in html
+        assert 'Pending' in html
+
     def test_normalizations_page_original_value_label(self, client_with_database):
         """Normalizations page displays 'Original Value' label."""
         response = client_with_database.get('/imports/IMP-TEST-001/normalizations')
