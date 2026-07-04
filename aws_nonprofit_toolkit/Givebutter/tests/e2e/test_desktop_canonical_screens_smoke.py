@@ -302,6 +302,56 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
                         assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
                             "Imports/List: All imports should restore visibility after filtering"
 
+                    if screen_name == 'Dashboard':
+                        jump_strip = page.get_by_test_id('dashboard-jump-strip')
+                        validation_jump = page.get_by_test_id('dashboard-jump-validation')
+                        duplicates_jump = page.get_by_test_id('dashboard-jump-duplicates')
+                        normalizations_jump = page.get_by_test_id('dashboard-jump-normalizations')
+                        households_jump = page.get_by_test_id('dashboard-jump-households')
+                        validation_card = page.locator('#dashboard-validation-review')
+                        duplicates_card = page.locator('#dashboard-possible-duplicates')
+                        normalizations_card = page.locator('#dashboard-normalizations')
+                        households_card = page.locator('#dashboard-households')
+
+                        assert await jump_strip.count() == 1, "Dashboard: jump strip should render"
+                        assert await validation_jump.count() == 1, "Dashboard: Validation Review jump link should render"
+                        assert await duplicates_jump.count() == 1, "Dashboard: Possible Duplicates jump link should render"
+                        assert await normalizations_jump.count() == 1, "Dashboard: Normalizations jump link should render"
+                        assert await households_jump.count() == 1, "Dashboard: Households jump link should render"
+                        assert await validation_card.count() == 1, "Dashboard: Validation Review card should render"
+                        assert await duplicates_card.count() == 1, "Dashboard: Possible Duplicates card should render"
+                        assert await normalizations_card.count() == 1, "Dashboard: Normalizations card should render"
+                        assert await households_card.count() == 1, "Dashboard: Households card should render"
+                        assert await page.get_by_role('link', name='Review Records').count() == 1, \
+                            "Dashboard: Review Records action should remain present"
+                        assert await page.get_by_role('link', name='Review Duplicates').count() == 1, \
+                            "Dashboard: Review Duplicates action should remain present"
+                        assert await page.get_by_role('link', name='Review Normalizations').count() == 1, \
+                            "Dashboard: Review Normalizations action should remain present"
+                        assert await page.get_by_role('link', name='Review Households').count() == 1, \
+                            "Dashboard: Review Households action should remain present"
+                        assert await page.get_by_role('link', name='View Audit Log').count() == 1, \
+                            "Dashboard: View Audit Log action should remain present"
+                        assert await page.get_by_role('link', name='Open Export Console').count() == 1, \
+                            "Dashboard: Open Export Console action should remain present"
+
+                        await validation_jump.click()
+                        await page.wait_for_function(
+                            "() => window.location.hash === '#dashboard-validation-review'",
+                            timeout=5000,
+                        )
+
+                        target_outline_style = await validation_card.evaluate(
+                            "el => window.getComputedStyle(el).outlineStyle"
+                        )
+                        target_outline_width = await validation_card.evaluate(
+                            "el => window.getComputedStyle(el).outlineWidth"
+                        )
+                        assert target_outline_style == 'solid', \
+                            f"Dashboard: target card should be visibly highlighted, got outline style {target_outline_style}"
+                        assert target_outline_width == '2px', \
+                            f"Dashboard: target card should be visibly highlighted, got outline width {target_outline_width}"
+
                     print(f"✓ {i}. {screen_name} renders correctly")
 
                 # Verify viewport

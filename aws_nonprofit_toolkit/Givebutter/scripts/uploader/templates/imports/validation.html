@@ -80,6 +80,7 @@
         {% if summary.has_overridden %}
         <button type="button" class="status-filter-button" data-row-status-filter="Overridden" data-testid="validation-status-filter-overridden" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">Overridden</button>
         {% endif %}
+        <span data-testid="validation-visible-row-count" aria-live="polite" style="margin-left: auto; font-size: 12px; font-weight: 600; color: #6b7280;">Showing {{ validation_issues | length }} of {{ validation_issues | length }} rows</span>
     </div>
 
     <!-- Filter & Controls -->
@@ -491,6 +492,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterButtons = Array.from(document.querySelectorAll('[data-row-status-filter]'));
     const rows = Array.from(document.querySelectorAll('tr.validation-row[data-row-status]'));
     const emptyState = document.getElementById('validation-status-filter-empty-state');
+    const visibleRowCount = document.querySelector('[data-testid="validation-visible-row-count"]');
+    const totalRowCount = rows.length;
     const hasOverriddenRows = rows.some(row => row.dataset.rowStatus === 'Overridden');
 
     if (!filterButtons.length || !rows.length) {
@@ -527,6 +530,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (emptyState) {
             emptyState.hidden = visibleCount !== 0;
+        }
+
+        if (visibleRowCount) {
+            visibleRowCount.textContent = `Showing ${visibleCount} of ${totalRowCount} rows`;
         }
 
         setActiveButton(statusValue);

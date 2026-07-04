@@ -131,11 +131,13 @@ class TestValidationRoute:
         assert 'data-testid="validation-status-filter-blocking"' in html
         assert 'data-testid="validation-status-filter-warning"' in html
         assert 'data-testid="validation-status-filter-no-issues"' in html
+        assert 'data-testid="validation-visible-row-count"' in html
         assert 'type="button"' in html
         assert 'data-testid="validation-status-filter-empty-state"' in html
         assert 'data-row-status="' in html
         assert 'applyStatusFilter(' in html
         assert 'row.hidden = !matches;' in html
+        assert 'Showing 5 of 5 rows' in html
 
         has_overridden_rows = 'data-row-status="Overridden"' in html
         if has_overridden_rows:

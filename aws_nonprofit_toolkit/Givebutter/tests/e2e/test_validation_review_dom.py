@@ -5969,9 +5969,11 @@ async def test_validation_jump_link_highlights_first_blocking_row():
                 blocking_button = page.get_by_test_id('validation-status-filter-blocking')
                 warning_button = page.get_by_test_id('validation-status-filter-warning')
                 no_issues_button = page.get_by_test_id('validation-status-filter-no-issues')
+                visible_row_count = page.get_by_test_id('validation-visible-row-count')
                 summary_strip = page.get_by_test_id('review-summary-strip')
                 summary_link = page.get_by_role('link', name='Jump to first blocking row')
                 target_row = page.locator('#validation-row-TXN-003')
+                data_rows = page.locator('tr.validation-row[data-row-status]')
 
                 assert await table.count() == 1, 'Validation: table should render'
                 assert await filter_controls.count() == 1, 'Validation: status filter controls should render'
@@ -5979,12 +5981,41 @@ async def test_validation_jump_link_highlights_first_blocking_row():
                 assert await blocking_button.count() == 1, 'Validation: Blocking control should render'
                 assert await warning_button.count() == 1, 'Validation: Warning control should render'
                 assert await no_issues_button.count() == 1, 'Validation: No issues control should render'
+                assert await visible_row_count.count() == 1, 'Validation: visible-row count should render'
+                assert await visible_row_count.inner_text() == 'Showing 5 of 5 rows', \
+                    'Validation: default All rows count should reflect all rendered rows'
                 assert await summary_strip.count() == 1, 'Validation: summary strip should render'
                 assert await summary_link.count() == 1, 'Validation: jump link should render'
                 assert await target_row.count() == 1, 'Validation: first blocking row should render'
                 assert await target_row.is_visible(), 'Validation: first blocking row should be visible before jump'
 
                 summary_text_before = await summary_strip.inner_text()
+
+                await blocking_button.click()
+                await page.wait_for_function(
+                    "() => document.querySelector('[data-testid=\"validation-visible-row-count\"]')?.textContent?.trim() === 'Showing 2 of 5 rows'",
+                    timeout=5000,
+                )
+                assert await data_rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 2, \
+                    'Validation: Blocking filter should leave two visible rows'
+                assert await data_rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 3, \
+                    'Validation: Blocking filter should hide the other three rows'
+                assert await visible_row_count.inner_text() == 'Showing 2 of 5 rows', \
+                    'Validation: visible-row count should update after filtering to Blocking'
+                assert await summary_strip.inner_text() == summary_text_before, \
+                    'Validation: summary counts should remain unchanged after client-side filtering'
+
+                await all_button.click()
+                await page.wait_for_function(
+                    "() => document.querySelector('[data-testid=\"validation-visible-row-count\"]')?.textContent?.trim() === 'Showing 5 of 5 rows'",
+                    timeout=5000,
+                )
+                assert await data_rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 5, \
+                    'Validation: All rows should restore every row'
+                assert await visible_row_count.inner_text() == 'Showing 5 of 5 rows', \
+                    'Validation: visible-row count should return to the total after All rows'
+                assert await summary_strip.inner_text() == summary_text_before, \
+                    'Validation: summary counts should still be unchanged after restoring All rows'
 
                 await summary_link.click()
 
