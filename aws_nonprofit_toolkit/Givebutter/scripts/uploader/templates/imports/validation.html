@@ -1032,7 +1032,7 @@ function showApprovalModal(remainingIssues) {
     const modalFooter = document.getElementById('modal-approval-footer');
 
     let issuesHtml = '<div style="margin-bottom: 20px;">';
-    issuesHtml += `<p style="color: #666; margin-bottom: 16px;">This file has ${remainingIssues.length} row(s) with unresolved issues. Please review and confirm approval with overrides.</p>`;
+    issuesHtml += `<p style="color: #666; margin-bottom: 16px;">This file has ${remainingIssues.length} row(s) with unresolved issues. Blocking issues require explicit override confirmation before approval. Warnings are non-blocking and can remain visible without requiring an override.</p>`;
     issuesHtml += '<div style="border: 1px solid #e5e7eb; border-radius: 3px; max-height: 300px; overflow-y: auto;">';
 
     remainingIssues.forEach(rowIssue => {

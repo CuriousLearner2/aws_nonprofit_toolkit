@@ -168,6 +168,18 @@ class TestValidationDecisionUI:
         assert 'data-import-stage-fields="date,address"' in html
         assert 'data-unsupported-fields="campaign"' in html
 
+    def test_approval_modal_explains_blocking_vs_warning(self, flask_client_with_validation_items):
+        """Approval modal explains that blocking issues require override confirmation."""
+        client, database_url, engine, Session, validation_items = flask_client_with_validation_items
+
+        response = client.get('/imports/IMP-2025-0101-A/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        assert 'Blocking issues require explicit override confirmation before approval.' in html
+        assert 'Warnings are non-blocking and can remain visible without requiring an override.' in html
+        assert 'Approve with Overrides' in html
+
     def test_validation_page_displays_row_status(self, flask_client_with_validation_items):
         """Validation page shows row status from Phase 2 derivation (Phase 3)."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
