@@ -63,6 +63,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
     database_url, engine = temp_db
 
     app.config['TESTING'] = True
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
 
     # Seed database with validation records
@@ -420,6 +421,62 @@ class TestDateValidationSafety:
         assert response.status_code == 200
         data = response.get_json()
         assert data['success'] is True
+
+
+# ==============================================================================
+# TEST 4B: Validation Review scope exclusions
+# ==============================================================================
+
+class TestValidationReviewScopeExclusions:
+    """Test that Validation Review does not dynamically validate unsupported fields."""
+
+    @pytest.mark.parametrize(
+        "field_name, raw_index, corrected_value",
+        [
+            ('date', 4, 'not-a-date'),
+            ('address', 5, '999 Oak Street, Apt 100'),
+            ('campaign', 5, 'Spring Gala 2026'),
+        ],
+    )
+    def test_unsupported_validation_review_fields_do_not_create_dynamic_issues(
+        self,
+        flask_client_with_validation_batch,
+        field_name,
+        raw_index,
+        corrected_value,
+    ):
+        """
+        Date, address, and campaign must not be dynamically validated on the review screen.
+
+        These fields may be stored as reviewed values, but they must not generate
+        Validation Review issues or blocking status from the autosave path.
+        """
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[raw_index - 1]
+
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {field_name: corrected_value}
+            }
+        )
+
+        assert response.status_code == 200, (
+            f"{field_name} should not be dynamically validated in Validation Review, "
+            f"got {response.status_code}: {response.get_json()}"
+        )
+
+        data = response.get_json()
+        assert data['success'] is True
+        assert all(issue.get('field') != field_name for issue in data.get('issues', [])), (
+            f"Validation Review must not generate dynamic issues for {field_name}, "
+            f"got: {data.get('issues')}"
+        )
+        assert data.get('row_status') != 'Blocking', (
+            f"Validation Review must not block on unsupported {field_name} input, "
+            f"got: {data.get('row_status')}"
+        )
 
 
 # ==============================================================================
