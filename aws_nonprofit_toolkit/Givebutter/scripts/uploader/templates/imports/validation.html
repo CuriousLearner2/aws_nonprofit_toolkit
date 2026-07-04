@@ -55,6 +55,22 @@
         {% endif %}
     </div>
 
+    <style>
+        .validation-row {
+            scroll-margin-top: 96px;
+        }
+
+        .validation-row[data-jump-target="true"] > td,
+        .validation-row:focus > td {
+            background-color: #eff6ff !important;
+        }
+
+        .validation-row[data-jump-target="true"] > td:first-child,
+        .validation-row:focus > td:first-child {
+            box-shadow: inset 4px 0 0 #2563eb;
+        }
+    </style>
+
     <div class="status-filter-bar" data-testid="validation-status-filter-controls" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 16px 0;">
         <span style="font-size: 12px; font-weight: 600; color: #374151;">Show rows:</span>
         <button type="button" class="status-filter-button is-active" data-row-status-filter="all" data-testid="validation-status-filter-all" style="padding: 6px 10px; border: 1px solid #2563eb; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: 12px; font-weight: 600; cursor: pointer;">All rows</button>
@@ -102,6 +118,7 @@
                 data-testid="row-{{ record.id }}"
                 id="validation-row-{{ record.id }}"
                 data-row-status="{{ record.row_status or 'No issues' }}"
+                tabindex="-1"
                 class="validation-row{% if record.row_status == 'Overridden' %} row-overridden{% endif %}"
                 {% if record.row_status == 'Overridden' %}style="background-color: #eef2ff;"{% endif %}>
                 <!-- Read-only: Txn ID -->
@@ -422,6 +439,53 @@ async function loadRowDecisions() {
 
 // Load decisions when page loads
 document.addEventListener('DOMContentLoaded', loadRowDecisions);
+
+document.addEventListener('DOMContentLoaded', function() {
+    const jumpLink = document.querySelector('.review-summary-strip a[href^="#validation-row-"]');
+    const rows = Array.from(document.querySelectorAll('tr.validation-row'));
+
+    if (!jumpLink || !rows.length) {
+        return;
+    }
+
+    function clearJumpTarget() {
+        rows.forEach(row => row.removeAttribute('data-jump-target'));
+    }
+
+    function applyJumpTarget() {
+        const targetId = window.location.hash || jumpLink.getAttribute('href');
+        if (!targetId || !targetId.startsWith('#')) {
+            return;
+        }
+
+        const targetRow = document.querySelector(targetId);
+        clearJumpTarget();
+
+        if (!targetRow) {
+            return;
+        }
+
+        targetRow.setAttribute('data-jump-target', 'true');
+
+        if (typeof targetRow.focus === 'function') {
+            try {
+                targetRow.focus({ preventScroll: true });
+            } catch (error) {
+                targetRow.focus();
+            }
+        }
+    }
+
+    jumpLink.addEventListener('click', function() {
+        window.requestAnimationFrame(applyJumpTarget);
+    });
+
+    window.addEventListener('hashchange', applyJumpTarget);
+
+    if (window.location.hash) {
+        applyJumpTarget();
+    }
+});
 
 document.addEventListener('DOMContentLoaded', function() {
     const filterButtons = Array.from(document.querySelectorAll('[data-row-status-filter]'));

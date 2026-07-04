@@ -5921,6 +5921,105 @@ async def test_sticky_action_bar_visible_while_scrolling(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_validation_jump_link_highlights_first_blocking_row():
+    """
+    Verify that the summary jump link scrolls to and emphasizes the first blocking row.
+
+    Flow:
+    1. Open the canonical fixture-backed validation review page
+    2. Click the existing "Jump to first blocking row" link
+    3. Assert the browser lands on the first blocking row
+    4. Assert the row receives the visible jump-target state and focus
+    """
+    from playwright.async_api import async_playwright
+
+    base_url = 'http://127.0.0.1:8003'
+    batch_id = 'IMP-2025-0101-A'
+    env = os.environ.copy()
+    env['HOUSEHOLDER_REPOSITORY'] = 'fixture'
+    env.pop('GIVEBUTTER_DATABASE_URL', None)
+    env['FLASK_ENV'] = 'development'
+
+    flask_cmd = (
+        'from scripts.uploader.app import app; '
+        'app.run(host="127.0.0.1", port=8003, debug=False, use_reloader=False, threaded=True)'
+    )
+    flask_process = subprocess.Popen(
+        [get_venv_python(), '-c', flask_cmd],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        preexec_fn=os.setsid,
+    )
+
+    try:
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page(viewport={'width': 1440, 'height': 900})
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                table = page.locator('table')
+                filter_controls = page.get_by_test_id('validation-status-filter-controls')
+                all_button = page.get_by_test_id('validation-status-filter-all')
+                blocking_button = page.get_by_test_id('validation-status-filter-blocking')
+                warning_button = page.get_by_test_id('validation-status-filter-warning')
+                no_issues_button = page.get_by_test_id('validation-status-filter-no-issues')
+                summary_strip = page.get_by_test_id('review-summary-strip')
+                summary_link = page.get_by_role('link', name='Jump to first blocking row')
+                target_row = page.locator('#validation-row-TXN-003')
+
+                assert await table.count() == 1, 'Validation: table should render'
+                assert await filter_controls.count() == 1, 'Validation: status filter controls should render'
+                assert await all_button.count() == 1, 'Validation: All rows control should render'
+                assert await blocking_button.count() == 1, 'Validation: Blocking control should render'
+                assert await warning_button.count() == 1, 'Validation: Warning control should render'
+                assert await no_issues_button.count() == 1, 'Validation: No issues control should render'
+                assert await summary_strip.count() == 1, 'Validation: summary strip should render'
+                assert await summary_link.count() == 1, 'Validation: jump link should render'
+                assert await target_row.count() == 1, 'Validation: first blocking row should render'
+                assert await target_row.is_visible(), 'Validation: first blocking row should be visible before jump'
+
+                summary_text_before = await summary_strip.inner_text()
+
+                await summary_link.click()
+
+                await page.wait_for_function(
+                    "() => window.location.hash === '#validation-row-TXN-003' && document.querySelector('#validation-row-TXN-003')?.dataset?.jumpTarget === 'true'",
+                    timeout=5000,
+                )
+
+                summary_text_after = await summary_strip.inner_text()
+                assert summary_text_after == summary_text_before, 'Validation: summary counts should not change after jump'
+                assert page.url.endswith('#validation-row-TXN-003'), 'Validation: jump link should update the URL hash to the first blocking row'
+                active_element_id = await page.evaluate("() => document.activeElement?.id || ''")
+                assert active_element_id == 'validation-row-TXN-003', 'Validation: first blocking row should receive focus after jump'
+
+                first_cell_background = await target_row.locator('td').first.evaluate(
+                    "el => window.getComputedStyle(el).backgroundColor"
+                )
+                assert first_cell_background == 'rgb(239, 246, 255)', \
+                    f'Validation: first blocking row should be visibly highlighted, got {first_cell_background}'
+
+                jump_target_attr = await target_row.get_attribute('data-jump-target')
+                assert jump_target_attr == 'true', 'Validation: first blocking row should be marked as the active jump target'
+
+            finally:
+                await browser.close()
+
+    finally:
+        try:
+            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+        except Exception:
+            pass
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_sticky_action_bar_with_approval_modal(
     e2e_database_and_app,
 ):
