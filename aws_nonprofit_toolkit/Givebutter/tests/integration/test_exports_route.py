@@ -39,6 +39,17 @@ class TestExportsRoute:
         assert b'Batch:' in response.data
         assert b'Staged for Export:' in response.data
 
+    def test_exports_contains_readiness_summary(self, client_with_fixture):
+        """Test that exports page renders a compact readiness summary strip."""
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/exports')
+        html = response.data.decode('utf-8')
+
+        assert 'data-testid="export-readiness-summary"' in html
+        assert 'Export readiness:' in html
+        assert 'Generate CSV Export' in html
+        assert 'Export Formats' in html
+        assert 'Recent Exports' in html
+
     def test_exports_contains_safety_message(self, client_with_fixture):
         """Test that exports page contains safety messaging."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/exports')
