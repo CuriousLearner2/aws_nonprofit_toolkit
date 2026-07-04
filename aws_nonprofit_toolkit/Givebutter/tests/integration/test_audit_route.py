@@ -98,9 +98,10 @@ class TestAuditRoute:
         html = response.data.decode('utf-8', errors='ignore')
 
         assert 'data-testid="audit-filter-orientation"' in html
-        assert 'The action filter narrows the rows shown here.' in html
-        assert 'Audit entries are append-only reviewer/system actions.' in html
+        assert 'The action filter narrows the audit events shown here.' in html
+        assert 'Audit entries are append-only records of reviewer/system actions.' in html
         assert 'If no rows match, no matching audit events are currently displayed.' in html
+        assert 'not that audit history was deleted' in html
         assert 'data-audit-row' in html
         assert 'data-action-key="marked-duplicate"' in html
         assert 'data-action-key="household-confirmed"' in html

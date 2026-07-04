@@ -22,7 +22,7 @@
      style="margin: 14px 0 24px 0; padding: 12px 16px; border-left: 4px solid #2563eb; background-color: #eff6ff; border-radius: 4px; font-size: 13px; color: #1e3a8a;">
   <strong>Needs attention:</strong>
   {% if validation_count > 0 %}
-    Validation Review has {{ validation_count }} open issue{{ 's' if validation_count != 1 else '' }}. Review validation issues before export.
+    Validation Review has {{ validation_count }} open issue{{ 's' if validation_count != 1 else '' }}. Review queues should be handled before export.
   {% elif duplicates_count > 0 %}
     Possible Duplicates has {{ duplicates_count }} pair{{ 's' if duplicates_count != 1 else '' }} waiting for review.
   {% elif normalizations_count > 0 %}
@@ -34,7 +34,7 @@
   {% endif %}
 </div>
 <div class="safety-strip" data-testid="dashboard-next-step-note" style="margin-bottom: 24px;">
-  Handle review queues before export. Blockers require attention before export under existing rules. Warnings are review-relevant but distinct from blockers. Raw source rows remain unchanged.
+  Review queues should be handled before export. Blockers require attention before export under existing rules. Warnings are review-relevant but distinct from blockers. Raw source rows remain unchanged.
 </div>
 
 <!-- Queue Status Cards -->
