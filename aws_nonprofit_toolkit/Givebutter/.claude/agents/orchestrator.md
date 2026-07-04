@@ -25,6 +25,8 @@ Before delegating, invoking agents, or running meaningful commands, instantiate 
 - Breaker required? yes/no,
 - E2E involved and timeout required? yes/no,
 - gate commands,
+- Failed-First Repair Lane enabled? yes/no,
+- failed-first repair budget,
 - stop condition,
 - terminal state.
 
@@ -243,10 +245,32 @@ Exact scope guard must list task-specific expected files. Do not use broad allow
 A declared gate passes only when the declared command exits 0. If it fails, hangs, times out, exits 143, is interrupted, or produces unusable/truncated output:
 
 - stop command execution immediately,
-- do not rerun, split, inspect, diagnose, repair, or continue,
-- do not invoke Reviewer or Breaker,
-- do not commit or push,
-- report the failed-gate stop report from `SKILL.md`.
+- if `Failed-First Repair Lane: enabled` is not present in the current task contract, do not rerun, split, inspect, diagnose, repair, or continue,
+- do not invoke Reviewer or Breaker after a failed gate,
+- do not commit or push after a failed gate,
+- report the failed-gate stop report from `SKILL.md` unless the task contract explicitly enables the failed-first lane and the failure qualifies.
+
+### Failed-First Repair Lane Coordination
+
+This lane is opt-in only. Orchestrator may coordinate exactly one narrow repair after a failed gate only when the current task contract contains `Failed-First Repair Lane: enabled` and the failure qualifies under `SKILL.md`.
+
+Before delegating or allowing repair, Orchestrator must classify the failure as one of:
+- brittle test assertion,
+- wrong fixture expectation,
+- copy/case/punctuation mismatch,
+- missing stable test marker in an already-authorized template,
+- test expecting the wrong seeded value,
+- presentational template mismatch.
+
+If classification is uncertain, cross-layer, or outside the already-authorized files, stop and report the failed-gate stop report. Do not convert the lane into open-ended debugging.
+
+For batched tasks:
+- repair only the currently failed batch item,
+- do not continue to later batch gates until the failed item passes,
+- do not alter already-passing batch items unless the failure directly proves those files caused it and they remain in scope,
+- stop if the repair gate fails.
+
+A successful failed-first repair resumes the originally declared gate sequence. It does not bypass Reviewer, Breaker, guardrails, or commit rules.
 
 ## Product UX Routing
 

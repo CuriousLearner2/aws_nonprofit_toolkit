@@ -14,7 +14,7 @@ Apply rules in this order:
 
 1. **Task contract first.** Classify task, lane, allowed files/actions, required agents, gates, and terminal state before meaningful work. Assessment-only classification creates an implementation firewall: proving root cause does not authorize edits.
 2. **Project invariants always win.** The system suggests. The reviewer decides. Raw data stays unchanged.
-3. **Failed gates stop immediately.** No diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without new human authorization.
+3. **Failed gates stop immediately unless an explicit Failed-First Repair Lane is enabled.** Without that opt-in, no diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without new human authorization. With the lane enabled, exactly one narrow repair may occur only under the rules below.
 4. **Required handoffs are actions.** Passing gates means invoke required Reviewer/Breaker; `Ready for Reviewer` is not terminal.
 5. **Non-accept verdicts are terminal.** Reviewer `Request changes` / `Reject` and Breaker `P1/P0/FAIL` require a new human-authorized remediation task.
 6. **Review capability first for implementation.** If Reviewer/Breaker are required, the session must be able to invoke them before implementation or auto-commit-capable work begins.
@@ -23,7 +23,7 @@ Apply rules in this order:
 ## RED RULES — ALWAYS OBEY
 
 1. **Assessment-only:** Orchestrator performs it directly. No child agents, no edits, and stop at the assessment report.
-2. **Any failed, hung, timed-out, interrupted, unusable/truncated, or exit-143 gate:** stop immediately. No diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without human authorization.
+2. **Any failed, hung, timed-out, interrupted, unusable/truncated, or exit-143 gate:** stop immediately unless the task contract explicitly says `Failed-First Repair Lane: enabled` and the failure qualifies under that lane. Without that exact opt-in, no diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without human authorization.
 3. **E2E gates require explicit wall-clock timeouts:** 90s single test, 180s full file, 90s per reliability iteration unless a stricter task-specific gate is declared. Multi-test pytest gates must use `-x` or `--maxfail=1`.
 4. **Timeout equals failed gate.** Treat it exactly like a test failure and deliver a failed-gate stop report.
 5. **Rewritten E2E tests require hard assertions.** No soft guards, no `if element: assert ...`, no print/networkidle-only success, no zombie tests, and no page-load-only replacement coverage.
@@ -51,6 +51,8 @@ Task contract:
 - E2E involved? yes/no
 - E2E timeout required? yes/no
 - Gate command(s):
+- Failed-First Repair Lane enabled? yes/no
+- Failed-first repair budget: none / one per failed gate / max N across batch
 - Stop condition:
 - Terminal state:
 ```
@@ -241,7 +243,7 @@ Required for E2E gates. Multi-test E2E gates must use `-x` or `--maxfail=1`.
 
 A declared gate is binary. It passes only when the declared command exits 0. If it exits nonzero, hangs, times out, exits 143, is interrupted, or produces unusable/truncated output, it failed unless the task was explicitly assessment-only or failures are proven pre-existing and unrelated with baseline evidence.
 
-After a failed gate: stop command execution, do not inspect/grep/rerun/split/diagnose/repair/continue, do not invoke Reviewer/Breaker, and do not commit or push.
+After a failed gate: stop command execution. If `Failed-First Repair Lane` is not explicitly enabled in the current task contract, do not inspect/grep/rerun/split/diagnose/repair/continue, do not invoke Reviewer/Breaker, and do not commit or push. If the lane is enabled, follow the bounded repair rules below exactly.
 
 Failed-gate report:
 
@@ -265,6 +267,64 @@ Next human choices:
 2. Preserve unstaged changes and authorize rescope assessment
 3. Authorize a new implementation/debug task
 ```
+
+
+## Failed-First Repair Lane — Explicit Opt-In Only
+
+Default rule: failed gates are terminal. This lane exists only when the current task contract contains the exact phrase:
+
+```text
+Failed-First Repair Lane: enabled
+```
+
+When enabled, Orchestrator/Implementer may perform one narrow failed-first repair attempt without new human authorization only if all of the following are true:
+
+1. The failed assertion is local to the current authorized task or current batch item.
+2. The likely repair is in files already authorized by the task contract.
+3. The repair does not require backend behavior changes unless backend files were explicitly authorized.
+4. The failure does not implicate schema, migrations, raw-data mutation, export semantics, audit semantics, review decision semantics, route logic, workflow state, or repository/service behavior.
+5. The failure is classified before editing as exactly one low-risk category:
+   - brittle test assertion,
+   - wrong fixture expectation,
+   - copy/case/punctuation mismatch,
+   - missing stable test marker in an already-authorized template,
+   - test expecting the wrong seeded value,
+   - presentational template mismatch.
+6. The agent can state the suspected cause and the single intended repair before editing.
+7. The agent reruns only the failed focused gate after the repair.
+
+Hard stop conditions. Stop immediately without repair when the failed gate suggests:
+
+- backend route behavior changed unexpectedly,
+- repository/service logic is implicated,
+- schema/migration issue,
+- raw-data mutation risk,
+- export eligibility or file-content semantics changed,
+- audit semantics changed,
+- review/autosave/approval semantics changed,
+- fixture/data shape mismatch requiring files not already authorized,
+- more than one test file or page is unexpectedly affected,
+- the repair would require a new product/UX decision,
+- the first failed-first repair attempt already failed.
+
+Repair limits:
+
+- Maximum one failed-first repair attempt per failed gate unless the task contract sets a stricter lower budget.
+- Maximum two failed-first repair attempts across any batched task unless the task contract sets a stricter lower budget.
+- No broad diagnosis after failure; inspect only the assertion, the current diff, and the immediately relevant rendered/test context needed to classify the allowed repair.
+- No additional files beyond the original authorized scope.
+- No Reviewer/Breaker after a failed gate.
+- No commit unless all originally required gates later pass and Reviewer returns clean `Accept`.
+- If the failed-first repair gate fails, stop immediately and report a Failed Gate Stop Report with `Failed-first-fix triggered? yes`.
+
+For batched UX-only tasks:
+
+- A failed gate may be repaired only within the currently failed batch item.
+- Do not continue to the next batch gate until the failed item passes.
+- Do not make new changes to later batch items while repairing the failed item.
+- If Gate 2 fails, do not alter already-passing Task 1 files unless the failure directly proves Task 1 caused the problem and those files are still in scope.
+
+A successful failed-first repair returns the workflow to the original declared gate sequence. It does not authorize extra tests, extra files, Reviewer bypass, commit bypass, or push.
 
 ## Deep Bug Analysis Rule
 
@@ -396,7 +456,7 @@ Required cautions:
   Deep: If the change affects approval/export/audit/raw-data/status consistency, determine whether concrete P0/P1 invariant risk remains.
 
 - Shallow: A failed gate probably needs a quick fix.
-  Deep: Failed gate is terminal. Do not diagnose or repair unless the human authorizes a new task.
+  Deep: Failed gate is terminal unless `Failed-First Repair Lane: enabled` is present and the failure qualifies for the one narrow repair allowed by that lane. Otherwise do not diagnose or repair unless the human authorizes a new task.
 
 Deep analysis is not a license for open-ended debugging. It is a bounded proof step. Once the failing layer is identified, implement the smallest fix and prove the failing path.
 

@@ -35,7 +35,7 @@ Recurring Householder examples: Escape/cancel feedback, Defer vs Skip, Follow Up
 
 Do not reopen product review when the human already supplied the decision. Mechanical implementation of explicit decisions, code correctness, docs-only, test-only, commit-prep, and push-only work should not route here unless a concrete product ambiguity remains.
 
-Do not use Product UX Gatekeeper to rescue debugging, retry strategy, gate failure, timeout handling, fixture design, selector repair, commit, push, or workflow recovery.
+Do not use Product UX Gatekeeper to rescue debugging, retry strategy, gate failure, timeout handling, fixture design, selector repair, commit, push, workflow recovery, or Failed-First Repair Lane classification. If a failed-first repair would require a new product/UX decision, return that human decision is required and implementation may not proceed.
 
 ## Boundaries
 

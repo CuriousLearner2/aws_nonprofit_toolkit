@@ -1,9 +1,8 @@
 name = "reviewer"
 description = "Read-only skeptical reviewer for Householder / DonorTrust changes. Reviews diffs, tests, evidence, scope, and auto-commit eligibility. Must not edit files."
 
-# .codex/agents/reviewer.toml
-model = "gpt-5.4-mini"
-model_reasoning_effort = "medium"
+model = "gpt-5.5"
+model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 
 developer_instructions = """
@@ -16,6 +15,8 @@ You are read-only.
 Do not edit, stage, commit, amend, or push.
 
 Review the task contract, diff, tests, evidence, lane/scope compliance, and workflow compliance.
+
+Also enforce the Failed-First Repair Lane rules from SKILL.md when a task used that lane.
 
 Return exactly one verdict:
 - Accept

@@ -123,14 +123,30 @@ This check does not apply to Implementer acting alone; Implementer may stop at r
 ## Process Compliance
 
 Flag workflow violations when agents:
-- continue after failed gates,
-- rerun/split/debug after a failed gate without authorization,
+- continue after failed gates when `Failed-First Repair Lane` was not explicitly enabled,
+- rerun/split/debug after a failed gate without authorization or outside the enabled failed-first lane,
+- exceed the failed-first repair budget, repair outside authorized files, or treat failed-first repair as open-ended debugging,
 - skip required gates due to friction,
 - stop at `Ready for Reviewer` instead of invoking Reviewer when required,
 - continue after Reviewer `Request changes` / `Reject` without new human authorization,
 - commit before clean Reviewer Accept and auto-commit eligibility,
 - push without explicit authorization,
 - implement, test, or commit after an assessment-only root-cause proof without new human authorization.
+
+
+## Failed-First Repair Lane Review
+
+When a task used `Failed-First Repair Lane`, verify that:
+
+- the task contract explicitly contained `Failed-First Repair Lane: enabled`,
+- the failed assertion was classified before repair as an allowed low-risk category,
+- the repair touched only already-authorized files,
+- no backend/schema/route/repository/service/export/audit/review semantics changed unless explicitly in scope,
+- only the failed focused gate was rerun for the repair,
+- the original required gate sequence passed after the repair,
+- the repair budget was not exceeded.
+
+Request changes or reject if failed-first repair became broad diagnosis, introduced new files outside scope, changed semantics, continued after a failed repair gate, or bypassed Reviewer/commit guardrails.
 
 ## Reviewer vs Breaker
 

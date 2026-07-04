@@ -70,7 +70,23 @@ Do not duplicate routine Reviewer evidence review. Check process only when it af
 - overbroad lane/scope that could hide product/workflow mixing,
 - Breaker skipped despite declared product/invariant P0/P1 risk,
 - Product UX ambiguity bypassed for visible behavior,
-- continued work after Reviewer non-accept or failed gate.
+- continued work after Reviewer non-accept or failed gate outside an explicitly enabled and qualifying Failed-First Repair Lane.
+
+
+## Failed-First Repair Lane Risk
+
+When reviewing a change that used the Failed-First Repair Lane, flag process risk if the repair touched P0/P1 surfaces or exceeded the lane:
+- backend route/repository/service logic,
+- schema/migrations,
+- raw-data mutation,
+- export eligibility or file-content semantics,
+- audit semantics,
+- review/autosave/approval semantics,
+- workflow states,
+- files outside the original authorized scope,
+- a second repair after the first failed-first repair gate failed.
+
+If the lane was limited to a local presentational/test/fixture mismatch and the final evidence proves the same path, this is usually not a Breaker blocker by itself.
 
 ## Reviewer/Breaker Boundary
 

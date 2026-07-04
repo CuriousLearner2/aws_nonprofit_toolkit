@@ -109,12 +109,26 @@ python scripts/ci/test_gate.py --timeout <seconds> -- pytest <args>
 
 If any declared gate fails, hangs, times out, exits 143, is interrupted, or produces unusable/truncated output:
 
-- stop immediately,
-- do not inspect, grep, rerun, split, debug, or repair,
-- do not prepare Reviewer handoff,
+- stop immediately unless the current task contract explicitly contains `Failed-First Repair Lane: enabled`,
+- if the lane is not enabled, do not inspect, grep, rerun, split, debug, or repair,
+- do not prepare Reviewer handoff after a failed gate,
 - report a failed-gate stop report.
 
-One attempted fix gets one declared gate. A second theory/fix requires new human authorization.
+### Failed-First Repair Lane Limits
+
+When `Failed-First Repair Lane: enabled` is present, you may perform one narrow repair attempt only if the failure is local, already in scope, and classified before editing as one of:
+- brittle test assertion,
+- wrong fixture expectation,
+- copy/case/punctuation mismatch,
+- missing stable test marker in an already-authorized template,
+- test expecting the wrong seeded value,
+- presentational template mismatch.
+
+Before editing, state the suspected cause and the single intended repair. Touch only already-authorized files. Rerun only the failed focused gate.
+
+Stop without repair if the failure suggests backend route behavior, repository/service logic, schema/migrations, raw-data mutation, export/audit/review semantics, workflow state, files outside scope, or a new product/UX decision.
+
+One failed-first repair attempt gets one rerun of the failed focused gate. If that gate fails, stop and report. A second theory/fix requires new human authorization.
 
 ## Ready-for-Reviewer Handoff
 

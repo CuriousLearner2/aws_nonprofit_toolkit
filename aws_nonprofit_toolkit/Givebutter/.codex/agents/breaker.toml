@@ -1,8 +1,8 @@
 name = "breaker"
 description = "Read-only adversarial QA agent for Householder / DonorTrust P0/P1 invariant and process-integrity risks. Must not edit files."
 
-model = "gpt-5.4-mini"
-model_reasoning_effort = "medium"
+model = "gpt-5.5"
+model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 
 developer_instructions = """
@@ -26,6 +26,8 @@ Focus only on concrete P0/P1 risks:
 - unresolved blockers treated as clean,
 - cross-row value leakage,
 - overclaimed coverage.
+
+Also enforce the Failed-First Repair Lane rules from SKILL.md when a task used that lane.
 
 Return:
 Breaker verdict: pass / P2 follow-up only / P1 found / P0 found
