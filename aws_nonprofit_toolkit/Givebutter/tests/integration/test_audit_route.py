@@ -92,6 +92,20 @@ class TestAuditRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'action-filter' in response.data
 
+    def test_audit_action_filter_wiring_is_rendered(self, client_with_fixture):
+        """Test that audit rows expose client-side filter hooks."""
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
+        html = response.data.decode('utf-8', errors='ignore')
+
+        assert 'data-audit-row' in html
+        assert 'data-action-key="marked-duplicate"' in html
+        assert 'data-action-key="household-confirmed"' in html
+        assert 'data-action-key="record-deferred"' in html
+        assert 'audit-empty-state' in html
+        assert "actionFilter.addEventListener('change', applyActionFilter);" in html
+        assert 'row.hidden = !matches;' in html
+        assert 'applyActionFilter();' in html
+
     def test_audit_contains_export_button(self, client_with_fixture):
         """Test that audit page contains export button."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')

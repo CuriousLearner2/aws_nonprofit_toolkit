@@ -35,7 +35,22 @@
         </thead>
         <tbody>
             {% for entry in audit_log %}
-            <tr>
+            {% set action_text = entry.action|lower %}
+            {% set action_key = 'other' %}
+            {% if entry.action == 'marked-duplicate' or 'same person' in action_text or 'duplicate' in action_text %}
+                {% set action_key = 'marked-duplicate' %}
+            {% elif entry.action == 'marked-different' or 'rejected household link' in action_text or ('different' in action_text and 'household' not in action_text) %}
+                {% set action_key = 'marked-different' %}
+            {% elif entry.action == 'normalization-accepted' or ('accepted' in action_text and 'normalization' in action_text) %}
+                {% set action_key = 'normalization-accepted' %}
+            {% elif entry.action == 'normalization-rejected' or ('rejected' in action_text and 'normalization' in action_text) %}
+                {% set action_key = 'normalization-rejected' %}
+            {% elif entry.action == 'household-confirmed' or 'confirmed household' in action_text or 'household confirmed' in action_text %}
+                {% set action_key = 'household-confirmed' %}
+            {% elif entry.action == 'record-deferred' or 'deferred normalization' in action_text or 'deferred decision' in action_text or 'record deferred' in action_text %}
+                {% set action_key = 'record-deferred' %}
+            {% endif %}
+            <tr data-audit-row data-action-key="{{ action_key }}">
                 <td style="font-size: 12px; color: #999;">{{ entry.timestamp }}</td>
                 <td>
                     {% if entry.action == 'marked-duplicate' %}
@@ -58,6 +73,9 @@
                 <td style="font-size: 13px; color: #666;">{{ entry.reviewer }}</td>
             </tr>
             {% endfor %}
+            <tr id="audit-empty-state" hidden>
+                <td colspan="4" style="text-align: center; color: #666; padding: 20px;">No audit entries match this action filter.</td>
+            </tr>
         </tbody>
     </table>
 </div>
@@ -67,4 +85,38 @@
     <a href="/imports/{{ batch.id }}/dashboard" class="btn btn-secondary" style="text-decoration: none;">Back to Dashboard</a>
     <a href="/imports" class="btn btn-secondary" style="text-decoration: none;">Back to Imports</a>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const actionFilter = document.getElementById('action-filter');
+    const rows = Array.from(document.querySelectorAll('[data-audit-row]'));
+    const emptyState = document.getElementById('audit-empty-state');
+
+    if (!actionFilter || rows.length === 0) {
+        return;
+    }
+
+    function applyActionFilter() {
+        const selectedAction = actionFilter.value;
+        let visibleCount = 0;
+
+        rows.forEach(function (row) {
+            const matches = !selectedAction || row.dataset.actionKey === selectedAction;
+            row.hidden = !matches;
+            if (matches) {
+                visibleCount += 1;
+            }
+        });
+
+        if (emptyState) {
+            emptyState.hidden = visibleCount !== 0;
+        }
+    }
+
+    actionFilter.addEventListener('change', applyActionFilter);
+    applyActionFilter();
+});
+</script>
 {% endblock %}
