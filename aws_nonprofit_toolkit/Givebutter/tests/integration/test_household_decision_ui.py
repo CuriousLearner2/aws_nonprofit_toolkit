@@ -138,6 +138,36 @@ class TestHouseholdDecisionUI:
         assert response.status_code == 200
         assert b'Households' in response.data or b'Smith Family' in response.data
 
+    def test_households_page_shows_summary_strip(self, flask_client_with_db):
+        """Test that the household summary strip renders with stable counts."""
+        client, database_url, engine, Session = flask_client_with_db
+
+        response = client.get('/imports/IMP-2025-0101-A/households')
+        html = response.data.decode('utf-8')
+
+        assert response.status_code == 200
+        assert 'data-testid="household-summary-strip"' in html
+        assert 'data-summary-metric="members"' in html
+        assert 'data-summary-metric="supporting"' in html
+        assert 'data-summary-metric="conflicting"' in html
+        assert 'data-summary-metric="status"' in html
+        assert 'data-summary-count="members">2<' in html
+        assert 'data-summary-count="supporting">1<' in html
+        assert 'data-summary-count="conflicting">0<' in html
+        assert 'data-summary-status="Pending"' in html
+        assert 'Members' in html
+        assert 'Supporting evidence' in html
+        assert 'Conflicting evidence' in html
+        assert 'Current status' in html
+        assert 'Smith Family' in html
+        assert 'John Smith' in html
+        assert 'Robert Smith' in html
+        assert 'Shared address' in html
+        assert 'Pending' in html
+        assert 'Confirm Household Suggestion' in html
+        assert 'Reject Household Suggestion' in html
+        assert 'Defer' in html
+
     def test_status_badge_displays_pending(self, flask_client_with_db):
         """Test that status badge displays Pending for new household."""
         client, database_url, engine, Session = flask_client_with_db
