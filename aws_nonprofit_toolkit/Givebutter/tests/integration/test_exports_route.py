@@ -91,7 +91,14 @@ class TestExportsRoute:
     def test_exports_contains_modal_content(self, client_with_fixture):
         """Test that exports modal contains expected content."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/exports')
-        assert b'Your export package will include:' in response.data
+        html = response.data.decode('utf-8')
+        assert 'Your export package will include:' in html
+        assert 'data-testid="export-confirmation-note"' in html
+        assert 'Blocking issues must be resolved before export.' in html
+        assert 'Warnings are distinct from blockers' in html
+        assert 'reviewed effective values where applicable' in html
+        assert 'Raw import rows remain unchanged.' in html
+        assert 'Generate Package' in html
 
     def test_exports_modal_safety_message(self, client_with_fixture):
         """Test that exports modal contains safety messaging."""
