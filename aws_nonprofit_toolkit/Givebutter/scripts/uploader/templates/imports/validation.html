@@ -27,6 +27,31 @@
         </span>
     </div>
 
+    {% set summary = namespace(blocking=0, warning=0, no_issues=0, first_blocking_row_id='') %}
+    {% for record in validation_issues %}
+        {% set row_status = record.row_status or 'No issues' %}
+        {% if row_status == 'Blocking' %}
+            {% set summary.blocking = summary.blocking + 1 %}
+            {% if not summary.first_blocking_row_id %}
+                {% set summary.first_blocking_row_id = 'validation-row-' ~ record.id %}
+            {% endif %}
+        {% elif row_status == 'Warning' %}
+            {% set summary.warning = summary.warning + 1 %}
+        {% else %}
+            {% set summary.no_issues = summary.no_issues + 1 %}
+        {% endif %}
+    {% endfor %}
+
+    <div class="review-summary-strip" data-testid="review-summary-strip" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 0 0 20px 0; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px;">
+        <span style="font-weight: 700; color: #111827;">Review summary:</span>
+        <span><strong>{{ summary.blocking }}</strong> Blocking</span>
+        <span><strong>{{ summary.warning }}</strong> Warning</span>
+        <span><strong>{{ summary.no_issues }}</strong> No issues</span>
+        {% if summary.first_blocking_row_id %}
+        <a href="#{{ summary.first_blocking_row_id }}" style="margin-left: auto; color: #0051d5; font-weight: 600; text-decoration: none;">Jump to first blocking row</a>
+        {% endif %}
+    </div>
+
     <!-- Filter & Controls -->
     <div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">
         <input type="text" id="search-records" placeholder="Search by name, email, phone..." style="flex: 1; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
@@ -61,6 +86,7 @@
             <tr data-record-id="{{ record.id }}"
                 data-raw-id="{{ record.raw_import_row_id }}"
                 data-testid="row-{{ record.id }}"
+                id="validation-row-{{ record.id }}"
                 data-row-status="{{ record.row_status or 'No issues' }}"
                 class="validation-row{% if record.row_status == 'Overridden' %} row-overridden{% endif %}"
                 {% if record.row_status == 'Overridden' %}style="background-color: #eef2ff;"{% endif %}>

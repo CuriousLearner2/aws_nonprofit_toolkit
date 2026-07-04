@@ -7,6 +7,7 @@ content and status code after service-boundary migration.
 
 import pytest
 import sys
+import re
 from pathlib import Path
 
 # Add parent directory to path
@@ -104,6 +105,21 @@ class TestValidationRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
         # Check for issue type badges
         assert b'format-invalid' in response.data or b'missing-required' in response.data
+
+    def test_validation_contains_review_summary_strip(self, client_with_fixture):
+        """Test that validation page renders a compact review summary strip."""
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
+        html = response.data.decode('utf-8', errors='ignore')
+        normalized_html = re.sub(r'\s+', ' ', html)
+
+        assert 'data-testid="review-summary-strip"' in html
+        assert 'Review summary:' in html
+        assert re.search(r'<strong>\s*2\s*</strong>\s*Blocking', normalized_html)
+        assert re.search(r'<strong>\s*0\s*</strong>\s*Warning', normalized_html)
+        assert re.search(r'<strong>\s*3\s*</strong>\s*No issues', normalized_html)
+        assert 'Jump to first blocking row' in html
+        assert 'href="#validation-row-TXN-003"' in html
+        assert 'id="validation-row-TXN-003"' in html
 
     def test_validation_contains_action_column(self, client_with_fixture):
         """Test that validation table contains action links."""
