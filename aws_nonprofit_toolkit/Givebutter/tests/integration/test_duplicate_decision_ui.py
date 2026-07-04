@@ -124,6 +124,21 @@ class TestDuplicateDecisionUI:
         assert response.status_code == 200
         assert b'Pending' in response.data
 
+    def test_duplicates_page_shows_evidence_labels(self, flask_client_with_db):
+        """Test that supporting and conflicting evidence are visually distinguished."""
+        client, database_url, engine, Session = flask_client_with_db
+
+        response = client.get('/imports/IMP-2025-0101-A/duplicates')
+        html = response.data.decode('utf-8')
+
+        assert 'Supporting Evidence' in html
+        assert 'Conflicting Evidence' in html
+        assert 'data-evidence-type="supporting"' in html
+        assert 'data-evidence-type="conflicting"' in html
+        assert 'Mark as Same Person' in html
+        assert 'Mark as Different People' in html
+        assert '/imports/IMP-2025-0101-A/duplicates' in html
+
     def test_same_person_submission_creates_decision(self, flask_client_with_db):
         """Test that Same Person submission creates ReviewDecision."""
         client, database_url, engine, Session = flask_client_with_db

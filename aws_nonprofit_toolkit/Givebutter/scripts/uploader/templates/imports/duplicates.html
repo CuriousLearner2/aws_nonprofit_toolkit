@@ -42,7 +42,7 @@
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
     <div>
         <h3>Supporting Evidence</h3>
-        <ul class="supporting-evidence-list" style="margin-left: 20px; font-size: 13px; color: #10b981;">
+        <ul class="supporting-evidence-list" data-evidence-type="supporting" style="margin-left: 20px; font-size: 13px; color: #10b981;">
             {% for ev in candidate.supporting_evidence %}
             <li>✓ {{ ev }}</li>
             {% endfor %}
@@ -50,7 +50,7 @@
     </div>
     <div>
         <h3>Conflicting Evidence</h3>
-        <ul class="conflicting-evidence-list" style="margin-left: 20px; font-size: 13px; color: #ef4444;">
+        <ul class="conflicting-evidence-list" data-evidence-type="conflicting" style="margin-left: 20px; font-size: 13px; color: #ef4444;">
             {% for ev in candidate.conflicting_evidence %}
             <li>✗ {{ ev }}</li>
             {% endfor %}
