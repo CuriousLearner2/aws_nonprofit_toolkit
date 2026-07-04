@@ -121,6 +121,28 @@ class TestValidationRoute:
         assert 'href="#validation-row-TXN-003"' in html
         assert 'id="validation-row-TXN-003"' in html
 
+    def test_validation_contains_status_filter_controls(self, client_with_fixture):
+        """Test that validation page renders client-side status filter controls."""
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
+        html = response.data.decode('utf-8', errors='ignore')
+
+        assert 'data-testid="validation-status-filter-controls"' in html
+        assert 'data-testid="validation-status-filter-all"' in html
+        assert 'data-testid="validation-status-filter-blocking"' in html
+        assert 'data-testid="validation-status-filter-warning"' in html
+        assert 'data-testid="validation-status-filter-no-issues"' in html
+        assert 'type="button"' in html
+        assert 'data-testid="validation-status-filter-empty-state"' in html
+        assert 'data-row-status="' in html
+        assert 'applyStatusFilter(' in html
+        assert 'row.hidden = !matches;' in html
+
+        has_overridden_rows = 'data-row-status="Overridden"' in html
+        if has_overridden_rows:
+            assert 'data-testid="validation-status-filter-overridden"' in html
+        else:
+            assert 'data-testid="validation-status-filter-overridden"' not in html
+
     def test_validation_contains_action_column(self, client_with_fixture):
         """Test that validation table contains action links."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')

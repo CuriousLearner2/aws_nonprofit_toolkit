@@ -27,7 +27,7 @@
         </span>
     </div>
 
-    {% set summary = namespace(blocking=0, warning=0, no_issues=0, first_blocking_row_id='') %}
+    {% set summary = namespace(blocking=0, warning=0, no_issues=0, has_overridden=false, first_blocking_row_id='') %}
     {% for record in validation_issues %}
         {% set row_status = record.row_status or 'No issues' %}
         {% if row_status == 'Blocking' %}
@@ -37,6 +37,9 @@
             {% endif %}
         {% elif row_status == 'Warning' %}
             {% set summary.warning = summary.warning + 1 %}
+        {% elif row_status == 'Overridden' %}
+            {% set summary.has_overridden = true %}
+            {% set summary.no_issues = summary.no_issues + 1 %}
         {% else %}
             {% set summary.no_issues = summary.no_issues + 1 %}
         {% endif %}
@@ -49,6 +52,17 @@
         <span><strong>{{ summary.no_issues }}</strong> No issues</span>
         {% if summary.first_blocking_row_id %}
         <a href="#{{ summary.first_blocking_row_id }}" style="margin-left: auto; color: #0051d5; font-weight: 600; text-decoration: none;">Jump to first blocking row</a>
+        {% endif %}
+    </div>
+
+    <div class="status-filter-bar" data-testid="validation-status-filter-controls" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 16px 0;">
+        <span style="font-size: 12px; font-weight: 600; color: #374151;">Show rows:</span>
+        <button type="button" class="status-filter-button is-active" data-row-status-filter="all" data-testid="validation-status-filter-all" style="padding: 6px 10px; border: 1px solid #2563eb; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: 12px; font-weight: 600; cursor: pointer;">All rows</button>
+        <button type="button" class="status-filter-button" data-row-status-filter="Blocking" data-testid="validation-status-filter-blocking" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">Blocking</button>
+        <button type="button" class="status-filter-button" data-row-status-filter="Warning" data-testid="validation-status-filter-warning" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">Warning</button>
+        <button type="button" class="status-filter-button" data-row-status-filter="No issues" data-testid="validation-status-filter-no-issues" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">No issues</button>
+        {% if summary.has_overridden %}
+        <button type="button" class="status-filter-button" data-row-status-filter="Overridden" data-testid="validation-status-filter-overridden" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">Overridden</button>
         {% endif %}
     </div>
 
@@ -178,6 +192,9 @@
                 </td>
             </tr>
             {% endfor %}
+            <tr id="validation-status-filter-empty-state" data-testid="validation-status-filter-empty-state" hidden>
+                <td colspan="10" style="text-align: center; color: #666; padding: 20px;">No rows match this filter.</td>
+            </tr>
         </tbody>
     </table>
     {% else %}
@@ -405,6 +422,60 @@ async function loadRowDecisions() {
 
 // Load decisions when page loads
 document.addEventListener('DOMContentLoaded', loadRowDecisions);
+
+document.addEventListener('DOMContentLoaded', function() {
+    const filterButtons = Array.from(document.querySelectorAll('[data-row-status-filter]'));
+    const rows = Array.from(document.querySelectorAll('tr.validation-row[data-row-status]'));
+    const emptyState = document.getElementById('validation-status-filter-empty-state');
+    const hasOverriddenRows = rows.some(row => row.dataset.rowStatus === 'Overridden');
+
+    if (!filterButtons.length || !rows.length) {
+        return;
+    }
+
+    if (!hasOverriddenRows) {
+        const overriddenButton = document.querySelector('[data-row-status-filter="Overridden"]');
+        if (overriddenButton) {
+            overriddenButton.remove();
+        }
+    }
+
+    function setActiveButton(activeValue) {
+        filterButtons.forEach(button => {
+            const isActive = button.dataset.rowStatusFilter === activeValue;
+            button.classList.toggle('is-active', isActive);
+            button.style.background = isActive ? '#eff6ff' : '#fff';
+            button.style.borderColor = isActive ? '#2563eb' : '#d1d5db';
+            button.style.color = isActive ? '#1d4ed8' : '#374151';
+        });
+    }
+
+    function applyStatusFilter(statusValue) {
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const matches = statusValue === 'all' || row.dataset.rowStatus === statusValue;
+            row.hidden = !matches;
+            if (matches) {
+                visibleCount += 1;
+            }
+        });
+
+        if (emptyState) {
+            emptyState.hidden = visibleCount !== 0;
+        }
+
+        setActiveButton(statusValue);
+    }
+
+    filterButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            applyStatusFilter(this.dataset.rowStatusFilter || 'all');
+        });
+    });
+
+    applyStatusFilter('all');
+});
 
 // Autosave on blur for editable fields
 document.querySelectorAll('.autosave-field').forEach(input => {
