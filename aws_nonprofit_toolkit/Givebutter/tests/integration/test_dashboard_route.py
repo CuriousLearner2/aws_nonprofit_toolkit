@@ -109,6 +109,20 @@ class TestDashboardRoute:
         assert response.status_code == 200
         assert b'Imports' in response.data
 
+    def test_imports_route_shows_status_orientation(self, client_with_fixture):
+        """Test that /imports explains status badges and review navigation."""
+        response = client_with_fixture.get('/imports')
+        html = response.data.decode('utf-8')
+
+        assert 'data-testid="imports-status-orientation"' in html
+        assert 'Imports are reviewed before export.' in html
+        assert 'Status and progress badges show the current review state.' in html
+        assert 'Review opens the import review workflow.' in html
+        assert 'Raw source data remains unchanged.' in html
+        assert 'Batch ID' in html
+        assert 'Status' in html
+        assert 'Review' in html
+
     def test_duplicates_route_untouched(self, client_with_fixture):
         """Test that duplicates route was not modified."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/duplicates')

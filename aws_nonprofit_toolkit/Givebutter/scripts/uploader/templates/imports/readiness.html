@@ -11,6 +11,10 @@
   <a href="/docs/user-guide/export-only-workflow" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">View workflow guide</a>
 </div>
 
+<div data-testid="readiness-status-legend" style="margin: 16px 0 24px 0; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 13px; color: #334155;">
+    <strong>Readiness guide:</strong> Blockers must be cleared before export. Warnings are review items, not blockers. Use the review queues below to resolve blockers first, then check warnings before exporting.
+</div>
+
 <!-- Main Readiness Status -->
 {% if readiness.is_export_ready %}
 <div style="margin-bottom: 30px; padding: 24px; background-color: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px;">
@@ -41,7 +45,7 @@
     {% endif %}
 
     <p style="font-size: 13px; color: #7f1d1d; margin-bottom: 0;">
-        <strong>Next step:</strong> Go to the review queues below to resolve blocking issues.
+        <strong>Next step:</strong> Go to the review queues below to resolve blockers before export. Warnings can remain for review, but they are not blockers.
     </p>
 </div>
 {% endif %}

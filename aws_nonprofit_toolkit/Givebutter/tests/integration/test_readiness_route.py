@@ -94,6 +94,19 @@ class TestReadinessRoutePreviewMirror:
         # Should mention read-only status
         assert b'read-only' in response.data or b'unchanged' in response.data
 
+    def test_readiness_clarifies_blockers_and_warnings(self, client):
+        """Test that readiness page distinguishes blockers from warnings and next steps."""
+        response = client.get('/imports/IMP-TEST-001/readiness')
+        html = response.data.decode('utf-8', errors='ignore')
+
+        assert 'data-testid="readiness-status-legend"' in html
+        assert 'Blockers must be cleared before export' in html
+        assert 'Warnings are review items, not blockers' in html
+        assert 'resolve blockers first' in html.lower()
+        assert 'check warnings before exporting' in html.lower()
+        assert 'Readiness guide:' in html
+        assert 'Export Ready' in html
+
     def test_readiness_shows_queue_status(self, client):
         """Test that readiness page shows review queue status."""
         response = client.get('/imports/IMP-TEST-001/readiness')
