@@ -34,6 +34,8 @@ from scripts.householder.database_models import (
     ImportBatch,
     RawImportRow,
     ImportContact,
+    ReviewItem,
+    ReviewItemSubject,
     ReviewDecision,
     create_db_engine,
 )
@@ -209,6 +211,35 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
 
     with app.test_client() as client:
         yield client, database_url, engine, Session, raw_rows
+
+
+def _seed_unresolved_validation_issue(Session, batch_id, raw_import_row_id, field='email'):
+    """Seed a blocking validation issue for approval override tests."""
+    session = Session()
+    try:
+        issue = ReviewItem(
+            batch_id=batch_id,
+            item_type='validation',
+            status='pending',
+            payload_json={
+                'field': field,
+                'reason': 'format',
+                'description': f'Invalid {field}',
+                'severity': 'error',
+            },
+        )
+        session.add(issue)
+        session.flush()
+        session.add(
+            ReviewItemSubject(
+                review_item_id=issue.id,
+                subject_type='import_raw_row',
+                subject_id=raw_import_row_id,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
 
 
 # ==============================================================================
@@ -617,10 +648,12 @@ class TestApprovalWarnings:
     def test_approve_batch_with_unresolved_issues(
         self, flask_client_with_validation_batch
     ):
-        """Approving batch with unresolved issues should trigger override confirmation."""
+        """Approving batch with unresolved FAIL issues should trigger override confirmation."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[7]
+        _seed_unresolved_validation_issue(Session, 'validation-workflow-test-batch', raw_id)
 
-        # Try to approve batch with unresolved issues (row 8 has invalid email)
+        # Try to approve batch with unresolved issues (fixture includes invalid email rows)
         response = client.post(
             f'/imports/validation-workflow-test-batch/approve-batch',
             json={
@@ -629,13 +662,19 @@ class TestApprovalWarnings:
             }
         )
 
-        # Should indicate override confirmation needed or succeed
-        assert response.status_code in [200, 400]
+        assert response.status_code == 200, (
+            f"Expected approval-check response, got {response.status_code}: {response.get_json()}"
+        )
         data = response.get_json()
-
-        # Either requires override confirmation or has success/error message
-        if 'requires_override_confirmation' in data:
-            assert data['requires_override_confirmation'] is True or data['success'] is True
+        assert data['requires_override_confirmation'] is True, (
+            f"Unresolved FAIL issues must require override confirmation, got: {data}"
+        )
+        assert data.get('remaining_issues'), (
+            f"Unresolved FAIL issues must be exposed in remaining_issues, got: {data}"
+        )
+        assert data.get('success') is not True, (
+            f"Approval must not silently succeed when unresolved FAIL issues remain, got: {data}"
+        )
 
 
 # ==============================================================================
@@ -871,7 +910,7 @@ class TestApprovalWarningWorkflow:
         )
         assert response.status_code == 200
 
-        # Now try to approve - should succeed or require confirmation
+        # Now try to approve - should succeed directly
         response = client.post(
             f'/imports/validation-workflow-test-batch/approve-batch',
             json={
@@ -882,34 +921,46 @@ class TestApprovalWarningWorkflow:
 
         assert response.status_code == 200, f"Approve should succeed, got: {response.get_json()}"
         data = response.get_json()
-        assert data['success'] is True or 'approval_status' in data, \
-            f"Expected success or approval_status in response, got: {data}"
+        assert data['success'] is True, f"Expected success, got: {data}"
+        assert data['approval_status'] == 'approved', f"Expected approved status, got: {data}"
+        assert data.get('requires_override_confirmation') is not True, (
+            f"Clean approval must not require override confirmation, got: {data}"
+        )
 
     def test_approve_batch_with_unresolved_issues_requires_override(
         self, flask_client_with_validation_batch
     ):
-        """Batch with unresolved issues should trigger override confirmation modal."""
+        """Batch with unresolved issues should approve when explicit overrides are supplied."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[7]
+        _seed_unresolved_validation_issue(Session, 'validation-workflow-test-batch', raw_id)
 
-        # Row 7 has invalid email that wasn't corrected
+        override = {
+            'raw_import_row_id': raw_id,
+            'row_index': 8,
+            'issues': [
+                {
+                    'field': 'email',
+                    'reason': 'Marked as reviewed with override',
+                }
+            ],
+        }
+
         response = client.post(
             f'/imports/validation-workflow-test-batch/approve-batch',
             json={
                 'approval_status': 'approved_with_overrides',
-                'rows_with_overrides': []
+                'rows_with_overrides': [override]
             }
         )
 
-        # Should either require override confirmation or succeed with warnings
-        assert response.status_code in [200, 400], \
-            f"Expected 200 or 400, got {response.status_code}: {response.get_json()}"
+        assert response.status_code == 200, (
+            f"Expected approval success with explicit overrides, got {response.status_code}: {response.get_json()}"
+        )
         data = response.get_json()
-
-        if 'requires_override_confirmation' in data:
-            # Modal mode: backend indicates remaining issues exist
-            assert data['requires_override_confirmation'] is True or \
-                   'remaining_issues' in data, \
-                   f"Expected requires_override_confirmation or remaining_issues, got: {data}"
+        assert data['success'] is True, f"Expected success, got: {data}"
+        assert data['approval_status'] == 'approved_with_overrides', f"Expected approved_with_overrides, got: {data}"
+        assert data.get('override_count') == 1, f"Expected one override, got: {data}"
 
 
 # ==============================================================================
