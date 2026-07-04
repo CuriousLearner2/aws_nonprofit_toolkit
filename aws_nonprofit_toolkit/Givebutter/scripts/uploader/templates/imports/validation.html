@@ -46,7 +46,12 @@
         </thead>
         <tbody>
             {% for record in validation_issues %}
-            <tr data-record-id="{{ record.id }}" data-raw-id="{{ record.raw_import_row_id }}" data-testid="row-{{ record.id }}" class="validation-row">
+            <tr data-record-id="{{ record.id }}"
+                data-raw-id="{{ record.raw_import_row_id }}"
+                data-testid="row-{{ record.id }}"
+                data-row-status="{{ record.row_status or 'No issues' }}"
+                class="validation-row{% if record.row_status == 'Overridden' %} row-overridden{% endif %}"
+                {% if record.row_status == 'Overridden' %}style="background-color: #eef2ff;"{% endif %}>
                 <!-- Read-only: Txn ID -->
                 <td style="font-weight: 500; background-color: #f9fafb;">{{ record.transaction_id }}</td>
 
@@ -1094,6 +1099,10 @@ async function confirmApprovalWithOverrides(remainingIssues) {
             rowsWithOverrides.forEach(override => {
                 const row = document.querySelector(`tr[data-raw-id="${override.raw_import_row_id}"]`);
                 if (row) {
+                    row.classList.add('row-overridden');
+                    row.setAttribute('data-row-status', 'Overridden');
+                    row.style.backgroundColor = '#eef2ff';
+
                     // Update Row Status dropdown (preserve dropdown, update display)
                     const dropdown = row.querySelector('.row-status-dropdown');
                     if (dropdown) {

@@ -23,6 +23,7 @@ see tests/e2e/test_validation_review_dom.py (browser tests via Playwright).
 import pytest
 import sys
 import tempfile
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -1241,8 +1242,24 @@ class TestApprovalWarningWorkflow:
 
         review_response = client.get('/imports/validation-workflow-test-batch/validation')
         assert review_response.status_code == 200
-        assert b'Overridden' in review_response.data, (
-            "Rendered validation review page should expose Overridden row status"
+        review_html = review_response.data.decode('utf-8')
+        row_match = re.search(
+            rf'<tr\b[^>]*data-raw-id="{re.escape(str(raw_id))}"[^>]*>.*?</tr>',
+            review_html,
+            re.S,
+        )
+        assert row_match is not None, (
+            f"Expected overridden row to render in validation review page, got: {review_html}"
+        )
+        row_html = row_match.group(0)
+        assert 'row-overridden' in row_html, (
+            f"Rendered overridden row should include semantic class, got: {row_html}"
+        )
+        assert 'data-row-status="Overridden"' in row_html, (
+            f"Rendered overridden row should expose data-row-status, got: {row_html}"
+        )
+        assert 'Overridden' in row_html, (
+            f"Rendered overridden row should display Overridden status, got: {row_html}"
         )
 
         session = Session()
