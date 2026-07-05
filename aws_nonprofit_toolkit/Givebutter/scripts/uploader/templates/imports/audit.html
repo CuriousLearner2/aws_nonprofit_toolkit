@@ -10,6 +10,13 @@
 <div class="safety-strip" data-testid="audit-filter-orientation" style="margin-top: 12px;">
     The action filter narrows the audit events shown here. Audit entries are append-only records of reviewer/system actions. If no rows match, no matching audit events are currently displayed.
 </div>
+<div class="safety-strip" data-testid="audit-related-links" style="margin: 12px 0 24px 0; padding: 10px 14px;">
+    <strong>Related pages:</strong>
+    <a href="/imports/{{ batch.id }}/dashboard" style="margin-left: 8px; color: #0066cc; text-decoration: underline;">Dashboard</a>
+    <a href="/imports/{{ batch.id }}/readiness" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">Export Readiness</a>
+    <a href="/imports/{{ batch.id }}/exports" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">Export Console</a>
+    <a href="/imports/{{ batch.id }}/validation" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">Validation Review</a>
+</div>
 
 <!-- Filter & Export -->
 <div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">

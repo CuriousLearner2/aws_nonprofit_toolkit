@@ -99,6 +99,7 @@ class TestReadinessRoutePreviewMirror:
         response = client.get('/imports/IMP-TEST-001/readiness')
         html = response.data.decode('utf-8', errors='ignore')
 
+        assert 'data-testid="readiness-related-links"' in html
         assert 'data-testid="readiness-status-legend"' in html
         assert 'Blockers must be cleared before export' in html
         assert 'Warnings are review items, not blockers' in html
@@ -106,6 +107,10 @@ class TestReadinessRoutePreviewMirror:
         assert 'check warnings before exporting' in html.lower()
         assert 'Readiness guide:' in html
         assert 'Export Ready' in html
+        assert 'href="/imports/IMP-TEST-001/dashboard"' in html
+        assert 'href="/imports/IMP-TEST-001/exports"' in html
+        assert 'href="/imports/IMP-TEST-001/validation"' in html
+        assert 'href="/imports/IMP-TEST-001/audit"' in html
 
     def test_readiness_shows_queue_status(self, client):
         """Test that readiness page shows review queue status."""

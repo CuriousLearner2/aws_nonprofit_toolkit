@@ -44,11 +44,16 @@ class TestExportsRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/exports')
         html = response.data.decode('utf-8')
 
+        assert 'data-testid="exports-related-links"' in html
         assert 'data-testid="export-readiness-summary"' in html
         assert 'Export readiness:' in html
         assert 'Generate CSV Export' in html
         assert 'Export Formats' in html
         assert 'Recent Exports' in html
+        assert 'href="/imports/IMP-2025-0101-A/dashboard"' in html
+        assert 'href="/imports/IMP-2025-0101-A/readiness"' in html
+        assert 'href="/imports/IMP-2025-0101-A/validation"' in html
+        assert 'href="/imports/IMP-2025-0101-A/audit"' in html
 
     def test_exports_contains_safety_message(self, client_with_fixture):
         """Test that exports page contains safety messaging."""

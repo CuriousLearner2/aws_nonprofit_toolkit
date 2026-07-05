@@ -10,6 +10,13 @@
   <strong>CSV export only:</strong> Generates downloadable file for manual import to your CRM. Manual upload required (not automatic). Raw import records remain unchanged.
   <a href="/docs/user-guide/export-only-workflow" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">View workflow guide</a>
 </div>
+<div class="safety-strip" data-testid="exports-related-links" style="margin: 12px 0 24px 0; padding: 10px 14px;">
+  <strong>Related pages:</strong>
+  <a href="/imports/{{ batch.id }}/dashboard" style="margin-left: 8px; color: #0066cc; text-decoration: underline;">Dashboard</a>
+  <a href="/imports/{{ batch.id }}/readiness" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">Export Readiness</a>
+  <a href="/imports/{{ batch.id }}/validation" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">Validation Review</a>
+  <a href="/imports/{{ batch.id }}/audit" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">Audit Log</a>
+</div>
 
 {% if preview_available %}
     {% if preview.blocked_count > 0 %}

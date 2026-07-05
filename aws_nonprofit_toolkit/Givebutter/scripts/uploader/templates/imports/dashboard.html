@@ -36,6 +36,12 @@
 <div class="safety-strip" data-testid="dashboard-next-step-note" style="margin-bottom: 24px;">
   Review queues should be handled before export. Blockers require attention before export under existing rules. Warnings are review-relevant but distinct from blockers. Raw source rows remain unchanged.
 </div>
+<div class="safety-strip" data-testid="dashboard-related-links" style="margin-bottom: 24px; padding: 10px 14px;">
+  <strong>Related pages:</strong>
+  <a href="/imports/{{ batch.id }}/readiness" style="margin-left: 8px; color: #0066cc; text-decoration: underline;">Export Readiness</a>
+  <a href="/imports/{{ batch.id }}/exports" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">Export Console</a>
+  <a href="/imports/{{ batch.id }}/audit" style="margin-left: 12px; color: #0066cc; text-decoration: underline;">Audit Log</a>
+</div>
 
 <div class="safety-strip" data-testid="dashboard-jump-strip" style="margin-bottom: 24px; padding: 10px 14px;">
   <strong>Jump to queue:</strong>

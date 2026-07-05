@@ -97,6 +97,7 @@ class TestAuditRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         html = response.data.decode('utf-8', errors='ignore')
 
+        assert 'data-testid="audit-related-links"' in html
         assert 'data-testid="audit-filter-orientation"' in html
         assert 'The action filter narrows the audit events shown here.' in html
         assert 'Audit entries are append-only records of reviewer/system actions.' in html
@@ -110,6 +111,10 @@ class TestAuditRoute:
         assert "actionFilter.addEventListener('change', applyActionFilter);" in html
         assert 'row.hidden = !matches;' in html
         assert 'applyActionFilter();' in html
+        assert 'href="/imports/IMP-2025-0101-A/dashboard"' in html
+        assert 'href="/imports/IMP-2025-0101-A/readiness"' in html
+        assert 'href="/imports/IMP-2025-0101-A/exports"' in html
+        assert 'href="/imports/IMP-2025-0101-A/validation"' in html
 
     def test_audit_contains_export_button(self, client_with_fixture):
         """Test that audit page contains export button."""

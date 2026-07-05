@@ -48,6 +48,7 @@ class TestDashboardRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/dashboard')
         html = response.data.decode('utf-8')
 
+        assert 'data-testid="dashboard-related-links"' in html
         assert 'data-testid="dashboard-attention-banner"' in html
         assert 'data-testid="dashboard-next-step-note"' in html
         assert 'data-testid="dashboard-jump-strip"' in html
@@ -64,6 +65,9 @@ class TestDashboardRoute:
         assert 'href="#dashboard-possible-duplicates"' in html
         assert 'href="#dashboard-normalizations"' in html
         assert 'href="#dashboard-households"' in html
+        assert 'href="/imports/IMP-2025-0101-A/readiness"' in html
+        assert 'href="/imports/IMP-2025-0101-A/exports"' in html
+        assert 'href="/imports/IMP-2025-0101-A/audit"' in html
         assert 'Possible Duplicates' in html
         assert 'Validation Review' in html
         assert 'Normalizations' in html
