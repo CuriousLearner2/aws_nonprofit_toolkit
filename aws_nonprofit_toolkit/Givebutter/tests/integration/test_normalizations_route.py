@@ -61,6 +61,7 @@ class TestNormalizationsRoute:
         html = response.get_data(as_text=True)
 
         assert 'id="normalization-summary-strip"' in html
+        assert 'data-testid="normalization-related-links"' in html
         assert 'data-testid="normalization-summary-strip"' in html
         assert 'data-summary-metric="contact"' in html
         assert 'data-summary-metric="field"' in html
@@ -80,6 +81,9 @@ class TestNormalizationsRoute:
         assert 'Pending' in html
         assert 'data-testid="normalization-return-summary-link"' in html
         assert 'href="#normalization-summary-strip"' in html
+        assert 'href="/imports/IMP-TEST-001/dashboard"' in html
+        assert 'href="/imports/IMP-TEST-001/validation"' in html
+        assert 'href="/imports/IMP-TEST-001/readiness"' in html
 
     def test_normalizations_page_original_value_label(self, client_with_database):
         """Normalizations page displays 'Original Value' label."""

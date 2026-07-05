@@ -147,6 +147,7 @@ class TestHouseholdDecisionUI:
 
         assert response.status_code == 200
         assert 'id="household-summary-strip"' in html
+        assert 'data-testid="household-related-links"' in html
         assert 'data-testid="household-summary-strip"' in html
         assert 'data-summary-metric="members"' in html
         assert 'data-summary-metric="supporting"' in html
@@ -170,6 +171,9 @@ class TestHouseholdDecisionUI:
         assert 'Defer' in html
         assert 'data-testid="household-return-summary-link"' in html
         assert 'href="#household-summary-strip"' in html
+        assert 'href="/imports/IMP-2025-0101-A/dashboard"' in html
+        assert 'href="/imports/IMP-2025-0101-A/validation"' in html
+        assert 'href="/imports/IMP-2025-0101-A/readiness"' in html
 
     def test_status_badge_displays_pending(self, flask_client_with_db):
         """Test that status badge displays Pending for new household."""

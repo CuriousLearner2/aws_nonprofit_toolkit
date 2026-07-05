@@ -146,6 +146,12 @@
         <button type="button" class="btn btn-secondary" onclick="submitDuplicateDecision('defer', {{ candidate.id }})">Defer</button>
     </div>
 </div>
+<div data-testid="duplicate-related-links" style="margin: 12px 0 0 0; font-size: 12px; color: #6b7280;">
+    <strong style="color: #374151;">Related pages:</strong>
+    <a href="/imports/{{ batch.id }}/dashboard" style="margin-left: 8px; color: #0051d5; text-decoration: underline;">Dashboard</a>
+    <a href="/imports/{{ batch.id }}/validation" style="margin-left: 10px; color: #0051d5; text-decoration: underline;">Validation Review</a>
+    <a href="/imports/{{ batch.id }}/readiness" style="margin-left: 10px; color: #0051d5; text-decoration: underline;">Export Readiness</a>
+</div>
 <div style="margin: 8px 0 0 0;">
     <a href="#duplicate-evidence-summary" data-testid="duplicate-return-summary-link" style="font-size: 12px; color: #0051d5; font-weight: 600; text-decoration: underline;">Back to evidence summary</a>
 </div>

@@ -113,6 +113,7 @@ class TestValidationRoute:
         normalized_html = re.sub(r'\s+', ' ', html)
 
         assert 'id="validation-review-summary"' in html
+        assert 'data-testid="validation-related-links"' in html
         assert 'data-testid="review-summary-strip"' in html
         assert 'Review summary:' in html
         assert re.search(r'<strong>\s*2\s*</strong>\s*Blocking', normalized_html)
@@ -123,6 +124,8 @@ class TestValidationRoute:
         assert 'id="validation-row-TXN-003"' in html
         assert 'data-testid="validation-return-summary-link"' in html
         assert 'href="#validation-review-summary"' in html
+        assert 'href="/imports/IMP-2025-0101-A/dashboard"' in html
+        assert 'href="/imports/IMP-2025-0101-A/readiness"' in html
 
     def test_validation_contains_status_filter_controls(self, client_with_fixture):
         """Test that validation page renders client-side status filter controls."""
