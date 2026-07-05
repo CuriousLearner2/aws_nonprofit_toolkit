@@ -76,6 +76,16 @@ For fixture, seed, cached-data, or other data-layer changes that affect visible 
 
 Do not edit based on conceptual or invented file names from an assessment. If likely files/functions were not grounded with `Read`, `Grep`, or `Glob`, first locate the actual repo paths inside the authorized scope or return a blocker requesting a repo-grounded trace. Do not create new files just because a conceptual path was named.
 
+## Command Discipline
+
+Run project gates and guards from the Givebutter project directory unless the task contract explicitly states otherwise:
+
+```bash
+cd "/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
+```
+
+Use `./.venv/bin/python` for project commands. Do not use bare `python` and do not assume the virtualenv exists from the Git repo root.
+
 ## Scope Boundaries by Lane
 
 - **Test-only hardening:** tests only; no product/templates/routes/seed/workflow/CI changes.
@@ -96,10 +106,10 @@ If authorization is missing, do not edit, inspect broadly, or test. Return a blo
 - For non-E2E pytest gates, use:
 
 ```bash
-python scripts/ci/test_gate.py --timeout <seconds> -- pytest <args>
+./.venv/bin/python scripts/ci/test_gate.py --timeout <seconds> -- pytest <args>
 ```
 
-- For E2E gates, use `scripts/ci/e2e_gate.py` with explicit timeout; multi-test E2E gates require `-x` or `--maxfail=1`.
+- For E2E gates, use `./.venv/bin/python scripts/ci/e2e_gate.py` with explicit timeout; multi-test E2E gates require `-x` or `--maxfail=1`.
 - E2E tests must use hard selector preconditions and hard assertions. No soft guards, print-only success, networkidle-only success, page-load-only coverage, or silent early returns.
 - For E2E rewrites, migrations, selector/timing changes, browser fixture changes, or async-heavy UI work, implement only the E2E proof stage named in the task contract: `one-test proof`, `small batch`, `whole file`, or `reliability evidence`.
 - Do not skip proof stages. Do not migrate a whole file when only one-test proof or small batch was authorized. Do not add extra E2E files or broaden the batch without human authorization.
@@ -113,6 +123,8 @@ If any declared gate fails, hangs, times out, exits 143, is interrupted, or prod
 - if the lane is not enabled, do not inspect, grep, rerun, split, debug, or repair,
 - do not prepare Reviewer handoff after a failed gate,
 - report a failed-gate stop report.
+
+If a gate is interrupted or cannot be confirmed stopped/cleaned up, stop and report. Do not continue in the same session, prepare Reviewer handoff, or leave background terminals running unless the human explicitly authorizes a recovery task.
 
 ### Failed-First Repair Lane Limits
 

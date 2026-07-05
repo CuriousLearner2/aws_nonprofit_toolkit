@@ -25,11 +25,12 @@ Apply rules in this order:
 1. **Assessment-only:** Orchestrator performs it directly. No child agents, no edits, and stop at the assessment report.
 2. **Any failed, hung, timed-out, interrupted, unusable/truncated, or exit-143 gate:** stop immediately unless the task contract explicitly says `Failed-First Repair Lane: enabled` and the failure qualifies under that lane. Without that exact opt-in, no diagnosis, retry, split, second fix, Reviewer, Breaker, commit, or push without human authorization.
 3. **E2E gates require explicit wall-clock timeouts:** 90s single test, 180s full file, 90s per reliability iteration unless a stricter task-specific gate is declared. Multi-test pytest gates must use `-x` or `--maxfail=1`.
-4. **Timeout equals failed gate.** Treat it exactly like a test failure and deliver a failed-gate stop report.
-5. **Rewritten E2E tests require hard assertions.** No soft guards, no `if element: assert ...`, no print/networkidle-only success, no zombie tests, and no page-load-only replacement coverage.
-6. **Reviewer handoff:** For implementation flows requiring review, Implementer stops at ready-for-review and Orchestrator invokes Reviewer after passing gates. Do not invoke Reviewer for assessment-only, push-only, or status-only tasks unless explicitly required.
-7. **Terminal states stop:** assessment report, failed-gate report, cleanup completed, non-accept Reviewer verdict, Breaker P1/P0/FAIL, commit, and push. Do not auto-start the next task.
-8. **Breaker is concrete-risk-based, not routine.** Invoke only for concrete P0/P1 invariant or process-integrity risk, when Lane D/product risk requires it, or when the human asks.
+4. **Project commands run from the Givebutter project directory using `./.venv/bin/python`.** Do not use bare `python` for project gates/guards unless the task contract or local workflow explicitly proves a different interpreter is required.
+5. **Timeout equals failed gate.** Treat it exactly like a test failure and deliver a failed-gate stop report.
+6. **Rewritten E2E tests require hard assertions.** No soft guards, no `if element: assert ...`, no print/networkidle-only success, no zombie tests, and no page-load-only replacement coverage.
+7. **Reviewer handoff:** For implementation flows requiring review, Implementer stops at ready-for-review and Orchestrator invokes Reviewer after passing gates. Do not invoke Reviewer for assessment-only, push-only, or status-only tasks unless explicitly required.
+8. **Terminal states stop:** assessment report, failed-gate report, cleanup completed, non-accept Reviewer verdict, Breaker P1/P0/FAIL, commit, and push. Do not auto-start the next task.
+9. **Breaker is concrete-risk-based, not routine.** Invoke only for concrete P0/P1 invariant or process-integrity risk, when Lane D/product risk requires it, or when the human asks.
 
 ## Mandatory Task Contract
 
@@ -206,38 +207,62 @@ Lanes define maximum allowed scope and approval flow. They do not bypass gates, 
 
 Intentional tradeoff: `Happy-path auto-commit: enabled` is required for all lanes, including Lane B/C. This preserves safety over speed because test-only/workflow-only tasks can still create false confidence, evidence gaps, or process drift.
 
+
+## Project Command Location and Interpreter
+
+Unless a task contract or repo-local workflow file explicitly states otherwise, run project gates, guards, and pytest commands from the Givebutter project directory:
+
+```bash
+cd "/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
+```
+
+Use the project virtualenv interpreter:
+
+```bash
+./.venv/bin/python
+```
+
+Rules:
+- Do not use bare `python` for project commands.
+- Do not assume `./.venv/bin/python` exists from the Git repo root; first `cd` to the Givebutter project directory.
+- A wrong-directory or missing-interpreter error is a command-invocation failure, not evidence of product/test failure. Stop and report unless the current task explicitly authorizes correction and continuation.
+
 ## Repository Automation Guardrails
 
 Run guardrails in this order for implementation and commit-prep flows:
 
 **A. Artifact Guard**
 ```bash
-python scripts/ci/check_no_artifacts.py
+./.venv/bin/python scripts/ci/check_no_artifacts.py
 ```
 
 **B. Lane Scope Guard**
 ```bash
-python scripts/ci/check_lane_scope.py --lane <lane>
+./.venv/bin/python scripts/ci/check_lane_scope.py --lane <lane>
 ```
 Lane mapping: `assessment`, `test-only`, `workflow-ci`, `product`, `push-only`. If it fails, stop and report; do not recategorize, clean up, or continue without human authorization.
 
 **C. Scope Guard**
 ```bash
-python scripts/ci/check_scope.py --allow <expected file> ...
+./.venv/bin/python scripts/ci/check_scope.py --allow <expected file> ...
 ```
 Must list each expected changed file explicitly. Do not use broad patterns like `--allow tests/**`, `.claude/**`, or `**` unless explicitly authorized.
 
 **D. Test Gate Wrapper**
 ```bash
-python scripts/ci/test_gate.py --timeout N -- pytest <args>
+./.venv/bin/python scripts/ci/test_gate.py --timeout N -- pytest <args>
 ```
 Required for unit, integration, and targeted non-E2E pytest gates in implementation flows. Timeout exit code 124 is a failed gate.
 
 **E. E2E Gate Wrapper**
 ```bash
-python scripts/ci/e2e_gate.py --timeout N -- pytest <args>
+./.venv/bin/python scripts/ci/e2e_gate.py --timeout N -- pytest <args>
 ```
 Required for E2E gates. Multi-test E2E gates must use `-x` or `--maxfail=1`.
+
+## Interrupted Gate / Background Terminal Rule
+
+If a gate is interrupted, times out, hangs, exits 143, or cannot be confirmed stopped/cleaned up, stop and report. Do not continue gates, invoke Reviewer, invoke Breaker, commit, or push in the same session unless the human explicitly authorizes a recovery task. Do not leave background terminals running after a gate. If process cleanup cannot be confirmed because the environment cannot enumerate processes, report that limitation and stop.
 
 ## Gate Rules
 
@@ -640,11 +665,21 @@ Do not invoke Product UX Gatekeeper for mechanical implementation of an already-
 
 **Level 1 Fast Review** — docs-only, workflow-only, test-only, or tiny low-risk changes with complete evidence. Delta review only.
 
+For narrow test-only remediation, Reviewer defaults to bounded Level 1 review unless the diff changes product code or touches concrete P0/P1 invariants. Reviewer should verify only:
+- changed-file scope and lane compliance,
+- required gate and guard evidence,
+- whether the specific fix matches the failed test/setup issue,
+- whether any adjacent test or fixture change is justified by the same narrow failure.
+
+Reviewer should not perform broad architecture review, unrelated UX review, whole-suite analysis, or future-work planning for bounded Level 1 review. Reviewer output should be `Accept` or a blocking verdict with a specific blocking reason.
+
+If Reviewer has not returned a verdict within 10 minutes for a narrow Level 1 review, Orchestrator must stop waiting and report Reviewer wait status. Do not infer acceptance, do not invoke Breaker, do not commit, and do not push.
+
 **Level 2 Standard Review** — normal product/test changes, review-screen UI, autosave, modals, export warnings, audit visibility, and E2E infrastructure.
 
 **Level 3 Deep Review** — export correctness, raw-data immutability, audit integrity, state machines, persistence architecture, schema/data-model, generated CSV, or multi-file architecture.
 
-Reviewers/Breakers report verified items, unverified items, blockers, and readiness impact. Timebox language is guidance, not a reason to skip required checks.
+Reviewers/Breakers report verified items, unverified items, blockers, and readiness impact. Timebox language is guidance, not a reason to skip required checks, but bounded Level 1 review must not expand into unrelated analysis without a concrete risk.
 
 ## Role Ownership
 
@@ -678,7 +713,7 @@ Commit only when all are true:
 - Artifact guard passed.
 - Lane scope guard passed with the declared lane.
 - Scope guard passed with exact expected files.
-- Fast pre-commit passed: `pytest tests/unit tests/integration -q --tb=short`.
+- Fast pre-commit passed: `./.venv/bin/python -m pytest tests/unit tests/integration -q --tb=short`.
 - Staged files exactly match expected files.
 - No unresolved product questions, schema concerns, failed-first-fix violation, or workflow violation.
 

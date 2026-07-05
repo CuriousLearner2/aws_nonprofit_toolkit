@@ -42,6 +42,7 @@ If any field is uncertain, stop and ask or classify as assessment-only. Do not i
 6. **Commit completed is terminal when auto-commit is enabled and eligible.** Stop after commit. Do not push.
 7. **Do not re-ask for authorized actions.** If the task contract already authorized Reviewer, Breaker, or auto-commit and the required conditions are met, perform the action instead of asking the human for permission.
 8. **Review capability is a precondition.** If required Reviewer/Breaker invocation is unavailable in this session, stop before implementation/auto-commit and report the tooling blocker.
+9. **Use the project command context.** Run project commands from the Givebutter project directory with `./.venv/bin/python`; do not use bare `python` unless explicitly authorized by local workflow.
 
 
 
@@ -156,6 +157,22 @@ You may stop before invocation only if:
 
 
 
+## Bounded Reviewer Handoff for Narrow Tasks
+
+For narrow test-only remediation, docs-only, workflow-only, or tiny low-risk changes with complete evidence, invoke Reviewer as bounded Level 1 review unless the diff changes product code or touches concrete P0/P1 invariants.
+
+The Reviewer handoff packet must be compact and include:
+- task type and lane,
+- changed files,
+- diff summary,
+- gates and guards run with exact results,
+- forbidden areas touched? yes/no,
+- specific Reviewer questions.
+
+Bounded Level 1 Reviewer should verify only changed-file scope, lane compliance, gate/guard evidence, and whether the specific fix matches the failed test/setup issue. Do not ask Reviewer for broad architecture review, unrelated UX review, whole-suite analysis, or future-work planning.
+
+If a bounded Level 1 Reviewer wait exceeds 10 minutes without a verdict, stop waiting and report Reviewer wait status. Do not infer acceptance, do not invoke Breaker, do not commit, and do not push.
+
 ## Orchestrator-Led Implementation Completion Rule
 
 Do not confuse an Implementer terminal state with an Orchestrator terminal state.
@@ -225,9 +242,9 @@ Before acting after a restart, ask: is this action authorized by the current tas
 
 For implementation and commit-prep flows, run guards in this order:
 
-1. `python scripts/ci/check_no_artifacts.py`
-2. `python scripts/ci/check_lane_scope.py --lane <declared lane>`
-3. `python scripts/ci/check_scope.py --allow <expected file> ...`
+1. `./.venv/bin/python scripts/ci/check_no_artifacts.py`
+2. `./.venv/bin/python scripts/ci/check_lane_scope.py --lane <declared lane>`
+3. `./.venv/bin/python scripts/ci/check_scope.py --allow <expected file> ...`
 
 Lane mapping:
 - assessment → `--lane assessment`

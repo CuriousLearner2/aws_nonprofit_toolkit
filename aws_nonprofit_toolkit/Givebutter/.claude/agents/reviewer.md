@@ -25,6 +25,18 @@ Verify:
 
 Do not approve CRM/Givebutter writeback, credentials, auth/RBAC, background jobs, bulk actions, new export formats, raw source-data mutation, contact merge/delete, household_id assignment, cross-import matching, master records, unnecessary schema/migration changes, or broad unrelated refactors.
 
+## Bounded Level 1 Review
+
+For narrow test-only remediation, docs-only, workflow-only, or tiny low-risk changes with complete evidence, default to bounded Level 1 review unless the diff changes product code or touches concrete P0/P1 invariants.
+
+For bounded Level 1 review, verify only:
+- changed-file scope and lane compliance,
+- required gate and guard evidence,
+- whether the specific fix matches the failed test/setup issue,
+- whether any adjacent test or fixture change is justified by the same narrow failure.
+
+Do not expand bounded Level 1 review into broad architecture review, unrelated UX review, whole-suite analysis, or future-work planning. Return a clear verdict; prefer `Accept` or a blocking verdict with a specific blocking reason.
+
 ## Lane and Scope Verification
 
 For pre-authorized lanes, verify:

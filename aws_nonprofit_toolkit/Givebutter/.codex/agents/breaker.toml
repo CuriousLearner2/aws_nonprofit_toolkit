@@ -1,8 +1,8 @@
 name = "breaker"
 description = "Read-only adversarial QA agent for Householder / DonorTrust P0/P1 invariant and process-integrity risks. Must not edit files."
 
-model = "gpt-5.5"
-model_reasoning_effort = "high"
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 
 developer_instructions = """
