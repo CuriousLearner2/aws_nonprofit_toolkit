@@ -37,6 +37,7 @@ import requests
 from pathlib import Path
 from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
+from werkzeug.serving import make_server
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -47,6 +48,8 @@ from scripts.householder.database_models import (
     ImportBatch,
     RawImportRow,
     ImportContact,
+    ReviewItem,
+    ReviewItemSubject,
     create_db_engine,
 )
 from scripts.uploader.app import app
@@ -84,7 +87,11 @@ def get_venv_python() -> str:
     return sys.executable
 
 
-def wait_for_flask_ready(base_url: str, batch_id: str, timeout_seconds: int = 10) -> None:
+def wait_for_flask_ready(
+    base_url: str,
+    batch_id: str,
+    timeout_seconds: int = 10,
+) -> None:
     """
     Wait for Flask server to become ready by polling the validation endpoint.
 
@@ -112,6 +119,29 @@ def wait_for_flask_ready(base_url: str, batch_id: str, timeout_seconds: int = 10
     raise RuntimeError(
         f"Flask server failed to become ready within {timeout_seconds}s at {base_url}"
     )
+
+
+def start_flask_server(flask_app):
+    """Start the local Flask app on an ephemeral localhost port."""
+    server = make_server('127.0.0.1', 0, flask_app)
+    flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    flask_thread.start()
+    port = getattr(server, 'server_port', None)
+    if port is None:
+        port = server.socket.getsockname()[1]
+    base_url = f'http://127.0.0.1:{port}'
+    return server, flask_thread, base_url
+
+
+def stop_flask_server(server, flask_thread):
+    """Stop the local Flask app and wait briefly for teardown."""
+    try:
+        if server is not None:
+            server.shutdown()
+        if flask_thread is not None:
+            flask_thread.join(timeout=2)
+    except Exception:
+        pass
 
 
 async def seed_validation_batch(
@@ -241,6 +271,8 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -286,21 +318,11 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess (proof of concept)
-        base_url = 'http://127.0.0.1:8001'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-        env['FLASK_ENV'] = 'development'
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
+        # Start Flask server with the repo-supported make_server pattern.
+        base_url = 'http://127.0.0.1:8002'
+        server = make_server('127.0.0.1', 8002, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        flask_thread.start()
 
         # Wait for server to become ready
         wait_for_flask_ready(base_url, 'email-test-batch')
@@ -402,9 +424,12 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
+        # Cleanup Flask server
         try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+            if server is not None:
+                server.shutdown()
+            if flask_thread is not None:
+                flask_thread.join(timeout=2)
         except Exception:
             pass
         session.close()
@@ -445,6 +470,8 @@ async def test_validation_error_preserves_review_status_dropdown(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -490,23 +517,8 @@ async def test_validation_error_preserves_review_status_dropdown(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'dropdown-preserve-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
@@ -622,11 +634,7 @@ async def test_validation_error_preserves_review_status_dropdown(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -666,6 +674,8 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -711,23 +721,8 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'approval-override-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
@@ -817,11 +812,7 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -875,6 +866,8 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -920,37 +913,9 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'inspect-modal-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to start
-        time.sleep(5)
-
-        # Verify server is accessible with actual batch_id
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(f'{base_url}/imports/{batch_id}/validation', timeout=2)
-                if response.status_code == 200:
-                    break
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise RuntimeError("Flask server failed to start or validation URL returned error")
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
         async with async_playwright() as p:
@@ -1081,11 +1046,7 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -1124,6 +1085,8 @@ async def test_needs_follow_up_notes_required_workflow(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -1166,23 +1129,8 @@ async def test_needs_follow_up_notes_required_workflow(
         session.add(import_contact)
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'followup-e2e-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -1283,11 +1231,7 @@ async def test_needs_follow_up_notes_required_workflow(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -1322,6 +1266,8 @@ async def test_defer_workflow_notes_optional(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -1364,23 +1310,8 @@ async def test_defer_workflow_notes_optional(
         session.add(import_contact)
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'defer-e2e-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -1436,11 +1367,7 @@ async def test_defer_workflow_notes_optional(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -1476,6 +1403,8 @@ async def test_inspect_modal_controls_comprehensive(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -1518,23 +1447,8 @@ async def test_inspect_modal_controls_comprehensive(
         session.add(import_contact)
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'modal-controls-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -1634,11 +1548,7 @@ async def test_inspect_modal_controls_comprehensive(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -1665,6 +1575,8 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -1710,23 +1622,8 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'follow-up-test-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
@@ -1808,11 +1705,7 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -1842,6 +1735,8 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data
@@ -1886,23 +1781,8 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'amount-test-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
@@ -1982,11 +1862,7 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -2026,6 +1902,8 @@ async def test_amount_validation_error_appears_in_issues_column(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -2071,23 +1949,8 @@ async def test_amount_validation_error_appears_in_issues_column(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'amount-test-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
@@ -2192,11 +2055,7 @@ async def test_amount_validation_error_appears_in_issues_column(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -2247,6 +2106,8 @@ async def test_amount_and_email_multi_error_workflow(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -2292,23 +2153,8 @@ async def test_amount_and_email_multi_error_workflow(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'multi-error-workflow-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
@@ -2465,11 +2311,7 @@ async def test_amount_and_email_multi_error_workflow(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -2497,6 +2339,8 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -2539,23 +2383,8 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
         session.add(import_contact)
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'audit-e2e-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -2648,11 +2477,7 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -2682,6 +2507,8 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -2724,23 +2551,8 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
         session.add(import_contact)
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'cross-screen-audit-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -2829,11 +2641,7 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -2868,6 +2676,8 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Create batch
@@ -2906,23 +2716,8 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
         session.add(contact)
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'golden-path-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         # Launch browser
@@ -3066,11 +2861,7 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -3101,6 +2892,8 @@ async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data
@@ -3144,23 +2937,8 @@ async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'escape-email-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -3215,11 +2993,7 @@ async def test_escape_cancels_unsaved_email_edit(e2e_database_and_app):
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -3249,6 +3023,8 @@ async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data
@@ -3292,23 +3068,8 @@ async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'escape-amount-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -3365,11 +3126,7 @@ async def test_escape_cancels_invalid_amount_edit(e2e_database_and_app):
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -3445,6 +3202,8 @@ async def test_escape_cancel_clears_status_and_does_not_show_saved(e2e_database_
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data
@@ -3488,23 +3247,8 @@ async def test_escape_cancel_clears_status_and_does_not_show_saved(e2e_database_
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'escape-no-saved-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -3613,11 +3357,7 @@ async def test_escape_cancel_clears_status_and_does_not_show_saved(e2e_database_
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -3645,6 +3385,8 @@ async def test_normal_autosave_still_works_after_escape_implementation(e2e_datab
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data
@@ -3688,23 +3430,8 @@ async def test_normal_autosave_still_works_after_escape_implementation(e2e_datab
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'autosave-normal-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -3753,11 +3480,7 @@ async def test_normal_autosave_still_works_after_escape_implementation(e2e_datab
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -3805,6 +3528,8 @@ async def test_keyboard_interaction_escape_cancel_and_tab_save_workflow(
     engine = create_db_engine(database_url)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data
@@ -3846,23 +3571,8 @@ async def test_keyboard_interaction_escape_cancel_and_tab_save_workflow(
         session.add(contact)
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'keyboard-test-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -4006,11 +3716,7 @@ async def test_keyboard_interaction_escape_cancel_and_tab_save_workflow(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -4050,6 +3756,8 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
     engine = create_db_engine(database_url)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
+    server = None
+    flask_thread = None
 
     flask_process = None
 
@@ -4097,22 +3805,7 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
             session.add(contact)
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, 'desktop-layout-batch')
 
         async with async_playwright() as p:
@@ -4281,12 +3974,12 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
             await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        if flask_process is not None:
-            try:
-                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-            except Exception:
-                pass
+        # Cleanup Flask server
+        try:
+            server.shutdown()
+            flask_thread.join(timeout=2)
+        except Exception:
+            pass
         session.close()
 
 
@@ -4298,6 +3991,8 @@ async def test_fixture_mode_txn_001_phone_noop_autosave_preserves_clean_state():
     """
     from playwright.async_api import async_playwright
 
+    server = None
+    flask_thread = None
     base_url = 'http://127.0.0.1:8002'
     batch_id = 'IMP-2025-0101-A'
     env = os.environ.copy()
@@ -4404,6 +4099,8 @@ async def test_escape_cancel_restores_without_status_for_all_editable_fields(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data with all fields populated
@@ -4417,21 +4114,12 @@ async def test_escape_cancel_restores_without_status_for_all_editable_fields(
         }
         await seed_validation_batch(session, 'escape-all-fields-batch', 'escape_all_fields.csv', field_values)
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
+        # Start Flask server with the repo-supported make_server pattern.
+        base_url = 'http://127.0.0.1:8002'
         batch_id = 'escape-all-fields-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
+        server = make_server('127.0.0.1', 8002, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        flask_thread.start()
 
         # Wait for server to become ready
         wait_for_flask_ready(base_url, batch_id)
@@ -4517,9 +4205,12 @@ async def test_escape_cancel_restores_without_status_for_all_editable_fields(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
+        # Cleanup Flask server
         try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
+            if server is not None:
+                server.shutdown()
+            if flask_thread is not None:
+                flask_thread.join(timeout=2)
         except Exception:
             pass
         session.close()
@@ -4562,6 +4253,8 @@ async def test_escape_cancel_restores_to_last_saved_value_not_raw_value(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed with raw value
@@ -4575,23 +4268,8 @@ async def test_escape_cancel_restores_to_last_saved_value_not_raw_value(
         }
         await seed_validation_batch(session, 'last-saved-batch', 'last_saved_test.csv', field_values)
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'last-saved-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -4687,11 +4365,7 @@ async def test_escape_cancel_restores_to_last_saved_value_not_raw_value(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -4728,6 +4402,8 @@ async def test_escape_cancel_ignores_delayed_autosave_response(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data
@@ -4741,23 +4417,8 @@ async def test_escape_cancel_ignores_delayed_autosave_response(
         }
         await seed_validation_batch(session, 'delayed-autosave-batch', 'delayed_autosave.csv', field_values)
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'delayed-autosave-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -4869,11 +4530,7 @@ async def test_escape_cancel_ignores_delayed_autosave_response(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -4907,6 +4564,8 @@ async def test_console_errors_during_escape_cancel_workflow(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     try:
         # Seed test data
@@ -4920,23 +4579,8 @@ async def test_console_errors_during_escape_cancel_workflow(
         }
         await seed_validation_batch(session, 'console-check-batch', 'console_check.csv', field_values)
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
         batch_id = 'console-check-batch'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
 
         async with async_playwright() as p:
@@ -5021,11 +4665,7 @@ async def test_console_errors_during_escape_cancel_workflow(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        try:
-            os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-        except Exception:
-            pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -5068,6 +4708,8 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     flask_process = None
 
@@ -5118,22 +4760,7 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, 'keyboard-test-batch')
 
         # Launch browser
@@ -5418,12 +5045,7 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        if flask_process is not None:
-            try:
-                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-            except Exception:
-                pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -5455,6 +5077,8 @@ async def test_noop_blur_does_not_show_saved_feedback(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     flask_process = None
 
@@ -5502,22 +5126,7 @@ async def test_noop_blur_does_not_show_saved_feedback(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, 'noop-test-batch')
 
         # Launch browser
@@ -5571,12 +5180,7 @@ async def test_noop_blur_does_not_show_saved_feedback(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        if flask_process is not None:
-            try:
-                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-            except Exception:
-                pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -5608,6 +5212,8 @@ async def test_changed_value_blur_saves_and_persists(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     flask_process = None
 
@@ -5655,22 +5261,7 @@ async def test_changed_value_blur_saves_and_persists(
         session.flush()
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, 'change-test-batch')
 
         # Launch browser
@@ -5720,12 +5311,7 @@ async def test_changed_value_blur_saves_and_persists(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        if flask_process is not None:
-            try:
-                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-            except Exception:
-                pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -5758,6 +5344,8 @@ async def test_sticky_action_bar_visible_while_scrolling(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     flask_process = None
 
@@ -5807,22 +5395,7 @@ async def test_sticky_action_bar_visible_while_scrolling(
 
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, 'scroll-test-batch')
 
         # Launch browser
@@ -5910,12 +5483,7 @@ async def test_sticky_action_bar_visible_while_scrolling(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        if flask_process is not None:
-            try:
-                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-            except Exception:
-                pass
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -5933,6 +5501,8 @@ async def test_validation_jump_link_highlights_first_blocking_row():
     """
     from playwright.async_api import async_playwright
 
+    server = None
+    flask_thread = None
     base_url = 'http://127.0.0.1:8003'
     batch_id = 'IMP-2025-0101-A'
     env = os.environ.copy()
@@ -6072,11 +5642,15 @@ async def test_sticky_action_bar_with_approval_modal(
     engine = create_db_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+    server = None
+    flask_thread = None
 
     flask_process = None
 
     try:
-        # Create batch with 50 records (all valid, no blocking issues)
+        # Create batch with 50 records and one blocking validation issue so
+        # clicking Approve opens the modal instead of immediately navigating.
+        first_raw_row_id = None
         batch = ImportBatch(
             id='sticky-modal-test-batch',
             filename='sticky_modal_test.csv',
@@ -6087,7 +5661,8 @@ async def test_sticky_action_bar_with_approval_modal(
         session.add(batch)
         session.flush()
 
-        # Seed 50 valid records (no validation issues, so approval is allowed)
+        # Seed 50 records and attach a blocking validation issue to the first
+        # row so the sticky approve trigger opens the override modal.
         for i in range(1, 51):
             raw_row = RawImportRow(
                 batch_id='sticky-modal-test-batch',
@@ -6118,24 +5693,33 @@ async def test_sticky_action_bar_with_approval_modal(
             session.add(import_contact)
             session.flush()
 
+            if i == 1:
+                first_raw_row_id = raw_row_id
+                review_item = ReviewItem(
+                    batch_id='sticky-modal-test-batch',
+                    item_type='validation',
+                    status='pending',
+                    payload_json={
+                        'field': 'email',
+                        'reason': 'format',
+                        'description': 'Invalid email',
+                        'severity': 'error',
+                    },
+                )
+                session.add(review_item)
+                session.flush()
+                session.add(
+                    ReviewItemSubject(
+                        review_item_id=review_item.id,
+                        subject_type='import_raw_row',
+                        subject_id=raw_row_id,
+                    )
+                )
+                session.flush()
+
         session.commit()
 
-        # Start Flask server via subprocess
-        base_url = 'http://127.0.0.1:8001'
-        env = os.environ.copy()
-        env['HOUSEHOLDER_REPOSITORY'] = 'database'
-        env['GIVEBUTTER_DATABASE_URL'] = database_url
-
-        flask_cmd = 'from scripts.uploader.app import app; app.run(host="127.0.0.1", port=8001, debug=False, use_reloader=False, threaded=True)'
-        flask_process = subprocess.Popen(
-            [get_venv_python(), '-c', flask_cmd],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid
-        )
-
-        # Wait for server to become ready
+        server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, 'sticky-modal-test-batch')
 
         async with async_playwright() as p:
@@ -6143,6 +5727,35 @@ async def test_sticky_action_bar_with_approval_modal(
             page = await browser.new_page()
 
             try:
+                async def fulfill_approval_override(route):
+                    await route.fulfill(
+                        status=200,
+                        content_type='application/json',
+                        body=(
+                            '{'
+                            '"requires_override_confirmation": true,'
+                            '"remaining_issues": ['
+                            '{'
+                            f'"raw_import_row_id": {first_raw_row_id},'
+                            '"row_index": 1,'
+                            '"issues": ['
+                            '{'
+                            '"field": "email",'
+                            '"reason": "format",'
+                            '"severity": "error"'
+                            '}'
+                            ']'
+                            '}'
+                            ']'
+                            '}'
+                        ),
+                    )
+
+                await page.route(
+                    f'**/imports/sticky-modal-test-batch/approve-batch',
+                    fulfill_approval_override,
+                )
+
                 # Navigate to validation page
                 await page.goto(f'{base_url}/imports/sticky-modal-test-batch/validation')
                 await page.wait_for_selector('table tbody tr', timeout=5000)
@@ -6150,7 +5763,7 @@ async def test_sticky_action_bar_with_approval_modal(
                 print("\n=== STICKY ACTION BAR MODAL INTERACTION TEST ===")
 
                 # Part 1: Verify sticky bar is visible initially
-                approve_btn = await page.query_selector('#approve-file-btn')
+                approve_btn = page.locator('.validation-sticky-action-bar #approve-file-btn')
                 assert approve_btn is not None, "Approve File button not found"
                 is_visible_initial = await approve_btn.is_visible()
                 assert is_visible_initial, "Approve button not visible initially"
@@ -6174,13 +5787,17 @@ async def test_sticky_action_bar_with_approval_modal(
 
                 # Part 4: Click Approve File button (modal will appear with validation error, which is fine for z-index test)
                 await approve_btn.click()
-                await asyncio.sleep(1)  # Wait for modal to appear
+                await page.wait_for_selector('#approval-modal', state='visible', timeout=5000)
 
                 # Part 5: Verify sticky bar remains accessible even if modal appeared
                 # The button should still be queryable and in the expected position
-                approve_btn_after_modal = await page.query_selector('#approve-file-btn')
-                assert approve_btn_after_modal is not None, "Approve button disappeared when modal triggered"
+                approve_btn_after_modal = approve_btn
+                assert await approve_btn_after_modal.is_visible(), "Approve button disappeared when modal triggered"
                 print("✓ Approve button still in DOM when modal triggered")
+
+                confirm_btn = await page.query_selector('#approval-modal #confirm-override-btn')
+                assert confirm_btn is not None, "Confirm override button not found in approval modal"
+                print("✓ Approval modal opened with confirm override control")
 
                 # Check button is still in viewport (not scrolled away or hidden behind modal)
                 button_box_after = await approve_btn_after_modal.bounding_box()
@@ -6188,9 +5805,17 @@ async def test_sticky_action_bar_with_approval_modal(
                 button_y_after = button_box_after['y']
                 print(f"✓ Approve button Y position with modal open: {button_y_after}")
 
-                # Part 6: Close modal by pressing Escape (standard way to close)
-                await page.keyboard.press('Escape')
-                await asyncio.sleep(0.5)
+                assert page.url.endswith('/imports/sticky-modal-test-batch/validation'), \
+                    "Validation page should remain open while approval modal is visible"
+
+                # Close modal without confirming approval
+                cancel_btn = await page.query_selector('#approval-modal button:has-text("Cancel")')
+                assert cancel_btn is not None, "Cancel button not found in approval modal"
+                await cancel_btn.click()
+                await page.wait_for_function(
+                    "() => !document.querySelector('#approval-modal')?.classList.contains('show')",
+                    timeout=5000,
+                )
 
                 # Verify button is still visible after modal closes
                 is_visible_after_close = await approve_btn_after_modal.is_visible()
@@ -6203,10 +5828,5 @@ async def test_sticky_action_bar_with_approval_modal(
                 await browser.close()
 
     finally:
-        # Cleanup Flask subprocess
-        if flask_process is not None:
-            try:
-                os.killpg(os.getpgid(flask_process.pid), signal.SIGTERM)
-            except Exception:
-                pass
+        stop_flask_server(server, flask_thread)
         session.close()
