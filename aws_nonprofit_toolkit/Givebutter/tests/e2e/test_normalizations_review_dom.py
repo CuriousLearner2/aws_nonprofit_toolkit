@@ -254,6 +254,51 @@ async def test_normalizations_page_loads_with_suggestions(e2e_database_and_app):
                 safety_text = await page.text_content('.safety-strip')
                 assert 'Raw import rows remain unchanged' in safety_text, f"Expected safety message, got: {safety_text}"
 
+                summary_strip = page.get_by_test_id('normalization-summary-strip')
+                details_toggle = page.get_by_test_id('normalization-details-toggle')
+                details_panel = page.get_by_test_id('normalization-details-panel')
+                decision_controls = page.get_by_test_id('normalization-decision-controls')
+                notes_textarea = page.locator('#reviewer-notes')
+
+                assert await summary_strip.count() == 1, "Expected normalization summary strip"
+                assert await details_toggle.count() == 1, "Expected normalization details toggle"
+                assert await details_panel.count() == 1, "Expected normalization details panel"
+                assert await decision_controls.count() == 1, "Expected normalization decision controls"
+                assert await notes_textarea.count() == 1, "Expected normalization notes area"
+                assert (await details_toggle.text_content()).strip() == 'Hide details', \
+                    "Expected normalization details toggle to show Hide details by default"
+
+                assert await details_panel.is_visible(), "Expected normalization details to be visible by default"
+                assert await summary_strip.is_visible(), "Expected normalization summary strip to remain visible"
+                assert await notes_textarea.is_visible(), "Expected normalization notes area to remain visible"
+
+                await details_toggle.click()
+                await page.wait_for_function(
+                    "() => document.querySelector('[data-testid=\"normalization-details-panel\"]')?.hidden === true",
+                    timeout=5000,
+                )
+
+                assert await details_toggle.get_attribute('aria-expanded') == 'false', \
+                    "Expected normalization details toggle to report collapsed state"
+                assert (await details_toggle.text_content()).strip() == 'Show details', \
+                    "Expected normalization details toggle to show Show details after collapse"
+                assert await details_panel.is_hidden(), "Expected normalization details to collapse visually"
+                assert await summary_strip.is_visible(), "Expected normalization summary strip to remain visible when collapsed"
+                assert await notes_textarea.is_visible(), "Expected normalization notes area to remain visible when collapsed"
+                assert await decision_controls.is_visible(), "Expected normalization decision controls to remain visible when collapsed"
+
+                await details_toggle.click()
+                await page.wait_for_function(
+                    "() => document.querySelector('[data-testid=\"normalization-details-panel\"]')?.hidden === false",
+                    timeout=5000,
+                )
+
+                assert await details_toggle.get_attribute('aria-expanded') == 'true', \
+                    "Expected normalization details toggle to report expanded state"
+                assert (await details_toggle.text_content()).strip() == 'Hide details', \
+                    "Expected normalization details toggle to return to Hide details after re-expand"
+                assert await details_panel.is_visible(), "Expected normalization details to be visible again"
+
                 # Assert: Original Value label is present
                 original_label = await page.text_content('text=Original Value')
                 assert original_label is not None, "Expected 'Original Value' label"
@@ -271,10 +316,6 @@ async def test_normalizations_page_loads_with_suggestions(e2e_database_and_app):
 
                 defer_btn = await page.text_content('button:has-text("Defer")')
                 assert defer_btn is not None, "Expected 'Defer' button"
-
-                # Assert: Notes textarea is present
-                notes_textarea = await page.query_selector('#reviewer-notes')
-                assert notes_textarea is not None, "Expected notes textarea"
 
                 print("✓ Normalizations page loads with core UI elements")
 

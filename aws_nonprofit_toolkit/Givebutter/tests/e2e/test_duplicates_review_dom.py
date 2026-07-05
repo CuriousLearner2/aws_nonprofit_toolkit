@@ -279,17 +279,50 @@ async def test_duplicates_page_loads_with_pair(e2e_database_and_app):
                 safety_text = await page.text_content('.safety-strip')
                 assert 'Raw import rows remain unchanged' in safety_text, f"Expected safety message, got: {safety_text}"
 
-                # Get page text
-                page_text = await page.text_content('body')
+                evidence_toggle = page.get_by_test_id('duplicate-evidence-toggle')
+                evidence_panel = page.get_by_test_id('duplicate-evidence-panel')
+                comparison_card_a = page.get_by_test_id('duplicate-comparison-card-a')
+                comparison_card_b = page.get_by_test_id('duplicate-comparison-card-b')
+                decision_controls = page.get_by_test_id('duplicate-decision-controls')
 
-                # Assert: Page either shows a candidate pair with comparison, or shows "No duplicate candidates"
-                # (duplicates_service may not find seeded candidates depending on its implementation)
-                # Either way, the page should have loaded successfully
-                has_comparison = 'Email' in page_text and 'Phone' in page_text and 'Address' in page_text
-                has_no_candidates = 'No duplicate candidates' in page_text
+                assert await evidence_toggle.count() == 1, "Expected duplicate evidence toggle"
+                assert await evidence_panel.count() == 1, "Expected duplicate evidence panel"
+                assert await comparison_card_a.count() == 1, "Expected first duplicate comparison card"
+                assert await comparison_card_b.count() == 1, "Expected second duplicate comparison card"
+                assert await decision_controls.count() == 1, "Expected duplicate decision controls"
+                assert (await evidence_toggle.text_content()).strip() == 'Hide evidence', \
+                    "Expected duplicate evidence toggle to show Hide evidence by default"
 
-                assert has_comparison or has_no_candidates, \
-                    f"Expected duplicate pair comparison or 'No duplicate candidates' message. Got: {page_text[:300]}"
+                assert await evidence_panel.is_visible(), "Expected duplicate evidence to be visible by default"
+                assert await comparison_card_a.is_visible(), "Expected first duplicate comparison card to remain visible"
+                assert await comparison_card_b.is_visible(), "Expected second duplicate comparison card to remain visible"
+
+                await evidence_toggle.click()
+                await page.wait_for_function(
+                    "() => document.querySelector('[data-testid=\"duplicate-evidence-panel\"]')?.hidden === true",
+                    timeout=5000,
+                )
+
+                assert await evidence_toggle.get_attribute('aria-expanded') == 'false', \
+                    "Expected duplicate evidence toggle to report collapsed state"
+                assert (await evidence_toggle.text_content()).strip() == 'Show evidence', \
+                    "Expected duplicate evidence toggle to show Show evidence after collapse"
+                assert await evidence_panel.is_hidden(), "Expected duplicate evidence to collapse visually"
+                assert await comparison_card_a.is_visible(), "Expected duplicate comparison card A to remain present"
+                assert await comparison_card_b.is_visible(), "Expected duplicate comparison card B to remain present"
+                assert await decision_controls.is_visible(), "Expected duplicate decision controls to remain present"
+
+                await evidence_toggle.click()
+                await page.wait_for_function(
+                    "() => document.querySelector('[data-testid=\"duplicate-evidence-panel\"]')?.hidden === false",
+                    timeout=5000,
+                )
+
+                assert await evidence_toggle.get_attribute('aria-expanded') == 'true', \
+                    "Expected duplicate evidence toggle to report expanded state"
+                assert (await evidence_toggle.text_content()).strip() == 'Hide evidence', \
+                    "Expected duplicate evidence toggle to return to Hide evidence after re-expand"
+                assert await evidence_panel.is_visible(), "Expected duplicate evidence to be visible again"
 
                 # Assert: Decision buttons are present
                 same_person_btn = await page.text_content('button:has-text("Mark as Same Person")')
@@ -305,7 +338,7 @@ async def test_duplicates_page_loads_with_pair(e2e_database_and_app):
                 notes_textarea = await page.query_selector('#reviewer-notes')
                 assert notes_textarea is not None, "Expected notes textarea"
 
-                print("✓ Duplicates page loads with side-by-side comparison UI")
+                print("✓ Duplicates page loads with expandable evidence UI")
 
             finally:
                 await page.close()

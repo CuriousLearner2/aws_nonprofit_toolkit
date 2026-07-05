@@ -36,7 +36,7 @@
 <!-- Duplicate Comparison -->
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
     <!-- Contact A -->
-    <div class="card">
+    <div class="card" data-testid="duplicate-comparison-card-a">
         <h3 style="margin-top: 0;">{{ candidate.contact_a.name }}</h3>
         <dl style="font-size: 13px;">
             <dt style="font-weight: 600; color: #666; margin-top: 12px;">Email</dt>
@@ -49,7 +49,7 @@
     </div>
 
     <!-- Contact B -->
-    <div class="card">
+    <div class="card" data-testid="duplicate-comparison-card-b">
         <h3 style="margin-top: 0;">{{ candidate.contact_b.name }}</h3>
         <dl style="font-size: 13px;">
             <dt style="font-weight: 600; color: #666; margin-top: 12px;">Email</dt>
@@ -63,22 +63,40 @@
 </div>
 
 <!-- Evidence -->
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
-    <div>
-        <h3>Supporting Evidence</h3>
-        <ul class="supporting-evidence-list" data-evidence-type="supporting" style="margin-left: 20px; font-size: 13px; color: #10b981;">
-            {% for ev in candidate.supporting_evidence %}
-            <li>✓ {{ ev }}</li>
-            {% endfor %}
-        </ul>
+<div style="margin-bottom: 30px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px;">
+        <h3 style="margin: 0;">Evidence</h3>
+        <button
+            type="button"
+            class="btn btn-secondary"
+            data-testid="duplicate-evidence-toggle"
+            data-collapse-target="duplicate-evidence-panel"
+            aria-controls="duplicate-evidence-panel"
+            aria-expanded="true"
+            style="padding: 6px 10px; font-size: 12px; text-decoration: none;"
+        >
+            Hide evidence
+        </button>
     </div>
-    <div>
-        <h3>Conflicting Evidence</h3>
-        <ul class="conflicting-evidence-list" data-evidence-type="conflicting" style="margin-left: 20px; font-size: 13px; color: #ef4444;">
-            {% for ev in candidate.conflicting_evidence %}
-            <li>✗ {{ ev }}</li>
-            {% endfor %}
-        </ul>
+    <div id="duplicate-evidence-panel" data-testid="duplicate-evidence-panel">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+                <h4 style="margin-top: 0;">Supporting Evidence</h4>
+                <ul class="supporting-evidence-list" data-evidence-type="supporting" style="margin-left: 20px; font-size: 13px; color: #10b981;">
+                    {% for ev in candidate.supporting_evidence %}
+                    <li>✓ {{ ev }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div>
+                <h4 style="margin-top: 0;">Conflicting Evidence</h4>
+                <ul class="conflicting-evidence-list" data-evidence-type="conflicting" style="margin-left: 20px; font-size: 13px; color: #ef4444;">
+                    {% for ev in candidate.conflicting_evidence %}
+                    <li>✗ {{ ev }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -96,7 +114,7 @@
 </div>
 
 <!-- Reviewer Form -->
-<div class="card">
+<div class="card" data-testid="duplicate-decision-controls">
     <h3>Your Decision</h3>
 
     {% if candidate.conflicting_evidence|length > 0 %}
@@ -151,6 +169,22 @@ function submitDuplicateDecision(decisionType, candidateId) {
         form.submit();
     }
 }
+
+(function() {
+    const toggle = document.querySelector('[data-testid="duplicate-evidence-toggle"]');
+    const panel = document.getElementById('duplicate-evidence-panel');
+    if (!toggle || !panel) {
+        return;
+    }
+
+    toggle.addEventListener('click', function() {
+        const expanded = toggle.getAttribute('aria-expanded') === 'true';
+        const nextExpanded = !expanded;
+        toggle.setAttribute('aria-expanded', String(nextExpanded));
+        toggle.textContent = nextExpanded ? 'Hide evidence' : 'Show evidence';
+        panel.hidden = !nextExpanded;
+    });
+})();
 </script>
 
 <!-- Navigation -->

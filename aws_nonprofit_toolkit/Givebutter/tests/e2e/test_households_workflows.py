@@ -232,6 +232,46 @@ async def test_previous_next_navigation_no_decisions(
                 assert 'Smith Family' in household_name, f"A1 FAILED: Expected 'Smith Family', got: {household_name}"
                 print(f"✓ A1: First household visible: {household_name.strip()}")
 
+                evidence_toggle = page.get_by_test_id('household-evidence-toggle')
+                evidence_panel = page.get_by_test_id('household-evidence-panel')
+                members_section = page.get_by_test_id('household-members-section')
+                decision_controls = page.get_by_test_id('household-decision-controls')
+
+                assert await evidence_toggle.count() == 1, "A1 FAILED: Household evidence toggle not found"
+                assert await evidence_panel.count() == 1, "A1 FAILED: Household evidence panel not found"
+                assert await members_section.count() == 1, "A1 FAILED: Household members section not found"
+                assert await decision_controls.count() == 1, "A1 FAILED: Household decision controls not found"
+                assert (await evidence_toggle.text_content()).strip() == 'Hide evidence', \
+                    "A1 FAILED: Household evidence toggle should show Hide evidence by default"
+                assert await evidence_panel.is_visible(), "A1 FAILED: Household evidence should be visible by default"
+                assert await members_section.is_visible(), "A1 FAILED: Household members should be visible by default"
+
+                await evidence_toggle.click()
+                await page.wait_for_function(
+                    "() => document.querySelector('[data-testid=\"household-evidence-panel\"]')?.hidden === true",
+                    timeout=5000,
+                )
+
+                assert await evidence_toggle.get_attribute('aria-expanded') == 'false', \
+                    "A1 FAILED: Household toggle should report collapsed state"
+                assert (await evidence_toggle.text_content()).strip() == 'Show evidence', \
+                    "A1 FAILED: Household evidence toggle should show Show evidence after collapse"
+                assert await evidence_panel.is_hidden(), "A1 FAILED: Household evidence should collapse visually"
+                assert await members_section.is_visible(), "A1 FAILED: Household members should remain visible"
+                assert await decision_controls.is_visible(), "A1 FAILED: Household decision controls should remain visible"
+
+                await evidence_toggle.click()
+                await page.wait_for_function(
+                    "() => document.querySelector('[data-testid=\"household-evidence-panel\"]')?.hidden === false",
+                    timeout=5000,
+                )
+
+                assert await evidence_toggle.get_attribute('aria-expanded') == 'true', \
+                    "A1 FAILED: Household toggle should report expanded state"
+                assert (await evidence_toggle.text_content()).strip() == 'Hide evidence', \
+                    "A1 FAILED: Household evidence toggle should return to Hide evidence after re-expand"
+                assert await evidence_panel.is_visible(), "A1 FAILED: Household evidence should be visible again"
+
                 # A2: Verify Previous button is disabled (first item boundary)
                 previous_btn = await page.query_selector('button:has-text("← Previous Household")')
                 assert previous_btn is not None, "A2 FAILED: Previous button not found"
