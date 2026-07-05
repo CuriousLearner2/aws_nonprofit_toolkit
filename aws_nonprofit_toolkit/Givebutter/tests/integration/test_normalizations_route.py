@@ -60,6 +60,7 @@ class TestNormalizationsRoute:
         response = client_with_database.get('/imports/IMP-TEST-001/normalizations')
         html = response.get_data(as_text=True)
 
+        assert 'id="normalization-summary-strip"' in html
         assert 'data-testid="normalization-summary-strip"' in html
         assert 'data-summary-metric="contact"' in html
         assert 'data-summary-metric="field"' in html
@@ -77,6 +78,8 @@ class TestNormalizationsRoute:
         assert 'Email' in html
         assert 'Email standardization' in html
         assert 'Pending' in html
+        assert 'data-testid="normalization-return-summary-link"' in html
+        assert 'href="#normalization-summary-strip"' in html
 
     def test_normalizations_page_original_value_label(self, client_with_database):
         """Normalizations page displays 'Original Value' label."""

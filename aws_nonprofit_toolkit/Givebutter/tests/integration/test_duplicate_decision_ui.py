@@ -147,6 +147,7 @@ class TestDuplicateDecisionUI:
         html = response.data.decode('utf-8')
 
         assert response.status_code == 200
+        assert 'id="duplicate-evidence-summary"' in html
         assert 'data-testid="duplicate-evidence-summary"' in html
         assert 'data-summary-metric="supporting"' in html
         assert 'data-summary-metric="conflicting"' in html
@@ -163,6 +164,8 @@ class TestDuplicateDecisionUI:
         assert 'Mark as Same Person' in html
         assert 'Mark as Different People' in html
         assert 'Defer' in html
+        assert 'data-testid="duplicate-return-summary-link"' in html
+        assert 'href="#duplicate-evidence-summary"' in html
 
     def test_same_person_submission_creates_decision(self, flask_client_with_db):
         """Test that Same Person submission creates ReviewDecision."""

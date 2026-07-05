@@ -45,7 +45,7 @@
         {% endif %}
     {% endfor %}
 
-    <div class="review-summary-strip" data-testid="review-summary-strip" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 0 0 20px 0; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px;">
+    <div class="review-summary-strip" id="validation-review-summary" data-testid="review-summary-strip" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 0 0 20px 0; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px;">
         <span style="font-weight: 700; color: #111827;">Review summary:</span>
         <span><strong>{{ summary.blocking }}</strong> Blocking</span>
         <span><strong>{{ summary.warning }}</strong> Warning</span>
@@ -223,6 +223,9 @@
         <p style="color: #999; font-size: 13px; margin: 0;">You can continue to normalizations or proceed to export.</p>
     </div>
     {% endif %}
+    </div>
+    <div style="margin: 10px 0 0 0;">
+        <a href="#validation-review-summary" data-testid="validation-return-summary-link" style="font-size: 12px; color: #0051d5; font-weight: 600; text-decoration: underline;">Back to summary</a>
     </div>
 </div>
 
