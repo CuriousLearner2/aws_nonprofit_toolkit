@@ -746,9 +746,12 @@ async function autosaveField(input) {
                 sessionEditValues[fieldId] = input.value;
             }
 
-            // Show saved state
-            statusSpan.textContent = 'Saved';
-            statusSpan.style.color = '#10b981';
+            // Show saved state, but keep the feedback issue-aware if the row
+            // still has validation problems after the save.
+            const remainingIssues = Array.isArray(result.issues) ? result.issues : [];
+            const fieldStillHasIssue = remainingIssues.some(issue => issue.field === field);
+            statusSpan.textContent = fieldStillHasIssue ? 'Saved; issue remains' : 'Saved';
+            statusSpan.style.color = fieldStillHasIssue ? '#d97706' : '#10b981';
             input.style.borderColor = '#d0d0d0';
             setTimeout(() => {
                 statusSpan.style.display = 'none';

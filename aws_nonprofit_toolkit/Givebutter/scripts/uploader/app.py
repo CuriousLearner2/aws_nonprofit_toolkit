@@ -1183,14 +1183,16 @@ def autosave_row_corrections(import_id):
             raw_import_row_id=raw_import_row_id
         )
 
-        row_status = derive_row_status(
-            batch_id=import_id,
-            raw_import_row_id=raw_import_row_id
-        )
-
         issues = recalculate_row_issues(
             batch_id=import_id,
-            raw_import_row_id=raw_import_row_id
+            raw_import_row_id=raw_import_row_id,
+            proposed_values=corrected_values
+        )
+
+        row_status = derive_row_status(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id,
+            issues=issues
         )
 
         logger.info(f"Row {raw_import_row_id} autosave completed: {corrected_values}")

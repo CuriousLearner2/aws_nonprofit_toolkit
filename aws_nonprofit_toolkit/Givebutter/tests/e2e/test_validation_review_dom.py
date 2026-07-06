@@ -294,7 +294,7 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 'name': 'John Smith',
                 'date': '2026-01-15',
                 'email': 'john@example.com',
-                'phone': '(555) 123-4567',
+                'phone': '(415) 555-2671',
                 'amount': '100.00',
                 'address': '123 Main St'
             }
@@ -310,7 +310,7 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
             first_name='John',
             last_name='Smith',
             email='john@example.com',
-            phone='(555) 123-4567',
+            phone='(415) 555-2671',
             address_line1='123 Main St',
             amount=100.00
         )
@@ -432,6 +432,140 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 flask_thread.join(timeout=2)
         except Exception:
             pass
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_email_typo_save_feedback_remains_issue_aware(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify a typo-style email autosave does not show plain "Saved" when validation issues remain.
+
+    Invariant: Field-level feedback should distinguish persistence from validation state.
+    A successful autosave that still leaves validation issues should surface an issue-aware message.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch = ImportBatch(
+            id='email-typo-feedback-batch',
+            filename='email_typo_feedback.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id='email-typo-feedback-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'John Smith',
+                'date': '2026-01-15',
+                'email': 'john@gmail.com',
+                'phone': '(555) 123-4567',
+                'amount': '100.00',
+                'address': '123 Main St'
+            }
+        )
+        session.add(raw_row)
+        session.flush()
+
+        import_contact = ImportContact(
+            batch_id='email-typo-feedback-batch',
+            raw_import_row_id=raw_row.id,
+            first_name='John',
+            last_name='Smith',
+            email='john@gmail.com',
+            phone='(555) 123-4567',
+            address_line1='123 Main St',
+            amount=100.00,
+        )
+        session.add(import_contact)
+        session.commit()
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, 'email-typo-feedback-batch')
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/email-typo-feedback-batch/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input = await page.query_selector('input[data-testid^="email-input-"]')
+                email_status = await page.query_selector('input[data-testid^="email-input-"] ~ .autosave-status')
+                row_status = page.locator('select.row-status-dropdown')
+                issues_cell = await page.query_selector('td.issues-cell')
+
+                assert email_input is not None, 'Email input not found'
+                assert email_status is not None, 'Email status span not found'
+                assert row_status is not None, 'Row status dropdown not found'
+                assert issues_cell is not None, 'Issues cell not found'
+
+                await email_input.fill('john@gamil.com')
+                await email_input.evaluate("el => el.blur()")
+
+                await page.wait_for_function(
+                    "() => {"
+                    "const status = document.querySelector('input[data-testid^=\"email-input-\"] ~ .autosave-status');"
+                    "return status && status.textContent.trim() && status.textContent.trim() !== 'Saving...';"
+                    "}",
+                    timeout=5000,
+                )
+
+                typo_status_text = (await email_status.inner_text() or '').strip()
+                typo_row_status = (await row_status.locator('option:first-child').text_content() or '').strip()
+                typo_issues_text = (await issues_cell.inner_text() or '').strip().lower()
+
+                assert typo_status_text != 'Saved', (
+                    f"Typos that still leave an issue should not show plain Saved, got: {typo_status_text}"
+                )
+                assert typo_status_text != 'Error', (
+                    f"Typos that save successfully should not show Error, got: {typo_status_text}"
+                )
+                assert 'issue' in typo_status_text.lower() or 'warning' in typo_status_text.lower(), (
+                    f"Typos should show issue-aware feedback, got: {typo_status_text}"
+                )
+                assert typo_row_status != 'No issues', (
+                    f"Typo email should still leave a review state, got: {typo_row_status}"
+                )
+                assert 'email' in typo_issues_text, (
+                    f"Typo email should appear in Issues, got: {typo_issues_text}"
+                )
+
+                await email_input.fill('john@gmail.com')
+                await email_input.press('Tab')
+
+                await page.wait_for_function(
+                    "() => {const status = document.querySelector('input[data-testid^=\"email-input-\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Saved');}",
+                    timeout=5000,
+                )
+
+                valid_status_text = (await email_status.inner_text() or '').strip()
+                assert 'Saved' in valid_status_text, (
+                    f"Valid email save should still show Saved, got: {valid_status_text}"
+                )
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
         session.close()
 
 
@@ -1925,7 +2059,7 @@ async def test_amount_validation_error_appears_in_issues_column(
                 'name': 'Bob Smith',
                 'date': '2026-02-15',
                 'email': 'bob@example.com',
-                'phone': '(555) 666-7777',
+                'phone': '(415) 555-2671',
                 'amount': '300.00',
                 'address': '321 Pine St'
             }
@@ -1941,7 +2075,7 @@ async def test_amount_validation_error_appears_in_issues_column(
             first_name='Bob',
             last_name='Smith',
             email='bob@example.com',
-            phone='(555) 666-7777',
+            phone='(415) 555-2671',
             address_line1='321 Pine St',
             amount=300.00
         )
@@ -2129,7 +2263,7 @@ async def test_amount_and_email_multi_error_workflow(
                 'name': 'Charlie Brown',
                 'date': '2026-02-20',
                 'email': 'charlie@example.com',
-                'phone': '(555) 999-8888',
+                'phone': '(415) 555-2671',
                 'amount': '400.00',
                 'address': '999 Ash St'
             }
@@ -2145,7 +2279,7 @@ async def test_amount_and_email_multi_error_workflow(
             first_name='Charlie',
             last_name='Brown',
             email='charlie@example.com',
-            phone='(555) 999-8888',
+            phone='(415) 555-2671',
             address_line1='999 Ash St',
             amount=400.00
         )

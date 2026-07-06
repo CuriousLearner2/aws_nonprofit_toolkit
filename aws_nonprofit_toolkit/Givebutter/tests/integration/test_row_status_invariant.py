@@ -146,6 +146,30 @@ class TestRowStatusInvariant:
         assert len(email_issues) > 0, \
             f"Email field has error but not in issues list. Issues: {data['issues']}"
 
+    def test_autosave_typo_email_success_returns_issue_aware_status(
+        self, flask_client_with_batch
+    ):
+        """Successful autosave with an email typo should still return issue-aware row state."""
+        client, database_url, engine, Session, raw_id = flask_client_with_batch
+
+        response = client.post(
+            f'/imports/invariant-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'john@gamil.com'}
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+
+        assert data['row_status'] != 'No issues', \
+            f"Typo email should still leave a review state, got: {data['row_status']}"
+
+        email_issues = [i for i in data['issues'] if i.get('field') == 'email']
+        assert len(email_issues) > 0, \
+            f"Typo email should still appear in issues list. Issues: {data['issues']}"
+
     def test_derive_row_status_with_email_error_issue(self, flask_client_with_batch):
         """
         derive_row_status correctly returns non-"No issues" when given
