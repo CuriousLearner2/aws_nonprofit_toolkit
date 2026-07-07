@@ -1338,8 +1338,9 @@ def record_row_decision(import_id):
     if not database_url:
         return jsonify({
             'error': (
-                'Row decision requires database configuration. '
-                'Start the app with GIVEBUTTER_DATABASE_URL set.'
+                "This row decision can't be saved because the review database is not connected. "
+                'Ask the app operator to restart the app in database mode with GIVEBUTTER_DATABASE_URL set, '
+                'then reload this batch and try again.'
             ),
             'success': False,
         }), 503
@@ -1450,8 +1451,9 @@ def approve_import_batch(import_id):
     if not database_url:
         return jsonify({
             'error': (
-                'Approve file requires database configuration. '
-                'Start the app with GIVEBUTTER_DATABASE_URL set.'
+                "This file can't be approved because the review database is not connected. "
+                'Ask the app operator to restart the app in database mode with GIVEBUTTER_DATABASE_URL set, '
+                'then reload this batch and try again.'
             ),
             'success': False,
         }), 503

@@ -1614,6 +1614,64 @@ class TestInspectModalControls:
             f"Approval should find the seeded batch and report remaining issues, got: {approval_data}"
         )
 
+    def test_missing_database_configuration_shows_user_facing_copy(
+        self, flask_client_with_validation_batch, monkeypatch
+    ):
+        """Missing DB config should use reviewer-friendly copy for both row decision and approval."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        monkeypatch.delenv('GIVEBUTTER_DATABASE_URL', raising=False)
+        monkeypatch.delenv('HOUSEHOLDER_REPOSITORY', raising=False)
+        monkeypatch.delitem(app.config, 'GIVEBUTTER_DATABASE_URL', raising=False)
+        monkeypatch.delitem(app.config, 'HOUSEHOLDER_REPOSITORY', raising=False)
+
+        row_decision_response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+            }
+        )
+
+        assert row_decision_response.status_code == 503, (
+            f"Missing DB config should fail closed for row decision, got {row_decision_response.status_code}: {row_decision_response.get_json()}"
+        )
+        row_decision_data = row_decision_response.get_json()
+        assert row_decision_data['success'] is False, (
+            f"Missing DB config should not report success for row decision, got: {row_decision_data}"
+        )
+        assert row_decision_data['error'] == (
+            "This row decision can't be saved because the review database is not connected. "
+            'Ask the app operator to restart the app in database mode with GIVEBUTTER_DATABASE_URL set, '
+            'then reload this batch and try again.'
+        ), (
+            f"Row decision message should be user-facing, got: {row_decision_data}"
+        )
+
+        approval_response = client.post(
+            f'/imports/validation-workflow-test-batch/approve-batch',
+            json={
+                'approval_status': 'approved_with_overrides',
+                'rows_with_overrides': []
+            }
+        )
+
+        assert approval_response.status_code == 503, (
+            f"Missing DB config should fail closed for approval, got {approval_response.status_code}: {approval_response.get_json()}"
+        )
+        approval_data = approval_response.get_json()
+        assert approval_data['success'] is False, (
+            f"Missing DB config should not report success for approval, got: {approval_data}"
+        )
+        assert approval_data['error'] == (
+            "This file can't be approved because the review database is not connected. "
+            'Ask the app operator to restart the app in database mode with GIVEBUTTER_DATABASE_URL set, '
+            'then reload this batch and try again.'
+        ), (
+            f"Approval message should be user-facing, got: {approval_data}"
+        )
+
 
 # ==============================================================================
 # TEST F: Cancel behavior - Modal Cancel should not create ReviewDecision/audit
