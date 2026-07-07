@@ -137,6 +137,7 @@ def classify_file(filepath):
 
     # Product files
     if (filepath.startswith('scripts/householder/') or
+        filepath == 'scripts/processor.py' or
         filepath.startswith('scripts/uploader/') or
         filepath == 'scripts/uploader/app.py' or
         filepath.startswith('scripts/uploader/templates/')):

@@ -37,6 +37,7 @@ class TestFileClassification:
     def test_classify_product_files(self):
         """Product files are classified as 'product'."""
         assert check_lane_scope.classify_file('scripts/householder/database_repository.py') == 'product'
+        assert check_lane_scope.classify_file('scripts/processor.py') == 'product'
         assert check_lane_scope.classify_file('scripts/uploader/app.py') == 'product'
         assert check_lane_scope.classify_file('scripts/uploader/templates/imports/validation.html') == 'product'
 
