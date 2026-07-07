@@ -68,6 +68,8 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
     app.config['TESTING'] = True
     monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+    app.config['HOUSEHOLDER_REPOSITORY'] = 'database'
+    app.config['GIVEBUTTER_DATABASE_URL'] = database_url
 
     # Seed database with validation records
     Session = sessionmaker(bind=engine)
@@ -1564,6 +1566,53 @@ class TestInspectModalControls:
         data = response.get_json()
         assert data['has_decision'] is True, \
             f"After recording decision, has_decision should be True, got: {data}"
+
+    def test_row_decision_and_approval_use_app_config_database_url_when_env_cleared(
+        self, flask_client_with_validation_batch, monkeypatch
+    ):
+        """Routes should keep working from app.config even if env vars are cleared."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[4]
+
+        monkeypatch.delenv('GIVEBUTTER_DATABASE_URL', raising=False)
+        monkeypatch.delenv('HOUSEHOLDER_REPOSITORY', raising=False)
+        app.config['HOUSEHOLDER_REPOSITORY'] = 'database'
+        app.config['GIVEBUTTER_DATABASE_URL'] = database_url
+
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+            }
+        )
+
+        assert response.status_code == 200, (
+            f"Row decision should still use app.config database URL, got {response.status_code}: {response.get_json()}"
+        )
+        data = response.get_json()
+        assert data['success'] is True, (
+            f"Row decision should succeed from app.config database URL, got: {data}"
+        )
+        assert 'row_status' in data, (
+            f"Row decision should return a runtime row status, got: {data}"
+        )
+
+        approval_response = client.post(
+            f'/imports/validation-workflow-test-batch/approve-batch',
+            json={
+                'approval_status': 'approved_with_overrides',
+                'rows_with_overrides': []
+            }
+        )
+
+        assert approval_response.status_code == 200, (
+            f"Approval should still resolve the seeded batch from app.config, got {approval_response.status_code}: {approval_response.get_json()}"
+        )
+        approval_data = approval_response.get_json()
+        assert approval_data.get('requires_override_confirmation') is True, (
+            f"Approval should find the seeded batch and report remaining issues, got: {approval_data}"
+        )
 
 
 # ==============================================================================

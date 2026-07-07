@@ -134,6 +134,14 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated
 
+
+def _get_runtime_database_url() -> str | None:
+    """Resolve the active database URL from app config first, then environment."""
+    config_url = current_app.config.get('GIVEBUTTER_DATABASE_URL')
+    if config_url:
+        return config_url
+    return os.environ.get('GIVEBUTTER_DATABASE_URL')
+
 def validate_filename(filename: str) -> bool:
     """Prevent path traversal attacks."""
     try:
@@ -1319,6 +1327,7 @@ def record_row_decision(import_id):
     decision = data.get('decision', '').strip()
     notes = data.get('notes', '').strip() if data.get('notes') else None
     reviewer = request.headers.get('X-Reviewer-ID')
+    database_url = _get_runtime_database_url()
 
     if not raw_import_row_id:
         return jsonify({'error': 'raw_import_row_id required'}), 400
@@ -1326,13 +1335,23 @@ def record_row_decision(import_id):
     if not decision:
         return jsonify({'error': 'decision required'}), 400
 
+    if not database_url:
+        return jsonify({
+            'error': (
+                'Row decision requires database configuration. '
+                'Start the app with GIVEBUTTER_DATABASE_URL set.'
+            ),
+            'success': False,
+        }), 503
+
     try:
         result = record_decision(
             batch_id=import_id,
             raw_import_row_id=raw_import_row_id,
             decision=decision,
             notes=notes,
-            reviewer=reviewer
+            reviewer=reviewer,
+            database_url=database_url,
         )
         logger.info(f"Row {raw_import_row_id} decision recorded: {decision}")
         return jsonify(result), 200
@@ -1360,11 +1379,13 @@ def get_row_decision(import_id, raw_import_row_id):
     }
     """
     from householder.row_decision_service import get_row_decision as get_decision
+    database_url = _get_runtime_database_url()
 
     try:
         decision_data = get_decision(
             batch_id=import_id,
-            raw_import_row_id=raw_import_row_id
+            raw_import_row_id=raw_import_row_id,
+            database_url=database_url,
         )
 
         if decision_data:
@@ -1421,12 +1442,19 @@ def approve_import_batch(import_id):
     approval_status = data.get('approval_status')
     rows_with_overrides = data.get('rows_with_overrides', [])
     reviewer = request.headers.get('X-Reviewer-ID')
+    database_url = _get_runtime_database_url()
 
     if not approval_status:
         return jsonify({'error': 'approval_status required'}), 400
 
-    # Determine database URL
-    database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
+    if not database_url:
+        return jsonify({
+            'error': (
+                'Approve file requires database configuration. '
+                'Start the app with GIVEBUTTER_DATABASE_URL set.'
+            ),
+            'success': False,
+        }), 503
 
     try:
         # MODE 2: Check for remaining issues (empty rows_with_overrides list)

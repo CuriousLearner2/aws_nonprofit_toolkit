@@ -233,6 +233,8 @@ def e2e_database_and_app():
 
     # Configure Flask for testing
     app.config['TESTING'] = True
+    app.config['HOUSEHOLDER_REPOSITORY'] = 'database'
+    app.config['GIVEBUTTER_DATABASE_URL'] = database_url
 
     yield database_url, db_path, app
 
