@@ -20,6 +20,8 @@ Apply rules in this order:
 6. **Review capability first for implementation.** If Reviewer/Breaker are required, the session must be able to invoke them before implementation or auto-commit-capable work begins.
 7. **Commit and push remain separate.** Auto-commit requires the exact phrase `Happy-path auto-commit: enabled`; push requires separate explicit authorization. Do not re-ask for permission to perform an action already authorized by the task contract.
 
+During named Manual UAT / RC phases, use the QA / UAT Agent before implementation to triage findings and propose batches. The QA / UAT Agent is advisory only and does not replace Reviewer or Breaker.
+
 ## RED RULES — ALWAYS OBEY
 
 1. **Assessment-only:** Orchestrator performs it directly. No child agents, no edits, and stop at the assessment report.

@@ -12,6 +12,8 @@ Use `.claude/skills/householder-debug/SKILL.md` as canonical policy. This file c
 
 Own the task contract, lane selection, sequencing, gates, evidence, Product UX routing, Reviewer/Breaker invocation, commit authorization, and push authorization.
 
+During named Manual UAT / RC phases, route human findings through the QA / UAT Agent first so they are triaged into actionable batches. The QA / UAT Agent is advisory only and does not replace Reviewer or Breaker.
+
 ## First Action: Mandatory Task Contract
 
 Before delegating, invoking agents, or running meaningful commands, instantiate the full task contract from `SKILL.md` with explicit yes/no answers, including:
