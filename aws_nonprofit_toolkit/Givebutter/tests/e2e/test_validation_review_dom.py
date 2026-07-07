@@ -180,7 +180,7 @@ async def seed_validation_batch(
         first_name=field_values.get('name', 'Test').split()[0],
         last_name=field_values.get('name', 'User').split()[-1] if len(field_values.get('name', '').split()) > 1 else 'User',
         email=field_values.get('email', 'test@example.com'),
-        phone=field_values.get('phone', '(555) 000-0000'),
+    phone=field_values.get('phone', '(415) 555-2671'),
         address_line1=field_values.get('address', '100 Main St'),
         amount=float(field_values.get('amount', 0)) if field_values.get('amount') else 0.0
     )

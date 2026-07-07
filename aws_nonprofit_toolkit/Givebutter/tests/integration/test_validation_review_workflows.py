@@ -95,7 +95,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
                 'name': 'John Smith',
                 'date': '2026-01-15',
                 'email': 'invalid-no-at-symbol',
-                'phone': '(555) 123-4567',
+                'phone': '(415) 555-2671',
                 'amount': '100.00',
                 'address': '123 Main St'
             }
@@ -119,7 +119,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
                 'name': 'Bob Wilson',
                 'date': '2026-01-17',
                 'email': 'bob@example.com',
-                'phone': '(555) 234-5678',
+                'phone': '(415) 555-2672',
                 'amount': 'abc',  # Invalid amount
                 'address': '789 Elm St'
             }
@@ -131,7 +131,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
                 'name': 'Alice Brown',
                 'date': 'not-a-date',  # Invalid date
                 'email': 'alice@example.com',
-                'phone': '(555) 345-6789',
+                'phone': '(415) 555-2673',
                 'amount': '500.00',
                 'address': '321 Pine Rd'
             }
@@ -143,7 +143,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
                 'name': 'Charlie Davis',
                 'date': '2026-01-18',
                 'email': 'charlie@example.com',
-                'phone': '(555) 456-7890',
+                'phone': '(415) 555-2674',
                 'amount': '150.00',
                 'address': '654 Maple Dr'
             }
@@ -155,7 +155,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
                 'name': 'Diana Evans',
                 'date': '2026-01-19',
                 'email': 'diana@example.com',
-                'phone': '(555) 567-8901',
+                'phone': '(415) 555-2675',
                 'amount': '300.00',
                 'address': '987 Cedar Ln'
             }
@@ -167,7 +167,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
                 'name': 'Edward Frank',
                 'date': '2026-01-20',
                 'email': 'edward@example.com',
-                'phone': '(555) 678-9012',
+                'phone': '(415) 555-2676',
                 'amount': '400.00',
                 'address': '147 Birch Blvd'
             }
@@ -179,7 +179,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
                 'name': 'Frank Garcia',
                 'date': '2026-01-21',
                 'email': 'invalid-email',  # Invalid for approval warning test
-                'phone': '(555) 789-0123',
+                'phone': '(415) 555-2677',
                 'amount': '600.00',
                 'address': '258 Spruce Way'
             }
@@ -191,7 +191,7 @@ def flask_client_with_validation_batch(temp_db, monkeypatch):
                 'name': 'Grace Harris',
                 'date': '2026-01-22',
                 'email': 'grace@example.com',
-                'phone': '(555) 890-1234',
+                'phone': '(415) 555-2678',
                 'amount': '200.00',
                 'address': '369 Walnut St'
             }
