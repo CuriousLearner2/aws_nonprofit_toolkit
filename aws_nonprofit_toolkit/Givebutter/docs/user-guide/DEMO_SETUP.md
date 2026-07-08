@@ -59,6 +59,48 @@ Navigate to: **`http://localhost:8000/imports`**
 
 ---
 
+## DB-Backed UAT Refresh Test Setup
+
+Use this when you want browser refresh to reload saved reviewed values from SQLite instead of the fixture fallback.
+
+### Create or Reset the UAT DB
+
+```bash
+cd /Users/gautambiswas/Claude\ Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter
+./.venv/bin/python scripts/uploader/setup_uat_review_db.py
+```
+
+To replace an existing local DB:
+
+```bash
+./.venv/bin/python scripts/uploader/setup_uat_review_db.py --reset
+```
+
+### Launch in DB Mode
+
+```bash
+export HOUSEHOLDER_REPOSITORY=database
+export GIVEBUTTER_DATABASE_URL="sqlite:////Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter/uat_review.db"
+./.venv/bin/python scripts/uploader/app.py
+```
+
+### Confirm the Batch Exists
+
+```bash
+sqlite3 uat_review.db "SELECT id, filename, raw_row_count FROM import_batches WHERE id='IMP-2025-0101-A';"
+sqlite3 uat_review.db "SELECT COUNT(*) FROM raw_import_rows WHERE batch_id='IMP-2025-0101-A';"
+```
+
+### Retest Browser Refresh Persistence
+
+1. Open `http://127.0.0.1:8000/imports/IMP-2025-0101-A/validation`
+2. Edit Email, Phone, or Address
+3. Wait for the field to show `Saved`
+4. Refresh the browser page
+5. Confirm the edited value is still displayed
+
+---
+
 ## Phase 1B Implementation (Current Release)
 
 **What Works** ✅
