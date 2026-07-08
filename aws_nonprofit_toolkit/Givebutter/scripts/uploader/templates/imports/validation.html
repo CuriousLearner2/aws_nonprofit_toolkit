@@ -285,16 +285,40 @@ const activeValidationErrors = {};
 // Track focus-time (last successfully saved) values and in-flight autosave requests per field
 // focusTimeValues: { fieldId: value }
 // inFlightRequests: { fieldId: AbortController }
+// autosaveRequestState: { fieldId: { token, submittedValue } }
 // suppressBlurAutosave: Set of fieldIds that should not autosave on blur (used when canceling edits)
 // sessionEditValues: { fieldId: value } - value at start of current edit session (on focus)
 // focusedFields: Set of fieldIds that are currently focused
 // dirtyFields: Set of fieldIds that have been modified in current focus session (input event fired)
 const focusTimeValues = {};
 const inFlightRequests = {};
+const autosaveRequestState = {};
 const suppressBlurAutosave = new Set();
 const sessionEditValues = {};
 const focusedFields = new Set();
 const dirtyFields = new Set();
+
+function normalizeAutosaveComparableValue(field, value) {
+    const text = (value === undefined || value === null) ? '' : String(value).trim();
+    if (field === 'phone') {
+        return text.replace(/\D/g, '');
+    }
+    if (field === 'amount') {
+        return text.replace(/[$,]/g, '').trim();
+    }
+    return text;
+}
+
+function shouldApplyAutosaveResponse(fieldId, field, requestToken, submittedValue, input) {
+    const requestState = autosaveRequestState[fieldId];
+    if (!requestState || requestState.token !== requestToken) {
+        return false;
+    }
+
+    const currentVisibleValue = normalizeAutosaveComparableValue(field, input.value);
+    const submittedComparableValue = normalizeAutosaveComparableValue(field, submittedValue);
+    return currentVisibleValue === submittedComparableValue;
+}
 
 // Add a failed-autosave validation error to the active map
 function addActiveError(rawId, field, reason, severity) {
@@ -710,7 +734,15 @@ async function autosaveField(input) {
 
     // Create AbortController for this request
     const abortController = new AbortController();
+    if (inFlightRequests[fieldId]) {
+        inFlightRequests[fieldId].abort();
+    }
     inFlightRequests[fieldId] = abortController;
+    const requestToken = (autosaveRequestState[fieldId]?.token || 0) + 1;
+    autosaveRequestState[fieldId] = {
+        token: requestToken,
+        submittedValue: value,
+    };
 
     // Show saving state
     statusSpan.textContent = 'Saving...';
@@ -735,7 +767,15 @@ async function autosaveField(input) {
             const result = await response.json();
 
             // Clear in-flight request
-            delete inFlightRequests[fieldId];
+            const currentController = inFlightRequests[fieldId];
+
+            if (currentController === abortController) {
+                delete inFlightRequests[fieldId];
+            }
+
+            if (!shouldApplyAutosaveResponse(fieldId, field, requestToken, value, input)) {
+                return;
+            }
 
             // Update row with refreshed state (pass the field that was just edited)
             if (result.effective_values) {
@@ -756,9 +796,20 @@ async function autosaveField(input) {
             setTimeout(() => {
                 statusSpan.style.display = 'none';
             }, 2000);
+            delete autosaveRequestState[fieldId];
         } else {
             // Clear in-flight request on error
-            delete inFlightRequests[fieldId];
+            const shouldApply = shouldApplyAutosaveResponse(fieldId, field, requestToken, value, input);
+            if (inFlightRequests[fieldId] === abortController) {
+                delete inFlightRequests[fieldId];
+            }
+            if (autosaveRequestState[fieldId]?.token === requestToken) {
+                delete autosaveRequestState[fieldId];
+            }
+
+            if (!shouldApply) {
+                return;
+            }
 
             // Show error state
             statusSpan.textContent = 'Error';
@@ -797,7 +848,12 @@ async function autosaveField(input) {
         }
     } catch (error) {
         // Clear in-flight request on network error
-        delete inFlightRequests[fieldId];
+        if (inFlightRequests[fieldId] === abortController) {
+            delete inFlightRequests[fieldId];
+        }
+        if (autosaveRequestState[fieldId]?.token === requestToken) {
+            delete autosaveRequestState[fieldId];
+        }
 
         // Only show error state if it wasn't an abort (user pressed Escape)
         if (error.name !== 'AbortError') {
@@ -820,7 +876,18 @@ function updateRowFromAutosave(row, result, editedField) {
             if (field === 'phone' && value) {
                 value = formatPhoneNumber(value);
             }
-            input.value = value;
+            const fieldId = `${rawId}-${field}`;
+            const preserveLocalState =
+                field !== editedField && (
+                    focusedFields.has(fieldId) ||
+                    dirtyFields.has(fieldId) ||
+                    inFlightRequests[fieldId] ||
+                    (activeValidationErrors[rawId] && activeValidationErrors[rawId][field])
+                );
+
+            if (!preserveLocalState || field === editedField) {
+                input.value = value;
+            }
 
             // Only clear border and remove error for the field that was just edited
             if (field === editedField) {

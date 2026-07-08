@@ -4333,6 +4333,258 @@ async def test_all_inline_fields_persist_after_browser_refresh(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_autosave_does_not_overwrite_unrelated_dirty_field(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify saving one field does not silently restore another field that still has a local dirty/error edit.
+
+    Invariant: Email autosave must not overwrite an unrelated dirty Phone field before refresh.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'cross-field-overwrite-batch'
+        raw_values = {
+            'name': 'Dana Example',
+            'date': '2026-04-15',
+            'email': 'dana@example.com',
+            'phone': '(415) 556-1234',
+            'amount': '150.25',
+            'address': '123 Main St',
+        }
+
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'cross_field_overwrite.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                phone_input = page.locator('input[data-testid^="phone-input-"]')
+                phone_status = page.locator('input[data-testid^="phone-input-"] ~ .autosave-status')
+                email_input = page.locator('input[data-testid^="email-input-"]')
+                email_status = page.locator('input[data-testid^="email-input-"] ~ .autosave-status')
+                row_status_first_option = page.locator('.row-status-dropdown option:first-child')
+
+                initial_phone = await phone_input.input_value()
+                assert initial_phone == raw_values['phone'], (
+                    f"Expected initial phone value {raw_values['phone']}, got {initial_phone}"
+                )
+
+                await phone_input.fill('415551234')
+                await phone_input.evaluate('el => el.blur()')
+
+                await page.wait_for_function(
+                    "() => { const status = document.querySelector('input[data-testid^=\"phone-input-\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Error'); }",
+                    timeout=5000,
+                )
+
+                phone_status_text = (await phone_status.text_content() or '').strip()
+                assert 'Error' in phone_status_text, (
+                    f"Phone should show Error after invalid edit, got: {phone_status_text}"
+                )
+
+                current_phone = await phone_input.input_value()
+                assert current_phone == '415551234', (
+                    f"Phone should keep the unsaved invalid value before another autosave, got: {current_phone}"
+                )
+
+                await email_input.fill('dana.updated@example.com')
+                await email_input.evaluate('el => el.blur()')
+
+                await page.wait_for_function(
+                    "() => { const status = document.querySelector('input[data-testid^=\"email-input-\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Saved'); }",
+                    timeout=5000,
+                )
+
+                email_status_text = (await email_status.text_content() or '').strip()
+                assert 'Saved' in email_status_text, (
+                    f"Email should show Saved after valid autosave, got: {email_status_text}"
+                )
+
+                current_email = await email_input.input_value()
+                assert current_email == 'dana.updated@example.com', (
+                    f"Email should save the edited value, got: {current_email}"
+                )
+
+                preserved_phone = await phone_input.input_value()
+                assert preserved_phone == '415551234', (
+                    f"Phone should not be overwritten by email autosave, got: {preserved_phone}"
+                )
+
+                preserved_phone_status = (await phone_status.text_content() or '').strip()
+                assert 'Error' in preserved_phone_status, (
+                    f"Phone error state should remain visible after email autosave, got: {preserved_phone_status}"
+                )
+
+                row_status_text = (await row_status_first_option.text_content() or '').strip()
+                assert row_status_text == 'Blocking', (
+                    f"Row status should remain Blocking while phone is invalid, got: {row_status_text}"
+                )
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_stale_autosave_response_does_not_overwrite_newer_same_field_edit(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify an older autosave response cannot overwrite a newer edit in the same field.
+
+    Invariant: If the user changes Email from value A to value B while the A autosave is still in flight,
+    the eventual A response must not restore A over B.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'stale-same-field-batch'
+        raw_values = {
+            'name': 'Evelyn Example',
+            'date': '2026-04-15',
+            'email': 'evelyn@example.com',
+            'phone': '(415) 555-1234',
+            'amount': '150.25',
+            'address': '123 Main St',
+        }
+
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'stale_same_field.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        first_request_started = asyncio.Event()
+        second_request_started = asyncio.Event()
+        release_first_response = asyncio.Event()
+        release_second_response = asyncio.Event()
+        autosave_request_count = 0
+
+        async def handle_autosave(route):
+            nonlocal autosave_request_count
+            autosave_request_count += 1
+            if autosave_request_count == 1:
+                first_request_started.set()
+                await release_first_response.wait()
+                await route.continue_()
+            elif autosave_request_count == 2:
+                second_request_started.set()
+                await release_second_response.wait()
+                await route.continue_()
+            else:
+                await route.continue_()
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+            await page.route('**/autosave', handle_autosave)
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input = page.locator('input[data-testid^="email-input-"]')
+                email_status = page.locator('input[data-testid^="email-input-"] ~ .autosave-status')
+
+                initial_value = await email_input.input_value()
+                assert initial_value == raw_values['email'], (
+                    f"Expected initial email value {raw_values['email']}, got {initial_value}"
+                )
+
+                await email_input.fill('evelyn.alpha@example.com')
+                await email_input.evaluate('el => el.blur()')
+                await first_request_started.wait()
+
+                await email_input.fill('evelyn.beta@example.com')
+                await email_input.evaluate('el => el.blur()')
+                await second_request_started.wait()
+
+                release_first_response.set()
+
+                await page.wait_for_function(
+                    "() => { const input = document.querySelector('input[data-testid^=\"email-input-\"]'); "
+                    "return input && input.value === 'evelyn.beta@example.com'; }",
+                    timeout=5000,
+                )
+
+                current_after_second_save = await email_input.input_value()
+                assert current_after_second_save == 'evelyn.beta@example.com', (
+                    f"Email should keep the newer value before stale response completes, got: {current_after_second_save}"
+                )
+
+                status_text_during_second = (await email_status.text_content() or '').strip()
+                assert status_text_during_second in {'Saving...', '', 'Saving...'}, (
+                    f"Email status should still be in-flight or empty before releasing the newer response, got: {status_text_during_second}"
+                )
+
+                release_second_response.set()
+                await page.wait_for_function(
+                    "() => { const status = document.querySelector('input[data-testid^=\"email-input-\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Saved'); }",
+                    timeout=5000,
+                )
+
+                final_value = await email_input.input_value()
+                assert final_value == 'evelyn.beta@example.com', (
+                    f"Stale autosave response should not overwrite newer email value, got: {final_value}"
+                )
+
+                status_text = (await email_status.text_content() or '').strip()
+                assert 'Saved' in status_text, (
+                    f"Email should still show Saved for the newer value, got: {status_text}"
+                )
+
+            finally:
+                release_first_response.set()
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_fixture_mode_txn_001_phone_noop_autosave_preserves_clean_state():
     """
     Fixture-mode Validation Review should not show a false inline Error for a clean TXN-001 phone no-op save.
