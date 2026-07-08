@@ -116,12 +116,12 @@ class TestValidationRoute:
         assert 'data-testid="validation-related-links"' in html
         assert 'data-testid="review-summary-strip"' in html
         assert 'Review summary:' in html
-        assert re.search(r'<strong>\s*2\s*</strong>\s*Blocking', normalized_html)
-        assert re.search(r'<strong>\s*0\s*</strong>\s*Warning', normalized_html)
+        assert re.search(r'<strong>\s*1\s*</strong>\s*Blocking', normalized_html)
+        assert re.search(r'<strong>\s*1\s*</strong>\s*Warning', normalized_html)
         assert re.search(r'<strong>\s*3\s*</strong>\s*No issues', normalized_html)
         assert 'Jump to first blocking row' in html
-        assert 'href="#validation-row-TXN-003"' in html
-        assert 'id="validation-row-TXN-003"' in html
+        assert 'href="#validation-row-TXN-005"' in html
+        assert 'id="validation-row-TXN-005"' in html
         assert 'data-testid="validation-return-summary-link"' in html
         assert 'href="#validation-review-summary"' in html
         assert 'href="/imports/IMP-2025-0101-A/dashboard"' in html
@@ -266,14 +266,11 @@ class TestValidationCleanRows:
 class TestValidationIssuesRendering:
     """Test that Issues column renders correctly through route/template/view-model path."""
 
-    def test_fixture_provided_address_issue_renders_with_field_label(self, client_with_fixture):
-        """Test that fixture-provided address issue renders with field=address, not unknown.
+    def test_fixture_missing_address_renders_with_field_label(self, client_with_fixture):
+        """Test that a blank address row renders the missing-address warning with field=address.
 
-        TXN-003 has issue_type='format-invalid' and issue_field='address' in fixture.
-        Template renders: {{ issue.field or 'unknown' }} — {{ issue.reason or 'issue' }}
-
-        This test proves the route/template/view-model path correctly populates issue.field
-        from fixture metadata, not rendering as "unknown".
+        TXN-003 intentionally has a blank address and no pre-seeded issue metadata.
+        Validation fallback should surface address — Missing address, not unknown.
         """
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
         assert response.status_code == 200
@@ -281,14 +278,13 @@ class TestValidationIssuesRendering:
         # Parse response as string to search for the rendered issue
         response_text = response.data.decode('utf-8')
 
-        # Must contain address issue with correct field label (not unknown)
-        # Template renders: address — Address incomplete (missing ZIP)
-        assert 'address' in response_text and 'Address incomplete' in response_text
+        # Must contain address warning with correct field label (not unknown)
+        assert 'address' in response_text and 'Missing address' in response_text
 
         # Verify it doesn't render with unknown field
-        # If issue.field was None, template would show: unknown — Address incomplete
+        # If issue.field was None, template would show: unknown — Missing address
         # This assertion would fail if the field was lost
-        assert 'unknown — Address incomplete' not in response_text
+        assert 'unknown — Missing address' not in response_text
 
     def test_fixture_provided_phone_issue_renders_with_field_label(self, client_with_fixture):
         """Test that fixture-provided phone issue renders with field=phone, not unknown.
@@ -393,12 +389,12 @@ class TestValidationIssuesRendering:
             # Restore original CONTACTS
             fixtures.CONTACTS[:] = original_contacts
 
-    def test_validation_route_fixture_fallback_date_and_address_issue_type_none_remains_clean(self, client_with_fixture, monkeypatch):
-        """Test that Validation Review fallback currently leaves invalid-looking date/address rows clean.
+    def test_validation_route_fixture_fallback_date_and_present_address_remains_clean(self, client_with_fixture, monkeypatch):
+        """Test that Validation Review fallback leaves date and present-address rows clean.
 
         This documents the present Validation Review contract: when issue_type is None,
         the fallback path currently validates amount/email/phone only and does not
-        generate date/address issues for this screen.
+        generate date issues or missing-address warnings for rows that already have an address.
         """
         from scripts.uploader import fixtures
 
@@ -432,15 +428,15 @@ class TestValidationIssuesRendering:
             row_section = response_text[row_start:row_end]
 
             assert 'No issues' in row_section, (
-                "Validation Review fallback currently leaves invalid-looking date/address rows clean, "
+                "Validation Review fallback currently leaves date/present-address rows clean, "
                 f"but got row section: {row_section}"
             )
             assert '<span style="color: #9ca3af; font-style: italic;">None</span>' in row_section, (
-                "Validation Review fallback currently renders no generated issues for date/address-only rows, "
+                "Validation Review fallback currently renders no generated issues for date/present-address rows, "
                 f"but got row section: {row_section}"
             )
             assert 'Invalid date' not in row_section
-            assert 'Address incomplete' not in row_section
+            assert 'Missing address' not in row_section
 
         finally:
             fixtures.CONTACTS[:] = original_contacts

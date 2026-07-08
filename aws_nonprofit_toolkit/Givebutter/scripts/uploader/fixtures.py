@@ -59,10 +59,9 @@ CONTACTS = [
         'email': 'rsmith@email.com',
         'phone': '(415) 555-1234',
         'amount': '$250.00',
-        'address': '789 Elm St, Springfield IL',
-        'issue_type': 'format-invalid',
-        'issue_description': 'Address incomplete (missing ZIP)',
-        'issue_field': 'address',
+        'address': '',
+        'issue_type': None,
+        'issue_description': None,
     },
     {
         'id': 'TXN-004',

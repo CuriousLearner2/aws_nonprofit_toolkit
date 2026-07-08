@@ -85,7 +85,7 @@ class TestAddressValidation:
 
         tier, reason = validate_address(record, header_map)
         assert tier == 'WARNING'
-        assert 'incomplete' in reason.lower()
+        assert reason == 'Missing address'
 
     @pytest.mark.unit
     def test_empty_city(self):
@@ -102,8 +102,8 @@ class TestAddressValidation:
         }
 
         tier, reason = validate_address(record, header_map)
-        assert tier == 'WARNING'
-        assert 'incomplete' in reason.lower()
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
     def test_empty_state(self):
@@ -120,8 +120,8 @@ class TestAddressValidation:
         }
 
         tier, reason = validate_address(record, header_map)
-        assert tier == 'WARNING'
-        assert 'incomplete' in reason.lower()
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
     def test_all_address_fields_empty(self):
@@ -139,7 +139,7 @@ class TestAddressValidation:
 
         tier, reason = validate_address(record, header_map)
         assert tier == 'WARNING'
-        assert 'incomplete' in reason.lower()
+        assert reason == 'Missing address'
 
     @pytest.mark.unit
     def test_address_with_apartment(self):

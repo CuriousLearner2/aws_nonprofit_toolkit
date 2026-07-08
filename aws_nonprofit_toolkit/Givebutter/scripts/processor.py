@@ -431,20 +431,16 @@ def validate_address(record: Dict, header_map: Dict) -> Tuple[str, Optional[str]
     Returns: (tier, reason)
     """
     addr1_col = header_map.get('address_1')
-    city_col = header_map.get('city')
-    state_col = header_map.get('state')
 
-    # If any required address column is missing, skip validation
-    if not (addr1_col and city_col and state_col):
+    # If the address column is missing, skip validation.
+    # Validation Review only requires that an address be present.
+    if not addr1_col:
         return ('PASS', None)
 
     addr1 = str(record.get(addr1_col, '')).strip()
-    city = str(record.get(city_col, '')).strip()
-    state = str(record.get(state_col, '')).strip()
 
-    # Frontend validates these, but check completeness
-    if not addr1 or not city or not state:
-        return ('WARNING', "Incomplete address (missing street, city, or state)")
+    if not addr1:
+        return ('WARNING', 'Missing address')
 
     return ('PASS', None)
 
@@ -715,7 +711,7 @@ def process_csv(input_file: str, output_file: str) -> None:
         if reason:
             issues.append(f"Address: {reason}")
         if reason:  # address validator doesn't return suggestion, but could add one
-            address_suggestions.append("Complete address information (street, city, state)")
+            address_suggestions.append("Add a donor address")
 
         # Validate phone (optional)
         tier, reason, suggestion = validate_phone(record, header_map, rules)

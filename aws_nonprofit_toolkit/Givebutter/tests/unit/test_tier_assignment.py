@@ -80,7 +80,7 @@ class TestTierAssignment:
             'email': {'tier': 'WARNING', 'reason': 'Email typo'},
             'phone': {'tier': 'WARNING', 'reason': 'Unusual format'},
             'amount': {'tier': 'PASS', 'reason': None},
-            'address': {'tier': 'WARNING', 'reason': 'Incomplete address'},
+            'address': {'tier': 'WARNING', 'reason': 'Missing address'},
             'name': {'tier': 'PASS', 'reason': None}
         }
 

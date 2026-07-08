@@ -128,13 +128,13 @@ class TestFixtureDataIntegrity:
 
         Prevents false positives: valid phones marked as invalid, present fields marked as missing.
         """
-        # TXN-003: address issue - should have incomplete address
+        # TXN-003: blank address row used to exercise load-time warning fallback
         txn003 = next((r for r in CONTACTS if r.get('id') == 'TXN-003'), None)
         assert txn003 is not None
-        assert txn003['issue_field'] == 'address'
-        # Address is incomplete: "789 Elm St, Springfield IL" (missing ZIP)
-        assert 'IL' in txn003['address'] and len(txn003['address'].split()) < 6, (
-            "TXN-003: address issue claimed but address appears complete"
+        assert txn003['issue_type'] is None
+        assert txn003['issue_description'] is None
+        assert txn003['address'] == '', (
+            "TXN-003 should use a blank address to exercise the missing-address warning"
         )
 
         # TXN-005: phone issue - should have missing or invalid phone
@@ -185,6 +185,11 @@ class TestFixtureDataIntegrity:
                 assert row[field] is not None, (
                     f"Row {row.get('id')}: field '{field}' is None"
                 )
-                assert row[field] != '', (
-                    f"Row {row.get('id')}: field '{field}' is empty string"
-                )
+                if field == 'address' and row.get('id') == 'TXN-003':
+                    assert row[field] == '', (
+                        f"Row {row.get('id')}: blank address row should remain empty to exercise the missing-address warning"
+                    )
+                else:
+                    assert row[field] != '', (
+                        f"Row {row.get('id')}: field '{field}' is empty string"
+                    )

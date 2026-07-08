@@ -82,6 +82,7 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                         'amount': record.get('amount'),
                         'email': record.get('email'),
                         'phone': record.get('phone'),
+                        'address': record.get('address'),
                     }
                     validation_issues = _validate_effective_values(fixture_values)
                     record['issues'] = [
@@ -96,10 +97,21 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     # Shouldn't reach here, but be safe
                     record['issues'] = []
 
-                # Set row_status based on whether there are issues
+                # Set row_status based on whether there are blocking or warning issues.
                 if not record.get('row_status'):
-                    if record.get('issues') and len(record['issues']) > 0:
+                    has_blocking = any(
+                        issue.get('severity') == 'error'
+                        for issue in record.get('issues', [])
+                    )
+                    has_warning = any(
+                        issue.get('severity') != 'error'
+                        for issue in record.get('issues', [])
+                    )
+
+                    if has_blocking:
                         record['row_status'] = 'Blocking'
+                    elif has_warning:
+                        record['row_status'] = 'Warning'
                     else:
                         record['row_status'] = 'No issues'
         else:

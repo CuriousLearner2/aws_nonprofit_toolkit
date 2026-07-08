@@ -131,6 +131,7 @@ def recalculate_row_issues(
 
         # For each existing issue, check if it's still valid given the effective values
         current_issues = []
+        current_fields = set()
 
         for issue in existing_issues:
             payload = issue.payload_json or {}
@@ -166,6 +167,8 @@ def recalculate_row_issues(
                     'severity': severity,
                     'overridden': _is_issue_overridden(batch, raw_import_row_id, issue_field)
                 })
+                if issue_field:
+                    current_fields.add(issue_field)
 
         # Additionally, validate effective values to detect NEW issues not in ReviewItems
         # ONLY if proposed_values were provided (i.e., autosave with corrections)
@@ -176,6 +179,11 @@ def recalculate_row_issues(
             for new_issue in new_validation_issues:
                 if new_issue.get('field') not in existing_fields:
                     current_issues.append(new_issue)
+
+        # Address is warning-only but should be visible on load and edit.
+        address_issue = _validate_address(effective_values.get('address', ''))
+        if address_issue and 'address' not in current_fields:
+            current_issues.append(address_issue)
 
         return current_issues
 
@@ -328,6 +336,14 @@ def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[st
         if amount_issue:
             issues.append(amount_issue)
 
+    # Validate address if present; missing address is warning-only.
+    if 'address' in effective_values:
+        address_value = effective_values.get('address')
+        address_str = '' if address_value is None else str(address_value).strip()
+        address_issue = _validate_address(address_str)
+        if address_issue:
+            issues.append(address_issue)
+
     return issues
 
 
@@ -444,6 +460,24 @@ def _validate_amount(amount: str) -> Optional[Dict[str, Any]]:
             'description': 'Invalid amount format',
             'severity': 'error',
             'is_new': True
+        }
+
+    return None
+
+
+def _validate_address(address: str) -> Optional[Dict[str, Any]]:
+    """
+    Validate address field and return a warning if it is missing.
+
+    Validation Review only requires that an address be present. It does not
+    require ZIP, city, or state completeness on this screen.
+    """
+    if not address or not str(address).strip():
+        return {
+            'field': 'address',
+            'description': 'Missing address',
+            'severity': 'warning',
+            'is_new': True,
         }
 
     return None

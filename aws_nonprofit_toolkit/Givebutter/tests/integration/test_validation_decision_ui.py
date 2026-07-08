@@ -164,8 +164,8 @@ class TestValidationDecisionUI:
         html = response.data.decode('utf-8')
 
         assert 'data-testid="validation-scope-banner"' in html
-        assert 'data-dynamic-fields="amount,email,phone"' in html
-        assert 'data-import-stage-fields="date,address"' in html
+        assert 'data-dynamic-fields="amount,email,phone,address"' in html
+        assert 'data-import-stage-fields="date"' in html
         assert 'data-unsupported-fields="campaign"' in html
 
     def test_validation_page_shows_issue_severity_legend(self, flask_client_with_validation_items):

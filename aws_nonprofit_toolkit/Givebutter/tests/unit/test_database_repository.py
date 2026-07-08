@@ -959,10 +959,10 @@ class TestDatabaseGetValidation:
                 item_type='validation',
                 status='pending',
                 payload_json={
-                    'field': 'postal_code',
+                    'field': 'address',
                     'reason': 'missing',
-                    'severity': 'error',
-                    'description': 'Address incomplete (missing ZIP)'
+                    'severity': 'warning',
+                    'description': 'Missing address'
                 }
             )
             session.add(validation_item_3)
@@ -1148,16 +1148,16 @@ class TestDatabaseGetValidation:
         assert john_row.issue_type == 'format-invalid'
         assert john_row.issue_description == 'Phone number format invalid'
 
-    def test_get_validation_row_without_issue(self, temp_db_with_validation_data):
-        """Test that validation rows without issues have null issue fields."""
+    def test_get_validation_row_missing_address_warning(self, temp_db_with_validation_data):
+        """Test that the seeded missing-address row renders the warning fields."""
         repo = DatabaseImportRepository(database_url=temp_db_with_validation_data)
         result = repo.get_validation('IMP-2025-0101-A')
 
-        # Mary Johnson (4th row) should have no issue
-        mary_row = result.validation_rows[3]
-        assert mary_row.name == 'Mary Johnson'
-        assert mary_row.issue_type is None
-        assert mary_row.issue_description is None
+        # Mary Johnson is the seeded missing-address warning row in this fixture data.
+        warning_row = result.validation_rows[3]
+        assert warning_row.name == 'Mary Johnson'
+        assert warning_row.issue_type == 'format-invalid'
+        assert warning_row.issue_description == 'Missing address'
 
     def test_get_validation_to_template_dict(self, temp_db_with_validation_data):
         """Test that ValidationPageViewModel converts to template dict correctly."""

@@ -4914,6 +4914,11 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
                 # Wait for table to load (observable element, not hidden selector)
                 await page.wait_for_selector('table tbody tr', timeout=5000)
                 print("✓ Table loaded")
+                await page.wait_for_function(
+                    "() => document.body.innerText.includes('Missing address')",
+                    timeout=5000,
+                )
+                print("✓ Missing address warning visible on load")
 
                 # ===== PART 1: Tab order discovery from top =====
                 print("\n=== PART 1: Tab Order Discovery ===")
@@ -5678,7 +5683,7 @@ async def test_validation_jump_link_highlights_first_blocking_row():
                 visible_row_count = page.get_by_test_id('validation-visible-row-count')
                 summary_strip = page.get_by_test_id('review-summary-strip')
                 summary_link = page.get_by_role('link', name='Jump to first blocking row')
-                target_row = page.locator('#validation-row-TXN-003')
+                target_row = page.locator('#validation-row-TXN-005')
                 data_rows = page.locator('tr.validation-row[data-row-status]')
 
                 assert await table.count() == 1, 'Validation: table should render'
@@ -5699,14 +5704,14 @@ async def test_validation_jump_link_highlights_first_blocking_row():
 
                 await blocking_button.click()
                 await page.wait_for_function(
-                    "() => document.querySelector('[data-testid=\"validation-visible-row-count\"]')?.textContent?.trim() === 'Showing 2 of 5 rows'",
+                    "() => document.querySelector('[data-testid=\"validation-visible-row-count\"]')?.textContent?.trim() === 'Showing 1 of 5 rows'",
                     timeout=5000,
                 )
-                assert await data_rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 2, \
-                    'Validation: Blocking filter should leave two visible rows'
-                assert await data_rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 3, \
-                    'Validation: Blocking filter should hide the other three rows'
-                assert await visible_row_count.inner_text() == 'Showing 2 of 5 rows', \
+                assert await data_rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 1, \
+                    'Validation: Blocking filter should leave one visible row'
+                assert await data_rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 4, \
+                    'Validation: Blocking filter should hide the other four rows'
+                assert await visible_row_count.inner_text() == 'Showing 1 of 5 rows', \
                     'Validation: visible-row count should update after filtering to Blocking'
                 assert await summary_strip.inner_text() == summary_text_before, \
                     'Validation: summary counts should remain unchanged after client-side filtering'
@@ -5726,15 +5731,15 @@ async def test_validation_jump_link_highlights_first_blocking_row():
                 await summary_link.click()
 
                 await page.wait_for_function(
-                    "() => window.location.hash === '#validation-row-TXN-003' && document.querySelector('#validation-row-TXN-003')?.dataset?.jumpTarget === 'true'",
+                    "() => window.location.hash === '#validation-row-TXN-005' && document.querySelector('#validation-row-TXN-005')?.dataset?.jumpTarget === 'true'",
                     timeout=5000,
                 )
 
                 summary_text_after = await summary_strip.inner_text()
                 assert summary_text_after == summary_text_before, 'Validation: summary counts should not change after jump'
-                assert page.url.endswith('#validation-row-TXN-003'), 'Validation: jump link should update the URL hash to the first blocking row'
+                assert page.url.endswith('#validation-row-TXN-005'), 'Validation: jump link should update the URL hash to the first blocking row'
                 active_element_id = await page.evaluate("() => document.activeElement?.id || ''")
-                assert active_element_id == 'validation-row-TXN-003', 'Validation: first blocking row should receive focus after jump'
+                assert active_element_id == 'validation-row-TXN-005', 'Validation: first blocking row should receive focus after jump'
 
                 first_cell_background = await target_row.locator('td').first.evaluate(
                     "el => window.getComputedStyle(el).backgroundColor"
