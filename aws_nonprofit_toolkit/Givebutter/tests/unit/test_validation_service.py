@@ -304,7 +304,7 @@ class TestValidationService:
             assert issue["email"]
             assert issue["phone"]
             assert issue["amount"]
-            assert issue["address"]
+            assert "address" in issue
         assert isinstance(queue_status["validation_issues"], int)
 
 

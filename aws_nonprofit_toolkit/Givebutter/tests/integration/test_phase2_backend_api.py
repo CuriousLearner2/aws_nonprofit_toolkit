@@ -271,7 +271,7 @@ class TestRowStatusDerivation:
             row = RawImportRow(
                 batch_id='CLEAN-BATCH',
                 row_index=1,
-                raw_csv_data={'name': 'Clean Row'}
+                raw_csv_data={'name': 'Clean Row', 'address': '123 Main St'}
             )
             session.add(row)
             session.commit()
