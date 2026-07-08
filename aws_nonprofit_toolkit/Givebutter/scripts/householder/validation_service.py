@@ -40,6 +40,9 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
     repository = get_import_repository(config)
     validation_vm = repository.get_validation(import_id)
     result = validation_vm.to_template_dict()
+    database_url = None
+    if config:
+        database_url = config.get('GIVEBUTTER_DATABASE_URL')
 
     # Enrich validation_issues with row_status and issues using recalculation service
     for record in result.get('validation_issues', []):
@@ -48,10 +51,18 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
         if raw_import_row_id:
             try:
                 # Get all issues for this row (recalculates based on effective values)
-                all_issues = recalculate_row_issues(import_id, raw_import_row_id)
+                all_issues = recalculate_row_issues(
+                    import_id,
+                    raw_import_row_id,
+                    database_url=database_url,
+                )
 
                 # Get row status
-                row_status = derive_row_status(import_id, raw_import_row_id)
+                row_status = derive_row_status(
+                    import_id,
+                    raw_import_row_id,
+                    database_url=database_url,
+                )
 
                 # Format issues for template
                 record['issues'] = [

@@ -142,6 +142,16 @@ def _get_runtime_database_url() -> str | None:
         return config_url
     return os.environ.get('GIVEBUTTER_DATABASE_URL')
 
+
+def _get_runtime_repository_config() -> dict:
+    """Return a config snapshot that stays aligned with the active DB-backed runtime."""
+    runtime_config = dict(current_app.config)
+    database_url = _get_runtime_database_url()
+    if database_url:
+        runtime_config['HOUSEHOLDER_REPOSITORY'] = 'database'
+        runtime_config['GIVEBUTTER_DATABASE_URL'] = database_url
+    return runtime_config
+
 def validate_filename(filename: str) -> bool:
     """Prevent path traversal attacks."""
     try:
@@ -939,7 +949,10 @@ def import_readiness(import_id):
     """Export readiness dashboard."""
     from scripts.householder import readiness_service
     try:
-        readiness = readiness_service.get_export_readiness(import_id)
+        readiness = readiness_service.get_export_readiness(
+            import_id,
+            config=_get_runtime_repository_config(),
+        )
         return render_template('imports/readiness.html', **readiness.to_template_dict())
     except ValueError as e:
         logger.warning(f"Readiness error for {import_id}: {str(e)}")
@@ -962,7 +975,23 @@ def import_duplicates(import_id):
 @app.route('/imports/<import_id>/validation')
 def import_validation(import_id):
     """Validation review for records with issues."""
-    data = validation_service.get_validation_review(import_id)
+    config_database_url = current_app.config.get('GIVEBUTTER_DATABASE_URL')
+    repository_mode = (
+        current_app.config.get('HOUSEHOLDER_REPOSITORY')
+        or os.environ.get('HOUSEHOLDER_REPOSITORY', '')
+    ).lower()
+    database_url = _get_runtime_database_url()
+
+    if config_database_url or repository_mode == 'database':
+        data = validation_service.get_validation_review(
+            import_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+    else:
+        data = validation_service.get_validation_review(import_id)
     return render_template('imports/validation.html', **data)
 
 @app.route('/imports/<import_id>/normalizations')
@@ -1101,7 +1130,12 @@ def autosave_row_corrections(import_id):
     raw_import_row_id = data.get('raw_import_row_id')
     corrected_values = data.get('corrected_values', {})
     reviewer = request.headers.get('X-Reviewer-ID')
-    repository_mode = os.environ.get('HOUSEHOLDER_REPOSITORY', 'fixture').lower()
+    config_database_url = current_app.config.get('GIVEBUTTER_DATABASE_URL')
+    repository_mode = (
+        current_app.config.get('HOUSEHOLDER_REPOSITORY')
+        or os.environ.get('HOUSEHOLDER_REPOSITORY', '')
+    ).lower()
+    database_url = _get_runtime_database_url()
 
     if not raw_import_row_id:
         return jsonify({'error': 'raw_import_row_id required'}), 400
@@ -1114,7 +1148,7 @@ def autosave_row_corrections(import_id):
             'severity': 'error',
         }
 
-    if repository_mode == 'fixture':
+    if not config_database_url and repository_mode != 'database':
         fixture_result = build_fixture_autosave_response(
             batch_id=import_id,
             raw_import_row_id=raw_import_row_id,
@@ -1144,7 +1178,8 @@ def autosave_row_corrections(import_id):
             # Also get any existing issues from database (may include pre-existing problems)
             existing_issues = recalculate_row_issues(
                 batch_id=import_id,
-                raw_import_row_id=raw_import_row_id
+                raw_import_row_id=raw_import_row_id,
+                database_url=database_url,
             )
 
             # Merge validation errors with existing issues (validation errors take precedence for their fields)
@@ -1153,7 +1188,8 @@ def autosave_row_corrections(import_id):
             row_status = derive_row_status(
                 batch_id=import_id,
                 raw_import_row_id=raw_import_row_id,
-                issues=all_issues
+                issues=all_issues,
+                database_url=database_url,
             )
 
             # Map issues to template format: description -> reason for frontend consistency
@@ -1182,25 +1218,29 @@ def autosave_row_corrections(import_id):
             batch_id=import_id,
             raw_import_row_id=raw_import_row_id,
             corrected_values=corrected_values,
-            reviewer=reviewer
+            reviewer=reviewer,
+            database_url=database_url,
         )
 
         # Get refreshed row state
         effective_values = get_effective_values(
             batch_id=import_id,
-            raw_import_row_id=raw_import_row_id
+            raw_import_row_id=raw_import_row_id,
+            database_url=database_url,
         )
 
         issues = recalculate_row_issues(
             batch_id=import_id,
             raw_import_row_id=raw_import_row_id,
-            proposed_values=corrected_values
+            proposed_values=corrected_values,
+            database_url=database_url,
         )
 
         row_status = derive_row_status(
             batch_id=import_id,
             raw_import_row_id=raw_import_row_id,
-            issues=issues
+            issues=issues,
+            database_url=database_url,
         )
 
         logger.info(f"Row {raw_import_row_id} autosave completed: {corrected_values}")
@@ -1231,12 +1271,14 @@ def autosave_row_corrections(import_id):
         try:
             issues = recalculate_row_issues(
                 batch_id=import_id,
-                raw_import_row_id=raw_import_row_id
+                raw_import_row_id=raw_import_row_id,
+                database_url=database_url,
             )
             row_status = derive_row_status(
                 batch_id=import_id,
                 raw_import_row_id=raw_import_row_id,
-                issues=issues
+                issues=issues,
+                database_url=database_url,
             )
             formatted_issues = [
                 {
@@ -1267,12 +1309,14 @@ def autosave_row_corrections(import_id):
         try:
             issues = recalculate_row_issues(
                 batch_id=import_id,
-                raw_import_row_id=raw_import_row_id
+                raw_import_row_id=raw_import_row_id,
+                database_url=database_url,
             )
             row_status = derive_row_status(
                 batch_id=import_id,
                 raw_import_row_id=raw_import_row_id,
-                issues=issues
+                issues=issues,
+                database_url=database_url,
             )
             formatted_issues = [
                 {
@@ -1616,7 +1660,7 @@ def import_audit(import_id):
 @app.route('/imports/<import_id>/exports')
 def import_exports(import_id):
     """Export console for generating and downloading exports."""
-    data = exports_service.get_export_console(import_id)
+    data = exports_service.get_export_console(import_id, config=_get_runtime_repository_config())
     return render_template('imports/exports.html', **data)
 
 @app.route('/imports/<import_id>/exports/preview', methods=['POST'])
@@ -1625,11 +1669,11 @@ def preview_export(import_id):
     from scripts.householder import export_preview_service
 
     try:
-        preview = export_preview_service.build_export_preview(import_id)
+        preview = export_preview_service.build_export_preview(import_id, config=_get_runtime_repository_config())
         logger.info(f"Export preview generated: {preview.row_count} rows, {preview.blocked_count} blocked")
 
         # Return preview data in template context
-        data = exports_service.get_export_console(import_id)
+        data = exports_service.get_export_console(import_id, config=_get_runtime_repository_config())
         data['preview'] = preview.to_template_dict()
         data['preview_available'] = True
 
@@ -1672,6 +1716,7 @@ def generate_export(import_id):
             import_id=import_id,
             output_dir=output_dir,
             reviewer=reviewer,
+            config=_get_runtime_repository_config(),
             confirmed_unresolved_households=confirmed_unresolved_households,
             confirmed_unresolved_duplicates=confirmed_unresolved_duplicates,
             confirmed_unresolved_validations=confirmed_unresolved_validations,

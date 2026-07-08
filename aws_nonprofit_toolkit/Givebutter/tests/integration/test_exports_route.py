@@ -8,6 +8,7 @@ content and status code after service-boundary migration.
 import pytest
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -17,6 +18,31 @@ from scripts.uploader.app import app
 
 class TestExportsRoute:
     """Test exports console route integration."""
+
+    def test_exports_route_forwards_app_config_to_service(self, client, initialized_test_db, monkeypatch):
+        """Route should pass the app's DB config through even if env points elsewhere."""
+        monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'fixture')
+        from scripts.uploader.app import app as flask_app
+        monkeypatch.delitem(flask_app.config, 'HOUSEHOLDER_REPOSITORY', raising=False)
+        monkeypatch.delitem(flask_app.config, 'GIVEBUTTER_DATABASE_URL', raising=False)
+
+        minimal_exports = {
+            'batch': {'id': 'IMP-2025-0101-A', 'filename': 'test.csv', 'progress': 50},
+            'export_options': [],
+            'staged_record_count': 0,
+            'total_decisions': 0,
+            'household_count': 0,
+            'recent_exports': [],
+        }
+
+        with patch('scripts.uploader.app.exports_service.get_export_console', return_value=minimal_exports) as mock_get, \
+             patch('scripts.uploader.app.render_template', return_value='ok'):
+            response = client.get('/imports/IMP-2025-0101-A/exports')
+
+        assert response.status_code == 200
+        assert mock_get.call_count == 1
+        assert mock_get.call_args.kwargs['config']['HOUSEHOLDER_REPOSITORY'] == 'database'
+        assert mock_get.call_args.kwargs['config']['GIVEBUTTER_DATABASE_URL'] == initialized_test_db
 
     def test_exports_route_returns_200(self, client_with_fixture):
         """Test that exports route returns 200 status."""

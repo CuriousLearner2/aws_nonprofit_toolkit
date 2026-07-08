@@ -64,6 +64,8 @@ def client_with_fixture(monkeypatch):
     # This ensures we don't inherit configuration from previous tests
     monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'fixture')
     monkeypatch.delenv('GIVEBUTTER_DATABASE_URL', raising=False)
+    monkeypatch.delitem(app.config, 'HOUSEHOLDER_REPOSITORY', raising=False)
+    monkeypatch.delitem(app.config, 'GIVEBUTTER_DATABASE_URL', raising=False)
 
     # Create app in test mode
     app.config['TESTING'] = True
@@ -84,6 +86,8 @@ def client_with_database(monkeypatch, initialized_test_db):
     # This resets any previous fixture mode configuration
     monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', initialized_test_db)
+    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', initialized_test_db)
 
     # Create app in test mode
     app.config['TESTING'] = True
@@ -103,6 +107,8 @@ def client(monkeypatch, initialized_test_db):
     # This ensures proper cleanup from previous tests
     monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', initialized_test_db)
+    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', initialized_test_db)
 
     # Create app in test mode
     app.config['TESTING'] = True

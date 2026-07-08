@@ -7,6 +7,8 @@ Tests that readiness dashboard correctly derives and displays preview state.
 import pytest
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -15,6 +17,37 @@ from scripts.householder.export_preview_service import build_export_preview
 
 class TestReadinessRoutePreviewMirror:
     """Test that readiness route shows state derived from export preview."""
+
+    def test_readiness_route_forwards_app_config_to_preview_service(self, client, initialized_test_db, monkeypatch):
+        """Route should pass the app's DB config through even if env points elsewhere."""
+        monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'fixture')
+        from scripts.uploader.app import app as flask_app
+        monkeypatch.delitem(flask_app.config, 'HOUSEHOLDER_REPOSITORY', raising=False)
+        monkeypatch.delitem(flask_app.config, 'GIVEBUTTER_DATABASE_URL', raising=False)
+
+        preview_vm = SimpleNamespace(
+            to_template_dict=lambda: {
+                'batch': {'id': 'IMP-2025-0101-A', 'filename': 'test.csv', 'progress': 50},
+                'readiness': {
+                    'is_export_ready': True,
+                    'blocker_count': 0,
+                    'warning_count': 0,
+                    'staged_records': 0,
+                    'blockers': [],
+                    'warnings': [],
+                },
+                'queue_status': {},
+            }
+        )
+
+        with patch('scripts.householder.readiness_service.get_export_readiness', return_value=preview_vm) as mock_ready, \
+             patch('scripts.uploader.app.render_template', return_value='ok'):
+            response = client.get('/imports/IMP-2025-0101-A/readiness')
+
+        assert response.status_code == 200
+        assert mock_ready.call_count == 1
+        assert mock_ready.call_args.kwargs['config']['HOUSEHOLDER_REPOSITORY'] == 'database'
+        assert mock_ready.call_args.kwargs['config']['GIVEBUTTER_DATABASE_URL'] == initialized_test_db
 
     def test_readiness_route_returns_200(self, client):
         """Test that readiness route returns 200."""

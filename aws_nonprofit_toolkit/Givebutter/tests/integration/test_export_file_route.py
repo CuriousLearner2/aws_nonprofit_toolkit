@@ -34,6 +34,25 @@ def sample_export_result():
 
 # Route Behavior Tests
 
+def test_generate_route_forwards_app_config_to_service(client, initialized_test_db, monkeypatch, tmp_path, sample_export_result):
+    """Route should pass the app's DB config through even if env points elsewhere."""
+    from scripts.uploader.app import app as flask_app
+    export_dir = str(tmp_path / "exports")
+    os.makedirs(export_dir, exist_ok=True)
+    flask_app.config['EXPORT_OUTPUT_DIR'] = export_dir
+
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'fixture')
+    monkeypatch.delitem(flask_app.config, 'HOUSEHOLDER_REPOSITORY', raising=False)
+    monkeypatch.delitem(flask_app.config, 'GIVEBUTTER_DATABASE_URL', raising=False)
+
+    with patch('scripts.householder.export_file_service.generate_export_file', return_value=sample_export_result) as mock_gen:
+        response = client.post('/imports/IMP-TEST-001/exports/generate')
+
+    assert response.status_code == 200
+    assert mock_gen.call_count == 1
+    assert mock_gen.call_args.kwargs['config']['HOUSEHOLDER_REPOSITORY'] == 'database'
+    assert mock_gen.call_args.kwargs['config']['GIVEBUTTER_DATABASE_URL'] == initialized_test_db
+
 def test_generate_route_returns_200_on_success(client, sample_export_result, tmp_path):
     """POST /imports/<id>/exports/generate returns 200 on success."""
     from scripts.uploader.app import app as flask_app

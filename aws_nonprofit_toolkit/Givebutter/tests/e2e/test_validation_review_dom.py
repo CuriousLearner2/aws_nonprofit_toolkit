@@ -4121,6 +4121,218 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_db_backed_autosave_ignores_fixture_env_override_and_persists(
+    e2e_database_and_app,
+    monkeypatch,
+):
+    """
+    Regression test for DB-backed autosave when HOUSEHOLDER_REPOSITORY env would otherwise point to fixture mode.
+
+    The runtime DB URL comes from app.config, so autosave must still persist reviewed values and reload them.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    # Create the mismatch condition Breaker asked us to cover: app.config is DB-backed,
+    # while env would otherwise push the autosave branch toward fixture mode.
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'fixture')
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'db-context-mismatch-batch'
+        raw_values = {
+            'name': 'Dana Example',
+            'date': '2026-06-01',
+            'email': 'dana@example.com',
+            'phone': '(212) 555-0199',
+            'amount': '200.00',
+            'address': '10 Market St',
+        }
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'db_context_mismatch.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                email_input = page.locator('input[data-testid^="email-input-"]')
+                email_status = page.locator('input[data-testid^="email-input-"] ~ .autosave-status')
+
+                assert await email_input.input_value() == 'dana@example.com'
+
+                await email_input.fill('dana.persisted@example.com')
+                await email_input.evaluate("el => el.blur()")
+
+                await page.wait_for_function(
+                    "() => {"
+                    "const status = document.querySelector('input[data-testid^=\"email-input-\"] ~ .autosave-status');"
+                    "return status && status.textContent.includes('Saved');"
+                    "}",
+                    timeout=5000,
+                )
+
+                status_text = (await email_status.text_content() or '').strip()
+                assert 'Saved' in status_text, f"Expected autosave to persist in DB-backed mode, got: {status_text}"
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                persisted_value = await page.locator('input[data-testid^="email-input-"]').input_value()
+                assert persisted_value == 'dana.persisted@example.com', (
+                    f"Expected persisted email after reload, got: {persisted_value}"
+                )
+
+                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
+                assert raw_row is not None, 'Raw row not found after autosave mismatch test'
+                assert raw_row.raw_csv_data['email'] == 'dana@example.com', (
+                    f"Raw email should remain unchanged, got: {raw_row.raw_csv_data['email']}"
+                )
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_all_inline_fields_persist_after_browser_refresh(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify every inline editable Validation Review field persists its saved effective value across refresh.
+
+    Invariant: A field that shows a successful autosave must reload with the reviewed/effective value,
+    while the raw source row remains unchanged.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'refresh-persistence-batch'
+        raw_values = {
+            'name': 'Carol Example',
+            'date': '2026-04-15',
+            'email': 'carol@example.com',
+            'phone': '(212) 867-5309',
+            'amount': '150.25',
+            'address': '123 Main St',
+        }
+        edited_values = [
+            ('date', 'input.autosave-field[data-field="date"]', '2026-05-16', '2026-05-16'),
+            ('name', 'input.autosave-field[data-field="name"]', 'Carol Updated', 'Carol Updated'),
+            ('email', 'input.autosave-field[data-field="email"]', 'carol.updated@example.com', 'carol.updated@example.com'),
+            ('phone', 'input.autosave-field[data-field="phone"]', '(415) 867-5309', '(415) 867-5309'),
+            ('amount', 'input.autosave-field[data-field="amount"]', '275.50', '275.50'),
+            ('address', 'input.autosave-field[data-field="address"]', '789 Pine Rd', '789 Pine Rd'),
+        ]
+
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'refresh_persistence.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                def normalize_value(field_name: str, value: str) -> str:
+                    if field_name == 'amount':
+                        return value.lstrip('$').replace(',', '').strip()
+                    if field_name == 'phone':
+                        return ''.join(ch for ch in value if ch.isdigit())
+                    return value.strip()
+
+                for field_name, input_selector, edited_value, expected_value in edited_values:
+                    field_input = page.locator(input_selector)
+                    status_span = page.locator(f'{input_selector} ~ .autosave-status')
+
+                    initial_value = await field_input.input_value()
+                    assert normalize_value(field_name, initial_value) == normalize_value(field_name, raw_values[field_name]), (
+                        f"{field_name}: expected initial raw value {raw_values[field_name]}, got {initial_value}"
+                    )
+
+                    await field_input.fill(edited_value)
+                    await field_input.evaluate("el => el.blur()")
+
+                    await page.wait_for_function(
+                        f"""() => {{
+                            const status = document.querySelector(`{input_selector} ~ .autosave-status`);
+                            return status && status.textContent.includes('Saved');
+                        }}""",
+                        timeout=5000,
+                    )
+
+                    status_text = (await status_span.text_content() or '').strip()
+                    assert 'Saved' in status_text, (
+                        f"{field_name}: autosave should report Saved, got: {status_text}"
+                    )
+
+                    current_value = await field_input.input_value()
+                    assert normalize_value(field_name, current_value) == normalize_value(field_name, expected_value), (
+                        f"{field_name}: expected saved value {expected_value}, got {current_value}"
+                    )
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                for field_name, input_selector, _, expected_value in edited_values:
+                    reloaded_value = await page.locator(input_selector).input_value()
+                    assert normalize_value(field_name, reloaded_value) == normalize_value(field_name, expected_value), (
+                        f"{field_name}: expected {expected_value} after reload, got {reloaded_value}"
+                    )
+
+                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
+                assert raw_row is not None, 'Raw row not found after autosave test'
+                assert raw_row.raw_csv_data == raw_values, (
+                    f"Raw CSV data should remain unchanged, got: {raw_row.raw_csv_data}"
+                )
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_fixture_mode_txn_001_phone_noop_autosave_preserves_clean_state():
     """
     Fixture-mode Validation Review should not show a false inline Error for a clean TXN-001 phone no-op save.
