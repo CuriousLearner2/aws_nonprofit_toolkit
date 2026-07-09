@@ -159,7 +159,7 @@
 
                 <!-- Editable: Amount -->
                 <td>
-                    <input type="text" class="inline-edit-field autosave-field" data-field="amount" data-raw-id="{{ record.raw_import_row_id }}" data-testid="amount-input-{{ record.id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="amount" data-raw-id="{{ record.raw_import_row_id }}" data-testid="amount-input-{{ record.id }}" inputmode="decimal"
                            value="{{ record.amount or '' }}" placeholder="0.00"
                            style="width: 65px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; text-align: right; box-sizing: border-box;">
                     <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
@@ -307,6 +307,22 @@ function normalizeAutosaveComparableValue(field, value) {
         return text.replace(/[$,]/g, '').trim();
     }
     return text;
+}
+
+function amountHasOverPrecision(value) {
+    const normalized = normalizeAutosaveComparableValue('amount', value);
+    if (!normalized) {
+        return false;
+    }
+
+    const unsigned = normalized.startsWith('-') ? normalized.slice(1) : normalized;
+    const match = unsigned.match(/^(\d*)(?:\.(\d*))?$/);
+    if (!match) {
+        return false;
+    }
+
+    const decimalPart = match[2] || '';
+    return decimalPart.length > 2;
 }
 
 function shouldApplyAutosaveResponse(fieldId, field, requestToken, submittedValue, input) {
@@ -665,6 +681,41 @@ document.querySelectorAll('.autosave-field').forEach(input => {
             } else {
                 // Cursor position stays roughly the same
                 this.setSelectionRange(cursorPos, cursorPos);
+            }
+        });
+    }
+
+    if (input.getAttribute('data-field') === 'amount') {
+        input.addEventListener('beforeinput', function(e) {
+            const inputType = e.inputType || '';
+            if (!inputType.startsWith('insert')) {
+                return;
+            }
+
+            const insertedText = typeof e.data === 'string' ? e.data : '';
+            if (!insertedText) {
+                return;
+            }
+
+            const start = this.selectionStart ?? this.value.length;
+            const end = this.selectionEnd ?? this.value.length;
+            const nextValue = this.value.slice(0, start) + insertedText + this.value.slice(end);
+            if (amountHasOverPrecision(nextValue)) {
+                e.preventDefault();
+            }
+        });
+
+        input.addEventListener('paste', function(e) {
+            const pastedText = e.clipboardData?.getData('text/plain') || e.clipboardData?.getData('text') || '';
+            if (!pastedText) {
+                return;
+            }
+
+            const start = this.selectionStart ?? this.value.length;
+            const end = this.selectionEnd ?? this.value.length;
+            const nextValue = this.value.slice(0, start) + pastedText + this.value.slice(end);
+            if (amountHasOverPrecision(nextValue)) {
+                e.preventDefault();
             }
         });
     }

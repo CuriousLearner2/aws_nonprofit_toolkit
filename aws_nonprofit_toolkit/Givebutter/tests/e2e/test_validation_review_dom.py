@@ -2008,9 +2008,10 @@ async def test_amount_overprecision_autosave_rejected_and_refresh_keeps_saved_va
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify amount autosave rejects values with more than two decimal places and refresh keeps the prior saved amount.
+    GOAL: Verify amount autosave rejects over-precision values when they reach the autosave path.
 
-    Invariant: Over-precision amount edits must show Error, not Saved, and must not overwrite the persisted effective value.
+    Invariant: If a bypassed over-precision amount edit reaches autosave, it must show Error,
+    not Saved, and must not overwrite the persisted effective value.
     """
     from playwright.async_api import async_playwright
 
@@ -2059,8 +2060,12 @@ async def test_amount_overprecision_autosave_rejected_and_refresh_keeps_saved_va
                     f"Expected initial amount 100.00, got: {initial_value}"
                 )
 
-                await amount_input.fill('100.001')
-                await amount_input.evaluate('el => el.blur()')
+                await amount_input.click()
+                await amount_input.evaluate("""el => {
+                    el.value = '100.001';
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                }""")
+                await amount_input.press('Tab')
 
                 await page.wait_for_function(
                     "() => { const status = document.querySelector('input[data-testid^=\"amount-input-\"] ~ .autosave-status'); "
@@ -2088,6 +2093,146 @@ async def test_amount_overprecision_autosave_rejected_and_refresh_keeps_saved_va
                 )
 
             finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_amount_input_blocks_third_decimal_digit_and_refreshes_saved_value(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify amount typing cannot enter more than two decimal places during normal editing.
+
+    Invariant: Typing or pasting a third decimal digit should be blocked in the field UI, while
+    the backend safety net still persists the valid two-decimal amount and reload shows the saved value.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'amount-typing-guard-batch'
+        raw_values = {
+            'name': 'Typing Guard Example',
+            'date': '2026-04-15',
+            'email': 'typing.guard@example.com',
+            'phone': '(415) 555-1234',
+            'amount': '100.00',
+            'address': '123 Main St',
+        }
+
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'amount_typing_guard.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            context = await browser.new_context()
+            await context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=base_url)
+            page = await context.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                amount_input = page.locator('input[data-testid^="amount-input-"]')
+                amount_status = page.locator('input[data-testid^="amount-input-"] ~ .autosave-status')
+                row_status = page.locator('.row-status-dropdown option:first-child')
+                issues_cell = page.locator('.issues-cell')
+
+                def normalize_amount(value: str) -> str:
+                    return value.lstrip('$').replace(',', '').strip()
+
+                initial_value = await amount_input.input_value()
+                assert normalize_amount(initial_value) == '100.00', (
+                    f'Expected initial amount 100.00, got: {initial_value}'
+                )
+
+                await amount_input.fill('100.12')
+                await amount_input.press('End')
+                await amount_input.type('3')
+
+                blocked_value = await amount_input.input_value()
+                assert normalize_amount(blocked_value) == '100.12', (
+                    f'Third decimal digit should be blocked, got: {blocked_value}'
+                )
+
+                paste_prevented = await page.evaluate(
+                    """(selector) => {
+                        const input = document.querySelector(selector);
+                        input.focus();
+                        input.setSelectionRange(input.value.length, input.value.length);
+                        const clipboardData = new DataTransfer();
+                        clipboardData.setData('text/plain', '3');
+                        clipboardData.setData('text', '3');
+                        const event = new ClipboardEvent('paste', {
+                            bubbles: true,
+                            cancelable: true,
+                        });
+                        Object.defineProperty(event, 'clipboardData', {
+                            value: clipboardData,
+                        });
+                        return !input.dispatchEvent(event);
+                    }""",
+                    'input[data-testid^="amount-input-"]',
+                )
+                assert paste_prevented, 'Pasted third decimal digit should be prevented by the amount paste guard'
+
+                pasted_value = await amount_input.input_value()
+                assert normalize_amount(pasted_value) == '100.12', (
+                    f'Pasted third decimal digit should be blocked, got: {pasted_value}'
+                )
+
+                await amount_input.evaluate('el => el.blur()')
+                await page.wait_for_function(
+                    "() => { const status = document.querySelector('input[data-testid^=\"amount-input-\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Saved'); }",
+                    timeout=5000,
+                )
+
+                status_text = (await amount_status.text_content() or '').strip()
+                assert 'Saved' in status_text, f'Amount should autosave the valid two-decimal value, got: {status_text}'
+                assert 'Error' not in status_text, f'Amount typing guard should not show Error, got: {status_text}'
+
+                row_status_text = (await row_status.text_content() or '').strip()
+                assert row_status_text == 'No issues', f'Expected No issues after valid amount edit, got: {row_status_text}'
+
+                issues_text = (await issues_cell.inner_text() or '').strip()
+                assert issues_text == 'None', f'Expected no issues after valid amount edit, got: {issues_text}'
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                reloaded_value = await amount_input.input_value()
+                assert normalize_amount(reloaded_value) == '100.12', (
+                    f'Refresh should keep the saved two-decimal amount, got: {reloaded_value}'
+                )
+
+                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
+                assert raw_row is not None, 'Raw row not found after amount typing guard test'
+                assert raw_row.raw_csv_data['amount'] == '100.00', (
+                    f'Raw amount should remain unchanged, got: {raw_row.raw_csv_data["amount"]}'
+                )
+
+            finally:
+                await context.close()
                 await browser.close()
 
     finally:
