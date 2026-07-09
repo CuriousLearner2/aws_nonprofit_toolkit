@@ -397,7 +397,20 @@ def validate_amount(record: Dict, header_map: Dict, reference: Dict) -> Tuple[st
         return ('FAIL', "Amount field is empty", "Verify donation amount")
 
     try:
-        amount_val = float(str(amount).replace('$', '').replace(',', '').strip())
+        normalized_amount = str(amount).replace('$', '').replace(',', '').strip()
+        if normalized_amount.startswith('-'):
+            return ('FAIL', "Amount must be greater than 0", "Enter positive amount value")
+
+        if '.' in normalized_amount:
+            whole_part, decimal_part = normalized_amount.split('.', 1)
+            if not whole_part.isdigit() or not decimal_part.isdigit():
+                return ('FAIL', "Invalid amount format", "Enter valid numeric amount")
+            if len(decimal_part) > 2:
+                return ('FAIL', "Amount must have at most 2 decimal places", "Enter amount with up to 2 decimal places")
+        elif not normalized_amount.isdigit():
+            return ('FAIL', "Invalid amount format", "Enter valid numeric amount")
+
+        amount_val = float(normalized_amount)
     except ValueError:
         return ('FAIL', "Invalid amount format", "Enter valid numeric amount")
 

@@ -446,7 +446,40 @@ def _validate_amount(amount: str) -> Optional[Dict[str, Any]]:
         }
 
     try:
-        amount_val = float(amount.replace('$', '').replace(',', '').strip())
+        normalized_amount = amount.replace('$', '').replace(',', '').strip()
+        if normalized_amount.startswith('-'):
+            return {
+                'field': 'amount',
+                'description': 'Amount must be greater than 0',
+                'severity': 'error',
+                'is_new': True
+            }
+
+        if '.' in normalized_amount:
+            whole_part, decimal_part = normalized_amount.split('.', 1)
+            if not whole_part.isdigit() or not decimal_part.isdigit():
+                return {
+                    'field': 'amount',
+                    'description': 'Invalid amount format',
+                    'severity': 'error',
+                    'is_new': True
+                }
+            if len(decimal_part) > 2:
+                return {
+                    'field': 'amount',
+                    'description': 'Amount must have at most 2 decimal places',
+                    'severity': 'error',
+                    'is_new': True
+                }
+        elif not normalized_amount.isdigit():
+            return {
+                'field': 'amount',
+                'description': 'Invalid amount format',
+                'severity': 'error',
+                'is_new': True
+            }
+
+        amount_val = float(normalized_amount)
         if amount_val <= 0:
             return {
                 'field': 'amount',

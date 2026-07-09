@@ -48,6 +48,20 @@ class TestAmountValidation:
         assert tier == 'PASS'
 
     @pytest.mark.unit
+    def test_amount_with_too_many_decimal_places(self):
+        """Test amount values with more than two decimal places are rejected."""
+        record = {'Amount': '100.001'}
+        header_map = {'amount': 'Amount'}
+        reference = {
+            'amount_statistics': {'valid_range': [1, 100000]},
+            'high_dollar_threshold': 1000
+        }
+
+        tier, reason, suggestion = validate_amount(record, header_map, reference)
+        assert tier == 'FAIL'
+        assert '2 decimal places' in reason.lower()
+
+    @pytest.mark.unit
     def test_valid_integer_amount(self):
         """Test valid integer amount (no decimals)."""
         record = {'Amount': '500'}

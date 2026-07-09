@@ -2004,6 +2004,99 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_amount_overprecision_autosave_rejected_and_refresh_keeps_saved_value(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify amount autosave rejects values with more than two decimal places and refresh keeps the prior saved amount.
+
+    Invariant: Over-precision amount edits must show Error, not Saved, and must not overwrite the persisted effective value.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'amount-precision-batch'
+        raw_values = {
+            'name': 'Precision Example',
+            'date': '2026-04-15',
+            'email': 'precision@example.com',
+            'phone': '(415) 555-1234',
+            'amount': '100.00',
+            'address': '123 Main St',
+        }
+
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'amount_precision.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                amount_input = page.locator('input[data-testid^="amount-input-"]')
+                amount_status = page.locator('input[data-testid^="amount-input-"] ~ .autosave-status')
+
+                initial_value = await amount_input.input_value()
+                assert '100' in initial_value, (
+                    f"Expected initial amount 100.00, got: {initial_value}"
+                )
+
+                await amount_input.fill('100.001')
+                await amount_input.evaluate('el => el.blur()')
+
+                await page.wait_for_function(
+                    "() => { const status = document.querySelector('input[data-testid^=\"amount-input-\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Error'); }",
+                    timeout=5000,
+                )
+
+                status_text = (await amount_status.text_content() or '').strip()
+                assert 'Error' in status_text, (
+                    f"Amount should show Error for over-precision edit, got: {status_text}"
+                )
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                reloaded_value = await page.locator('input[data-testid^="amount-input-"]').input_value()
+                assert '100' in reloaded_value and '100.001' not in reloaded_value, (
+                    f"Refresh should restore the saved amount, got: {reloaded_value}"
+                )
+
+                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
+                assert raw_row is not None, 'Raw row not found after amount precision test'
+                assert raw_row.raw_csv_data['amount'] == '100.00', (
+                    f"Raw amount should remain unchanged, got: {raw_row.raw_csv_data['amount']}"
+                )
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_amount_validation_error_appears_in_issues_column(
     e2e_database_and_app,
 ):

@@ -46,8 +46,11 @@ def client_with_db(temp_db, monkeypatch):
     """Flask test client configured with temporary database."""
     database_url, engine = temp_db
 
-    # Monkeypatch environment variable
+    # Configure repository selection and database URL so autosave uses the DB-backed path.
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', database_url)
 
     # Configure Flask app
     app.config['TESTING'] = True
@@ -458,6 +461,40 @@ class TestAutosaveValidation:
                 raw_import_row_id=raw_row_id
             ).all()
             assert len(decisions) == 0, f"Non-numeric amount was saved! {decisions}"
+        finally:
+            session.close()
+
+    def test_autosave_amount_with_more_than_two_decimals_validation(self, client_with_db):
+        """CRITICAL: Amount autosave rejects values with more than two decimal places."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'amount': '100.001'}
+            }
+        )
+
+        assert response.status_code == 400
+        result = response.get_json()
+        assert result['success'] is False
+        assert 'amount' in result['validation_errors']
+        assert '2 decimal places' in result['validation_errors']['amount']
+
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).all()
+            assert len(decisions) == 0, f"Over-precision amount was saved! {decisions}"
+
+            effective = get_effective_values(batch_id, raw_row_id, database_url)
+            assert effective['amount'] == '100.00', (
+                f"Over-precision amount should not change effective values, got: {effective['amount']}"
+            )
         finally:
             session.close()
 

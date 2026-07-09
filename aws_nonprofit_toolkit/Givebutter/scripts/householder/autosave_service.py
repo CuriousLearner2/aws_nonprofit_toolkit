@@ -211,7 +211,24 @@ def validate_corrected_values(
                 errors['amount'] = 'Amount is required'
             else:
                 try:
-                    amount_val = float(amount_str.replace('$', '').replace(',', '').strip())
+                    normalized_amount = amount_str.replace('$', '').replace(',', '').strip()
+                    if normalized_amount.startswith('-'):
+                        errors['amount'] = 'Amount must be greater than 0'
+                        continue
+
+                    if '.' in normalized_amount:
+                        whole_part, decimal_part = normalized_amount.split('.', 1)
+                        if not whole_part.isdigit() or not decimal_part.isdigit():
+                            errors['amount'] = 'Invalid amount format'
+                            continue
+                        if len(decimal_part) > 2:
+                            errors['amount'] = 'Amount must have at most 2 decimal places'
+                            continue
+                    elif not normalized_amount.isdigit():
+                        errors['amount'] = 'Invalid amount format'
+                        continue
+
+                    amount_val = float(normalized_amount)
                     if amount_val <= 0:
                         errors['amount'] = 'Amount must be greater than 0'
                 except ValueError:
