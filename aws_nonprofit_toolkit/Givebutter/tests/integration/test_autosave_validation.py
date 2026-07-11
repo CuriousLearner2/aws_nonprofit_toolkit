@@ -176,6 +176,19 @@ class TestAutosaveValidation:
         assert is_valid is True
         assert errors is None
 
+    def test_validate_corrected_values_invalid_date(self):
+        """Unit test: validate_corrected_values rejects invalid date syntax."""
+        is_valid, errors = validate_corrected_values({'date': '2026&05-15'})
+        assert is_valid is False
+        assert 'date' in errors
+        assert 'YYYY-MM-DD' in errors['date']
+
+    def test_validate_corrected_values_valid_date(self):
+        """Unit test: validate_corrected_values accepts strict ISO date."""
+        is_valid, errors = validate_corrected_values({'date': '2026-05-15'})
+        assert is_valid is True
+        assert errors is None
+
     def test_autosave_invalid_email_not_saved(self, client_with_db):
         """CRITICAL: Invalid email correction is REJECTED and NOT saved."""
         client, database_url = client_with_db
@@ -548,5 +561,68 @@ class TestAutosaveValidation:
             ).first()
             assert decision is not None
             assert decision.reviewed_values['amount'] == '$1,250.50'
+        finally:
+            session.close()
+
+    def test_autosave_invalid_date_not_saved(self, client_with_db):
+        """Invalid date correction is rejected and does not replace the saved date."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'date': '2026&05-15'}
+            }
+        )
+
+        assert response.status_code == 400
+        result = response.get_json()
+        assert result['success'] is False
+        assert 'date' in result['validation_errors']
+        assert 'YYYY-MM-DD' in result['validation_errors']['date']
+
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).all()
+            assert len(decisions) == 0, f"Invalid date was saved! {decisions}"
+
+            effective = get_effective_values(batch_id, raw_row_id, database_url)
+            assert effective['date'] == '2024-01-01', (
+                f"Invalid date should not change effective values, got: {effective['date']}"
+            )
+        finally:
+            session.close()
+
+    def test_autosave_valid_date_saved(self, client_with_db):
+        """Valid ISO date correction is accepted and saved."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'date': '2026-05-15'}
+            }
+        )
+
+        assert response.status_code == 200
+        result = response.get_json()
+        assert result['success'] is True
+        assert result['effective_values']['date'] == '2026-05-15'
+
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decision = session.query(ReviewDecision).filter_by(
+                raw_import_row_id=raw_row_id
+            ).first()
+            assert decision is not None
+            assert decision.reviewed_values['date'] == '2026-05-15'
         finally:
             session.close()

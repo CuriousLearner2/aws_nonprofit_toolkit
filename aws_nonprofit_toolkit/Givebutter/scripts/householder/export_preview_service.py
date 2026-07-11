@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import (
     ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewDecision, ReviewItemSubject
 )
+from .date_validation_service import validate_review_date
 from .service_contracts import ExportRow, ExportPreviewResult
 
 
@@ -246,6 +247,7 @@ def build_export_preview(
 
             # Extract transaction_id from raw CSV data
             transaction_id = None
+            raw_date = None
             if raw_row and raw_row.raw_csv_data:
                 csv_data = raw_row.raw_csv_data
                 if isinstance(csv_data, str):
@@ -254,6 +256,7 @@ def build_export_preview(
                     except Exception:
                         csv_data = {}
                 transaction_id = csv_data.get('transaction_id') or csv_data.get('TransactionID')
+                raw_date = csv_data.get('date') or csv_data.get('Date')
 
             # Collect normalization decisions affecting this contact
             normalized_fields = []
@@ -275,6 +278,12 @@ def build_export_preview(
             row_autosave_values = row_level_autosave_decisions.get(contact.raw_import_row_id)
             if row_autosave_values:
                 field_values.update(row_autosave_values)
+
+            reviewed_date = row_autosave_values.get('date') if row_autosave_values and 'date' in row_autosave_values else raw_date
+            date_validation = validate_review_date(reviewed_date, allow_blank=True)
+            date_validation_issue = None
+            if not date_validation.valid:
+                date_validation_issue = f"Date: {date_validation.blocking_error}"
 
             # Apply normalization decisions only if linked to this contact
             for norm_item in review_items.values():
@@ -384,6 +393,11 @@ def build_export_preview(
                         validation_status = 'blocked'
                     else:
                         row_warnings.append(f"Validation issue unresolved: {issue_type}")
+
+            if date_validation_issue:
+                row_blockers.append("Unresolved validation: date")
+                validation_issues.append(date_validation_issue)
+                validation_status = 'blocked'
 
             # Collect duplicate decision affecting this contact
             duplicate_group_id = None

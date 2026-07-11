@@ -16,6 +16,7 @@ from .database_models import (
     ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject
 )
 from .autosave_service import get_effective_values
+from .date_validation_service import validate_review_date
 from .phone_validation_service import is_valid_phone
 import os
 
@@ -170,11 +171,26 @@ def recalculate_row_issues(
                 if issue_field:
                     current_fields.add(issue_field)
 
-        # Additionally, validate effective values to detect NEW issues not in ReviewItems
-        # ONLY if proposed_values were provided (i.e., autosave with corrections)
-        # This catches validation errors introduced by autosave corrections
+        # Validate effective date even when there is no autosave proposal.
+        # This keeps DB-backed validation, approval readiness, and export parity
+        # aligned with the strict ISO date policy for both raw and reviewed values.
+        existing_fields = {issue.get('field') for issue in current_issues if issue.get('field')}
+        date_value = effective_values.get('date')
+        date_validation = validate_review_date(date_value, allow_blank=True)
+        if not date_validation.valid and 'date' not in existing_fields:
+            current_issues.append({
+                'field': 'date',
+                'description': date_validation.blocking_error or 'Invalid date format',
+                'severity': 'error',
+                'is_new': True
+            })
+            existing_fields.add('date')
+
+        # Additionally, validate the rest of the effective values to detect NEW issues
+        # introduced by autosave corrections that don't have pre-existing ReviewItems.
+        # This still runs only for proposed_values to preserve the current incremental behavior
+        # for email/phone/amount/address while the strict date rule is applied consistently.
         if proposed_values:
-            existing_fields = {issue.get('field') for issue in current_issues if issue.get('field')}
             new_validation_issues = _validate_effective_values(effective_values)
             for new_issue in new_validation_issues:
                 if new_issue.get('field') not in existing_fields:
@@ -281,11 +297,16 @@ def is_issue_resolved(
             # Phone issue resolved if it's valid per phonenumbers library
             # Supports 131+ countries with intelligent parsing of various formats
             return is_valid_phone(effective_str)
+        elif field == 'date':
+            # Date issue resolved if it is a strict ISO calendar date
+            return validate_review_date(effective_str, allow_blank=True).valid
         else:
             # For other fields, check if effective differs meaningfully from raw
             # (raw_value comparison already done above)
             return True
     else:
+        if field == 'date':
+            return validate_review_date(effective_str, allow_blank=True).valid
         return False  # Unknown reason, don't auto-resolve
 
 
@@ -305,6 +326,18 @@ def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[st
     """
     issues = []
     import re
+
+    # Validate date if present; strict ISO YYYY-MM-DD required.
+    if 'date' in effective_values:
+        date_value = effective_values.get('date')
+        date_issue = validate_review_date(date_value, allow_blank=True)
+        if not date_issue.valid:
+            issues.append({
+                'field': 'date',
+                'description': date_issue.blocking_error or 'Invalid date format',
+                'severity': 'error',
+                'is_new': True
+            })
 
     # Validate email if present
     if 'email' in effective_values:

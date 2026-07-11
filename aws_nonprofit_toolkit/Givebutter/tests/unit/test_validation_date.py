@@ -28,7 +28,7 @@ class TestDateValidation:
     @pytest.mark.unit
     def test_valid_gift_date_fuzzy_match(self):
         """Test valid gift date (fuzzy match) passes."""
-        record = {'Gift Date': '05/20/2026'}
+        record = {'Gift Date': '2026-05-20'}
         header_map = {'date': 'Gift Date'}
 
         tier, reason, suggestion = validate_date(record, header_map)
@@ -83,16 +83,17 @@ class TestDateValidation:
         assert 'column not found' in reason.lower()
 
     @pytest.mark.unit
-    def test_various_date_formats_pass(self):
-        """Test various date format strings pass (format validation not enforced)."""
+    def test_strict_date_formats_reject_non_iso(self):
+        """Test non-ISO date strings fail strict validation."""
         date_formats = [
-            '2026-05-20',      # ISO
             '05/20/2026',      # US
             '20/05/2026',      # EU
             '2026-05-20T10:00:00',  # ISO with time
             'May 20, 2026',    # Text
             '05-20-2026',      # Dash separator
             '20260520',        # YYYYMMDD
+            '2026-02-30',      # Impossible date
+            '2026&05-15',      # Invalid character
         ]
 
         for date_str in date_formats:
@@ -100,7 +101,7 @@ class TestDateValidation:
             header_map = {'date': 'Date'}
 
             tier, reason, suggestion = validate_date(record, header_map)
-            assert tier == 'PASS', f"Date format '{date_str}' should pass"
+            assert tier == 'FAIL', f"Date format '{date_str}' should fail strict validation"
 
     @pytest.mark.unit
     def test_date_with_whitespace(self):

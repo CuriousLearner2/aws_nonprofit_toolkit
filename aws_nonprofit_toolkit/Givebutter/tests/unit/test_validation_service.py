@@ -528,8 +528,8 @@ class TestValidationServiceFixtureFallbackValidation:
             row_status = result['validation_issues'][0]['row_status']
             assert row_status == 'Blocking', f"Expected 'Blocking' but got '{row_status}'"
 
-    def test_fixture_fallback_date_is_currently_unsupported_in_validation_review(self):
-        """Test that Validation Review fallback currently does not validate date-only issues."""
+    def test_fixture_fallback_date_uses_strict_iso_validation(self):
+        """Test that Validation Review fallback validates date-only issues using strict ISO parsing."""
         from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
         from scripts.householder.validation_service import get_validation_review
         from unittest.mock import patch, MagicMock
@@ -564,12 +564,18 @@ class TestValidationServiceFixtureFallbackValidation:
             result = get_validation_review("IMP-TEST-UNSUPPORTED-DATE")
 
             row = result['validation_issues'][0]
-            assert row['issues'] == [], (
-                "Validation Review fallback currently ignores date-only issues, "
+            assert row['issues'], (
+                "Validation Review fallback should surface strict date issues, "
                 f"but got: {row['issues']}"
             )
-            assert row['row_status'] == 'No issues', (
-                "Validation Review fallback currently treats invalid-looking dates as clean, "
+            assert row['issues'][0]['field'] == 'date', (
+                f"Expected a date issue, but got: {row['issues']}"
+            )
+            assert 'YYYY-MM-DD' in row['issues'][0]['reason'], (
+                f"Expected strict date wording, but got: {row['issues'][0]['reason']}"
+            )
+            assert row['row_status'] == 'Blocking', (
+                "Validation Review fallback should block invalid date rows, "
                 f"but got row_status={row['row_status']}"
             )
 

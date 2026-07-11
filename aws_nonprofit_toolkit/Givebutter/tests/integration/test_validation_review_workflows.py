@@ -400,6 +400,52 @@ def _seed_isolated_warning_only_batch(Session):
         session.close()
 
 
+def _seed_db_backed_date_parity_batch(Session, batch_id, raw_date):
+    """Create an isolated DB-backed batch for date parity checks."""
+    session = Session()
+    try:
+        batch = ImportBatch(
+            id=batch_id,
+            filename='date_parity.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id=batch_id,
+            row_index=1,
+            raw_csv_data={
+                'name': 'Date Parity',
+                'date': raw_date,
+                'email': 'date.parity@example.com',
+                'phone': '(415) 555-1234',
+                'amount': '125.00',
+                'address': '123 Main St',
+            },
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id=batch_id,
+            raw_import_row_id=raw_row.id,
+            first_name='Date',
+            last_name='Parity',
+            email='date.parity@example.com',
+            phone='(415) 555-1234',
+            amount=125.0,
+            address_line1='123 Main St',
+        )
+        session.add(contact)
+        session.commit()
+        return raw_row.id
+    finally:
+        session.close()
+
+
 # ==============================================================================
 # TEST 1: Email validation and row status sync
 # ==============================================================================
@@ -573,10 +619,10 @@ class TestAmountValidationSafety:
 class TestDateValidationSafety:
     """Test date validation and export safety."""
 
-    def test_autosave_date_field_accepts_text_values(
+    def test_autosave_date_field_rejects_text_values(
         self, flask_client_with_validation_batch
     ):
-        """Date autosave may accept text values (validation may be lenient)."""
+        """Date autosave must reject non-ISO text values."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
         raw_id = raw_rows[3]
 
@@ -588,14 +634,24 @@ class TestDateValidationSafety:
             }
         )
 
-        # Date validation may be lenient and accept any value
-        # Just verify it's processed without error
-        assert response.status_code in [200, 400]
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'date' in data['validation_errors']
+        assert 'YYYY-MM-DD' in data['validation_errors']['date']
+
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decisions = session.query(ReviewDecision).filter_by(raw_import_row_id=raw_id).all()
+            assert len(decisions) == 0, f"Invalid date was saved! {decisions}"
+        finally:
+            session.close()
 
     def test_autosave_valid_date_clears_errors(
         self, flask_client_with_validation_batch
     ):
-        """Valid date should clear errors."""
+        """Valid ISO date should be saved and clear errors."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
         raw_id = raw_rows[3]
 
@@ -610,6 +666,16 @@ class TestDateValidationSafety:
         assert response.status_code == 200
         data = response.get_json()
         assert data['success'] is True
+        assert data['effective_values']['date'] == '2026-01-20'
+
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            decision = session.query(ReviewDecision).filter_by(raw_import_row_id=raw_id).first()
+            assert decision is not None
+            assert decision.reviewed_values['date'] == '2026-01-20'
+        finally:
+            session.close()
 
 
 # ==============================================================================
@@ -622,7 +688,6 @@ class TestValidationReviewScopeExclusions:
     @pytest.mark.parametrize(
         "field_name, raw_index, corrected_value",
         [
-            ('date', 4, 'not-a-date'),
             ('address', 5, '999 Oak Street, Apt 100'),
             ('campaign', 5, 'Spring Gala 2026'),
         ],
@@ -635,7 +700,7 @@ class TestValidationReviewScopeExclusions:
         corrected_value,
     ):
         """
-        Date, address, and campaign must not be dynamically validated on the review screen.
+        Address and campaign must not be dynamically validated on the review screen.
 
         These fields may be stored as reviewed values, but they must not generate
         Validation Review issues or blocking status from the autosave path.
@@ -662,6 +727,206 @@ class TestValidationReviewScopeExclusions:
         assert all(issue.get('field') != field_name for issue in data.get('issues', [])), (
             f"Validation Review must not generate dynamic issues for {field_name}, "
             f"got: {data.get('issues')}"
+        )
+
+    def test_date_review_field_creates_dynamic_issue(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """Date must be dynamically validated on the review screen."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[3]
+
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'date': 'not-a-date'}
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'date' in data['validation_errors']
+        assert 'YYYY-MM-DD' in data['validation_errors']['date']
+
+    def test_db_backed_invalid_raw_date_is_visible_in_validation_route(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed validation route must surface an invalid raw date without autosave."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-date-route-batch'
+        raw_id = _seed_db_backed_date_parity_batch(Session, batch_id, '2026&05-15')
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        row_marker = f'data-testid="row-{raw_id}"'
+        assert row_marker in html, f"Expected DB-backed row to render, got: {html[:2000]}"
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        assert row_end != -1, "Expected closing row tag for DB-backed date row"
+        row_section = html[row_start:row_end]
+
+        assert 'Blocking' in row_section, f"Invalid raw date should block, got: {row_section}"
+        assert 'Date must use YYYY-MM-DD' in row_section, (
+            f"Expected strict date validation copy, got: {row_section}"
+        )
+
+    def test_db_backed_valid_raw_date_remains_clear(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed validation route must keep a valid raw ISO date clear."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-date-clear-batch'
+        raw_id = _seed_db_backed_date_parity_batch(Session, batch_id, '2026-05-15')
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        row_marker = f'data-testid="row-{raw_id}"'
+        assert row_marker in html, f"Expected DB-backed row to render, got: {html[:2000]}"
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        assert row_end != -1, "Expected closing row tag for DB-backed valid date row"
+        row_section = html[row_start:row_end]
+
+        assert 'No issues' in row_section, f"Valid raw date should remain clear, got: {row_section}"
+        assert 'Date must use YYYY-MM-DD' not in row_section
+
+    def test_db_backed_reviewed_valid_date_supersedes_invalid_raw_date(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed autosave of a valid date should override an invalid raw date without mutating raw data."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-date-reviewed-batch'
+        raw_id = _seed_db_backed_date_parity_batch(Session, batch_id, '2026&05-15')
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'date': '2026-05-15'}
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert data['effective_values']['date'] == '2026-05-15'
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+        assert 'No issues' in row_section, f"Reviewed valid date should clear invalid raw date, got: {row_section}"
+        assert 'Date must use YYYY-MM-DD' not in row_section
+
+        session = Session()
+        try:
+            raw_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            assert raw_row.raw_csv_data['date'] == '2026&05-15', (
+                f"Raw source data must remain unchanged, got: {raw_row.raw_csv_data['date']}"
+            )
+        finally:
+            session.close()
+
+    def test_db_backed_reviewed_invalid_date_remains_blocking(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed autosave of an invalid date must remain blocking."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-date-invalid-reviewed-batch'
+        raw_id = _seed_db_backed_date_parity_batch(Session, batch_id, '2026-05-15')
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'date': '2026&05-15'}
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'date' in data['validation_errors']
+        assert 'YYYY-MM-DD' in data['validation_errors']['date']
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+        assert 'No issues' in row_section, (
+            f"Rejected invalid reviewed date should leave prior valid date intact, got: {row_section}"
+        )
+
+    def test_recalculate_row_issues_does_not_duplicate_invalid_raw_date_issue_with_proposed_values(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed recalc should emit the strict date blocker once even when proposed values are present."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'validation-workflow-test-batch'
+        raw_id = raw_rows[3]
+
+        from scripts.householder.issue_recalculation_service import recalculate_row_issues
+
+        issues = recalculate_row_issues(
+            batch_id=batch_id,
+            raw_import_row_id=raw_id,
+            database_url=database_url,
+            proposed_values={'name': 'Alice Updated'},
+        )
+        date_issues = [issue for issue in issues if issue.get('field') == 'date']
+        assert len(date_issues) == 1, f"Expected one date issue, got: {date_issues}"
+        assert 'YYYY-MM-DD' in date_issues[0].get('description', '')
+
+    def test_db_backed_export_preview_reports_invalid_raw_date(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed export preview must report invalid raw dates consistently."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-date-export-batch'
+        raw_id = _seed_db_backed_date_parity_batch(Session, batch_id, '2026&05-15')
+
+        from scripts.householder.export_preview_service import build_export_preview
+
+        preview = build_export_preview(
+            batch_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+
+        assert preview.is_export_ready is False, (
+            f"Invalid raw date should block export preview, got: {preview}"
+        )
+        assert preview.blocked_count >= 1, f"Invalid raw date should add a blocker, got: {preview}"
+        preview_text = ' '.join(list(preview.blockers) + list(preview.warnings))
+        assert 'date' in preview_text.lower(), f"Expected date blocker in preview, got: {preview_text}"
+        assert preview.export_rows, f"Expected export rows in preview, got: {preview}"
+        row_validation_text = ' '.join(str(issue) for issue in preview.export_rows[0].validation_issues)
+        assert 'date' in row_validation_text.lower(), (
+            f"Expected date validation issue on export row, got: {row_validation_text}"
+        )
+        assert 'YYYY-MM-DD' in row_validation_text, (
+            f"Expected strict date copy in export row validation issues, got: {row_validation_text}"
         )
 
 
@@ -872,6 +1137,40 @@ class TestApprovalWarnings:
             current_row = session.query(RawImportRow).filter_by(id=raw_id).first()
             assert current_row.raw_csv_data == original_raw_data, (
                 f"Raw CSV data must remain unchanged, got: {current_row.raw_csv_data}"
+            )
+        finally:
+            session.close()
+
+    def test_approved_batch_with_invalid_raw_date_is_rejected(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """Plain approval must not bypass an invalid raw date."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-date-approval-direct-batch'
+        raw_id = _seed_db_backed_date_parity_batch(Session, batch_id, '2026&05-15')
+
+        response = client.post(
+            f'/imports/{batch_id}/approve-batch',
+            json={
+                'approval_status': 'approved',
+                'rows_with_overrides': []
+            }
+        )
+
+        assert response.status_code == 400, (
+            f"Plain approval should reject unresolved invalid raw dates, got {response.status_code}: {response.get_json()}"
+        )
+        data = response.get_json()
+        assert 'unresolved issues' in data.get('error', '').lower() or 'override' in data.get('error', '').lower(), (
+            f"Expected approval error to mention unresolved issues, got: {data}"
+        )
+
+        session = Session()
+        try:
+            batch = session.query(ImportBatch).filter_by(id=batch_id).first()
+            assert batch.approval_status is None, (
+                f"Batch should not approve with invalid raw date, got: {batch.approval_status}"
             )
         finally:
             session.close()
@@ -1099,20 +1398,12 @@ class TestApprovalWarningWorkflow:
         """Batch with no unresolved issues should approve directly without modal."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
 
-        # First, ensure all rows are valid by correcting the problematic ones
-        # Row 0: invalid email - fix it
-        response = client.post(
-            f'/imports/validation-workflow-test-batch/autosave',
-            json={
-                'raw_import_row_id': raw_rows[0],
-                'corrected_values': {'email': 'john.smith@example.com'}
-            }
-        )
-        assert response.status_code == 200
+        batch_id = 'db-backed-date-clean-approval-batch'
+        raw_id = _seed_db_backed_date_parity_batch(Session, batch_id, '2026-05-15')
 
         # Now try to approve - should succeed directly
         response = client.post(
-            f'/imports/validation-workflow-test-batch/approve-batch',
+            f'/imports/{batch_id}/approve-batch',
             json={
                 'approval_status': 'approved',
                 'rows_with_overrides': []
@@ -1126,6 +1417,19 @@ class TestApprovalWarningWorkflow:
         assert data.get('requires_override_confirmation') is not True, (
             f"Clean approval must not require override confirmation, got: {data}"
         )
+
+        session = Session()
+        try:
+            batch = session.query(ImportBatch).filter_by(id=batch_id).first()
+            assert batch.approval_status == 'approved', (
+                f"Clean batch should approve directly, got: {batch.approval_status}"
+            )
+            raw_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            assert raw_row.raw_csv_data['date'] == '2026-05-15', (
+                f"Raw source data must remain unchanged, got: {raw_row.raw_csv_data['date']}"
+            )
+        finally:
+            session.close()
 
     def test_approve_batch_with_unresolved_issues_requires_override(
         self, flask_client_with_validation_batch

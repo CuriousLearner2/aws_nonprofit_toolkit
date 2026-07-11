@@ -4571,6 +4571,137 @@ async def test_all_inline_fields_persist_after_browser_refresh(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_date_invalid_then_valid_edit_persists_and_refreshes(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify strict ISO date validation rejects invalid syntax, then persists a valid ISO date.
+
+    Invariant: Invalid date edits must show Error and must not overwrite the saved/effective value;
+    valid ISO dates should autosave and survive a browser refresh.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'date-validation-batch'
+        raw_values = {
+            'name': 'Date Example',
+            'date': '2026-04-15',
+            'email': 'date@example.com',
+            'phone': '(415) 555-1234',
+            'amount': '150.25',
+            'address': '123 Main St',
+        }
+
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'date_validation.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                date_input = page.locator('input.autosave-field[data-field="date"]')
+                date_status = page.locator('input.autosave-field[data-field="date"] ~ .autosave-status')
+                row_status = page.locator('.row-status-dropdown option:first-child')
+                issues_cell = page.locator('.issues-cell')
+
+                initial_value = await date_input.input_value()
+                assert initial_value == '2026-04-15', f'Expected initial date 2026-04-15, got: {initial_value}'
+
+                await date_input.fill('2026&05-15')
+                await date_input.evaluate('el => el.blur()')
+
+                await page.wait_for_function(
+                    "() => { const status = document.querySelector('input.autosave-field[data-field=\"date\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Error'); }",
+                    timeout=5000,
+                )
+
+                invalid_status = (await date_status.text_content() or '').strip()
+                assert 'Error' in invalid_status, (
+                    f'Date should show Error for invalid syntax, got: {invalid_status}'
+                )
+                invalid_row_status = (await row_status.text_content() or '').strip()
+                assert invalid_row_status == 'Blocking', (
+                    f'Invalid date should make row Blocking, got: {invalid_row_status}'
+                )
+                invalid_issues = (await issues_cell.inner_text() or '').strip()
+                assert 'date' in invalid_issues.lower(), (
+                    f'Invalid date should appear in Issues, got: {invalid_issues}'
+                )
+                assert 'YYYY-MM-DD' in invalid_issues, (
+                    f'Invalid date issue should mention YYYY-MM-DD, got: {invalid_issues}'
+                )
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                reloaded_after_reject = await date_input.input_value()
+                assert reloaded_after_reject == '2026-04-15', (
+                    f'Refresh should restore saved date after rejected edit, got: {reloaded_after_reject}'
+                )
+
+                await date_input.fill('2026-05-15')
+                await date_input.evaluate('el => el.blur()')
+
+                await page.wait_for_function(
+                    "() => { const status = document.querySelector('input.autosave-field[data-field=\"date\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Saved'); }",
+                    timeout=5000,
+                )
+
+                valid_status = (await date_status.text_content() or '').strip()
+                assert 'Saved' in valid_status, f'Date should autosave valid ISO value, got: {valid_status}'
+                valid_row_status = (await row_status.text_content() or '').strip()
+                assert valid_row_status == 'No issues', (
+                    f'Valid ISO date should clear blocking issues, got: {valid_row_status}'
+                )
+                valid_issues = (await issues_cell.inner_text() or '').strip()
+                assert valid_issues == 'None', f'Valid ISO date should clear issues, got: {valid_issues}'
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                reloaded_after_save = await date_input.input_value()
+                assert reloaded_after_save == '2026-05-15', (
+                    f'Refresh should keep the saved ISO date, got: {reloaded_after_save}'
+                )
+
+                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
+                assert raw_row is not None, 'Raw row not found after date validation test'
+                assert raw_row.raw_csv_data['date'] == '2026-04-15', (
+                    f'Raw date should remain unchanged, got: {raw_row.raw_csv_data["date"]}'
+                )
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_autosave_does_not_overwrite_unrelated_dirty_field(
     e2e_database_and_app,
 ):

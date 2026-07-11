@@ -390,11 +390,11 @@ class TestValidationIssuesRendering:
             fixtures.CONTACTS[:] = original_contacts
 
     def test_validation_route_fixture_fallback_date_and_present_address_remains_clean(self, client_with_fixture, monkeypatch):
-        """Test that Validation Review fallback leaves date and present-address rows clean.
+        """Test that Validation Review fallback validates date while leaving present addresses clean.
 
         This documents the present Validation Review contract: when issue_type is None,
-        the fallback path currently validates amount/email/phone only and does not
-        generate date issues or missing-address warnings for rows that already have an address.
+        the fallback path validates amount/email/phone/date but does not generate
+        missing-address warnings for rows that already have an address.
         """
         from scripts.uploader import fixtures
 
@@ -427,16 +427,16 @@ class TestValidationIssuesRendering:
             assert row_end != -1, "Expected closing row tag for unsupported date/address test contact"
             row_section = response_text[row_start:row_end]
 
-            assert 'No issues' in row_section, (
-                "Validation Review fallback currently leaves date/present-address rows clean, "
+            assert 'Blocking' in row_section, (
+                "Validation Review fallback should mark invalid dates as blocking, "
                 f"but got row section: {row_section}"
             )
-            assert '<span style="color: #9ca3af; font-style: italic;">None</span>' in row_section, (
-                "Validation Review fallback currently renders no generated issues for date/present-address rows, "
+            assert 'Date must use YYYY-MM-DD' in row_section, (
+                "Validation Review fallback should surface strict date validation copy, "
                 f"but got row section: {row_section}"
             )
-            assert 'Invalid date' not in row_section
             assert 'Missing address' not in row_section
+            assert 'No issues' not in row_section
 
         finally:
             fixtures.CONTACTS[:] = original_contacts

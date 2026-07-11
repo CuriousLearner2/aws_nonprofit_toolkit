@@ -198,6 +198,7 @@ def validate_corrected_values(
         - If invalid: (False, {'field': 'error message', ...})
     """
     from .phone_validation_service import is_valid_phone
+    from .date_validation_service import validate_review_date
     import re
 
     errors = {}
@@ -233,6 +234,12 @@ def validate_corrected_values(
                         errors['amount'] = 'Amount must be greater than 0'
                 except ValueError:
                     errors['amount'] = 'Invalid amount format'
+            continue
+
+        if field == 'date':
+            date_result = validate_review_date(value, allow_blank=True)
+            if not date_result.valid:
+                errors['date'] = date_result.blocking_error or 'Invalid date format'
             continue
 
         # For other fields, skip if empty/falsy (might be clearing a field)

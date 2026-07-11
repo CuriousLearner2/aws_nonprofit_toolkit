@@ -15,6 +15,8 @@ import pandas as pd
 from difflib import SequenceMatcher
 from datetime import datetime
 
+from scripts.householder.date_validation_service import validate_review_date
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -200,6 +202,10 @@ def validate_date(record: Dict, header_map: Dict) -> Tuple[str, Optional[str], O
     date_val = record.get(date_col)
     if pd.isna(date_val) or str(date_val).strip() == '':
         return ('FAIL', "Date field is empty", "Verify donation date for each record")
+
+    result = validate_review_date(date_val, allow_blank=False)
+    if not result.valid:
+        return ('FAIL', result.blocking_error, "Use YYYY-MM-DD")
 
     return ('PASS', None, None)
 

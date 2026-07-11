@@ -83,6 +83,19 @@ def approve_batch(
         if batch.approval_status in ('approved', 'approved_with_overrides'):
             raise ValueError(f"Batch '{batch_id}' is already {batch.approval_status}")
 
+        # Plain approval must not bypass unresolved blocking issues.
+        # The override path is the explicit reviewer acknowledgment for batches
+        # that still have unresolved blocking validation rows.
+        if approval_status == 'approved':
+            remaining_issues = check_batch_remaining_issues(
+                batch_id=batch_id,
+                database_url=database_url,
+            )
+            if remaining_issues:
+                raise ValueError(
+                    "Batch has unresolved issues; use approved_with_overrides to review them"
+                )
+
         # Build override_details if needed
         override_details = None
         override_count = 0

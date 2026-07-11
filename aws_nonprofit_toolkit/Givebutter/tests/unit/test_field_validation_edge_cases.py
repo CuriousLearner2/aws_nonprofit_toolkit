@@ -27,12 +27,10 @@ class TestDateValidationEdgeCases:
     """Test date field validation edge cases."""
 
     def test_valid_date_formats(self, header_map):
-        """Verify common date formats pass."""
+        """Verify strict ISO date formats pass."""
         valid_dates = [
             '2026-06-05',
-            '2026/06/05',
-            '06/05/2026',
-            '2026-1-5'  # Single digit month/day
+            '2024-02-29',  # Leap day
         ]
         for date_str in valid_dates:
             record = {'Date': date_str}
@@ -45,19 +43,20 @@ class TestDateValidationEdgeCases:
         tier, reason, suggestion = validate_date(record, header_map)
         assert tier == 'FAIL', "Empty date should fail"
 
-    def test_flexible_date_parsing(self, header_map):
-        """Verify flexible date format acceptance."""
-        # Python's date parser is lenient, accepts many formats
-        flexible_dates = [
-            '06-05-2026',  # This actually parses
-            '2024-02-29',  # Valid leap year
-            '2025-02-29',  # Python parses this too
-            '2026/06/05',  # Slash format
+    def test_strict_date_parsing_rejects_non_iso_formats(self, header_map):
+        """Verify non-ISO and impossible dates fail strict parsing."""
+        invalid_dates = [
+            '2026&05-15',
+            '2026/06/05',
+            '06/05/2026',
+            '2026-1-5',
+            '20260515',
+            '2025-02-29',
         ]
-        for date_str in flexible_dates:
+        for date_str in invalid_dates:
             record = {'Date': date_str}
             tier, reason, suggestion = validate_date(record, header_map)
-            assert tier != 'FAIL', f"Date '{date_str}' should parse, reason: {reason}"
+            assert tier == 'FAIL', f"Date '{date_str}' should fail strict parsing"
 
 
 class TestAmountValidationEdgeCases:

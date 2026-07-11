@@ -89,7 +89,9 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     ]
                 elif not record.get('issue_type'):
                     # No fixture-provided issue_type; validate fixture fields to detect issues
+                    # using the same blank-allowed review-time policy as DB-backed rows.
                     fixture_values = {
+                        'date': record.get('date'),
                         'amount': record.get('amount'),
                         'email': record.get('email'),
                         'phone': record.get('phone'),
