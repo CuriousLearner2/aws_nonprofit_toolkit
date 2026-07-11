@@ -16,6 +16,7 @@ from difflib import SequenceMatcher
 from datetime import datetime
 
 from scripts.householder.date_validation_service import validate_review_date
+from scripts.householder.amount_validation_service import validate_review_amount
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -402,35 +403,38 @@ def validate_amount(record: Dict, header_map: Dict, reference: Dict) -> Tuple[st
     if pd.isna(amount) or str(amount).strip() == '':
         return ('FAIL', "Amount field is empty", "Verify donation amount")
 
+    amount_validation = validate_review_amount(
+        amount,
+        allow_blank=False,
+        valid_range=reference.get('amount_statistics', {}).get('valid_range'),
+    )
+    if not amount_validation.valid:
+        reason = amount_validation.blocking_error or "Invalid amount format"
+        if reason == "Amount field is empty":
+            return ('FAIL', "Amount field is empty", "Verify donation amount")
+        if reason == "Amount must have at most 2 decimal places":
+            return ('FAIL', reason, "Enter amount with up to 2 decimal places")
+        if reason == "Amount must be greater than 0":
+            return ('FAIL', reason, "Enter positive amount value")
+        return ('FAIL', reason, "Enter valid numeric amount")
+
     try:
-        normalized_amount = str(amount).replace('$', '').replace(',', '').strip()
-        if normalized_amount.startswith('-'):
-            return ('FAIL', "Amount must be greater than 0", "Enter positive amount value")
-
-        if '.' in normalized_amount:
-            whole_part, decimal_part = normalized_amount.split('.', 1)
-            if not whole_part.isdigit() or not decimal_part.isdigit():
-                return ('FAIL', "Invalid amount format", "Enter valid numeric amount")
-            if len(decimal_part) > 2:
-                return ('FAIL', "Amount must have at most 2 decimal places", "Enter amount with up to 2 decimal places")
-        elif not normalized_amount.isdigit():
-            return ('FAIL', "Invalid amount format", "Enter valid numeric amount")
-
-        amount_val = float(normalized_amount)
-    except ValueError:
+        from decimal import Decimal
+        amount_val = Decimal(amount_validation.normalized_value or "0")
+    except Exception:
         return ('FAIL', "Invalid amount format", "Enter valid numeric amount")
-
-    if amount_val <= 0:
-        return ('FAIL', "Amount must be greater than 0", "Enter positive amount value")
 
     # Check against reference ranges
     stats = reference.get('amount_statistics', {})
     valid_range = stats.get('valid_range', [1, 100000])
+    from decimal import Decimal
+    valid_min = Decimal(str(valid_range[0]))
+    valid_max = Decimal(str(valid_range[1]))
 
-    if amount_val < valid_range[0]:
+    if amount_val < valid_min:
         return ('WARNING', f"Amount below typical range (${valid_range[0]})", None)
 
-    if amount_val > valid_range[1]:
+    if amount_val > valid_max:
         return ('WARNING', f"Amount above typical range (${valid_range[1]})", None)
 
     # Note: high_dollar_threshold is stored but not used for WARNING tier

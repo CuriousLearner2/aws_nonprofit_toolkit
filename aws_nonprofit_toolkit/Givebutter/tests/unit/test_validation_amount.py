@@ -1,6 +1,9 @@
 """Unit tests for amount validation."""
+import inspect
+
 import pytest
 from processor import validate_amount
+from scripts.householder.amount_validation_service import validate_review_amount
 
 
 class TestAmountValidation:
@@ -46,6 +49,20 @@ class TestAmountValidation:
 
         tier, reason, suggestion = validate_amount(record, header_map, reference)
         assert tier == 'PASS'
+
+    @pytest.mark.unit
+    def test_invalid_amount_with_malformed_commas(self):
+        """Test amount values with malformed commas are rejected."""
+        record = {'Amount': '1,2,3'}
+        header_map = {'amount': 'Amount'}
+        reference = {
+            'amount_statistics': {'valid_range': [1, 100000]},
+            'high_dollar_threshold': 1000
+        }
+
+        tier, reason, suggestion = validate_amount(record, header_map, reference)
+        assert tier == 'FAIL'
+        assert 'invalid' in reason.lower() and 'format' in reason.lower()
 
     @pytest.mark.unit
     def test_amount_with_too_many_decimal_places(self):
@@ -239,3 +256,47 @@ class TestAmountValidation:
 
         tier, reason, suggestion = validate_amount(record, header_map, reference)
         assert tier == 'PASS'
+
+
+class TestCanonicalAmountValidation:
+    """Test the Decimal-backed canonical amount validator."""
+
+    def test_valid_decimal_variants_pass(self):
+        valid_amounts = [
+            '0.50',
+            '5',
+            '5.',
+            '.50',
+            '5.00',
+            '12.3',
+            '12.30',
+            '1000',
+            '1000.00',
+            '$5.00',
+            '1,000.00',
+        ]
+        for amount in valid_amounts:
+            result = validate_review_amount(amount)
+            assert result.valid, f"Amount '{amount}' should be valid, got: {result.blocking_error}"
+
+    def test_invalid_amount_shapes_fail(self):
+        invalid_amounts = [
+            '0',
+            '0.00',
+            '5.001',
+            '12.345',
+            'abc',
+            '5 dollars',
+            '1.2.3',
+            'NaN',
+            'Infinity',
+            '-Infinity',
+            '+5.00',
+        ]
+        for amount in invalid_amounts:
+            result = validate_review_amount(amount)
+            assert not result.valid, f"Amount '{amount}' should be invalid"
+
+    def test_validator_does_not_use_float(self):
+        source = inspect.getsource(validate_review_amount)
+        assert 'float(' not in source

@@ -199,6 +199,7 @@ def validate_corrected_values(
     """
     from .phone_validation_service import is_valid_phone
     from .date_validation_service import validate_review_date
+    from .amount_validation_service import validate_review_amount
     import re
 
     errors = {}
@@ -206,34 +207,9 @@ def validate_corrected_values(
     for field, value in corrected_values.items():
         # Amount must be validated even if 0 (falsy) or empty string
         if field == 'amount':
-            amount_str = '' if value is None else str(value).strip()
-            # Empty amount is invalid
-            if not amount_str:
-                errors['amount'] = 'Amount is required'
-            else:
-                try:
-                    normalized_amount = amount_str.replace('$', '').replace(',', '').strip()
-                    if normalized_amount.startswith('-'):
-                        errors['amount'] = 'Amount must be greater than 0'
-                        continue
-
-                    if '.' in normalized_amount:
-                        whole_part, decimal_part = normalized_amount.split('.', 1)
-                        if not whole_part.isdigit() or not decimal_part.isdigit():
-                            errors['amount'] = 'Invalid amount format'
-                            continue
-                        if len(decimal_part) > 2:
-                            errors['amount'] = 'Amount must have at most 2 decimal places'
-                            continue
-                    elif not normalized_amount.isdigit():
-                        errors['amount'] = 'Invalid amount format'
-                        continue
-
-                    amount_val = float(normalized_amount)
-                    if amount_val <= 0:
-                        errors['amount'] = 'Amount must be greater than 0'
-                except ValueError:
-                    errors['amount'] = 'Invalid amount format'
+            amount_result = validate_review_amount(value, allow_blank=False)
+            if not amount_result.valid:
+                errors['amount'] = amount_result.blocking_error or 'Invalid amount format'
             continue
 
         if field == 'date':

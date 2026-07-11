@@ -7,6 +7,7 @@ Preview is read-only: no file generation, no audit log, no mutations.
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional, Mapping, Any
 import hashlib
 import json
@@ -17,6 +18,7 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import (
     ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewDecision, ReviewItemSubject
 )
+from .amount_validation_service import validate_review_amount
 from .date_validation_service import validate_review_date
 from .service_contracts import ExportRow, ExportPreviewResult
 
@@ -248,6 +250,7 @@ def build_export_preview(
             # Extract transaction_id from raw CSV data
             transaction_id = None
             raw_date = None
+            raw_amount = None
             if raw_row and raw_row.raw_csv_data:
                 csv_data = raw_row.raw_csv_data
                 if isinstance(csv_data, str):
@@ -257,6 +260,7 @@ def build_export_preview(
                         csv_data = {}
                 transaction_id = csv_data.get('transaction_id') or csv_data.get('TransactionID')
                 raw_date = csv_data.get('date') or csv_data.get('Date')
+                raw_amount = csv_data.get('amount') if 'amount' in csv_data else csv_data.get('Amount')
 
             # Collect normalization decisions affecting this contact
             normalized_fields = []
@@ -271,7 +275,7 @@ def build_export_preview(
                 'city': contact.city,
                 'state': contact.state,
                 'postal_code': contact.postal_code,
-                'amount': str(contact.amount) if contact.amount else None,
+                'amount': str(contact.amount) if contact.amount is not None else raw_amount,
             }
 
             # Apply row-level autosave corrections (merged reviewed_values from all autosaves for this row)
@@ -357,6 +361,16 @@ def build_export_preview(
                         if field_key in payload:
                             field_values[field_key] = payload[field_key]
 
+            amount_validation = validate_review_amount(field_values.get('amount'), allow_blank=False)
+            amount_validation_issue = None
+            if amount_validation.valid and amount_validation.normalized_value:
+                try:
+                    field_values['amount'] = f"{Decimal(amount_validation.normalized_value):.2f}"
+                except Exception:
+                    field_values['amount'] = amount_validation.normalized_value
+            elif not amount_validation.valid:
+                amount_validation_issue = f"Amount: {amount_validation.blocking_error}"
+
             # Collect validation decision affecting this contact
             validation_status = 'pending'
             validation_issues = []
@@ -397,6 +411,10 @@ def build_export_preview(
             if date_validation_issue:
                 row_blockers.append("Unresolved validation: date")
                 validation_issues.append(date_validation_issue)
+                validation_status = 'blocked'
+            if amount_validation_issue:
+                row_blockers.append("Unresolved validation: amount")
+                validation_issues.append(amount_validation_issue)
                 validation_status = 'blocked'
 
             # Collect duplicate decision affecting this contact

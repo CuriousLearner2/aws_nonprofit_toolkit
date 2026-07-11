@@ -16,6 +16,7 @@ from .database_models import (
     ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject
 )
 from .autosave_service import get_effective_values
+from .amount_validation_service import validate_review_amount
 from .date_validation_service import validate_review_date
 from .phone_validation_service import is_valid_phone
 import os
@@ -186,10 +187,22 @@ def recalculate_row_issues(
             })
             existing_fields.add('date')
 
+        amount_value = effective_values.get('amount')
+        if amount_value is not None:
+            amount_validation = validate_review_amount(amount_value, allow_blank=False)
+            if not amount_validation.valid and 'amount' not in existing_fields:
+                current_issues.append({
+                    'field': 'amount',
+                    'description': amount_validation.blocking_error or 'Invalid amount format',
+                    'severity': 'error',
+                    'is_new': True
+                })
+                existing_fields.add('amount')
+
         # Additionally, validate the rest of the effective values to detect NEW issues
         # introduced by autosave corrections that don't have pre-existing ReviewItems.
         # This still runs only for proposed_values to preserve the current incremental behavior
-        # for email/phone/amount/address while the strict date rule is applied consistently.
+        # for email/phone/address while strict date and amount rules are applied consistently.
         if proposed_values:
             new_validation_issues = _validate_effective_values(effective_values)
             for new_issue in new_validation_issues:
@@ -297,6 +310,13 @@ def is_issue_resolved(
             # Phone issue resolved if it's valid per phonenumbers library
             # Supports 131+ countries with intelligent parsing of various formats
             return is_valid_phone(effective_str)
+        elif field == 'amount':
+            if effective_str is None:
+                return True
+            amount_result = validate_review_amount(effective_str, allow_blank=False)
+            if not amount_result.valid:
+                return False
+            return raw_value is None or effective_str != (str(raw_value).strip() if raw_value else '')
         elif field == 'date':
             # Date issue resolved if it is a strict ISO calendar date
             return validate_review_date(effective_str, allow_blank=True).valid
@@ -364,10 +384,10 @@ def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[st
     # Validate amount if present (must validate even if falsy like 0, "", etc.)
     if 'amount' in effective_values:
         amount_value = effective_values.get('amount')
-        amount_str = '' if amount_value is None else str(amount_value).strip()
-        amount_issue = _validate_amount(amount_str)
-        if amount_issue:
-            issues.append(amount_issue)
+        if amount_value is not None:
+            amount_issue = _validate_amount(amount_value)
+            if amount_issue:
+                issues.append(amount_issue)
 
     # Validate address if present; missing address is warning-only.
     if 'address' in effective_values:
@@ -454,14 +474,9 @@ def _validate_email(email: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _validate_amount(amount: str) -> Optional[Dict[str, Any]]:
+def _validate_amount(amount: Any) -> Optional[Dict[str, Any]]:
     """
     Validate amount field and return issue if invalid.
-
-    Checks for:
-    - Empty/missing values
-    - Non-numeric values (after removing $ and ,)
-    - Amount <= 0
 
     Args:
         amount: Amount value to validate (string, may be empty)
@@ -469,61 +484,11 @@ def _validate_amount(amount: str) -> Optional[Dict[str, Any]]:
     Returns:
         Issue dict if invalid, None if valid
     """
-    # Empty or whitespace-only amount is invalid
-    if not amount or not amount.strip():
+    amount_result = validate_review_amount(amount, allow_blank=False)
+    if not amount_result.valid:
         return {
             'field': 'amount',
-            'description': 'Amount is required',
-            'severity': 'error',
-            'is_new': True
-        }
-
-    try:
-        normalized_amount = amount.replace('$', '').replace(',', '').strip()
-        if normalized_amount.startswith('-'):
-            return {
-                'field': 'amount',
-                'description': 'Amount must be greater than 0',
-                'severity': 'error',
-                'is_new': True
-            }
-
-        if '.' in normalized_amount:
-            whole_part, decimal_part = normalized_amount.split('.', 1)
-            if not whole_part.isdigit() or not decimal_part.isdigit():
-                return {
-                    'field': 'amount',
-                    'description': 'Invalid amount format',
-                    'severity': 'error',
-                    'is_new': True
-                }
-            if len(decimal_part) > 2:
-                return {
-                    'field': 'amount',
-                    'description': 'Amount must have at most 2 decimal places',
-                    'severity': 'error',
-                    'is_new': True
-                }
-        elif not normalized_amount.isdigit():
-            return {
-                'field': 'amount',
-                'description': 'Invalid amount format',
-                'severity': 'error',
-                'is_new': True
-            }
-
-        amount_val = float(normalized_amount)
-        if amount_val <= 0:
-            return {
-                'field': 'amount',
-                'description': 'Amount must be greater than 0',
-                'severity': 'error',
-                'is_new': True
-            }
-    except ValueError:
-        return {
-            'field': 'amount',
-            'description': 'Invalid amount format',
+            'description': amount_result.blocking_error or 'Invalid amount format',
             'severity': 'error',
             'is_new': True
         }

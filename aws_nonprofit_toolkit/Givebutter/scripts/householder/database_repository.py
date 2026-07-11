@@ -16,6 +16,7 @@ Design principles:
 """
 
 from typing import List, Optional
+from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 from sqlalchemy import create_engine, func
@@ -31,6 +32,7 @@ from .service_contracts import (
     AuditLogEntry, AuditPageViewModel,
     ExportCard, ExportConsoleViewModel
 )
+from .amount_validation_service import validate_review_amount
 from .export_config import EXPORT_CARD_DEFINITIONS
 
 
@@ -414,13 +416,20 @@ class DatabaseImportRepository:
                 amount_str = ''
                 effective_amount = effective.get('amount')
                 if effective_amount is not None:
-                    try:
-                        amount_val = float(str(effective_amount).replace('$', '').replace(',', '').strip())
-                        amount_str = f'${amount_val:,.2f}'
-                    except (ValueError, AttributeError):
-                        amount_str = ''
+                    amount_result = validate_review_amount(effective_amount, allow_blank=True)
+                    if amount_result.valid and amount_result.normalized_value:
+                        try:
+                            amount_val = Decimal(amount_result.normalized_value)
+                            amount_str = f'${amount_val:,.2f}'
+                        except (InvalidOperation, ValueError):
+                            amount_str = str(effective_amount)
+                    else:
+                        amount_str = str(effective_amount)
                 elif contact.amount is not None:
-                    amount_str = f'${contact.amount:,.2f}'
+                    try:
+                        amount_str = f'${Decimal(str(contact.amount)):,.2f}'
+                    except (InvalidOperation, ValueError, TypeError):
+                        amount_str = str(contact.amount)
 
                 # Get current validation issues (recalculated based on effective values)
                 try:

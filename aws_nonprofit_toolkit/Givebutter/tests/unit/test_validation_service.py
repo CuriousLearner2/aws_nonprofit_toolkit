@@ -523,6 +523,49 @@ class TestValidationServiceFixtureFallbackValidation:
             assert len(issues) > 0, "Expected issues to be detected for missing amount"
             assert any('amount' in issue['field'].lower() for issue in issues), \
                 f"Expected amount issue but got: {issues}"
+
+    def test_fixture_fallback_catches_overprecision_amount(self):
+        """Test that over-precision amount is caught even when fixture issue_type is None."""
+        from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
+        from scripts.householder.validation_service import get_validation_review
+        from unittest.mock import patch, MagicMock
+
+        test_row = ValidationRow(
+            id="TXN-BAD-AMOUNT",
+            raw_import_row_id=997,
+            date="2026-05-21",
+            name="Bad Amount Test",
+            email="valid@example.com",
+            phone="(212) 555-1234",
+            amount="100.001",
+            address="123 Test St, Springfield, IL 62701",
+            issue_type=None,
+            issue_description=None,
+        )
+
+        test_vm = ValidationPageViewModel(
+            batch_id="IMP-TEST-BAD-AMOUNT",
+            filename="test_bad_amount.csv",
+            progress=50,
+            validation_rows=(test_row,),
+            validation_issues_count=1,
+            total_records=1,
+        )
+
+        with patch('scripts.householder.validation_service.get_import_repository') as mock_get_repo:
+            mock_repo = MagicMock()
+            mock_repo.get_validation.return_value = test_vm
+            mock_get_repo.return_value = mock_repo
+
+            result = get_validation_review("IMP-TEST-BAD-AMOUNT")
+
+            issues = result['validation_issues'][0]['issues']
+            assert len(issues) > 0, "Expected issues to be detected for over-precision amount"
+            assert any('amount' in issue['field'].lower() for issue in issues), \
+                f"Expected amount issue but got: {issues}"
+
+            row_status = result['validation_issues'][0]['row_status']
+            assert row_status == 'Blocking', f"Expected 'Blocking' but got '{row_status}'"
             
             # Verify row status is Blocking
             row_status = result['validation_issues'][0]['row_status']

@@ -566,7 +566,10 @@ class TestAutosaveValidationSync:
         assert len(data['issues']) > 0
         amount_issue = next((i for i in data['issues'] if i.get('field') == 'amount'), None)
         assert amount_issue is not None
-        assert 'required' in amount_issue['reason'].lower() or 'invalid' in amount_issue['reason'].lower()
+        assert any(
+            phrase in amount_issue['reason'].lower()
+            for phrase in ('required', 'invalid', 'empty')
+        )
 
     def test_valid_positive_amount_has_no_issue(self, flask_client_with_batch):
         """Valid positive amount should not produce validation error."""
@@ -650,7 +653,10 @@ class TestAutosaveValidationSync:
         # Amount error (required field)
         amount_error = next((i for i in issues if i.get('field') == 'amount'), None)
         assert amount_error is not None
-        assert 'required' in amount_error['reason'].lower()
+        assert any(
+            phrase in amount_error['reason'].lower()
+            for phrase in ('required', 'invalid', 'empty')
+        )
         
         # Phone error
         phone_error = next((i for i in issues if i.get('field') == 'phone'), None)

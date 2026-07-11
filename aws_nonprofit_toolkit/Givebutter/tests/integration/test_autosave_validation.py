@@ -176,6 +176,13 @@ class TestAutosaveValidation:
         assert is_valid is True
         assert errors is None
 
+    @pytest.mark.parametrize('good_amount', ['.50', '5.', '0.50', '5.00', '$1,250.50'])
+    def test_validate_corrected_values_valid_amount_formats(self, good_amount):
+        """Canonical amount validation should accept shorthand and formatted valid amounts."""
+        is_valid, errors = validate_corrected_values({'amount': good_amount})
+        assert is_valid is True, f"Expected amount '{good_amount}' to validate"
+        assert errors is None
+
     def test_validate_corrected_values_invalid_date(self):
         """Unit test: validate_corrected_values rejects invalid date syntax."""
         is_valid, errors = validate_corrected_values({'date': '2026&05-15'})
@@ -563,6 +570,14 @@ class TestAutosaveValidation:
             assert decision.reviewed_values['amount'] == '$1,250.50'
         finally:
             session.close()
+
+    @pytest.mark.parametrize('bad_amount', ['NaN', 'Infinity', '-Infinity', '1,2,3'])
+    def test_validate_corrected_values_rejects_non_finite_amounts(self, bad_amount):
+        """Canonical amount validation should reject non-finite Decimal values."""
+        is_valid, errors = validate_corrected_values({'amount': bad_amount})
+        assert is_valid is False
+        assert 'amount' in errors
+        assert 'format' in errors['amount'].lower() or 'greater than 0' in errors['amount'].lower()
 
     def test_autosave_invalid_date_not_saved(self, client_with_db):
         """Invalid date correction is rejected and does not replace the saved date."""

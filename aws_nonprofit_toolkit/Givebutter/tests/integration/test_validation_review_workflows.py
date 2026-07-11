@@ -446,6 +446,58 @@ def _seed_db_backed_date_parity_batch(Session, batch_id, raw_date):
         session.close()
 
 
+def _seed_db_backed_amount_parity_batch(Session, batch_id, raw_amount):
+    """Create an isolated DB-backed batch for amount parity checks."""
+    session = Session()
+    try:
+        batch = ImportBatch(
+            id=batch_id,
+            filename='amount_parity.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id=batch_id,
+            row_index=1,
+            raw_csv_data={
+                'name': 'Amount Parity',
+                'date': '2026-05-15',
+                'email': 'amount.parity@example.com',
+                'phone': '(415) 555-1234',
+                'amount': raw_amount,
+                'address': '123 Main St',
+            },
+        )
+        session.add(raw_row)
+        session.flush()
+
+        cleaned_amount = str(raw_amount).strip().replace('$', '').replace(',', '')
+        try:
+            contact_amount = float(cleaned_amount) if cleaned_amount else None
+        except (TypeError, ValueError):
+            contact_amount = None
+
+        contact = ImportContact(
+            batch_id=batch_id,
+            raw_import_row_id=raw_row.id,
+            first_name='Amount',
+            last_name='Parity',
+            email='amount.parity@example.com',
+            phone='(415) 555-1234',
+            amount=contact_amount,
+            address_line1='123 Main St',
+        )
+        session.add(contact)
+        session.commit()
+        return raw_row.id
+    finally:
+        session.close()
+
+
 # ==============================================================================
 # TEST 1: Email validation and row status sync
 # ==============================================================================
@@ -928,6 +980,221 @@ class TestValidationReviewScopeExclusions:
         assert 'YYYY-MM-DD' in row_validation_text, (
             f"Expected strict date copy in export row validation issues, got: {row_validation_text}"
         )
+
+
+class TestAmountValidationParity:
+    """Test DB-backed amount validation parity across route, approval, and export."""
+
+    def test_db_backed_invalid_raw_amount_is_visible_in_validation_route(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed validation route must surface an invalid raw amount without autosave."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-amount-route-batch'
+        raw_id = _seed_db_backed_amount_parity_batch(Session, batch_id, '100.001')
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        row_marker = f'data-testid="row-{raw_id}"'
+        assert row_marker in html, f"Expected DB-backed row to render, got: {html[:2000]}"
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        assert row_end != -1, "Expected closing row tag for DB-backed amount row"
+        row_section = html[row_start:row_end]
+
+        assert 'Blocking' in row_section, f"Invalid raw amount should block, got: {row_section}"
+        assert 'Amount must have at most 2 decimal places' in row_section, (
+            f"Expected strict amount validation copy, got: {row_section}"
+        )
+
+        from scripts.householder.approval_service import check_batch_remaining_issues
+        from scripts.householder.export_preview_service import build_export_preview
+
+        remaining_issues = check_batch_remaining_issues(batch_id, database_url)
+        assert any(
+            issue.get('field') == 'amount'
+            for row in remaining_issues
+            for issue in row.get('issues', [])
+        ), (
+            f"Expected approval readiness to report amount issue, got: {remaining_issues}"
+        )
+
+        preview = build_export_preview(
+            batch_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+        assert preview.is_export_ready is False, (
+            f"Invalid raw amount should block export preview, got: {preview}"
+        )
+        preview_text = ' '.join(list(preview.blockers) + list(preview.warnings))
+        assert 'amount' in preview_text.lower(), f"Expected amount blocker in preview, got: {preview_text}"
+
+    def test_db_backed_valid_raw_amount_remains_clear(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed validation route must keep a valid raw amount clear."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-amount-clear-batch'
+        raw_id = _seed_db_backed_amount_parity_batch(Session, batch_id, '125.50')
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        row_marker = f'data-testid="row-{raw_id}"'
+        assert row_marker in html, f"Expected DB-backed row to render, got: {html[:2000]}"
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        assert row_end != -1, "Expected closing row tag for DB-backed valid amount row"
+        row_section = html[row_start:row_end]
+
+        assert 'No issues' in row_section, f"Valid raw amount should remain clear, got: {row_section}"
+        assert 'Amount must have at most 2 decimal places' not in row_section
+
+    def test_db_backed_reviewed_valid_amount_supersedes_invalid_raw_amount(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed autosave of a valid amount should override an invalid raw amount without mutating raw data."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-amount-reviewed-batch'
+        raw_id = _seed_db_backed_amount_parity_batch(Session, batch_id, '100.001')
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'amount': '250.50'}
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert data['effective_values']['amount'] == '250.50'
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+        assert 'No issues' in row_section, f"Reviewed valid amount should clear invalid raw amount, got: {row_section}"
+        assert 'Amount must have at most 2 decimal places' not in row_section
+
+        session = Session()
+        try:
+            raw_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            assert raw_row.raw_csv_data['amount'] == '100.001', (
+                f"Raw source data must remain unchanged, got: {raw_row.raw_csv_data['amount']}"
+            )
+        finally:
+            session.close()
+
+    def test_db_backed_reviewed_invalid_amount_remains_blocking(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed invalid reviewed amount must remain blocking for route, approval, and export."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-amount-invalid-reviewed-batch'
+        raw_id = _seed_db_backed_amount_parity_batch(Session, batch_id, '125.50')
+
+        session = Session()
+        try:
+            session.add(
+                ReviewDecision(
+                    batch_id=batch_id,
+                    review_item_id=None,
+                    raw_import_row_id=raw_id,
+                    decision='accept_issue',
+                    reviewed_values={'amount': '125.001'},
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+        assert 'Blocking' in row_section, f"Reviewed invalid amount should block, got: {row_section}"
+        assert 'Amount must have at most 2 decimal places' in row_section, (
+            f"Expected strict amount validation copy, got: {row_section}"
+        )
+
+        from scripts.householder.approval_service import check_batch_remaining_issues
+        from scripts.householder.export_preview_service import build_export_preview
+
+        remaining_issues = check_batch_remaining_issues(batch_id, database_url)
+        assert any(
+            issue.get('field') == 'amount'
+            for row in remaining_issues
+            for issue in row.get('issues', [])
+        ), (
+            f"Expected approval readiness to report amount issue, got: {remaining_issues}"
+        )
+
+        preview = build_export_preview(
+            batch_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+        assert preview.is_export_ready is False, (
+            f"Reviewed invalid amount should block export preview, got: {preview}"
+        )
+
+    def test_db_backed_raw_zero_amount_is_blocking_not_missing(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed raw zero amount should be treated as an invalid amount, not missing data."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-amount-zero-batch'
+        raw_id = _seed_db_backed_amount_parity_batch(Session, batch_id, '0')
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+
+        assert 'Blocking' in row_section, f"Raw zero amount should block, got: {row_section}"
+        assert 'Amount field is empty' not in row_section, (
+            f"Raw zero amount should not be treated as missing, got: {row_section}"
+        )
+        assert 'Amount must be greater than 0' in row_section, (
+            f"Expected positive-value validation copy for raw zero amount, got: {row_section}"
+        )
+
+        from scripts.householder.export_preview_service import build_export_preview
+        preview = build_export_preview(
+            batch_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+        assert preview.is_export_ready is False
+        preview_text = ' '.join(list(preview.blockers) + list(preview.warnings))
+        assert 'greater than 0' in preview_text.lower() or 'amount' in preview_text.lower()
 
 
 # ==============================================================================

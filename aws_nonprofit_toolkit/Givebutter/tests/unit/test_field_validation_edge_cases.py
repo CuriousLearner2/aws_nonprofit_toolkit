@@ -74,7 +74,7 @@ class TestAmountValidationEdgeCases:
         """Verify decimal amounts work."""
         # Amounts below typical range ($1) may trigger WARNING
         # Test typical/normal range amounts
-        valid_amounts = ['1.00', '100.50', '1000.99', '9999999.99']
+        valid_amounts = ['.50', '0.50', '1.00', '12.3', '100.50', '1000.99', '9999999.99', '5.']
         for amount in valid_amounts:
             record = {'Amount': amount}
             tier, reason, suggestion = validate_amount(record, header_map, {})
@@ -87,7 +87,7 @@ class TestAmountValidationEdgeCases:
 
     def test_formatted_amounts(self, header_map):
         """Verify formatted amounts (with commas, dollar signs)."""
-        valid_amounts = ['$100', '$1,000.50', '1,000,000']
+        valid_amounts = ['$100', '$1,000.50', '1,000,000', '$5.00', '1,000.00']
         for amount in valid_amounts:
             record = {'Amount': amount}
             tier, reason, suggestion = validate_amount(record, header_map, {})
@@ -96,7 +96,7 @@ class TestAmountValidationEdgeCases:
 
     def test_non_numeric_amounts(self, header_map):
         """Verify non-numeric amounts fail."""
-        invalid_amounts = ['abc', '100x', 'one hundred']
+        invalid_amounts = ['abc', '100x', 'one hundred', 'NaN', 'Infinity', '+5.00', '1,2,3', '12,34.56']
         for amount in invalid_amounts:
             record = {'Amount': amount}
             tier, reason, suggestion = validate_amount(record, header_map, {})
