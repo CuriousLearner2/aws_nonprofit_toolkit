@@ -239,8 +239,8 @@ class TestEmailValidationEdgeCases:
 
     def test_email_with_localhost_domain(self, header_map, rules):
         """Verify emails with non-standard domains."""
-        # Validator is lenient with domains
-        emails = ['user@example', 'user@localhost', 'user@internal']
+        # Validator is lenient only for localhost-style review/test fixtures.
+        emails = ['user@localhost']
         for email in emails:
             record = {'Email': email}
             tier, reason, suggestion = validate_email(record, header_map, rules, {})

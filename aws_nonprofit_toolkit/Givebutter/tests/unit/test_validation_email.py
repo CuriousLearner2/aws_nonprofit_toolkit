@@ -1,6 +1,13 @@
 """Unit tests for email validation."""
+
 import pytest
+
 from processor import validate_email
+from scripts.householder.email_validation_service import (
+    EMAIL_FORMAT_ERROR,
+    EMAIL_REQUIRED_ERROR,
+    validate_review_email,
+)
 
 
 class TestEmailValidation:
@@ -97,3 +104,106 @@ class TestEmailValidation:
 
         tier, reason, suggestion = validate_email(record, header_map, rules, reference)
         assert tier == 'PASS'
+
+
+class TestCanonicalEmailValidationService:
+    """Test the canonical review-time email validator."""
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "user@example.com",
+            "USER@example.com",
+            "user.name@example.com",
+            "user+tag@example.com",
+            "user@example.co.uk",
+            "user@localhost",
+            "user@例え.テスト",
+            "δοκιμή@παράδειγμα.δοκιμή",
+        ],
+    )
+    def test_validate_review_email_accepts_common_valid_addresses(self, email):
+        result = validate_review_email(email)
+        assert result.valid is True
+        assert result.blocking_error is None
+        assert result.normalized_value == email.strip()
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "user",
+            "@example.com",
+            "user@",
+            "user@example",
+            "user@internal",
+            "user example@example.com",
+            "user..name@example.com",
+            "Jane Doe <jane@example.com>",
+            '"user"@example.com',
+            "user@[127.0.0.1]",
+            "user@example.",
+            "user@example..com",
+        ],
+    )
+    def test_validate_review_email_rejects_malformed_addresses(self, email):
+        result = validate_review_email(email)
+        assert result.valid is False
+        assert result.blocking_error in {EMAIL_FORMAT_ERROR, "Invalid email format (missing @)"}
+
+    @pytest.mark.parametrize(
+        "email",
+        ["", "   ", None],
+    )
+    def test_validate_review_email_rejects_blank_values(self, email):
+        result = validate_review_email(email)
+        assert result.valid is False
+        assert result.blocking_error == EMAIL_REQUIRED_ERROR
+
+    def test_validate_review_email_can_allow_blank(self):
+        result = validate_review_email("   ", allow_blank=True)
+        assert result.valid is True
+        assert result.normalized_value == ""
+
+    def test_validate_review_email_preserves_trimmed_input(self):
+        result = validate_review_email("  User+Tag@Example.COM  ")
+        assert result.valid is True
+        assert result.normalized_value == "User+Tag@Example.COM"
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "user..name@localhost",
+            '"john"@localhost',
+            ("a" * 65) + "@localhost",
+        ],
+    )
+    def test_validate_review_email_rejects_malformed_localhost_addresses(self, email):
+        result = validate_review_email(email)
+        assert result.valid is False
+        assert result.blocking_error == EMAIL_FORMAT_ERROR
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            ("a" * 65) + "@example.com",
+            "user@" + ("a" * 246) + ".com",
+        ],
+    )
+    def test_validate_review_email_rejects_oversized_addresses(self, email):
+        result = validate_review_email(email)
+        assert result.valid is False
+        assert result.blocking_error == EMAIL_FORMAT_ERROR
+
+    @pytest.mark.parametrize(
+        "email, warning_fragment",
+        [
+            ("user@gmai.com", "gmail.com"),
+            ("user@gamil.com", "gmail.com"),
+            ("user@yaho.com", "yahoo.com"),
+        ],
+    )
+    def test_validate_review_email_warns_on_common_typos(self, email, warning_fragment):
+        result = validate_review_email(email)
+        assert result.valid is True
+        assert result.warnings
+        assert warning_fragment in result.warnings[0]

@@ -304,11 +304,11 @@ def _seed_warning_only_validation_issue(Session, batch_id, raw_import_row_id):
 
         if raw_row:
             raw_data = dict(raw_row.raw_csv_data or {})
-            raw_data['email'] = 'gmial.com'
+            raw_data['email'] = 'john@gmial.com'
             raw_row.raw_csv_data = raw_data
 
         if contact:
-            contact.email = 'gmial.com'
+            contact.email = 'john@gmial.com'
 
             issue = session.query(ReviewItem).join(ReviewItemSubject).filter(
                 ReviewItem.batch_id == batch_id,
@@ -351,8 +351,8 @@ def _seed_isolated_warning_only_batch(Session):
             raw_csv_data={
                 'name': 'Warning Only',
                 'date': '2026-01-15',
-                'email': 'gmial.com',
-                'phone': '(555) 123-4567',
+                'email': 'john@gmial.com',
+                'phone': '(415) 555-2671',
                 'amount': '100.00',
                 'address': '123 Main St',
             },
@@ -365,8 +365,8 @@ def _seed_isolated_warning_only_batch(Session):
             raw_import_row_id=raw_row.id,
             first_name='Warning',
             last_name='Only',
-            email='gmial.com',
-            phone='(555) 123-4567',
+            email='john@gmial.com',
+            phone='(415) 555-2671',
             amount=100.0,
             address_line1='123 Main St',
         )
@@ -492,6 +492,75 @@ def _seed_db_backed_amount_parity_batch(Session, batch_id, raw_amount):
             address_line1='123 Main St',
         )
         session.add(contact)
+        session.commit()
+        return raw_row.id
+    finally:
+        session.close()
+
+
+def _seed_db_backed_email_parity_batch(
+    Session,
+    batch_id,
+    raw_email,
+    *,
+    issue_payload=None,
+    contact_email=None,
+):
+    """Create an isolated DB-backed batch for email parity checks."""
+    session = Session()
+    try:
+        batch = ImportBatch(
+            id=batch_id,
+            filename='email_parity.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id=batch_id,
+            row_index=1,
+            raw_csv_data={
+                'name': 'Email Parity',
+                'date': '2026-05-15',
+                'email': raw_email,
+                'phone': '(415) 555-1234',
+                'amount': '125.00',
+                'address': '123 Main St',
+            },
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id=batch_id,
+            raw_import_row_id=raw_row.id,
+            first_name='Email',
+            last_name='Parity',
+            email=contact_email if contact_email is not None else raw_email,
+            phone='(415) 555-1234',
+            amount=125.0,
+            address_line1='123 Main St',
+        )
+        session.add(contact)
+        if issue_payload:
+            review_item = ReviewItem(
+                batch_id=batch_id,
+                item_type='validation',
+                status='pending',
+                payload_json=issue_payload,
+            )
+            session.add(review_item)
+            session.flush()
+            session.add(
+                ReviewItemSubject(
+                    review_item_id=review_item.id,
+                    subject_type='import_contact_snapshot',
+                    subject_id=contact.id,
+                )
+            )
         session.commit()
         return raw_row.id
     finally:
@@ -979,6 +1048,183 @@ class TestValidationReviewScopeExclusions:
         )
         assert 'YYYY-MM-DD' in row_validation_text, (
             f"Expected strict date copy in export row validation issues, got: {row_validation_text}"
+        )
+
+
+class TestEmailValidationParity:
+    """Test DB-backed email validation parity across route, approval, and export."""
+
+    def test_db_backed_invalid_raw_email_is_visible_in_validation_route(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed validation route must surface invalid raw email before autosave."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-email-route-batch'
+        raw_id = _seed_db_backed_email_parity_batch(
+            Session,
+            batch_id,
+            'invalid-no-at-symbol',
+            contact_email='john.smith@example.com',
+        )
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        row_marker = f'data-testid="row-{raw_id}"'
+        assert row_marker in html, f"Expected DB-backed email row to render, got: {html[:2000]}"
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        assert row_end != -1, "Expected closing row tag for DB-backed email row"
+        row_section = html[row_start:row_end]
+
+        assert 'Blocking' in row_section, f"Invalid raw email should block, got: {row_section}"
+        assert 'Invalid email format' in row_section or 'missing @' in row_section.lower(), (
+            f"Expected strict email validation copy, got: {row_section}"
+        )
+
+        from scripts.householder.approval_service import check_batch_remaining_issues
+        from scripts.householder.export_preview_service import build_export_preview
+
+        remaining_issues = check_batch_remaining_issues(batch_id, database_url)
+        assert any(
+            issue.get('field') == 'email'
+            for row in remaining_issues
+            for issue in row.get('issues', [])
+        ), (
+            f"Expected approval readiness to report email issue, got: {remaining_issues}"
+        )
+
+        preview = build_export_preview(
+            batch_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+        assert preview.is_export_ready is False, (
+            f"Invalid raw email should block export preview, got: {preview}"
+        )
+        preview_text = ' '.join(list(preview.blockers) + list(preview.warnings))
+        assert 'email' in preview_text.lower(), f"Expected email blocker in preview, got: {preview_text}"
+
+    def test_db_backed_reviewed_valid_email_supersedes_invalid_raw_email(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed autosave of a valid email should override an invalid raw email without mutating raw data."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-email-reviewed-batch'
+        raw_id = _seed_db_backed_email_parity_batch(
+            Session,
+            batch_id,
+            'invalid-no-at-symbol',
+            issue_payload={
+                'field': 'email',
+                'issue': 'missing_email',
+                'description': 'Invalid email',
+                'severity': 'error',
+            },
+        )
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'john.smith@example.com'}
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert data['effective_values']['email'] == 'john.smith@example.com'
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+        assert 'No issues' in row_section, f"Reviewed valid email should clear invalid raw email, got: {row_section}"
+        assert 'Invalid email format' not in row_section
+
+        from scripts.householder.approval_service import check_batch_remaining_issues
+        from scripts.householder.export_preview_service import build_export_preview
+
+        remaining_issues = check_batch_remaining_issues(batch_id, database_url)
+        assert not any(
+            issue.get('field') == 'email'
+            for row in remaining_issues
+            for issue in row.get('issues', [])
+        ), (
+            f"Approval readiness should clear email issue after valid autosave, got: {remaining_issues}"
+        )
+
+        preview = build_export_preview(
+            batch_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+        assert preview.is_export_ready is True, (
+            f"Valid reviewed email should keep export preview ready when no blockers remain, got: {preview}"
+        )
+
+        session = Session()
+        try:
+            raw_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            assert raw_row.raw_csv_data['email'] == 'invalid-no-at-symbol', (
+                f"Raw source data must remain unchanged, got: {raw_row.raw_csv_data['email']}"
+            )
+        finally:
+            session.close()
+
+    def test_db_backed_reviewed_invalid_email_remains_blocking(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed invalid reviewed email should be rejected and leave the saved value intact."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-email-invalid-reviewed-batch'
+        raw_id = _seed_db_backed_email_parity_batch(
+            Session,
+            batch_id,
+            'john@example.com',
+            issue_payload={
+                'field': 'email',
+                'issue': 'missing_email',
+                'description': 'Invalid email',
+                'severity': 'error',
+            },
+        )
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'email': 'invalid-email'}
+            }
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert 'email' in data['validation_errors']
+        assert 'Invalid email format' in data['validation_errors']['email']
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+        assert 'No issues' in row_section, (
+            f"Rejected invalid reviewed email should leave prior valid email intact, got: {row_section}"
         )
 
 

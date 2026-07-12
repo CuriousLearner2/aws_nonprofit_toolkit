@@ -200,7 +200,7 @@ def validate_corrected_values(
     from .phone_validation_service import is_valid_phone
     from .date_validation_service import validate_review_date
     from .amount_validation_service import validate_review_amount
-    import re
+    from .email_validation_service import validate_review_email
 
     errors = {}
 
@@ -218,6 +218,12 @@ def validate_corrected_values(
                 errors['date'] = date_result.blocking_error or 'Invalid date format'
             continue
 
+        if field == 'email':
+            email_result = validate_review_email(value, allow_blank=False)
+            if not email_result.valid:
+                errors['email'] = email_result.blocking_error or 'Invalid email format'
+            continue
+
         # For other fields, skip if empty/falsy (might be clearing a field)
         if not value or not isinstance(value, str):
             continue
@@ -225,13 +231,6 @@ def validate_corrected_values(
         value_str = value.strip()
         if not value_str:
             continue
-
-        # Validate email field
-        if field == 'email':
-            # Canonical format: something@something.something
-            email_pattern = r'^[^@]+@[^@]+\.[^@]+$'
-            if not re.match(email_pattern, value_str.lower()):
-                errors['email'] = 'Invalid email format (require: localpart@domain.tld)'
 
         # Validate phone field
         elif field == 'phone':

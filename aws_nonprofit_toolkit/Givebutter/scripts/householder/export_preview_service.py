@@ -18,8 +18,10 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import (
     ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewDecision, ReviewItemSubject
 )
+from .email_validation_service import validate_review_email
 from .amount_validation_service import validate_review_amount
 from .date_validation_service import validate_review_date
+from .issue_recalculation_service import is_issue_resolved
 from .service_contracts import ExportRow, ExportPreviewResult
 
 
@@ -251,6 +253,7 @@ def build_export_preview(
             transaction_id = None
             raw_date = None
             raw_amount = None
+            raw_email = None
             if raw_row and raw_row.raw_csv_data:
                 csv_data = raw_row.raw_csv_data
                 if isinstance(csv_data, str):
@@ -260,6 +263,7 @@ def build_export_preview(
                         csv_data = {}
                 transaction_id = csv_data.get('transaction_id') or csv_data.get('TransactionID')
                 raw_date = csv_data.get('date') or csv_data.get('Date')
+                raw_email = csv_data.get('email') or csv_data.get('Email')
                 raw_amount = csv_data.get('amount') if 'amount' in csv_data else csv_data.get('Amount')
 
             # Collect normalization decisions affecting this contact
@@ -268,7 +272,7 @@ def build_export_preview(
             field_values = {
                 'first_name': contact.first_name,
                 'last_name': contact.last_name,
-                'email': contact.email,
+                'email': raw_email if raw_email is not None else contact.email,
                 'phone': contact.phone,
                 'address_line1': contact.address_line1,
                 'address_line2': contact.address_line2,
@@ -376,6 +380,14 @@ def build_export_preview(
             validation_issues = []
             row_blocker_count_before = len(row_blockers)
 
+            email_validation = validate_review_email(field_values.get('email'), allow_blank=False)
+            email_validation_issue = None
+            if not email_validation.valid:
+                email_validation_issue = f"Email: {email_validation.blocking_error}"
+            elif email_validation.warnings:
+                row_warnings.append(f"Email: {email_validation.warnings[0]}")
+                validation_issues.append(f"Email: {email_validation.warnings[0]}")
+
             for val_item in review_items.values():
                 if val_item.item_type != 'validation' or val_item.batch_id != import_id:
                     continue
@@ -395,6 +407,19 @@ def build_export_preview(
                         validation_status = 'deferred'
                         row_warnings.append(f"Validation issue unresolved: {issue_type}")
                 else:
+                    issue_type_lower = str(issue_type).lower() if issue_type else ''
+                    if (
+                        issue_type_lower
+                        and 'email' in issue_type_lower
+                        and is_issue_resolved(
+                            'email',
+                            field_values.get('email'),
+                            issue_type,
+                            raw_value=raw_email,
+                        )
+                    ):
+                        continue
+
                     # No decision - check severity
                     critical_issues = [
                         'missing_email', 'invalid_email', 'invalid_email_format',
@@ -415,6 +440,10 @@ def build_export_preview(
             if amount_validation_issue:
                 row_blockers.append("Unresolved validation: amount")
                 validation_issues.append(amount_validation_issue)
+                validation_status = 'blocked'
+            if email_validation_issue:
+                row_blockers.append("Unresolved validation: email")
+                validation_issues.append(email_validation_issue)
                 validation_status = 'blocked'
 
             # Collect duplicate decision affecting this contact

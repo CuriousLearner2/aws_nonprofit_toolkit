@@ -258,7 +258,7 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
     Flow:
     1. Seed database with valid email
     2. Load validation page in browser
-    3. Change email to invalid ('john@example' - missing domain)
+    3. Change email to invalid ('invalid-no-at-symbol' - missing @)
     4. Blur field to trigger autosave
     5. Assert error styling (red border) AND status shows 'Blocking'
     6. Change email back to valid ('john@example.com')
@@ -348,7 +348,7 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 # ===== PART 1: Invalid email triggers error state =====
                 print(f"\n=== TEST PART 1: Invalid Email ===")
 
-                await email_input.fill('john@example')  # Invalid: missing domain
+                await email_input.fill('invalid-no-at-symbol')  # Invalid: missing @
                 await email_input.evaluate("el => el.blur()")  # Trigger autosave
                 # Wait for row status dropdown to update with 'Blocking' status
                 await page.wait_for_function(
@@ -2552,7 +2552,7 @@ async def test_amount_and_email_multi_error_workflow(
                 # ===== PART 1: Single-field error (invalid email) =====
                 print(f"\n=== PART 1: Single-field error (invalid email) ===")
 
-                await email_input.fill('charlie@example')  # Missing domain TLD
+                await email_input.fill('invalid-no-at-symbol')  # Missing @
                 await email_input.evaluate("el => el.blur()")
 
                 # Wait for email error to appear

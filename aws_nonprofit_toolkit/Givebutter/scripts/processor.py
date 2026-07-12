@@ -17,6 +17,7 @@ from datetime import datetime
 
 from scripts.householder.date_validation_service import validate_review_date
 from scripts.householder.amount_validation_service import validate_review_amount
+from scripts.householder.email_validation_service import validate_review_email
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -305,13 +306,18 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
     if pd.isna(email) or str(email).strip() == '':
         return ('FAIL', "Email field is empty", "Verify email address for each record")
 
-    email_str = str(email).strip().lower()
+    email_validation = validate_review_email(email, allow_blank=False)
+    if not email_validation.valid:
+        return ('FAIL', email_validation.blocking_error or "Invalid email format", "Fix email format: add @ symbol")
+
+    email_str = str(email).strip()
+    email_lower = email_str.lower()
 
     # Check for typo patterns
     email_typos = {t['from']: t['to'] for t in rules.get('email_typos', [])}
 
-    if '@' in email_str:
-        user_part, domain = email_str.rsplit('@', 1)
+    if '@' in email_lower:
+        user_part, domain = email_lower.rsplit('@', 1)
 
         # Domain must not be empty
         if not domain:

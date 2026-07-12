@@ -75,7 +75,7 @@ def sample_batch(test_db):
         row1 = RawImportRow(
             batch_id='BATCH-001',
             row_index=1,
-            raw_csv_data={'name': 'John Doe', 'email': 'john@example.com', 'phone': '555-1234'}
+            raw_csv_data={'name': 'John Doe', 'email': 'john@example.com', 'phone': '(415) 555-2671'}
         )
         row2 = RawImportRow(
             batch_id='BATCH-001',
