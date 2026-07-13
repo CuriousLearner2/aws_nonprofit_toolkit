@@ -129,6 +129,48 @@ def sample_batch(test_db):
         session.close()
 
 
+@pytest.fixture
+def clean_sample_batch(test_db):
+    """Create a clean sample batch with no remaining validation issues."""
+    engine = create_engine(test_db)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        batch = ImportBatch(
+            id='BATCH-002',
+            filename='clean_batch.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='processing',
+            raw_row_count=2
+        )
+        session.add(batch)
+        session.flush()
+
+        row1 = RawImportRow(
+            batch_id='BATCH-002',
+            row_index=1,
+            raw_csv_data={'name': 'John Doe', 'email': 'john@example.com', 'phone': '(415) 555-2671'}
+        )
+        row2 = RawImportRow(
+            batch_id='BATCH-002',
+            row_index=2,
+            raw_csv_data={'name': 'Jane Smith', 'email': 'jane@example.com', 'phone': '(415) 555-2671'}
+        )
+        session.add(row1)
+        session.add(row2)
+        session.commit()
+
+        return {
+            'batch_id': batch.id,
+            'row1_id': row1.id,
+            'row2_id': row2.id,
+            'db_url': test_db
+        }
+    finally:
+        session.close()
+
+
 class TestAutosaveAppendOnly:
     """Test autosave creates append-only ReviewDecision records."""
 
@@ -195,7 +237,7 @@ class TestEffectiveValues:
         # Should return raw values
         assert effective['name'] == 'John Doe'
         assert effective['email'] == 'john@example.com'
-        assert effective['phone'] == '555-1234'
+        assert effective['phone'] == '(415) 555-2671'
 
     def test_effective_values_with_corrections(self, sample_batch):
         """Effective values merge raw + latest corrections."""
@@ -216,7 +258,7 @@ class TestEffectiveValues:
         # Should have corrected email + raw name/phone
         assert effective['email'] == 'john.doe@example.com'
         assert effective['name'] == 'John Doe'  # raw
-        assert effective['phone'] == '555-1234'  # raw
+        assert effective['phone'] == '(415) 555-2671'  # raw
 
     def test_effective_values_deterministic_latest(self, sample_batch):
         """Effective values use deterministic 'latest' (created_at DESC, id DESC)."""
@@ -401,12 +443,12 @@ class TestIssueRecalculation:
 class TestApprovalFlows:
     """Test batch approval workflows."""
 
-    def test_approve_batch_no_issues(self, sample_batch):
+    def test_approve_batch_no_issues(self, clean_sample_batch):
         """Approve batch without overrides (no remaining issues)."""
         result = approve_batch(
-            batch_id=sample_batch['batch_id'],
+            batch_id=clean_sample_batch['batch_id'],
             approval_status='approved',
-            database_url=sample_batch['db_url']
+            database_url=clean_sample_batch['db_url']
         )
 
         assert result['success'] is True
@@ -446,21 +488,21 @@ class TestApprovalFlows:
         assert status['override_count'] == 1
         assert status['override_details'] is not None
 
-    def test_cannot_re_approve_batch(self, sample_batch):
+    def test_cannot_re_approve_batch(self, clean_sample_batch):
         """Cannot re-approve already approved batch."""
         # First approval
         approve_batch(
-            batch_id=sample_batch['batch_id'],
+            batch_id=clean_sample_batch['batch_id'],
             approval_status='approved',
-            database_url=sample_batch['db_url']
+            database_url=clean_sample_batch['db_url']
         )
 
         # Second approval should fail
         with pytest.raises(ValueError, match="already approved"):
             approve_batch(
-                batch_id=sample_batch['batch_id'],
+                batch_id=clean_sample_batch['batch_id'],
                 approval_status='approved',
-                database_url=sample_batch['db_url']
+                database_url=clean_sample_batch['db_url']
             )
 
     def test_is_row_overridden(self, sample_batch):
@@ -495,17 +537,17 @@ class TestApprovalFlows:
 class TestAuditLogging:
     """Test audit log records for Phase 2 actions."""
 
-    def test_approval_creates_audit_record(self, sample_batch):
+    def test_approval_creates_audit_record(self, clean_sample_batch):
         """Approval action creates AuditLogRecord."""
         result = approve_batch(
-            batch_id=sample_batch['batch_id'],
+            batch_id=clean_sample_batch['batch_id'],
             approval_status='approved',
             reviewer='test-reviewer',
-            database_url=sample_batch['db_url']
+            database_url=clean_sample_batch['db_url']
         )
 
         # Verify audit record exists
-        engine = create_engine(sample_batch['db_url'])
+        engine = create_engine(clean_sample_batch['db_url'])
         Session = sessionmaker(bind=engine)
         session = Session()
 

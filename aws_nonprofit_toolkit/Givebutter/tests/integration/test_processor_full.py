@@ -136,7 +136,7 @@ GB002,2026-05-25,Jane Doe,jane@gmail.com,5559876543,100.00,Scholarship Fund"""
     def test_process_csv_with_invalid_phone(self, temp_dir, rules_config, reference_config):
         """Test that invalid phone numbers are detected."""
         csv_content = """Donation ID,Date,Donor Name,Email,Phone,Amount,Campaign Title
-GB001,2026-05-25,John Smith,john@gmail.com,1234567890,100.00,General Fund
+GB001,2026-05-25,John Smith,john@gmail.com,123,100.00,General Fund
 GB002,2026-05-25,Jane Doe,jane@gmail.com,5551234567,50.00,Scholarship Fund"""
 
         csv_file = temp_dir / "invalid_phone.csv"

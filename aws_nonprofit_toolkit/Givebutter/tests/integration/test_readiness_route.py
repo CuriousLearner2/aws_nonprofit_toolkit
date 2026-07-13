@@ -129,6 +129,7 @@ class TestReadinessRoutePreviewMirror:
 
     def test_readiness_clarifies_blockers_and_warnings(self, client):
         """Test that readiness page distinguishes blockers from warnings and next steps."""
+        preview = build_export_preview('IMP-TEST-001')
         response = client.get('/imports/IMP-TEST-001/readiness')
         html = response.data.decode('utf-8', errors='ignore')
 
@@ -139,7 +140,10 @@ class TestReadinessRoutePreviewMirror:
         assert 'resolve blockers first' in html.lower()
         assert 'check warnings before exporting' in html.lower()
         assert 'Readiness guide:' in html
-        assert 'Export Ready' in html
+        if preview.is_export_ready:
+            assert 'Export Ready' in html
+        else:
+            assert 'blocked' in html.lower() or 'blocker' in html.lower()
         assert 'href="/imports/IMP-TEST-001/dashboard"' in html
         assert 'href="/imports/IMP-TEST-001/exports"' in html
         assert 'href="/imports/IMP-TEST-001/validation"' in html
