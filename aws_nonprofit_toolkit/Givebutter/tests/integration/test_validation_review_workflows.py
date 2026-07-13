@@ -498,6 +498,61 @@ def _seed_db_backed_amount_parity_batch(Session, batch_id, raw_amount):
         session.close()
 
 
+def _seed_db_backed_date_phone_parity_batch(
+    Session,
+    batch_id,
+    raw_date,
+    raw_phone='123',
+    *,
+    contact_phone=None,
+):
+    """Create an isolated DB-backed batch for combined date/phone parity checks."""
+    session = Session()
+    try:
+        batch = ImportBatch(
+            id=batch_id,
+            filename='date_phone_parity.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id=batch_id,
+            row_index=1,
+            raw_csv_data={
+                'name': 'Date Phone Parity',
+                'date': raw_date,
+                'email': 'date.phone.parity@example.com',
+                'phone': raw_phone,
+                'amount': '125.00',
+                'address': '123 Main St',
+            },
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id=batch_id,
+            raw_import_row_id=raw_row.id,
+            first_name='Date',
+            last_name='Phone',
+            email='date.phone.parity@example.com',
+            phone=contact_phone if contact_phone is not None else raw_phone,
+            amount=125.0,
+            address_line1='123 Main St',
+        )
+        session.add(contact)
+        session.flush()
+
+        session.commit()
+        return raw_row.id
+    finally:
+        session.close()
+
+
 def _seed_db_backed_email_parity_batch(
     Session,
     batch_id,
@@ -1179,6 +1234,158 @@ class TestEmailValidationParity:
             raw_row = session.query(RawImportRow).filter_by(id=raw_id).first()
             assert raw_row.raw_csv_data['email'] == 'invalid-no-at-symbol', (
                 f"Raw source data must remain unchanged, got: {raw_row.raw_csv_data['email']}"
+            )
+        finally:
+            session.close()
+
+
+class TestPhoneValidationParity:
+    """Test DB-backed phone validation parity across route, approval, and export."""
+
+    def test_db_backed_possible_raw_phone_does_not_create_phone_issue(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed validation route must not flag a policy-valid raw phone as invalid."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-phone-route-batch'
+        raw_id = _seed_db_backed_date_phone_parity_batch(
+            Session,
+            batch_id,
+            '2026&05',
+            raw_phone='5612346',
+        )
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        row_marker = f'data-testid="row-{raw_id}"'
+        assert row_marker in html, f"Expected DB-backed phone row to render, got: {html[:2000]}"
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        assert row_end != -1, "Expected closing row tag for DB-backed phone row"
+        row_section = html[row_start:row_end]
+
+        assert 'Blocking' in row_section, f"Invalid raw date should still block, got: {row_section}"
+        assert 'date — Date must use YYYY-MM-DD' in row_section, (
+            f"Expected strict date validation copy, got: {row_section}"
+        )
+        assert 'phone — Invalid phone format' not in row_section, (
+            f"Policy-valid phone 5612346 should not be flagged, got: {row_section}"
+        )
+
+        from scripts.householder.approval_service import check_batch_remaining_issues
+        from scripts.householder.export_preview_service import build_export_preview
+
+        remaining_issues = check_batch_remaining_issues(batch_id, database_url)
+        assert any(
+            issue.get('field') == 'date'
+            for row in remaining_issues
+            for issue in row.get('issues', [])
+        ), (
+            f"Expected approval readiness to report the invalid date, got: {remaining_issues}"
+        )
+        assert not any(
+            issue.get('field') == 'phone'
+            for row in remaining_issues
+            for issue in row.get('issues', [])
+        ), (
+            f"Policy-valid phone 5612346 should not be reported, got: {remaining_issues}"
+        )
+
+        preview = build_export_preview(
+            batch_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+        assert preview.is_export_ready is False, (
+            f"Invalid raw date should block export preview, got: {preview}"
+        )
+        preview_text = ' '.join(list(preview.blockers) + list(preview.warnings))
+        assert 'date' in preview_text.lower(), f"Expected date blocker in preview, got: {preview_text}"
+        assert 'phone' not in preview_text.lower(), f"Policy-valid phone 5612346 should not be reported, got: {preview_text}"
+
+    def test_db_backed_reviewed_valid_phone_supersedes_invalid_raw_phone(
+        self,
+        flask_client_with_validation_batch,
+    ):
+        """DB-backed autosave of a valid phone should override an invalid raw phone without mutating raw data."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        batch_id = 'db-backed-phone-reviewed-batch'
+        raw_id = _seed_db_backed_date_phone_parity_batch(
+            Session,
+            batch_id,
+            '2026-05-15',
+            raw_phone='123',
+        )
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+        assert 'phone — Invalid phone format' in row_section, (
+            f"Invalid raw phone should be visible before autosave, got: {row_section}"
+        )
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': {'phone': '(415) 555-2671'}
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['success'] is True
+        assert data['effective_values']['phone'] == '(415) 555-2671'
+
+        response = client.get(f'/imports/{batch_id}/validation')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+        row_marker = f'data-testid="row-{raw_id}"'
+        row_start = html.find(row_marker)
+        row_end = html.find('</tr>', row_start)
+        row_section = html[row_start:row_end]
+        assert 'No issues' in row_section, (
+            f"Reviewed valid phone should clear invalid raw phone, got: {row_section}"
+        )
+        assert 'phone — Invalid phone format' not in row_section
+
+        from scripts.householder.approval_service import check_batch_remaining_issues
+        from scripts.householder.export_preview_service import build_export_preview
+
+        remaining_issues = check_batch_remaining_issues(batch_id, database_url)
+        assert not any(
+            issue.get('field') == 'phone'
+            for row in remaining_issues
+            for issue in row.get('issues', [])
+        ), (
+            f"Approval readiness should clear phone issue after valid autosave, got: {remaining_issues}"
+        )
+
+        preview = build_export_preview(
+            batch_id,
+            config={
+                'HOUSEHOLDER_REPOSITORY': 'database',
+                'GIVEBUTTER_DATABASE_URL': database_url,
+            },
+        )
+        assert preview.is_export_ready is True, (
+            f"Valid reviewed phone should keep export preview ready when no blockers remain, got: {preview}"
+        )
+
+        session = Session()
+        try:
+            raw_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            assert raw_row.raw_csv_data['phone'] == '123', (
+                f"Raw source data must remain unchanged, got: {raw_row.raw_csv_data['phone']}"
             )
         finally:
             session.close()

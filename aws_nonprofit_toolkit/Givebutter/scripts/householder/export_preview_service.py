@@ -21,6 +21,7 @@ from .database_models import (
 from .email_validation_service import validate_review_email
 from .amount_validation_service import validate_review_amount
 from .date_validation_service import validate_review_date
+from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .service_contracts import ExportRow, ExportPreviewResult
 
@@ -254,6 +255,7 @@ def build_export_preview(
             raw_date = None
             raw_amount = None
             raw_email = None
+            raw_phone = None
             if raw_row and raw_row.raw_csv_data:
                 csv_data = raw_row.raw_csv_data
                 if isinstance(csv_data, str):
@@ -264,6 +266,7 @@ def build_export_preview(
                 transaction_id = csv_data.get('transaction_id') or csv_data.get('TransactionID')
                 raw_date = csv_data.get('date') or csv_data.get('Date')
                 raw_email = csv_data.get('email') or csv_data.get('Email')
+                raw_phone = csv_data.get('phone') or csv_data.get('Phone')
                 raw_amount = csv_data.get('amount') if 'amount' in csv_data else csv_data.get('Amount')
 
             # Collect normalization decisions affecting this contact
@@ -388,6 +391,14 @@ def build_export_preview(
                 row_warnings.append(f"Email: {email_validation.warnings[0]}")
                 validation_issues.append(f"Email: {email_validation.warnings[0]}")
 
+            phone_validation_issue = None
+            phone_value = field_values.get('phone')
+            phone_str = '' if phone_value is None else str(phone_value).strip()
+            if phone_str:
+                phone_validation = validate_review_phone(phone_str, allow_blank=False, default_region='US')
+                if not phone_validation.valid:
+                    phone_validation_issue = f"Phone: {phone_validation.blocking_error}"
+
             for val_item in review_items.values():
                 if val_item.item_type != 'validation' or val_item.batch_id != import_id:
                     continue
@@ -397,6 +408,9 @@ def build_export_preview(
                 if isinstance(payload, str):
                     payload = json.loads(payload)
                 issue_type = _get_validation_issue_type(payload)
+                issue_field = payload.get('field')
+                issue_reason = payload.get('reason')
+                issue_severity = str(payload.get('severity', 'warning')).lower()
 
                 if val_decision:
                     if val_decision.decision == 'accept_issue':
@@ -408,15 +422,18 @@ def build_export_preview(
                         row_warnings.append(f"Validation issue unresolved: {issue_type}")
                 else:
                     issue_type_lower = str(issue_type).lower() if issue_type else ''
-                    if (
-                        issue_type_lower
-                        and 'email' in issue_type_lower
-                        and is_issue_resolved(
-                            'email',
-                            field_values.get('email'),
-                            issue_type,
-                            raw_value=raw_email,
-                        )
+                    raw_value_lookup = {
+                        'date': raw_date,
+                        'amount': raw_amount,
+                        'email': raw_email,
+                        'phone': raw_phone,
+                    }
+
+                    if issue_field in raw_value_lookup and is_issue_resolved(
+                        issue_field,
+                        field_values.get(issue_field),
+                        issue_reason or issue_type,
+                        raw_value=raw_value_lookup.get(issue_field),
                     ):
                         continue
 
@@ -426,9 +443,9 @@ def build_export_preview(
                         'missing_transaction_id', 'invalid_amount',
                         'invalid_amount_zero_or_negative'
                     ]
-                    if any(critical in issue_type.lower() for critical in critical_issues):
+                    if issue_severity == 'error' or any(critical in issue_type.lower() for critical in critical_issues):
                         row_blocker_count_before = len(row_blockers)
-                        row_blockers.append(f"Unresolved validation: {issue_type}")
+                        row_blockers.append(f"Unresolved validation: {issue_field or issue_type}")
                         validation_status = 'blocked'
                     else:
                         row_warnings.append(f"Validation issue unresolved: {issue_type}")
@@ -444,6 +461,10 @@ def build_export_preview(
             if email_validation_issue:
                 row_blockers.append("Unresolved validation: email")
                 validation_issues.append(email_validation_issue)
+                validation_status = 'blocked'
+            if phone_validation_issue:
+                row_blockers.append("Unresolved validation: phone")
+                validation_issues.append(phone_validation_issue)
                 validation_status = 'blocked'
 
             # Collect duplicate decision affecting this contact
@@ -504,8 +525,12 @@ def build_export_preview(
                     household_warnings.append("Household grouping unresolved")
 
             # Compile export warnings
-            export_warnings = list(row_warnings) + normalization_warnings + \
-                            duplicate_warnings + household_warnings
+            row_blockers = list(dict.fromkeys(row_blockers))
+            row_warnings = list(dict.fromkeys(row_warnings))
+            validation_issues = list(dict.fromkeys(validation_issues))
+            export_warnings = list(dict.fromkeys(
+                list(row_warnings) + normalization_warnings + duplicate_warnings + household_warnings
+            ))
 
             # Create export row
             export_row = ExportRow(

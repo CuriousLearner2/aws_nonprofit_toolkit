@@ -4702,6 +4702,104 @@ async def test_date_invalid_then_valid_edit_persists_and_refreshes(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_multiple_blocking_validation_issues_render_together_and_refresh_preserves_them(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify multiple simultaneous validation blockers render together and survive refresh.
+
+    Invariant: A row with more than one blocking issue must show every blocking issue in the Issues cell,
+    keep Row Status = Blocking, and reload with the same visible issue set.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'multi-blocking-issues-batch'
+        raw_values = {
+            'name': 'Multi Issue Example',
+            'date': '2026&05',
+            'email': 'multi.issue@example.com',
+            'phone': '123',
+            'amount': '100.00',
+            'address': '123 Main St',
+        }
+
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'multi_blocking_issues.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                row = page.locator(f'tr[data-testid="row-{raw_row_id}"]')
+                row_status = row.locator('.row-status-dropdown option:first-child')
+                issues_cell = row.locator('.issues-cell')
+
+                issues_text = (await issues_cell.inner_text() or '').strip()
+                assert 'date' in issues_text.lower(), (
+                    f'Date issue should render, got: {issues_text}'
+                )
+                assert 'phone' in issues_text.lower(), (
+                    f'Phone issue should render, got: {issues_text}'
+                )
+                assert 'Blocking' in (await row_status.text_content() or ''), (
+                    f'Row with multiple blocking issues should be Blocking, got: {await row_status.text_content()}'
+                )
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                refreshed_issues = (await issues_cell.inner_text() or '').strip()
+                assert 'date' in refreshed_issues.lower(), (
+                    f'Date issue should survive refresh, got: {refreshed_issues}'
+                )
+                assert 'phone' in refreshed_issues.lower(), (
+                    f'Phone issue should survive refresh, got: {refreshed_issues}'
+                )
+
+                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
+                assert raw_row is not None, 'Raw row not found after multi-issue validation test'
+                assert raw_row.raw_csv_data == raw_values, (
+                    f'Raw CSV data should remain unchanged, got: {raw_row.raw_csv_data}'
+                )
+
+                decisions = session.query(ReviewDecision).filter_by(
+                    batch_id=batch_id,
+                    raw_import_row_id=raw_row_id,
+                ).all()
+                assert len(decisions) == 0, (
+                    f'Validation-only browsing should not create ReviewDecision rows, got: {decisions}'
+                )
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_autosave_does_not_overwrite_unrelated_dirty_field(
     e2e_database_and_app,
 ):
