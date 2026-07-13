@@ -197,7 +197,7 @@ def validate_corrected_values(
         - If valid: (True, None)
         - If invalid: (False, {'field': 'error message', ...})
     """
-    from .phone_validation_service import is_valid_phone
+    from .phone_validation_service import validate_review_phone
     from .date_validation_service import validate_review_date
     from .amount_validation_service import validate_review_amount
     from .email_validation_service import validate_review_email
@@ -233,10 +233,10 @@ def validate_corrected_values(
             continue
 
         # Validate phone field
-        elif field == 'phone':
-            # Use phonenumbers library for validation
-            if not is_valid_phone(value_str, 'US'):
-                errors['phone'] = 'Invalid phone format (require: 10+ digit US number)'
+        if field == 'phone':
+            phone_result = validate_review_phone(value_str, allow_blank=False, default_region='US')
+            if not phone_result.valid:
+                errors['phone'] = phone_result.blocking_error or 'Invalid phone format'
 
     if errors:
         return False, errors

@@ -183,26 +183,25 @@ class TestPhoneValidationEdgeCases:
             tier, reason, suggestion = validate_phone(record, header_map, rules)
             assert tier != 'FAIL', f"Phone '{phone}' should not fail, reason: {reason}"
 
-    def test_phone_invalid_patterns(self, header_map, rules):
-        """Verify invalid phone patterns are rejected."""
-        invalid_phones = [
-            '1234567890',           # Sequential test number
-            '9876543210',           # Reverse sequential
+    def test_phone_possible_patterns_are_accepted(self, header_map, rules):
+        """Verify structurally possible phone patterns remain accepted."""
+        possible_phones = [
+            '1234567890',           # Sequential-looking
+            '9876543210',           # Reverse sequential-looking
             '1111111111',           # All same digits
-            '5551234567890',        # Too long
-            '555123456',            # Too short
         ]
-        for phone in invalid_phones:
+        for phone in possible_phones:
             record = {'Phone': phone}
             tier, reason, suggestion = validate_phone(record, header_map, rules)
-            assert tier == 'FAIL', f"Phone '{phone}' should fail"
+            assert tier != 'FAIL', f"Phone '{phone}' should remain accepted, reason: {reason}"
 
     def test_phone_area_code_validation(self, header_map, rules):
-        """Verify area code rules."""
-        # 555 is reserved for test numbers (may vary by rules)
-        record = {'Phone': '2125551234'}  # NYC area code with 555 exchange
-        tier, reason, suggestion = validate_phone(record, header_map, rules)
-        # May fail or warn depending on rules
+        """Verify possible area-code patterns remain accepted."""
+        possible_area_codes = ['0551234567', '1551234567']
+        for phone in possible_area_codes:
+            record = {'Phone': phone}
+            tier, reason, suggestion = validate_phone(record, header_map, rules)
+            assert tier != 'FAIL', f"Phone '{phone}' should remain accepted, reason: {reason}"
 
         # Standard area codes should pass
         valid_area_codes = ['201', '415', '720', '206']

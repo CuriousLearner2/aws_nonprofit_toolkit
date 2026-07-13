@@ -41,8 +41,8 @@ class TestPhoneValidation:
         assert reason is None
 
     @pytest.mark.unit
-    def test_sequential_test_number_fails(self):
-        """Test that sequential test number is detected."""
+    def test_sequential_test_number_is_accepted(self):
+        """Sequential-looking but possible numbers remain accepted."""
         record = {'Phone': '1234567890'}
         header_map = {'phone': 'Phone'}
         rules = {'invalid_phone_patterns': [
@@ -50,12 +50,12 @@ class TestPhoneValidation:
         ]}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'FAIL'
-        assert 'Sequential test number' in reason
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
-    def test_all_same_digit_fails(self):
-        """Test that all-same-digit numbers fail."""
+    def test_all_same_digit_number_is_accepted(self):
+        """All-same-digit but possible numbers remain accepted."""
         record = {'Phone': '5555555555'}
         header_map = {'phone': 'Phone'}
         rules = {'invalid_phone_patterns': [
@@ -63,12 +63,12 @@ class TestPhoneValidation:
         ]}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'FAIL'
-        assert 'All same digit' in reason
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
-    def test_reserved_test_555_fails(self):
-        """Test that reserved 555 test numbers fail."""
+    def test_reserved_test_555_number_is_accepted(self):
+        """Reserved-looking but possible 555 numbers remain accepted."""
         record = {'Phone': '5550123456'}
         header_map = {'phone': 'Phone'}
         rules = {'invalid_phone_patterns': [
@@ -76,8 +76,8 @@ class TestPhoneValidation:
         ]}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'FAIL'
-        assert 'Reserved test number' in reason
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
     def test_phone_too_short(self):
@@ -88,7 +88,7 @@ class TestPhoneValidation:
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
         assert tier == 'FAIL'
-        assert 'less than 10 digits' in reason.lower()
+        assert 'invalid' in reason.lower()
 
     @pytest.mark.unit
     def test_phone_too_long(self):
@@ -99,7 +99,7 @@ class TestPhoneValidation:
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
         assert tier == 'FAIL'
-        assert 'too long' in reason.lower()
+        assert 'invalid' in reason.lower()
 
     @pytest.mark.unit
     def test_missing_phone_column(self):
@@ -126,25 +126,25 @@ class TestPhoneValidation:
 
     @pytest.mark.unit
     def test_area_code_starting_with_0(self):
-        """Test area code starting with 0 is warned."""
+        """Test area code starting with 0 is accepted when parseable."""
         record = {'Phone': '0551234567'}
         header_map = {'phone': 'Phone'}
         rules = {'invalid_phone_patterns': []}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'WARNING'
-        assert 'area code' in reason.lower()
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
     def test_area_code_starting_with_1_as_first_digit(self):
-        """Test area code starting with 1 (not as leading 1) is warned."""
+        """Test area code starting with 1 (not as leading 1) is accepted when parseable."""
         record = {'Phone': '1551234567'}
         header_map = {'phone': 'Phone'}
         rules = {'invalid_phone_patterns': []}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'WARNING'
-        assert 'area code' in reason.lower()
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
     def test_unusual_formatting_warning(self):
@@ -182,6 +182,16 @@ class TestPhoneValidation:
     def test_phone_with_whitespace(self):
         """Test phone with extra whitespace."""
         record = {'Phone': '  (555) 123-4567  '}
+        header_map = {'phone': 'Phone'}
+        rules = {'invalid_phone_patterns': []}
+
+        tier, reason, suggestion = validate_phone(record, header_map, rules)
+        assert tier == 'PASS'
+
+    @pytest.mark.unit
+    def test_possible_but_not_formally_valid_number_is_preserved(self):
+        """Test structurally possible but unassigned numbers remain accepted."""
+        record = {'Phone': '8001234567'}
         header_map = {'phone': 'Phone'}
         rules = {'invalid_phone_patterns': []}
 

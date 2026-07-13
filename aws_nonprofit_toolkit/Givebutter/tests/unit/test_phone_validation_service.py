@@ -1,6 +1,7 @@
 """Unit tests for phone_validation_service using phonenumbers library."""
 import pytest
 from householder.phone_validation_service import (
+    validate_review_phone,
     validate_phone,
     is_valid_phone,
     format_phone,
@@ -70,6 +71,22 @@ class TestPhoneValidationService:
         result = validate_phone('', 'US')
         assert result['valid'] is False
         assert 'error' in result
+
+    def test_validate_review_phone_blank_policy(self):
+        """Test blank phone policy for the canonical helper."""
+        blank_disallowed = validate_review_phone('', allow_blank=False)
+        assert blank_disallowed.valid is False
+        assert blank_disallowed.blocking_error == 'Phone number is empty'
+
+        blank_allowed = validate_review_phone('', allow_blank=True)
+        assert blank_allowed.valid is True
+        assert blank_allowed.normalized_value == ''
+
+    def test_validate_review_phone_trims_whitespace(self):
+        """Test whitespace is trimmed before validation."""
+        result = validate_review_phone('  (415) 555-2671  ', allow_blank=False)
+        assert result.valid is True
+        assert result.normalized_value == '(415) 555-2671'
 
     def test_validate_returns_all_fields(self):
         """Test that validation returns all expected fields."""
@@ -159,12 +176,11 @@ class TestPhoneValidationService:
     # ===== Edge cases =====
 
     def test_phone_with_extension(self):
-        """Test phone with extension (may not be valid)."""
+        """Test phone with extension is accepted by phonenumbers."""
         result = validate_phone('4155552671x123', 'US')
-        # Extensions might not be recognized by phonenumbers
-        # This tests the library's actual behavior
-        assert 'valid' in result
-        assert 'error' in result or result['valid'] is True
+        assert result['valid'] is True
+        assert result['formatted'] == '+14155552671'
+        assert result['number_type'] in ['MOBILE', 'FIXED_LINE', 'FIXED_LINE_OR_MOBILE']
 
     def test_phone_with_leading_plus_and_country_mismatch(self):
         """Test that explicit +1 prefix works regardless of country param."""

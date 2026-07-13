@@ -1,155 +1,156 @@
-"""
-Phone Validation Service using Google's phonenumbers library
+"""Canonical phonenumbers-backed phone validation helpers."""
 
-Provides international phone number validation and formatting.
-Supports 131+ countries with intelligent parsing and normalization.
-"""
+from __future__ import annotations
 
-from typing import Optional, Dict, Any
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Tuple
+
 import phonenumbers
+
+
+DEFAULT_PHONE_REGION = "US"
+PHONE_REQUIRED_ERROR = "Phone number is empty"
+PHONE_FORMAT_ERROR = "Invalid phone format"
+
+
+@dataclass(frozen=True)
+class PhoneValidationResult:
+    """Structured validation result for review-time phone parsing."""
+
+    valid: bool
+    normalized_value: Optional[str] = None
+    blocking_error: Optional[str] = None
+    warnings: Tuple[str, ...] = field(default_factory=tuple)
+    formatted: Optional[str] = None
+    national: Optional[str] = None
+    international: Optional[str] = None
+    country_code: Optional[int] = None
+    region: Optional[str] = None
+    number_type: Optional[str] = None
+
+
+def _phone_type_name(parsed: phonenumbers.PhoneNumber) -> str:
+    """Return a stable product-facing number type label."""
+    number_type = phonenumbers.number_type(parsed)
+    type_map = {
+        phonenumbers.PhoneNumberType.FIXED_LINE: "FIXED_LINE",
+        phonenumbers.PhoneNumberType.MOBILE: "MOBILE",
+        phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE: "FIXED_LINE_OR_MOBILE",
+        phonenumbers.PhoneNumberType.TOLL_FREE: "TOLL_FREE",
+        phonenumbers.PhoneNumberType.PREMIUM_RATE: "PREMIUM_RATE",
+        phonenumbers.PhoneNumberType.SHARED_COST: "SHARED_COST",
+        phonenumbers.PhoneNumberType.VOIP: "VOIP",
+        phonenumbers.PhoneNumberType.PERSONAL_NUMBER: "PERSONAL_NUMBER",
+        phonenumbers.PhoneNumberType.PAGER: "PAGER",
+        phonenumbers.PhoneNumberType.UAN: "UAN",
+        phonenumbers.PhoneNumberType.VOICEMAIL: "VOICEMAIL",
+        phonenumbers.PhoneNumberType.UNKNOWN: "UNKNOWN",
+    }
+    return type_map.get(number_type, "UNKNOWN")
+
+
+def validate_review_phone(
+    value: Any,
+    *,
+    allow_blank: bool = False,
+    default_region: str = DEFAULT_PHONE_REGION,
+) -> PhoneValidationResult:
+    """
+    Validate a reviewed phone number using phonenumbers.
+
+    The canonical policy preserves the repo's existing acceptance of
+    structurally possible numbers while rejecting impossible / unparseable
+    input:
+    - numbers are parsed from the original string
+    - default region is US when no country code is present
+    - parse failures and impossible numbers are blocking
+    - possible numbers are accepted, even if phonenumbers does not mark them as
+      formally assigned/valid
+    - whitespace is trimmed for validation only
+    - the reviewed string itself is preserved by callers
+    """
+    text = "" if value is None else str(value).strip()
+
+    if not text:
+        if allow_blank:
+            return PhoneValidationResult(valid=True, normalized_value="")
+        return PhoneValidationResult(valid=False, blocking_error=PHONE_REQUIRED_ERROR)
+
+    try:
+        parsed = phonenumbers.parse(text, default_region)
+    except phonenumbers.NumberParseException:
+        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
+
+    if not phonenumbers.is_possible_number(parsed):
+        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
+
+    return PhoneValidationResult(
+        valid=True,
+        normalized_value=text,
+        formatted=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164),
+        national=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.NATIONAL),
+        international=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL),
+        country_code=parsed.country_code,
+        region=phonenumbers.region_code_for_number(parsed),
+        number_type=_phone_type_name(parsed),
+    )
 
 
 def validate_phone(
     phone_number: str,
-    country: str = 'US',
+    country: str = DEFAULT_PHONE_REGION,
 ) -> Dict[str, Any]:
     """
-    Validate and parse a phone number using phonenumbers library.
-
-    Args:
-        phone_number: Phone number in any format (with/without +, parentheses, dashes)
-        country: ISO 2-letter country code (e.g., 'US', 'GB', 'FR')
-
-    Returns:
-        Dict with:
-        - valid: bool - Whether phone number is valid
-        - formatted: str - E164 formatted number (if valid)
-        - national: str - National format (if valid)
-        - country_code: int - Country code (if valid)
-        - number_type: str - Type (MOBILE, FIXED_LINE, TOLL_FREE, etc)
-        - error: str - Error message (if invalid)
-
-    Examples:
-        >>> validate_phone('(415) 555-2671', 'US')
-        {'valid': True, 'formatted': '+14155552671', 'country_code': 1, ...}
-
-        >>> validate_phone('555-2671', 'US')
-        {'valid': False, 'error': 'Invalid number format'}
+    Backwards-compatible dictionary wrapper around validate_review_phone().
     """
-    try:
-        # Parse the phone number
-        parsed = phonenumbers.parse(phone_number, country)
-
-        # Validate it
-        if not phonenumbers.is_valid_number(parsed):
-            return {
-                'valid': False,
-                'error': 'Invalid phone number format',
-            }
-
-        # Get number type
-        number_type = phonenumbers.number_type(parsed)
-        type_map = {
-            phonenumbers.PhoneNumberType.FIXED_LINE: 'FIXED_LINE',
-            phonenumbers.PhoneNumberType.MOBILE: 'MOBILE',
-            phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE: 'FIXED_LINE_OR_MOBILE',
-            phonenumbers.PhoneNumberType.TOLL_FREE: 'TOLL_FREE',
-            phonenumbers.PhoneNumberType.PREMIUM_RATE: 'PREMIUM_RATE',
-            phonenumbers.PhoneNumberType.SHARED_COST: 'SHARED_COST',
-            phonenumbers.PhoneNumberType.VOIP: 'VOIP',
-            phonenumbers.PhoneNumberType.PERSONAL_NUMBER: 'PERSONAL_NUMBER',
-            phonenumbers.PhoneNumberType.PAGER: 'PAGER',
-            phonenumbers.PhoneNumberType.UAN: 'UAN',
-            phonenumbers.PhoneNumberType.VOICEMAIL: 'VOICEMAIL',
-            phonenumbers.PhoneNumberType.UNKNOWN: 'UNKNOWN',
-        }
-
-        return {
-            'valid': True,
-            'formatted': phonenumbers.format_number(
-                parsed, phonenumbers.PhoneNumberFormat.E164
-            ),
-            'national': phonenumbers.format_number(
-                parsed, phonenumbers.PhoneNumberFormat.NATIONAL
-            ),
-            'international': phonenumbers.format_number(
-                parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL
-            ),
-            'country_code': parsed.country_code,
-            'region': phonenumbers.region_code_for_number(parsed),
-            'number_type': type_map.get(number_type, 'UNKNOWN'),
-        }
-
-    except phonenumbers.NumberParseException as e:
-        return {
-            'valid': False,
-            'error': f'Phone number parse error: {str(e)[:100]}',
-        }
-    except Exception as e:
-        return {
-            'valid': False,
-            'error': f'Phone validation error: {str(e)[:100]}',
-        }
+    result = validate_review_phone(phone_number, allow_blank=False, default_region=country)
+    payload: Dict[str, Any] = {
+        "valid": result.valid,
+        "formatted": result.formatted,
+        "national": result.national,
+        "international": result.international,
+        "country_code": result.country_code,
+        "region": result.region,
+        "number_type": result.number_type,
+    }
+    if not result.valid:
+        payload["error"] = result.blocking_error or PHONE_FORMAT_ERROR
+    else:
+        payload["normalized_value"] = result.normalized_value
+    return payload
 
 
-def is_valid_phone(phone_number: str, country: str = 'US') -> bool:
+def is_valid_phone(phone_number: str, country: str = DEFAULT_PHONE_REGION) -> bool:
     """
     Simple boolean check for phone validity.
-
-    Args:
-        phone_number: Phone number in any format
-        country: ISO 2-letter country code
-
-    Returns:
-        True if valid, False otherwise
-
-    Examples:
-        >>> is_valid_phone('(415) 555-2671', 'US')
-        True
-
-        >>> is_valid_phone('555-2671', 'US')
-        False
     """
-    result = validate_phone(phone_number, country)
-    return result['valid']
+    return validate_review_phone(
+        phone_number,
+        allow_blank=False,
+        default_region=country,
+    ).valid
 
 
 def format_phone(
     phone_number: str,
-    country: str = 'US',
-    format_type: str = 'E164',
+    country: str = DEFAULT_PHONE_REGION,
+    format_type: str = "E164",
 ) -> Optional[str]:
     """
     Format a valid phone number to a specific format.
-
-    Args:
-        phone_number: Phone number in any format
-        country: ISO 2-letter country code
-        format_type: One of 'E164', 'INTERNATIONAL', 'NATIONAL', 'RFC3966'
-
-    Returns:
-        Formatted phone number, or None if invalid
-
-    Examples:
-        >>> format_phone('(415) 555-2671', 'US', 'E164')
-        '+14155552671'
-
-        >>> format_phone('(415) 555-2671', 'US', 'NATIONAL')
-        '(415) 555-2671'
     """
-    result = validate_phone(phone_number, country)
-    if not result['valid']:
+    result = validate_review_phone(phone_number, allow_blank=False, default_region=country)
+    if not result.valid:
         return None
 
     try:
-        parsed = phonenumbers.parse(phone_number, country)
+        parsed = phonenumbers.parse(result.normalized_value or str(phone_number).strip(), country)
         format_map = {
-            'E164': phonenumbers.PhoneNumberFormat.E164,
-            'INTERNATIONAL': phonenumbers.PhoneNumberFormat.INTERNATIONAL,
-            'NATIONAL': phonenumbers.PhoneNumberFormat.NATIONAL,
-            'RFC3966': phonenumbers.PhoneNumberFormat.RFC3966,
+            "E164": phonenumbers.PhoneNumberFormat.E164,
+            "INTERNATIONAL": phonenumbers.PhoneNumberFormat.INTERNATIONAL,
+            "NATIONAL": phonenumbers.PhoneNumberFormat.NATIONAL,
+            "RFC3966": phonenumbers.PhoneNumberFormat.RFC3966,
         }
-
         fmt = format_map.get(format_type, phonenumbers.PhoneNumberFormat.E164)
         return phonenumbers.format_number(parsed, fmt)
     except Exception:

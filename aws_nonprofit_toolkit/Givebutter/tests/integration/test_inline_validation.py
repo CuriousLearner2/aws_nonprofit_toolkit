@@ -12,8 +12,8 @@ import pytest
 class TestInlinePhoneValidation:
     """Test phone validation catches invalid test patterns."""
 
-    def test_sequential_test_number_invalid(self):
-        """Sequential test number 1234567890 should be invalid."""
+    def test_sequential_test_number_accepted(self):
+        """Sequential-looking but possible phone numbers remain accepted."""
         from scripts.processor import validate_phone
 
         record = {
@@ -31,12 +31,12 @@ class TestInlinePhoneValidation:
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
 
-        assert tier == 'FAIL', "Sequential test number should fail validation"
-        assert 'Sequential' in reason, f"Expected 'Sequential' in reason, got: {reason}"
-        assert suggestion == 'Please use a valid phone number'
+        assert tier == 'PASS', f"Expected accepted phone tier, got: {tier} ({reason})"
+        assert reason is None
+        assert suggestion is None
 
-    def test_all_same_digits_invalid(self):
-        """Phone with all same digits should be invalid."""
+    def test_all_same_digits_accepted(self):
+        """Phone with all same digits remains accepted if structurally possible."""
         from scripts.processor import validate_phone
 
         record = {'Phone': '5555555555'}
@@ -52,11 +52,11 @@ class TestInlinePhoneValidation:
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
 
-        assert tier == 'FAIL'
-        assert 'identical' in reason.lower()
+        assert tier == 'PASS'
+        assert reason is None
 
-    def test_reserved_test_pattern_invalid(self):
-        """Reserved test pattern 555-01xx-xxxx should be invalid."""
+    def test_reserved_test_pattern_accepted(self):
+        """Reserved-looking but possible test patterns remain accepted."""
         from scripts.processor import validate_phone
 
         record = {'Phone': '5550123456'}
@@ -72,8 +72,8 @@ class TestInlinePhoneValidation:
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
 
-        assert tier == 'FAIL'
-        assert 'Reserved' in reason or 'reserved' in reason.lower()
+        assert tier == 'PASS'
+        assert reason is None
 
     def test_valid_phone_passes(self):
         """Valid phone number should pass."""

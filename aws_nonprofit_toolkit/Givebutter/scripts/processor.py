@@ -18,6 +18,7 @@ from datetime import datetime
 from scripts.householder.date_validation_service import validate_review_date
 from scripts.householder.amount_validation_service import validate_review_amount
 from scripts.householder.email_validation_service import validate_review_email
+from scripts.householder.phone_validation_service import validate_review_phone
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -214,7 +215,7 @@ def validate_date(record: Dict, header_map: Dict) -> Tuple[str, Optional[str], O
 
 def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Optional[str], Optional[str]]:
     """
-    Validate phone number against USA standards and rules.
+    Validate phone number using the canonical phonenumbers-backed parser.
 
     Args:
         record: Full record dict
@@ -235,53 +236,16 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
         return ('WARNING', "Phone number is empty", None)  # Frontend validates required; absence is notable
 
     phone_str = str(phone).strip()
-    digits = extract_digits(phone_str)
+    validation = validate_review_phone(phone_str, allow_blank=False, default_region='US')
+    if not validation.valid:
+        return ('FAIL', validation.blocking_error or "Invalid phone format", "Please use a valid phone number")
 
-    # Check against invalid patterns
-    invalid_patterns = rules.get('invalid_phone_patterns', [])
-    for pattern_obj in invalid_patterns:
-        pattern = pattern_obj.get('pattern')
-        reason = pattern_obj.get('reason', 'Invalid phone')
-        if re.match(pattern, digits):
-            return ('FAIL', f"Invalid: {reason}", "Please use a valid phone number")
-
-    # Check for unusual formatting BEFORE validating digit count
+    # Preserve the existing import-stage UX by warning on obviously non-standard
+    # formatting while still using the canonical phonenumbers parser for validity.
     has_unusual_format = '.' in phone_str or phone_str.count('-') > 2 or phone_str.count('(') > 1
-
-    # Check digit count
-    if len(digits) == 10:
-        # Valid US 10-digit number
-        area_code = digits[:3]
-        if area_code.startswith('0') or area_code.startswith('1'):
-            return ('WARNING', "Area code should not start with 0 or 1", None)
-
-        # If unusual format, suggest standard
-        if has_unusual_format:
-            suggestion = f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
-            return ('WARNING', "Unusual phone format", f"Consider: {suggestion}")
-
-        return ('PASS', None, None)
-
-    elif len(digits) == 11 and digits.startswith('1'):
-        # Valid: 1 + 10-digit number (bare or formatted)
-        normalized = digits[1:]
-        area_code = normalized[:3]
-        if area_code.startswith('0') or area_code.startswith('1'):
-            suggestion = f"({normalized[:3]}) {normalized[3:6]}-{normalized[6:]}"
-            return ('WARNING', "Area code should not start with 0 or 1", f"Try: {suggestion}")
-
-        # Accept bare 11-digit numbers (e.g., 15551234567) without formatting requirement
-        # Only warn if has unusual formatting (multiple dots, many dashes, etc.)
-        if has_unusual_format:
-            suggestion = f"({normalized[:3]}) {normalized[3:6]}-{normalized[6:]}"
-            return ('WARNING', "Unusual phone format", f"Consider: {suggestion}")
-        return ('PASS', None, None)
-
-    elif len(digits) < 10:
-        return ('FAIL', "Phone too short (less than 10 digits)", None)
-
-    elif len(digits) > 11:
-        return ('FAIL', f"Phone too long ({len(digits)} digits)", None)
+    if has_unusual_format:
+        suggestion = validation.national or phone_str
+        return ('WARNING', "Unusual phone format", f"Consider: {suggestion}")
 
     return ('PASS', None, None)
 

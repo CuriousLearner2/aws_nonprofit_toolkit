@@ -1223,9 +1223,22 @@ class TestEmailValidationParity:
         row_start = html.find(row_marker)
         row_end = html.find('</tr>', row_start)
         row_section = html[row_start:row_end]
-        assert 'No issues' in row_section, (
-            f"Rejected invalid reviewed email should leave prior valid email intact, got: {row_section}"
+        assert 'Blocking' in row_section, (
+            f"Rejected invalid reviewed email should remain Blocking, got: {row_section}"
         )
+        assert 'email — Invalid email' in row_section, (
+            f"Rejected invalid reviewed email should remain visible as an email issue, got: {row_section}"
+        )
+
+        session = Session()
+        try:
+            raw_row = session.query(RawImportRow).filter_by(id=raw_id).first()
+            assert raw_row is not None, 'Raw row should still exist'
+            assert raw_row.raw_csv_data['email'] == 'john@example.com', (
+                f"Raw email should remain unchanged, got: {raw_row.raw_csv_data['email']}"
+            )
+        finally:
+            session.close()
 
 
 class TestAmountValidationParity:
