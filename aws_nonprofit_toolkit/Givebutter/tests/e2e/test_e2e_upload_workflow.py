@@ -113,6 +113,39 @@ async def test_upload_invalid_file_type(flask_app_database_mode, temp_dir):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_upload_non_givebutter_csv_shows_inline_error_banner(flask_app_database_mode, temp_dir):
+    """Test that non-Givebutter CSV failures use an inline banner, not a raw alert."""
+    from playwright.async_api import async_playwright
+
+    bad_csv = temp_dir / "charitable_donations_2025.csv"
+    bad_csv.write_text("foo,bar,baz\n1,2,3\n", encoding='utf-8')
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        dialogs = []
+        page.on("dialog", lambda dialog: dialogs.append(dialog.message))
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(bad_csv))
+
+            await page.wait_for_selector('#uploadStatus:visible', timeout=5000)
+            banner = await page.locator('#uploadStatus').text_content()
+            assert 'Unsupported Givebutter CSV' in banner
+            assert 'No data was imported' in banner
+            assert 'Choose another CSV' in await page.locator('#uploadStatus button').text_content()
+            assert dialogs == []
+            assert 'Processing failed' not in banner
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_processing_queue_displays_file(flask_app_database_mode, temp_dir, sample_csv):
     """Test that uploaded file appears in processing queue."""
     from playwright.async_api import async_playwright

@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, jsonify, redirect, current_app, send_file
 from functools import wraps
+import csv
 import os
 import json
+import uuid
 from pathlib import Path
 import pandas as pd
 from datetime import datetime, timezone
@@ -24,7 +26,14 @@ from processor import (
     validate_address,
     assign_tier,
     load_rules,
-    load_reference_list
+    load_reference_list,
+    ProcessorError,
+    ProcessorInputError,
+    EmptyCSVError,
+    MalformedCSVError,
+    EncodingError,
+    UnsupportedGivebutterCSVError,
+    ProcessorOutputError,
 )
 
 # Import ingestion service for optional database mode
@@ -179,6 +188,47 @@ def format_relative_time(dt):
         days = int(seconds // 86400)
         return f'{days}d ago'
 
+
+def _build_upload_error_response(
+    *,
+    error_type: str,
+    title: str,
+    message: str,
+    status_code: int,
+    request_id: str,
+    filename: str,
+    stage: str,
+    internal_path: str | None = None,
+    exception: Exception | None = None,
+):
+    """Log upload failures with detail and return a safe JSON response."""
+    log_message = (
+        f"Upload failure [{request_id}] stage={stage} "
+        f"filename={filename!r}"
+    )
+    if internal_path:
+        log_message += f" path={internal_path!r}"
+    if exception is not None:
+        logger.exception(
+            "%s type=%s: %s",
+            log_message,
+            type(exception).__name__,
+            exception,
+        )
+    else:
+        logger.error("%s", log_message)
+
+    safe_error = f"{title}: {message}"
+    return jsonify({
+        "status": "error",
+        "error_type": error_type,
+        "title": title,
+        "message": message,
+        "error": safe_error,
+        "request_id": request_id,
+        "retryable": status_code >= 500,
+    }), status_code
+
 @app.route('/')
 def index():
     return render_template('review.html')
@@ -195,6 +245,9 @@ def upload():
     if not file.filename.endswith('.csv'):
         return jsonify({'error': 'Only CSV files allowed'}), 400
 
+    request_id = uuid.uuid4().hex[:12]
+    intake_path = None
+    processed_path = None
     try:
         # Capture timestamp at the start for consistent batch identification
         upload_timestamp = datetime.now()
@@ -209,6 +262,11 @@ def upload():
         # Run processor
         processed_path = PROCESSING_DIR / safe_name
         run_processor(str(intake_path), str(processed_path))
+
+        if not processed_path.exists():
+            raise ProcessorOutputError(
+                f"Processor did not create expected output file at {processed_path}"
+            )
 
         # Read processed results
         df = pd.read_csv(processed_path, dtype=str)
@@ -256,35 +314,242 @@ def upload():
 
                 logger.info(f"Ingested batch {ingestion_result.batch_id} with {ingestion_result.raw_row_count} rows")
 
-            except (IngestionValidationError, IngestionIOError) as e:
-                # Validation error from CSV processing or file I/O
-                logger.error(f"Ingestion validation error: {e}")
-                return jsonify({
-                    'error': f'Ingestion validation failed: {str(e)}',
-                    'status': 'validation_error'
-                }), 400
+            except IngestionValidationError as e:
+                if intake_path:
+                    intake_path.unlink(missing_ok=True)
+                if processed_path:
+                    processed_path.unlink(missing_ok=True)
+                return _build_upload_error_response(
+                    error_type="unsupported_csv",
+                    title="Unsupported Givebutter CSV",
+                    message=(
+                        "We couldn’t import this file because it does not appear to be a "
+                        "supported Givebutter CSV. Please export the CSV from Givebutter and "
+                        "try again. No data was imported."
+                    ),
+                    status_code=400,
+                    request_id=request_id,
+                    filename=file.filename,
+                    stage="ingestion",
+                    internal_path=str(processed_path) if processed_path else None,
+                    exception=e,
+                )
+
+            except IngestionIOError as e:
+                if intake_path:
+                    intake_path.unlink(missing_ok=True)
+                if processed_path:
+                    processed_path.unlink(missing_ok=True)
+                return _build_upload_error_response(
+                    error_type="file_handling_error",
+                    title="File Processing Error",
+                    message=(
+                        "We couldn’t process the uploaded file because of an internal file-handling error. "
+                        "Please try again. No data was imported."
+                    ),
+                    status_code=500,
+                    request_id=request_id,
+                    filename=file.filename,
+                    stage="ingestion",
+                    internal_path=str(processed_path or intake_path) if (processed_path or intake_path) else None,
+                    exception=e,
+                )
 
             except IngestionDatabaseError as e:
-                # Database error during ingestion
-                logger.error(f"Ingestion database error: {e}")
-                return jsonify({
-                    'error': f'Ingestion database error: {str(e)}',
-                    'status': 'database_error'
-                }), 500
+                if intake_path:
+                    intake_path.unlink(missing_ok=True)
+                if processed_path:
+                    processed_path.unlink(missing_ok=True)
+                return _build_upload_error_response(
+                    error_type="unexpected_error",
+                    title="Import Failed",
+                    message=(
+                        "Something went wrong while importing the file. No data was imported. "
+                        "Please try again or contact support if the problem continues."
+                    ),
+                    status_code=500,
+                    request_id=request_id,
+                    filename=file.filename,
+                    stage="ingestion",
+                    internal_path=str(processed_path) if processed_path else None,
+                    exception=e,
+                )
 
             except Exception as e:
-                # Unexpected error during ingestion
-                logger.error(f"Unexpected ingestion error: {e}")
-                return jsonify({
-                    'error': f'Ingestion failed: {str(e)}',
-                    'status': 'ingestion_error'
-                }), 500
+                if intake_path:
+                    intake_path.unlink(missing_ok=True)
+                if processed_path:
+                    processed_path.unlink(missing_ok=True)
+                return _build_upload_error_response(
+                    error_type="unexpected_error",
+                    title="Import Failed",
+                    message=(
+                        "Something went wrong while importing the file. No data was imported. "
+                        "Please try again or contact support if the problem continues."
+                    ),
+                    status_code=500,
+                    request_id=request_id,
+                    filename=file.filename,
+                    stage="ingestion",
+                    internal_path=str(processed_path) if processed_path else None,
+                    exception=e,
+                )
 
         return jsonify(response_data)
 
+    except UnsupportedGivebutterCSVError as e:
+        if intake_path:
+            intake_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        return _build_upload_error_response(
+            error_type="unsupported_csv",
+            title="Unsupported Givebutter CSV",
+            message=(
+                "We couldn’t import this file because it does not appear to be a "
+                "supported Givebutter CSV. Please export the CSV from Givebutter and "
+                "try again. No data was imported."
+            ),
+            status_code=400,
+            request_id=request_id,
+            filename=file.filename,
+            stage="process",
+            internal_path=str(processed_path) if processed_path else None,
+            exception=e,
+        )
+
+    except EmptyCSVError as e:
+        if intake_path:
+            intake_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        return _build_upload_error_response(
+            error_type="empty_csv",
+            title="Empty CSV",
+            message="This CSV is empty. Choose a Givebutter export containing at least one record.",
+            status_code=400,
+            request_id=request_id,
+            filename=file.filename,
+            stage="process",
+            internal_path=str(intake_path) if intake_path else None,
+            exception=e,
+        )
+
+    except (MalformedCSVError, csv.Error) as e:
+        if intake_path:
+            intake_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        return _build_upload_error_response(
+            error_type="malformed_csv",
+            title="Unreadable CSV",
+            message="We couldn’t read this CSV. Check that it is a valid CSV file and try again.",
+            status_code=400,
+            request_id=request_id,
+            filename=file.filename,
+            stage="process",
+            internal_path=str(intake_path) if intake_path else None,
+            exception=e,
+        )
+
+    except EncodingError as e:
+        if intake_path:
+            intake_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        return _build_upload_error_response(
+            error_type="encoding_error",
+            title="CSV Encoding Error",
+            message=(
+                "We couldn’t read the file’s text encoding. Export it as a UTF-8 CSV and try again."
+            ),
+            status_code=400,
+            request_id=request_id,
+            filename=file.filename,
+            stage="process",
+            internal_path=str(intake_path) if intake_path else None,
+            exception=e,
+        )
+
+    except (ProcessorInputError, ProcessorOutputError) as e:
+        if intake_path:
+            intake_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        return _build_upload_error_response(
+            error_type="file_handling_error",
+            title="File Processing Error",
+            message=(
+                "We couldn’t process the uploaded file because of an internal file-handling error. "
+                "Please try again. No data was imported."
+            ),
+            status_code=500,
+            request_id=request_id,
+            filename=file.filename,
+            stage="process",
+            internal_path=str(processed_path or intake_path) if (processed_path or intake_path) else None,
+            exception=e,
+        )
+
+    except OSError as e:
+        if intake_path:
+            intake_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        return _build_upload_error_response(
+            error_type="file_handling_error",
+            title="File Processing Error",
+            message=(
+                "We couldn’t process the uploaded file because of an internal file-handling error. "
+                "Please try again. No data was imported."
+            ),
+            status_code=500,
+            request_id=request_id,
+            filename=file.filename,
+            stage="save",
+            internal_path=str(intake_path) if intake_path else None,
+            exception=e,
+        )
+
+    except ProcessorError as e:
+        if intake_path:
+            intake_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        return _build_upload_error_response(
+            error_type="processing_error",
+            title="Import Failed",
+            message=(
+                "Something went wrong while importing the file. No data was imported. "
+                "Please try again or contact support if the problem continues."
+            ),
+            status_code=500,
+            request_id=request_id,
+            filename=file.filename,
+            stage="process",
+            internal_path=str(processed_path) if processed_path else None,
+            exception=e,
+        )
+
     except Exception as e:
-        logger.error(f"Upload error: {e}")
-        return jsonify({'error': f'Processing failed: {str(e)}'}), 500
+        if intake_path:
+            intake_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        return _build_upload_error_response(
+            error_type="unexpected_error",
+            title="Import Failed",
+            message=(
+                "Something went wrong while importing the file. No data was imported. "
+                "Please try again or contact support if the problem continues."
+            ),
+            status_code=500,
+            request_id=request_id,
+            filename=file.filename,
+            stage="process",
+            internal_path=str(processed_path) if processed_path else None,
+            exception=e,
+        )
 
 @app.route('/api/processing')
 def list_processing():

@@ -6,6 +6,7 @@ Reads Givebutter export CSV, validates records against rules and reference list,
 detects duplicates, and outputs processed CSV with validation results.
 """
 
+import csv
 import json
 import re
 import logging
@@ -28,6 +29,34 @@ PROCESSOR_VERSION = "2.5"  # Updated with Date/Transaction ID as required fields
 BASE_DIR = Path(__file__).resolve().parents[1]  # Givebutter/
 RULES_FILE = BASE_DIR / "config" / "rules" / "rules_v2.4.json"
 REFERENCE_FILE = BASE_DIR / "config" / "reference_list.json"
+
+
+class ProcessorError(Exception):
+    """Base exception for processor failures."""
+
+
+class ProcessorInputError(ProcessorError):
+    """The uploaded file could not be opened or read."""
+
+
+class EmptyCSVError(ProcessorError):
+    """The uploaded CSV contained no readable rows."""
+
+
+class MalformedCSVError(ProcessorError):
+    """The uploaded CSV structure is malformed or unreadable."""
+
+
+class EncodingError(ProcessorError):
+    """The uploaded CSV encoding could not be decoded."""
+
+
+class UnsupportedGivebutterCSVError(ProcessorError):
+    """The uploaded CSV is readable but not a supported Givebutter export."""
+
+
+class ProcessorOutputError(ProcessorError):
+    """The processor could not produce the expected output file."""
 
 # Static Platform Headers (never change, case-sensitive)
 # These are the exact column names that Givebutter always generates
@@ -587,12 +616,14 @@ def process_csv(input_file: str, output_file: str) -> None:
 
     # Read input
     try:
-        import csv
         # Use csv.reader for accurate column-to-value mapping (handles misaligned CSVs)
         # Explicitly use UTF-8 encoding to handle international characters
         with open(input_file, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
-            headers = next(reader)
+            try:
+                headers = next(reader)
+            except StopIteration as e:
+                raise EmptyCSVError("CSV is empty") from e
             rows = list(reader)
 
         # Normalize row lengths to match header count (handles trailing empty columns)
@@ -615,15 +646,42 @@ def process_csv(input_file: str, output_file: str) -> None:
         df = df.dropna(thresh=3)
         # Reset index to match enumerate indices
         df = df.reset_index(drop=True)
+        if df.empty:
+            raise EmptyCSVError("CSV contains no data rows")
+    except UnicodeDecodeError as e:
+        raise EncodingError(f"Could not decode {input_file} as UTF-8") from e
+    except FileNotFoundError as e:
+        raise ProcessorInputError(f"Input file not found: {input_file}") from e
+    except csv.Error as e:
+        raise MalformedCSVError(f"CSV parser error: {e}") from e
+    except pd.errors.EmptyDataError as e:
+        raise EmptyCSVError("CSV is empty") from e
+    except ProcessorError:
+        raise
     except Exception as e:
-        print(f"❌ Error reading file: {e}")
-        return
+        raise MalformedCSVError(f"Unable to read CSV: {e}") from e
 
     # Build header mapping for robust column access
     header_map = build_header_mapping(df.columns)
     if not header_map:
-        print("❌ Error: Could not locate required Givebutter columns")
-        return
+        raise UnsupportedGivebutterCSVError(
+            "Could not locate required Givebutter columns"
+        )
+
+    # Require only the core Givebutter donation columns that the rest of the
+    # processor and validation pipeline consistently rely on. Keep name and
+    # transaction ID optional so the processor continues to handle partial or
+    # alternate export layouts that have historically been accepted.
+    required_headers = ['date', 'email', 'amount']
+    missing_required_headers = [
+        CORE_HEADERS[field]
+        for field in required_headers
+        if field not in header_map
+    ]
+    if missing_required_headers:
+        raise UnsupportedGivebutterCSVError(
+            "Missing required Givebutter columns: " + ", ".join(missing_required_headers)
+        )
 
     logger.info(f"Found {len(df)} records")
 
@@ -734,7 +792,10 @@ def process_csv(input_file: str, output_file: str) -> None:
     df = df[new_order]
 
     # Write output with UTF-8 encoding to preserve international characters
-    df.to_csv(output_file, index=False, encoding='utf-8')
+    try:
+        df.to_csv(output_file, index=False, encoding='utf-8')
+    except Exception as e:
+        raise ProcessorOutputError(f"Failed to write processed CSV: {e}") from e
     print(f"\n✅ Output written to: {output_file}")
 
     # Summary stats

@@ -101,7 +101,7 @@ class TestDefaultUploadBehavior:
 
         # Create CSV data as BytesIO
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,TXN001\n"
             "Jane Doe,jane@gmail.com,5559876543,200.00,2026-06-13,TXN002"
         )
@@ -132,7 +132,7 @@ class TestDefaultUploadBehavior:
         from io import BytesIO
 
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,TXN001"
         )
         data = {
@@ -180,7 +180,7 @@ class TestDatabaseIngestOpt:
 
         # Create and upload CSV
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
         )
         data = {
@@ -229,7 +229,7 @@ class TestDatabaseIngestionPath:
         db_url = client_config["db_url"]
 
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001\n"
             "Jane Doe,jane@gmail.com,5559876543,200.00,2026-06-13,PASS,None,,TXN002"
         )
@@ -268,7 +268,7 @@ class TestDatabaseIngestionPath:
         db_url = client_config["db_url"]
 
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001\n"
             "Jane Doe,jane@gmail.com,5559876543,200.00,2026-06-13,PASS,None,,TXN002"
         )
@@ -300,7 +300,7 @@ class TestDatabaseIngestionPath:
         db_url = client_config["db_url"]
 
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001\n"
             "Jane Doe,jane@gmail.com,5559876543,200.00,2026-06-13,PASS,None,,TXN002"
         )
@@ -334,7 +334,7 @@ class TestDatabaseIngestionPath:
         db_url = client_config["db_url"]
 
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001\n"
             "Bob Wilson,,5551111111,300.00,2026-06-14,WARNING,Email: Empty,Verify email,TXN003"
         )
@@ -368,7 +368,7 @@ class TestDatabaseIngestionPath:
         db_url = client_config["db_url"]
 
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
         )
         data = {
@@ -397,7 +397,7 @@ class TestDatabaseIngestionPath:
         db_url = client_config["db_url"]
 
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
         )
         data = {
@@ -426,7 +426,7 @@ class TestDatabaseIngestionPath:
         client = client_config["client"]
 
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
         )
         data = {
@@ -505,10 +505,8 @@ class TestUploadErrorHandling:
         monkeypatch.setattr(app_module, "PROCESSING_DIR", processing_dir)
 
         # NOW monkeypatch the ingest_processed_csv function in app_module's namespace
-        from scripts.householder.ingestion_service import IngestionValidationError
-
         def failing_ingest(*args, **kwargs):
-            raise IngestionValidationError("Test: simulated validation failure")
+            raise app_module.IngestionValidationError("Test: simulated validation failure")
 
         monkeypatch.setattr(app_module, "ingest_processed_csv", failing_ingest)
 
@@ -519,7 +517,7 @@ class TestUploadErrorHandling:
 
         # Create and upload CSV
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
         )
         data = {
@@ -531,7 +529,10 @@ class TestUploadErrorHandling:
         # Verify error response (should be 4xx or 5xx, main point is no partial records)
         assert response.status_code in [400, 500], f"Expected error status, got {response.status_code}"
         response_data = response.get_json()
-        assert 'error' in response_data
+        assert response_data['error_type'] == 'unsupported_csv'
+        assert 'No data was imported' in response_data['message']
+        assert '/Users/' not in response.get_data(as_text=True)
+        assert 'Test: simulated validation failure' not in response.get_data(as_text=True)
 
         # Verify no partial records in database
         session = get_session(init_db(db_url))
@@ -541,6 +542,123 @@ class TestUploadErrorHandling:
             assert session.query(ImportContact).count() == 0, "No ImportContact should exist"
             assert session.query(ReviewItem).count() == 0, "No ReviewItem should exist"
             assert session.query(AuditLogRecord).count() == 0, "No AuditLogRecord should exist"
+        finally:
+            session.close()
+
+    def test_ingestion_database_failure_returns_safe_message_and_cleans_up(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Database failures during ingestion should not leak raw details."""
+        from io import BytesIO
+
+        intake_dir = tmp_path / "intake" / "new"
+        processing_dir = tmp_path / "processing"
+        intake_dir.mkdir(parents=True)
+        processing_dir.mkdir(parents=True)
+
+        db_path = tmp_path / "test.db"
+        db_url = f"sqlite:///{db_path}"
+        init_db(db_url)
+
+        monkeypatch.setenv("HOUSEHOLDER_INGEST_ON_UPLOAD", "true")
+        monkeypatch.setenv("GIVEBUTTER_DATABASE_URL", db_url)
+
+        import scripts.uploader.app as app_module
+
+        monkeypatch.setattr(app_module, "INTAKE_DIR", intake_dir)
+        monkeypatch.setattr(app_module, "PROCESSING_DIR", processing_dir)
+
+        def failing_ingest(*args, **kwargs):
+            raise app_module.IngestionDatabaseError("Test: simulated database failure /Users/gautambiswas/secret")
+
+        monkeypatch.setattr(app_module, "ingest_processed_csv", failing_ingest)
+
+        app = app_module.app
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        csv_content = (
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
+            "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
+        )
+        data = {'file': (BytesIO(csv_content.encode()), 'test.csv')}
+
+        response = client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 500
+        response_data = response.get_json()
+        assert response_data['error_type'] == 'unexpected_error'
+        assert 'Something went wrong while importing the file' in response_data['message']
+        assert '/Users/' not in response.get_data(as_text=True)
+
+        session = get_session(init_db(db_url))
+        try:
+            assert session.query(ImportBatch).count() == 0
+            assert session.query(RawImportRow).count() == 0
+            assert session.query(ImportContact).count() == 0
+            assert session.query(ReviewItem).count() == 0
+            assert session.query(AuditLogRecord).count() == 0
+        finally:
+            session.close()
+
+    def test_ingestion_unexpected_failure_returns_safe_message_and_cleans_up(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Unexpected ingestion failures should be sanitized and cleaned up."""
+        from io import BytesIO
+
+        intake_dir = tmp_path / "intake" / "new"
+        processing_dir = tmp_path / "processing"
+        intake_dir.mkdir(parents=True)
+        processing_dir.mkdir(parents=True)
+
+        db_path = tmp_path / "test.db"
+        db_url = f"sqlite:///{db_path}"
+        init_db(db_url)
+
+        monkeypatch.setenv("HOUSEHOLDER_INGEST_ON_UPLOAD", "true")
+        monkeypatch.setenv("GIVEBUTTER_DATABASE_URL", db_url)
+
+        import scripts.uploader.app as app_module
+
+        monkeypatch.setattr(app_module, "INTAKE_DIR", intake_dir)
+        monkeypatch.setattr(app_module, "PROCESSING_DIR", processing_dir)
+
+        def exploding_ingest(*args, **kwargs):
+            raise RuntimeError("Test: simulated unexpected ingestion failure /Users/gautambiswas/secret")
+
+        monkeypatch.setattr(app_module, "ingest_processed_csv", exploding_ingest)
+
+        app = app_module.app
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        csv_content = (
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
+            "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
+        )
+        data = {'file': (BytesIO(csv_content.encode()), 'test.csv')}
+
+        response = client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 500
+        response_data = response.get_json()
+        assert response_data['error_type'] == 'unexpected_error'
+        assert 'Something went wrong while importing the file' in response_data['message']
+        assert '/Users/' not in response.get_data(as_text=True)
+        assert 'RuntimeError' not in response.get_data(as_text=True)
+
+        session = get_session(init_db(db_url))
+        try:
+            assert session.query(ImportBatch).count() == 0
+            assert session.query(RawImportRow).count() == 0
+            assert session.query(ImportContact).count() == 0
+            assert session.query(ReviewItem).count() == 0
+            assert session.query(AuditLogRecord).count() == 0
         finally:
             session.close()
 
@@ -558,7 +676,7 @@ class TestUploadIngestedDataReadback:
 
         # Create and upload CSV
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001\n"
             "Jane Doe,jane@gmail.com,5559876543,200.00,2026-06-13,PASS,None,,TXN002"
         )
@@ -597,7 +715,7 @@ class TestUploadIngestedDataReadback:
 
         # Create and upload CSV
         csv_content = (
-            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction_ID\n"
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
         )
         data = {
@@ -617,3 +735,240 @@ class TestUploadIngestedDataReadback:
         assert dashboard is not None, "Dashboard should exist for batch"
         assert dashboard.batch_id == batch_id, "Dashboard batch_id should match"
         assert dashboard.filename == 'test.csv', "Dashboard filename should match"
+
+
+class TestUploadErrorTaxonomy:
+    """Test that upload failures are classified into safe user-facing categories."""
+
+    def test_unsupported_givebutter_csv_returns_supported_format_message(self, flask_client):
+        from io import BytesIO
+
+        data = {'file': (BytesIO(b"foo,bar,baz\n1,2,3\n"), 'non_givebutter.csv')}
+        response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 400
+        payload = response.get_json()
+        assert payload['error_type'] == 'unsupported_csv'
+        assert 'supported Givebutter CSV' in payload['message']
+        assert 'No data was imported' in payload['message']
+        assert 'Processing failed' not in payload['error']
+        assert '/Users/' not in response.get_data(as_text=True)
+
+    def test_missing_required_columns_returns_supported_format_message(self, flask_client):
+        from io import BytesIO
+
+        data = {
+            'file': (
+                BytesIO(
+                    b"Name,Email,Amount\n"
+                    b"John Smith,john@example.com,100.00\n"
+                ),
+                'missing_columns.csv',
+            )
+        }
+
+        response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 400
+        payload = response.get_json()
+        assert payload['error_type'] == 'unsupported_csv'
+        assert 'supported Givebutter CSV' in payload['message']
+        assert 'No data was imported' in payload['message']
+
+    def test_empty_csv_returns_empty_file_message(self, flask_client):
+        from io import BytesIO
+
+        data = {'file': (BytesIO(b""), 'empty.csv')}
+        response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 400
+        payload = response.get_json()
+        assert payload['error_type'] == 'empty_csv'
+        assert 'CSV is empty' in payload['message']
+
+    def test_malformed_csv_returns_unreadable_file_message(self, flask_client, monkeypatch):
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+
+        monkeypatch.setattr(
+            app_module,
+            "run_processor",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                app_module.MalformedCSVError("CSV parser error: malformed csv")
+            ),
+        )
+
+        data = {
+            'file': (
+                BytesIO(b'Donation ID,Date,Donor Name,Email,Amount\nGB001,2026-07-14,Jane Doe,jane@example.com,10.00\n'),
+                'malformed.csv',
+            )
+        }
+
+        response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 400
+        payload = response.get_json()
+        assert payload['error_type'] == 'malformed_csv'
+        assert 'couldn’t read this CSV' in payload['message']
+
+    def test_unsupported_encoding_returns_encoding_message(self, flask_client):
+        from io import BytesIO
+
+        data = {'file': (BytesIO(b'\xff\xfe\x00\x00'), 'encoding.csv')}
+        response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 400
+        payload = response.get_json()
+        assert payload['error_type'] == 'encoding_error'
+        assert 'UTF-8 CSV' in payload['message']
+
+    def test_missing_processed_file_returns_internal_file_handling_message(
+        self,
+        flask_client,
+        monkeypatch,
+    ):
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+
+        def fake_processor(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(app_module, "run_processor", fake_processor)
+
+        data = {
+            'file': (
+                BytesIO(
+                    b"Donation ID,Date,Donor Name,Email,Amount,Campaign Title\n"
+                    b"GB001,2026-05-25,John Smith,john@example.com,100.00,General Fund\n"
+                ),
+                'no_output.csv',
+            )
+        }
+
+        response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 500
+        payload = response.get_json()
+        assert payload['error_type'] == 'file_handling_error'
+        assert 'internal file-handling error' in payload['message']
+        assert '/Users/' not in response.get_data(as_text=True)
+
+    def test_unexpected_processor_exception_returns_generic_safe_message(
+        self,
+        flask_client,
+        monkeypatch,
+    ):
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+
+        def exploding_processor(*args, **kwargs):
+            raise RuntimeError("boom /Users/gautambiswas/secret")
+
+        monkeypatch.setattr(app_module, "run_processor", exploding_processor)
+
+        data = {
+            'file': (
+                BytesIO(
+                    b"Donation ID,Date,Donor Name,Email,Amount,Campaign Title\n"
+                    b"GB001,2026-05-25,John Smith,john@example.com,100.00,General Fund\n"
+                ),
+                'unexpected.csv',
+            )
+        }
+
+        response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 500
+        payload = response.get_json()
+        assert payload['error_type'] == 'unexpected_error'
+        assert 'Something went wrong while importing the file' in payload['message']
+        assert '/Users/' not in response.get_data(as_text=True)
+        assert 'RuntimeError' not in response.get_data(as_text=True)
+
+    def test_failed_upload_leaves_no_partial_import_state(
+        self,
+        flask_client_with_database,
+        monkeypatch,
+    ):
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+        from scripts.householder.database_models import (
+            get_session,
+            init_db,
+            ImportBatch,
+            RawImportRow,
+            ReviewDecision,
+        )
+
+        def unsupported_processor(*args, **kwargs):
+            raise app_module.UnsupportedGivebutterCSVError(
+                "Missing required Givebutter columns: Transaction ID"
+            )
+
+        monkeypatch.setattr(app_module, "run_processor", unsupported_processor)
+
+        client_config = flask_client_with_database
+        client = client_config["client"]
+        db_url = client_config["db_url"]
+
+        data = {
+            'file': (
+                BytesIO(
+                    b"Name,Email,Amount\n"
+                    b"John Smith,john@example.com,100.00\n"
+                ),
+                'partial_import.csv',
+            )
+        }
+
+        response = client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 400
+        payload = response.get_json()
+        assert payload['error_type'] == 'unsupported_csv'
+
+        session = get_session(init_db(db_url))
+        try:
+            assert session.query(ImportBatch).count() == 0
+            assert session.query(RawImportRow).count() == 0
+            assert session.query(ReviewDecision).count() == 0
+        finally:
+            session.close()
+
+    def test_failed_upload_cleans_up_temp_files_after_processing(
+        self,
+        flask_client,
+        monkeypatch,
+    ):
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+
+        seen_input_exists = {'value': False}
+
+        def checking_processor(input_path, output_path):
+            seen_input_exists['value'] = Path(input_path).exists()
+            raise app_module.UnsupportedGivebutterCSVError(
+                "Missing required Givebutter columns: Transaction ID"
+            )
+
+        monkeypatch.setattr(app_module, "run_processor", checking_processor)
+
+        data = {
+            'file': (
+                BytesIO(
+                    b"Name,Email,Amount\n"
+                    b"John Smith,john@example.com,100.00\n"
+                ),
+                'cleanup_check.csv',
+            )
+        }
+
+        response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+
+        assert response.status_code == 400
+        assert seen_input_exists['value'] is True
+
+        import scripts.uploader.app as app_module_check
+        assert not any(app_module_check.INTAKE_DIR.glob('*.csv'))
+        assert not any(app_module_check.PROCESSING_DIR.glob('*.csv'))

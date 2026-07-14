@@ -693,6 +693,7 @@
                 </p>
                 <button class="select-btn" type="button">Select File</button>
                 <p class="note">Upload creates a new import batch. Raw CSV rows are preserved unchanged.</p>
+                <div id="uploadStatus" class="status-message" role="alert" aria-live="polite"></div>
                 <input type="file" id="fileInput" accept=".csv">
             </div>
 
@@ -785,6 +786,40 @@
 
     <script>
         const fileInput = document.getElementById('fileInput');
+        const uploadStatus = document.getElementById('uploadStatus');
+
+        function clearUploadStatus() {
+            uploadStatus.style.display = 'none';
+            uploadStatus.textContent = '';
+            uploadStatus.innerHTML = '';
+        }
+
+        function showUploadError(data) {
+            const title = data.title || 'Upload failed';
+            const message = data.message || data.error || 'Unknown error';
+
+            uploadStatus.className = 'status-message error';
+            uploadStatus.innerHTML = '';
+
+            const heading = document.createElement('strong');
+            heading.textContent = title;
+
+            const body = document.createElement('div');
+            body.style.marginTop = '4px';
+            body.textContent = message;
+
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'select-btn';
+            retry.style.marginTop = '12px';
+            retry.textContent = 'Choose another CSV';
+            retry.addEventListener('click', () => fileInput.click());
+
+            uploadStatus.appendChild(heading);
+            uploadStatus.appendChild(body);
+            uploadStatus.appendChild(retry);
+            uploadStatus.style.display = 'block';
+        }
 
         // Upload file handler
         fileInput.addEventListener('change', () => {
@@ -800,6 +835,7 @@
         async function uploadFile(file) {
             const formData = new FormData();
             formData.append('file', file);
+            clearUploadStatus();
 
             try {
                 const resp = await fetch('/upload', {
@@ -811,16 +847,21 @@
 
                 if (!resp.ok) {
                     console.error('Upload error:', data);
-                    alert('Upload failed: ' + (data.error || 'Unknown error'));
+                    showUploadError(data);
                     return;
                 }
 
                 // Reload queue after successful upload
                 setTimeout(loadQueue, 500);
                 fileInput.value = '';
+                clearUploadStatus();
             } catch (err) {
                 console.error('Upload error:', err);
-                alert('Upload failed: ' + err.message);
+                showUploadError({
+                    title: 'Upload failed',
+                    message: 'Something went wrong while uploading the file. No data was imported. Please try again.',
+                    error: err.message
+                });
             }
         }
 
