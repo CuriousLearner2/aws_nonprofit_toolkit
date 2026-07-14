@@ -2408,7 +2408,7 @@ class TestReviewDecisionEffectiveValueRetrieval:
             f'/imports/validation-workflow-test-batch/autosave',
             json={
                 'raw_import_row_id': raw_id,
-                'corrected_values': {'amount': 250.50}
+                'corrected_values': {'amount': '250.50'}
             }
         )
         assert autosave_response.status_code == 200
@@ -2417,6 +2417,7 @@ class TestReviewDecisionEffectiveValueRetrieval:
         # Verify autosave returned effective amount
         effective_amount = autosave_data.get('effective_values', {}).get('amount')
         assert effective_amount is not None, "Autosave should return effective_values"
+        assert effective_amount == '250.50'
 
         # Fetch validation review page (HTTP 200 verification only, not HTML parsing)
         review_response = client.get(
@@ -2439,12 +2440,12 @@ class TestReviewDecisionEffectiveValueRetrieval:
             ).first()
 
             assert decision is not None, "ReviewDecision should be persisted after autosave"
-            assert decision.reviewed_values.get('amount') == 250.50, \
+            assert decision.reviewed_values.get('amount') == '250.50', \
                 f"ReviewDecision should contain corrected amount, got: {decision.reviewed_values}"
 
             # Verify get_effective_values reflects the correction
             effective = get_effective_values('validation-workflow-test-batch', raw_id, database_url)
-            assert effective.get('amount') == 250.50, \
+            assert effective.get('amount') == '250.50', \
                 f"Effective values should include correction, got: {effective}"
         finally:
             session.close()
@@ -2461,7 +2462,7 @@ class TestReviewDecisionEffectiveValueRetrieval:
             f'/imports/validation-workflow-test-batch/autosave',
             json={
                 'raw_import_row_id': raw_id,
-                'corrected_values': {'email': 'corrected.email@example.com', 'amount': 350.75}
+                'corrected_values': {'email': 'corrected.email@example.com', 'amount': '350.75'}
             }
         )
         assert autosave_response.status_code == 200
@@ -2470,7 +2471,7 @@ class TestReviewDecisionEffectiveValueRetrieval:
         # Verify autosave returned the effective values
         effective_values = autosave_data.get('effective_values', {})
         assert effective_values.get('email') == 'corrected.email@example.com'
-        assert effective_values.get('amount') == 350.75
+        assert effective_values.get('amount') == '350.75'
 
         # Layer test: Verify persistence and retrieval at database level
         # This tests the shared underlying mechanism (get_effective_values) both validation review and export use
@@ -2489,13 +2490,13 @@ class TestReviewDecisionEffectiveValueRetrieval:
 
             assert decision is not None, "ReviewDecision should be persisted"
             assert decision.reviewed_values.get('email') == 'corrected.email@example.com'
-            assert decision.reviewed_values.get('amount') == 350.75
+            assert decision.reviewed_values.get('amount') == '350.75'
 
             # Verify get_effective_values (used by export) includes the corrections
             effective = get_effective_values('validation-workflow-test-batch', raw_id, database_url)
             assert effective.get('email') == 'corrected.email@example.com', \
                 f"Export should use corrected email, got: {effective}"
-            assert effective.get('amount') == 350.75, \
+            assert effective.get('amount') == '350.75', \
                 f"Export should use corrected amount, got: {effective}"
 
             # Verify raw data is unchanged
@@ -2506,7 +2507,7 @@ class TestReviewDecisionEffectiveValueRetrieval:
             # Raw data should NOT contain the corrected values
             assert original_email != 'corrected.email@example.com', \
                 "Raw data must not be modified by autosave"
-            assert original_amount != 350.75, \
+            assert original_amount != '350.75', \
                 "Raw data must not be modified by autosave"
         finally:
             session.close()

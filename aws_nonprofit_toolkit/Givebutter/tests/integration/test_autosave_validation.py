@@ -541,7 +541,7 @@ class TestAutosaveValidation:
         assert len(amount_issues) == 0, "Valid amount should not create issue"
 
     def test_autosave_amount_with_formatting(self, client_with_db):
-        """Valid amount with dollar sign and commas should be accepted and normalized."""
+        """Valid amount with dollar sign and commas should be accepted and stored canonically."""
         client, database_url = client_with_db
         batch_id, raw_row_id = setup_validation_batch(database_url)
 
@@ -558,6 +558,7 @@ class TestAutosaveValidation:
         assert response.status_code == 200
         result = response.get_json()
         assert result['success'] is True
+        assert result['effective_values']['amount'] == '1250.50'
 
         # Verify saved to database
         SessionLocal = sessionmaker(bind=create_db_engine(database_url))
@@ -567,7 +568,7 @@ class TestAutosaveValidation:
                 raw_import_row_id=raw_row_id
             ).first()
             assert decision is not None
-            assert decision.reviewed_values['amount'] == '$1,250.50'
+            assert decision.reviewed_values['amount'] == '1250.50'
         finally:
             session.close()
 

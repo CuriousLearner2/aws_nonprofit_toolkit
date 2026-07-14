@@ -57,6 +57,9 @@ def flask_client_with_batch(temp_db_and_export_dir, monkeypatch):
     app.config['TESTING'] = True
     app.config['EXPORT_OUTPUT_DIR'] = export_dir
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', database_url)
 
     # Seed database
     Session = sessionmaker(bind=engine)

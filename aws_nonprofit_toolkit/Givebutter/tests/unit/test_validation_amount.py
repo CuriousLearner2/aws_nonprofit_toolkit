@@ -272,12 +272,15 @@ class TestCanonicalAmountValidation:
             '12.30',
             '1000',
             '1000.00',
+            ' $107.00 ',
             '$5.00',
+            '$107.00',
             '1,000.00',
         ]
         for amount in valid_amounts:
             result = validate_review_amount(amount)
             assert result.valid, f"Amount '{amount}' should be valid, got: {result.blocking_error}"
+            assert result.normalized_value is not None
 
     def test_invalid_amount_shapes_fail(self):
         invalid_amounts = [
@@ -292,10 +295,22 @@ class TestCanonicalAmountValidation:
             'Infinity',
             '-Infinity',
             '+5.00',
+            '$$107.00',
+            '1$07.00',
+            '$107.001',
+            '$NaN',
+            '$Infinity',
+            '$abc',
+            '$1.2.3',
         ]
         for amount in invalid_amounts:
             result = validate_review_amount(amount)
             assert not result.valid, f"Amount '{amount}' should be invalid"
+
+    def test_currency_prefixed_amount_normalizes_without_symbol(self):
+        result = validate_review_amount('$107.00')
+        assert result.valid
+        assert result.normalized_value == '107.00'
 
     def test_validator_does_not_use_float(self):
         source = inspect.getsource(validate_review_amount)

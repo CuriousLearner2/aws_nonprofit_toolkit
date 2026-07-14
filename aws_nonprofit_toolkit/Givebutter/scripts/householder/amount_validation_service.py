@@ -23,12 +23,6 @@ class AmountValidationResult:
     blocking_error: Optional[str] = None
     warnings: Tuple[str, ...] = field(default_factory=tuple)
 
-
-def _strip_currency_text(value: Any) -> str:
-    """Return trimmed amount text with currency symbols removed."""
-    return "" if value is None else str(value).replace("$", "").strip()
-
-
 def validate_review_amount(
     value: Any,
     *,
@@ -39,13 +33,13 @@ def validate_review_amount(
     Validate a reviewed amount using Decimal-backed syntax and range checks.
 
     The canonical syntax accepts only non-negative ASCII decimal strings after
-    removing currency symbols/commas:
+    removing one optional leading currency symbol and grouping commas:
     - integers
     - one decimal place
     - two decimal places
 
-    More than two decimal places, signs, malformed separators, and non-finite
-    Decimal values are rejected.
+    More than two decimal places, signs, repeated/embedded currency symbols,
+    malformed separators, and non-finite Decimal values are rejected.
     """
     text = "" if value is None else str(value).strip()
 
@@ -54,7 +48,10 @@ def validate_review_amount(
             return AmountValidationResult(valid=True, normalized_value="")
         return AmountValidationResult(valid=False, blocking_error=AMOUNT_REQUIRED_ERROR)
 
-    cleaned = _strip_currency_text(text)
+    if text.count('$') > 1 or ('$' in text and not text.startswith('$')):
+        return AmountValidationResult(valid=False, blocking_error=AMOUNT_FORMAT_ERROR)
+
+    cleaned = text[1:] if text.startswith('$') else text
     if not cleaned:
         return AmountValidationResult(valid=False, blocking_error=AMOUNT_REQUIRED_ERROR)
 

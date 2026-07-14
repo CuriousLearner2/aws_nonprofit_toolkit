@@ -43,6 +43,7 @@ def autosave_row_corrections(
         DatabaseError: If write transaction fails
     """
     from .database_models import ReviewDecision, get_session, create_db_engine
+    from .amount_validation_service import validate_review_amount
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     import os
@@ -84,12 +85,20 @@ def autosave_row_corrections(
         # Create autosave ReviewDecision (append-only)
         # Row-level autosave doesn't link to a specific ReviewItem
         # Instead, creates a row-level decision with reviewed_values
+        reviewed_values = dict(corrected_values)
+        amount_value = reviewed_values.get('amount')
+        if amount_value is not None:
+            from decimal import Decimal
+            amount_result = validate_review_amount(amount_value, allow_blank=False)
+            if amount_result.valid and amount_result.normalized_value:
+                reviewed_values['amount'] = f"{Decimal(amount_result.normalized_value):.2f}"
+
         decision = ReviewDecision(
             batch_id=batch_id,
             review_item_id=None,  # Not applicable for row-level autosave
             raw_import_row_id=raw_import_row_id,
             decision='accept_issue',
-            reviewed_values=corrected_values,
+            reviewed_values=reviewed_values,
             reviewer=reviewer
         )
         session.add(decision)
@@ -260,6 +269,7 @@ def build_fixture_autosave_response(
     """
     from .issue_recalculation_service import _validate_effective_values
     from .validation_service import get_validation_review
+    from .amount_validation_service import validate_review_amount
 
     fixture_config = dict(config or {})
     fixture_config["HOUSEHOLDER_REPOSITORY"] = "fixture"
@@ -295,6 +305,12 @@ def build_fixture_autosave_response(
     }
     effective_values = dict(current_values)
     effective_values.update(corrected_values)
+    amount_value = effective_values.get("amount")
+    if amount_value is not None:
+        from decimal import Decimal
+        amount_result = validate_review_amount(amount_value, allow_blank=False)
+        if amount_result.valid and amount_result.normalized_value:
+            effective_values["amount"] = f"{Decimal(amount_result.normalized_value):.2f}"
 
     current_issues = list(record.get("issues") or [])
     is_valid, errors = validate_corrected_values(corrected_values)

@@ -1971,9 +1971,9 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
                 # ===== PART 2: Valid amount (positive) is accepted =====
                 print(f"\n=== TEST PART 2: Valid Positive Amount ===")
 
-                await amount_input.fill('250.50')
+                await amount_input.fill('$250.50')
                 await amount_input.evaluate("el => el.blur()")
-                print("✓ Entered valid amount: 250.50")
+                print("✓ Entered valid amount: $250.50")
 
                 # Wait for success state
                 await asyncio.sleep(0.5)
@@ -1989,6 +1989,7 @@ async def test_invalid_amount_autosave_rejected(e2e_database_and_app):
 
                 # Value should be saved
                 final_value = await amount_input.input_value()
+                assert final_value.startswith('$'), f"Amount should display with $, got: {final_value}"
                 assert '250.50' in final_value or '250' in final_value, f"Amount should be 250.50, got: {final_value}"
                 print(f"✓ Valid amount saved: {final_value}")
 
@@ -2082,6 +2083,9 @@ async def test_amount_overprecision_autosave_rejected_and_refresh_keeps_saved_va
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 reloaded_value = await page.locator('input[data-testid^="amount-input-"]').input_value()
+                assert reloaded_value.startswith('$'), (
+                    f"Refresh should keep the saved amount displayed as currency, got: {reloaded_value}"
+                )
                 assert '100' in reloaded_value and '100.001' not in reloaded_value, (
                     f"Refresh should restore the saved amount, got: {reloaded_value}"
                 )
@@ -2211,6 +2215,14 @@ async def test_amount_input_blocks_third_decimal_digit_and_refreshes_saved_value
                 assert 'Saved' in status_text, f'Amount should autosave the valid two-decimal value, got: {status_text}'
                 assert 'Error' not in status_text, f'Amount typing guard should not show Error, got: {status_text}'
 
+                saved_value = await amount_input.input_value()
+                assert saved_value.startswith('$'), (
+                    f'Amount should display with currency formatting after save, got: {saved_value}'
+                )
+                assert normalize_amount(saved_value) == '100.12', (
+                    f'Saved amount should remain canonical after display formatting, got: {saved_value}'
+                )
+
                 row_status_text = (await row_status.text_content() or '').strip()
                 assert row_status_text == 'No issues', f'Expected No issues after valid amount edit, got: {row_status_text}'
 
@@ -2221,12 +2233,133 @@ async def test_amount_input_blocks_third_decimal_digit_and_refreshes_saved_value
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
                 reloaded_value = await amount_input.input_value()
+                assert reloaded_value.startswith('$'), (
+                    f'Refresh should keep the saved amount displayed as currency, got: {reloaded_value}'
+                )
                 assert normalize_amount(reloaded_value) == '100.12', (
                     f'Refresh should keep the saved two-decimal amount, got: {reloaded_value}'
                 )
 
                 raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
                 assert raw_row is not None, 'Raw row not found after amount typing guard test'
+                assert raw_row.raw_csv_data['amount'] == '100.00', (
+                    f'Raw amount should remain unchanged, got: {raw_row.raw_csv_data["amount"]}'
+                )
+
+            finally:
+                await context.close()
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_amount_currency_prefixed_paste_saves_and_displays_as_currency(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify pasted dollar-prefixed amounts autosave and reload as currency display.
+
+    Invariant: The review UI accepts a leading $ as presentation syntax, stores the
+    canonical numeric reviewed value, and reloads with a currency-formatted display.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch_id = 'amount-currency-paste-batch'
+        raw_values = {
+            'name': 'Currency Paste Example',
+            'date': '2026-04-15',
+            'email': 'currency.paste@example.com',
+            'phone': '(415) 555-1234',
+            'amount': '100.00',
+            'address': '123 Main St',
+        }
+
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id,
+            'amount_currency_paste.csv',
+            raw_values,
+        )
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            context = await browser.new_context()
+            await context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=base_url)
+            page = await context.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                amount_input = page.locator('input[data-testid^="amount-input-"]')
+                amount_status = page.locator('input[data-testid^="amount-input-"] ~ .autosave-status')
+
+                initial_value = await amount_input.input_value()
+                assert initial_value.startswith('$'), (
+                    f'Initial amount should display with currency formatting, got: {initial_value}'
+                )
+
+                await page.evaluate("navigator.clipboard.writeText('$107.00')")
+                await amount_input.click()
+                await amount_input.press('ControlOrMeta+A')
+                await amount_input.press('ControlOrMeta+V')
+
+                pasted_value = await amount_input.input_value()
+                assert pasted_value.startswith('$'), (
+                    f'Paste should accept dollar-prefixed amount, got: {pasted_value}'
+                )
+                assert pasted_value.endswith('107.00'), (
+                    f'Paste should replace the value with 107.00, got: {pasted_value}'
+                )
+
+                await amount_input.evaluate('el => el.blur()')
+                await page.wait_for_function(
+                    "() => { const status = document.querySelector('input[data-testid^=\"amount-input-\"] ~ .autosave-status'); "
+                    "return status && status.textContent.includes('Saved'); }",
+                    timeout=5000,
+                )
+
+                status_text = (await amount_status.text_content() or '').strip()
+                assert 'Saved' in status_text, f'Pasted currency amount should autosave, got: {status_text}'
+                assert 'Error' not in status_text, f'Pasted currency amount should not show Error, got: {status_text}'
+
+                saved_value = await amount_input.input_value()
+                assert saved_value.startswith('$'), (
+                    f'Saved amount should display with currency formatting, got: {saved_value}'
+                )
+                assert saved_value.endswith('107.00'), (
+                    f'Saved amount should preserve the pasted numeric value, got: {saved_value}'
+                )
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                reloaded_value = await amount_input.input_value()
+                assert reloaded_value.startswith('$'), (
+                    f'Refresh should preserve currency formatting, got: {reloaded_value}'
+                )
+                assert reloaded_value.endswith('107.00'), (
+                    f'Refresh should preserve the saved amount, got: {reloaded_value}'
+                )
+
+                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
+                assert raw_row is not None, 'Raw row not found after amount currency paste test'
                 assert raw_row.raw_csv_data['amount'] == '100.00', (
                     f'Raw amount should remain unchanged, got: {raw_row.raw_csv_data["amount"]}'
                 )

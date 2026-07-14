@@ -304,9 +304,28 @@ function normalizeAutosaveComparableValue(field, value) {
         return text.replace(/\D/g, '');
     }
     if (field === 'amount') {
-        return text.replace(/[$,]/g, '').trim();
+        const withoutLeadingDollar = text.startsWith('$') ? text.slice(1) : text;
+        return withoutLeadingDollar.replace(/,/g, '');
     }
     return text;
+}
+
+function formatAmountForDisplay(value) {
+    const text = (value === undefined || value === null) ? '' : String(value).trim();
+    if (!text) {
+        return '';
+    }
+
+    const normalized = normalizeAutosaveComparableValue('amount', text);
+    const parsed = Number(normalized.replace(/,/g, ''));
+    if (!Number.isFinite(parsed)) {
+        return text;
+    }
+
+    return `$${parsed.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
 }
 
 function amountHasOverPrecision(value) {
@@ -598,6 +617,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Autosave on blur for editable fields
 document.querySelectorAll('.autosave-field').forEach(input => {
+    if (input.getAttribute('data-field') === 'amount') {
+        input.value = formatAmountForDisplay(input.value);
+    }
     const fieldId = `${input.getAttribute('data-raw-id')}-${input.getAttribute('data-field')}`;
 
     // Initialize focus-time value to current value (last successfully saved)
@@ -926,6 +948,8 @@ function updateRowFromAutosave(row, result, editedField) {
             // Format phone numbers for display
             if (field === 'phone' && value) {
                 value = formatPhoneNumber(value);
+            } else if (field === 'amount' && value) {
+                value = formatAmountForDisplay(value);
             }
             const fieldId = `${rawId}-${field}`;
             const preserveLocalState =
