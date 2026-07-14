@@ -14,17 +14,34 @@ function openModal(modalId) {
     }
 }
 
+function notifyModalClose(modal) {
+    if (modal && modal.id === 'record-modal' && typeof window.restoreRecordModalState === 'function') {
+        window.restoreRecordModalState(modal);
+    }
+}
+
+function finalizeModalClose(modal) {
+    if (!modal) {
+        return;
+    }
+    notifyModalClose(modal);
+    if (modal.dataset) {
+        modal.dataset.requestToken = '';
+    }
+    modal.classList.remove('show');
+}
+
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
-        modal.classList.remove('show');
+        finalizeModalClose(modal);
     }
 }
 
 // Close modal when clicking outside
 document.addEventListener('click', function (event) {
     if (event.target.classList.contains('modal')) {
-        event.target.classList.remove('show');
+        finalizeModalClose(event.target);
     }
 });
 

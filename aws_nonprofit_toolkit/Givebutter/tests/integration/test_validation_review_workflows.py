@@ -2514,16 +2514,16 @@ class TestReviewDecisionEffectiveValueRetrieval:
 
 
 # ==============================================================================
-# TEST E: Inspect modal controls - Dropdown, Notes field, Record Decision button
+# TEST E: Details modal controls - read-only details, no duplicate decision form
 # ==============================================================================
 
-class TestInspectModalControls:
-    """Test inspect modal has all expected interactive controls."""
+class TestDetailsModalControls:
+    """Test details modal is read-only and no longer duplicates row decisions."""
 
-    def test_inspect_modal_decision_dropdown_options(
+    def test_details_modal_is_read_only(
         self, flask_client_with_validation_batch
     ):
-        """Modal decision dropdown should have all status options."""
+        """Details modal should not contain a duplicate decision dropdown."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
 
         # Load validation page - modal is populated via JavaScript
@@ -2533,16 +2533,14 @@ class TestInspectModalControls:
         assert response.status_code == 200
         html = response.get_data(as_text=True)
 
-        # Verify modal HTML contains decision options
-        assert 'Accept as-is' in html, "Modal should have 'Accept as-is' option"
-        assert 'Needs follow-up' in html, "Modal should have 'Needs follow-up' option"
-        assert 'Defer' in html, "Modal should have 'Defer' option"
-        assert 'Reject row' in html, "Modal should have 'Reject row' option"
+        assert 'Details' in html, "Validation page should expose the Details action"
+        assert 'Record Details' in html, "Modal title should describe the details view"
+        assert 'row-decision-' not in html, "Modal should not contain a duplicate decision dropdown"
 
-    def test_inspect_modal_notes_field_exists(
+    def test_follow_up_notes_ui_exists_inline(
         self, flask_client_with_validation_batch
     ):
-        """Modal should have Notes textarea field."""
+        """Follow-up notes UI should be present only for the dedicated notes workflow."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
 
         response = client.get(
@@ -2551,14 +2549,13 @@ class TestInspectModalControls:
         assert response.status_code == 200
         html = response.get_data(as_text=True)
 
-        # Verify modal HTML contains notes field
-        assert 'Notes required when Follow-up' in html or 'row-notes' in html, \
-            "Modal should have notes field"
+        assert 'Save Follow-up' in html or 'followup-notes-' in html
+        assert 'Needs Follow-up Notes' in html or 'follow-up notes' in html.lower()
 
-    def test_inspect_modal_record_decision_button_exists(
+    def test_details_modal_no_record_decision_button(
         self, flask_client_with_validation_batch
     ):
-        """Modal should have Record Decision button."""
+        """Details modal should not expose a duplicate Record Decision action."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
 
         response = client.get(
@@ -2567,9 +2564,8 @@ class TestInspectModalControls:
         assert response.status_code == 200
         html = response.get_data(as_text=True)
 
-        # Verify modal HTML contains Record Decision button
-        assert 'Record Decision' in html, \
-            "Modal should have 'Record Decision' button"
+        assert 'Record Decision' not in html, \
+            "Details modal should not have a duplicate Record Decision button"
 
     def test_row_decision_get_endpoint_returns_status(
         self, flask_client_with_validation_batch

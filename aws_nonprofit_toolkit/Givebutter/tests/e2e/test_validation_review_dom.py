@@ -954,45 +954,21 @@ async def test_approval_with_overrides_preserves_row_status_dropdown(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_inspect_modal_preserves_controls_after_decision_recording(
+async def test_details_modal_displays_read_only_controls(
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify that the inspect modal's decision dropdown and controls
-    are preserved after recording a decision.
-
-    This is a regression test for lines 723 and 735 in validation.html,
-    which used innerHTML to replace dropdown options.
-
-    Regression issue: After recording a decision from the inspect modal,
-    the dropdown in the table is updated via innerHTML, which can destroy
-    the dropdown element or its options, potentially breaking the reset option visibility.
-
-    This test verifies:
-    1. Open inspect modal
-    2. Record a decision (select an option, click Record Decision)
-    3. Modal closes and decision is recorded
-    4. Table dropdown reflects the new decision
-    5. Reset option is visible
-    6. Dropdown is still interactive
-    7. Re-open inspect modal and verify decision is shown
-    8. Verify all controls in modal still work
+    GOAL: Verify that the Details modal is read-only and no longer duplicates
+    row decision controls.
 
     Flow:
     1. Seed database with a test row
     2. Load validation page
-    3. Click "Inspect" button to open modal
-    4. Verify modal shows decision dropdown with options
-    5. Select a decision ("Defer")
-    6. Click "Record Decision" button
-    7. Assert modal closes
-    8. Assert table dropdown shows the decision
-    9. Assert reset option is visible
-    10. Click "Inspect" again
-    11. Verify modal opens and shows the previous decision
-    12. Verify decision dropdown still has all options
-    13. Select another decision
-    14. Verify it can be changed successfully
+    3. Click "Details" button to open modal
+    4. Verify modal shows full record details
+    5. Verify modal does not contain a duplicate decision dropdown
+    6. Verify modal does not contain a duplicate Record Decision button
+    7. Re-open modal and verify the read-only state remains unchanged
     """
     from playwright.async_api import async_playwright
 
@@ -1065,12 +1041,12 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
                 # Wait for table to load
                 await page.wait_for_selector('table tbody tr', timeout=5000)
 
-                # ===== PART 1: Open Inspect Modal =====
-                print(f"\n=== PART 1: Open Inspect Modal ===")
+                # ===== PART 1: Open Details Modal =====
+                print(f"\n=== PART 1: Open Details Modal ===")
 
-                # Find inspect button (typically in Actions column)
+                # Find Details button (typically in Actions column)
                 inspect_button = await page.query_selector('a[data-action="inspect-record"]')
-                assert inspect_button is not None, "Inspect button not found"
+                assert inspect_button is not None, "Details button not found"
 
                 await inspect_button.click()
 
@@ -1081,75 +1057,37 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
                 modal = await page.query_selector('#record-modal')
                 is_visible = await modal.is_visible()
                 assert is_visible, "Modal should be visible"
-                print("✓ Inspect modal opened successfully")
+                print("✓ Details modal opened successfully")
 
                 # ===== PART 2: Verify Modal Controls =====
                 print(f"\n=== PART 2: Verify Modal Controls ===")
 
-                # Find decision dropdown in modal
+                # Verify the modal is read-only and does not duplicate row decision controls
                 decision_dropdown = await page.query_selector('#record-modal select[id^="row-decision-"]')
-                assert decision_dropdown is not None, "P2 FAILED: Decision dropdown not found in modal"
-                print("✓ P2: Decision dropdown exists in modal")
+                assert decision_dropdown is None, "P2 FAILED: Details modal should not contain a decision dropdown"
+                print("✓ P2: No duplicate decision dropdown present")
 
-                # Find notes field
-                notes_field = await page.query_selector('#record-modal textarea[id^="row-notes-"]')
-                assert notes_field is not None, "P3 FAILED: Notes field not found in modal"
-                print("✓ P3: Notes field exists in modal")
-
-                # Find Record Decision button
+                # Verify Record Decision button is absent from the details modal
                 record_btn = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
-                assert record_btn is not None, "P4 FAILED: Record Decision button not found"
-                print("✓ P4: Record Decision button exists in modal")
+                assert record_btn is None, "P3 FAILED: Details modal should not contain a Record Decision button"
+                print("✓ P3: No duplicate Record Decision button present")
 
-                # ===== PART 3: Record a Decision =====
-                print(f"\n=== PART 3: Record a Decision ===")
+                # Verify notes textarea is absent from the details modal
+                notes_field = await page.query_selector('#record-modal textarea[id^="followup-notes-"]')
+                assert notes_field is None, "P4 FAILED: Details modal should not contain a follow-up notes field"
+                print("✓ P4: No follow-up notes field present in details mode")
 
-                # Select "Defer" option
-                await decision_dropdown.select_option('defer')
-                print("✓ P5: Selected 'Defer' option")
+                # ===== PART 3: Re-open Details Modal and Verify =====
+                print(f"\n=== PART 3: Re-open Details Modal ===")
 
-                # Click Record Decision
-                await record_btn.click()
-                print("✓ P6: Clicked Record Decision button")
-
-                # Set up handler for the alert dialog that will appear
-                page.once("dialog", lambda dialog: dialog.accept())
-
-                # Wait for the modal to close (after the POST response is processed)
-                # The modal will be closed by the JS after the alert() is called
+                close_btn = await page.query_selector('#record-modal button.btn.btn-secondary')
+                assert close_btn is not None, "Close button should exist in details modal"
+                await close_btn.click()
                 await page.wait_for_function(
-                    "() => !document.getElementById('record-modal').classList.contains('show')",
-                    timeout=5000
+                    "() => !document.getElementById('record-modal')?.classList.contains('show')",
+                    timeout=5000,
                 )
-                print("✓ P7: Modal closed after recording decision")
-
-                # ===== PART 4: Verify Table Dropdown Updated =====
-                print(f"\n=== PART 4: Verify Table Dropdown Updated ===")
-
-                # Re-query the dropdown element from fresh DOM (don't reuse stale reference)
-                table_dropdown = await page.query_selector('select.row-status-dropdown')
-                assert table_dropdown is not None, "P8 FAILED: Table dropdown not found"
-                print("✓ P8: Table dropdown exists")
-
-                # Check that dropdown has multiple options (not just one)
-                all_options = await table_dropdown.query_selector_all('option')
-                assert len(all_options) > 1, f"P9 FAILED: Dropdown should have multiple options, got {len(all_options)}"
-                print(f"✓ P9: Dropdown has {len(all_options)} options (preserved)")
-
-                # Check first option shows decision
-                first_option = await table_dropdown.query_selector('option:first-child')
-                first_option_text = await first_option.inner_text()
-                print(f"✓ P10: First option shows: '{first_option_text}'")
-
-                # Re-query the reset-option element from fresh DOM (don't reuse stale reference)
-                reset_option = await table_dropdown.query_selector('.reset-option')
-                assert reset_option is not None, "P11 FAILED: Reset option not found in dropdown"
-                reset_display = await reset_option.evaluate("el => window.getComputedStyle(el).display")
-                assert reset_display != 'none', f"P11 FAILED: Reset option should be visible but display={reset_display}"
-                print("✓ P11: Reset option is visible")
-
-                # ===== PART 5: Re-open Inspect Modal and Verify =====
-                print(f"\n=== PART 5: Re-open Inspect Modal ===")
+                print("✓ P5: Details modal closed successfully")
 
                 # Click inspect button again
                 inspect_button_2 = await page.query_selector('a[data-action="inspect-record"]')
@@ -1159,24 +1097,16 @@ async def test_inspect_modal_preserves_controls_after_decision_recording(
 
                 # Wait for modal
                 await page.wait_for_selector('#record-modal', timeout=5000)
-                print("✓ P12: Modal re-opened successfully")
+                print("✓ P6: Details modal re-opened successfully")
 
-                # Verify decision dropdown in modal
+                # Verify modal remains read-only on reopen
                 decision_dropdown_2 = await page.query_selector('#record-modal select[id^="row-decision-"]')
-                assert decision_dropdown_2 is not None, "P13 FAILED: Decision dropdown not found on re-open"
-                print("✓ P13: Decision dropdown exists in re-opened modal")
+                assert decision_dropdown_2 is None, "P6 FAILED: Details modal should remain read-only on reopen"
+                record_btn_2 = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
+                assert record_btn_2 is None, "P7 FAILED: Details modal should not show a Record Decision button on reopen"
+                print("✓ P7: Details modal remains read-only on reopen")
 
-                # Verify it has all expected options
-                modal_options = await decision_dropdown_2.query_selector_all('option')
-                assert len(modal_options) > 1, f"P14 FAILED: Modal dropdown should have multiple options, got {len(modal_options)}"
-                print(f"✓ P14: Modal dropdown has {len(modal_options)} options")
-
-                # Find and verify reset option exists in modal
-                modal_reset = await decision_dropdown_2.query_selector('.reset-option')
-                if modal_reset:
-                    print("✓ P15: Reset option exists in modal")
-
-                print(f"\n=== ALL INSPECT MODAL CONTROLS TESTS PASSED ===")
+                print(f"\n=== ALL DETAILS MODAL CONTROL TESTS PASSED ===")
 
             finally:
                 await browser.close()
@@ -1196,22 +1126,22 @@ async def test_needs_follow_up_notes_required_workflow(
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify Needs follow-up workflow enforces notes and shows "Notes required" message.
+    GOAL: Verify Needs follow-up workflow opens the notes dialog, enforces notes,
+    and shows "Notes required" message.
 
     Flow:
     1. Seed database with clean row
-    2. Open inspect modal
-    3. Select "Needs follow-up"
-    4. Verify Notes field gets focus
-    5. Verify "Notes required" message appears
-    6. Verify Record Decision button is visually enabled
-    7. Try to submit without notes (should be blocked by frontend validation)
-    8. Enter notes
-    9. Verify message clears
-    10. Click Record Decision
-    11. Verify modal closes and decision persisted
-    12. Verify table row shows decision status
-    13. Verify controls preserved
+    2. Select "Needs follow-up" in the row dropdown
+    3. Verify Notes field gets focus
+    4. Verify "Notes required" message appears
+    5. Verify Save Follow-up button is visually enabled
+    6. Try to submit without notes (should be blocked by frontend validation)
+    7. Enter notes
+    8. Verify message clears
+    9. Click Save Follow-up
+    10. Verify modal closes and decision persisted
+    11. Verify table row shows decision status
+    12. Verify controls preserved
     """
     from playwright.async_api import async_playwright
 
@@ -1278,26 +1208,19 @@ async def test_needs_follow_up_notes_required_workflow(
                 await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
                 await page.wait_for_selector('table', timeout=5000)
 
-                # Click Inspect button
-                inspect_btn = await page.query_selector('a[data-action="inspect-record"]')
-                assert inspect_btn is not None, "Inspect button should exist"
-                await inspect_btn.click()
-
-                # Wait for modal to appear
-                await page.wait_for_selector('#record-modal', timeout=5000)
-                print("✓ A1: Inspect modal opened")
-
-                # Get decision dropdown
-                decision_dropdown = await page.query_selector('select[id^="row-decision-"]')
-                assert decision_dropdown is not None, "Decision dropdown should exist in modal"
-
-                # Select "Needs follow-up"
+                # Select "Needs follow-up" from the main table dropdown
+                decision_dropdown = await page.query_selector('select.row-status-dropdown')
+                assert decision_dropdown is not None, "Decision dropdown should exist in main table"
                 await decision_dropdown.select_option('needs_follow_up')
-                print("✓ A2: Selected 'Needs follow-up' option")
+                print("✓ A1: Selected 'Needs follow-up' option from the row dropdown")
+
+                # Wait for notes modal to appear
+                await page.wait_for_selector('#record-modal', timeout=5000)
+                print("✓ A2: Follow-up notes modal opened")
 
                 # Get notes field
-                notes_field = await page.query_selector('textarea[id^="row-notes-"]')
-                assert notes_field is not None, "Notes field should exist in modal"
+                notes_field = await page.query_selector('textarea[id^="followup-notes-"]')
+                assert notes_field is not None, "Notes field should exist in the follow-up modal"
 
                 # Verify notes field is focused (has focus state or active element is notes field)
                 notes_id = await notes_field.evaluate("el => el.id")
@@ -1309,7 +1232,7 @@ async def test_needs_follow_up_notes_required_workflow(
                     print(f"ℹ A3: Notes field not focused (activeElement: {focused_id}, notes: {notes_id})")
 
                 # Verify "Notes required" message appears
-                notes_req_msg = await page.query_selector('div[id^="notes-requirement-"]')
+                notes_req_msg = await page.query_selector('div[id^="followup-notes-requirement-"]')
                 if notes_req_msg:
                     display = await notes_req_msg.evaluate("el => window.getComputedStyle(el).display")
                     if display != 'none':
@@ -1317,10 +1240,10 @@ async def test_needs_follow_up_notes_required_workflow(
                     else:
                         print("! A4: 'Notes required' message exists but not visible yet")
 
-                # Verify Record Decision button exists
-                record_btn = await page.query_selector('button[id^="record-row-decision-"]')
-                assert record_btn is not None, "Record Decision button should exist"
-                print("✓ A5: Record Decision button exists and enabled")
+                # Verify Save Follow-up button exists
+                record_btn = await page.query_selector('button[id^="save-followup-notes-"]')
+                assert record_btn is not None, "Save Follow-up button should exist"
+                print("✓ A5: Save Follow-up button exists and enabled")
 
                 # Try to submit without notes - should trigger frontend validation
                 await record_btn.click()
@@ -1336,7 +1259,7 @@ async def test_needs_follow_up_notes_required_workflow(
                 await notes_field.fill('Need to verify donor intent')
                 print("✓ A7: Entered notes in Notes field")
 
-                # Click Record Decision
+                # Click Save Follow-up
                 await record_btn.click()
 
                 # Wait for modal to close (Decision recorded)
@@ -1346,14 +1269,15 @@ async def test_needs_follow_up_notes_required_workflow(
                 )
                 print("✓ A8: Modal closed after recording decision")
 
-                # Verify table row status dropdown updated
+                # Verify the table row retains the decision state and decision marker
                 await page.wait_for_selector('select.row-status-dropdown', timeout=5000)
                 table_dropdown = await page.query_selector('select.row-status-dropdown')
-                first_option = await table_dropdown.query_selector('option:first-child')
-                status_text = await first_option.inner_text()
-                assert 'follow' in status_text.lower() or 'needs' in status_text.lower(), \
-                    f"Status should reflect follow-up decision, got: {status_text}"
-                print(f"✓ A9: Table row status shows: {status_text}")
+                dropdown_value = await table_dropdown.evaluate("el => el.value")
+                assert dropdown_value == 'needs_follow_up', \
+                    f"Dropdown should remain on follow-up decision, got: {dropdown_value}"
+                has_decision = await table_dropdown.get_attribute('data-has-decision')
+                assert has_decision == 'true', "Follow-up decision marker should be retained on the row"
+                print("✓ A9: Table row retains follow-up decision state")
 
                 # Verify controls preserved (dropdown still exists and is interactive)
                 assert table_dropdown is not None, "Row status dropdown should still exist"
@@ -1372,7 +1296,7 @@ async def test_needs_follow_up_notes_required_workflow(
 
 
 # ==============================================================================
-# WORKFLOW B E2E: Defer - Notes optional, Record Decision works
+# WORKFLOW B E2E: Defer - Inline row decision, no notes modal required
 # ==============================================================================
 
 @pytest.mark.e2e
@@ -1381,18 +1305,14 @@ async def test_defer_workflow_notes_optional(
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify Defer workflow allows recording without notes.
+    GOAL: Verify Defer workflow can be recorded inline without opening the
+    notes modal.
 
     Flow:
     1. Seed database with clean row
-    2. Open inspect modal
-    3. Select "Defer"
-    4. Verify "Notes required" message does NOT appear
-    5. Verify Record Decision button enabled
-    6. Click Record Decision WITHOUT entering notes
-    7. Verify decision records successfully
-    8. Verify modal closes
-    9. Verify row status updated
+    2. Select "Defer" in the row dropdown
+    3. Verify the notes modal does not open
+    4. Verify the row status updates
     """
     from playwright.async_api import async_playwright
 
@@ -1459,36 +1379,24 @@ async def test_defer_workflow_notes_optional(
                 await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
                 await page.wait_for_selector('table', timeout=5000)
 
-                # Click Inspect button
-                inspect_btn = await page.query_selector('a[data-action="inspect-record"]')
-                await inspect_btn.click()
-
-                # Wait for modal
-                await page.wait_for_selector('#record-modal', timeout=5000)
-                print("✓ B1: Inspect modal opened")
-
-                # Select "Defer"
-                decision_dropdown = await page.query_selector('select[id^="row-decision-"]')
+                # Select "Defer" directly in the row dropdown
+                decision_dropdown = await page.query_selector('select.row-status-dropdown')
                 await decision_dropdown.select_option('defer')
-                print("✓ B2: Selected 'Defer' option")
+                print("✓ B1: Selected 'Defer' option in the row dropdown")
 
-                # Verify "Notes required" message does NOT appear
-                notes_req_msg = await page.query_selector('div[id^="notes-requirement-"]')
-                if notes_req_msg:
-                    display = await notes_req_msg.evaluate("el => window.getComputedStyle(el).display")
-                    assert display == 'none', "Notes required message should not show for Defer"
-                print("✓ B3: 'Notes required' message does not appear for Defer")
+                # Verify no notes modal opened
+                modal_visible = await page.query_selector('#record-modal')
+                if modal_visible:
+                    is_visible = await modal_visible.is_visible()
+                    assert not is_visible, "Notes modal should not open for Defer"
+                print("✓ B2: No notes modal opened for Defer")
 
-                # Click Record Decision WITHOUT notes
-                record_btn = await page.query_selector('button[id^="record-row-decision-"]')
-                await record_btn.click()
-
-                # Wait for modal to close
-                await page.wait_for_function(
-                    "() => !document.querySelector('#record-modal').classList.contains('show')",
-                    timeout=5000
-                )
-                print("✓ B4: Decision recorded successfully without notes")
+                # Verify the dropdown reflects the decision
+                first_option = await decision_dropdown.query_selector('option:first-child')
+                status_text = await first_option.inner_text()
+                assert 'defer' in status_text.lower() or 'deferred' in status_text.lower(), \
+                    f"Status should reflect Defer decision, got: {status_text}"
+                print(f"✓ B3: Row status updated to: {status_text}")
 
                 # Verify row status updated
                 await page.wait_for_selector('select.row-status-dropdown', timeout=5000)
@@ -1508,28 +1416,27 @@ async def test_defer_workflow_notes_optional(
 
 
 # ==============================================================================
-# WORKFLOW E E2E: Inspect Modal Controls - Dropdown, options, Record Decision
+# WORKFLOW E E2E: Details Modal Controls - Read-only, no duplicate decision form
 # ==============================================================================
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_inspect_modal_controls_comprehensive(
+async def test_details_modal_controls_comprehensive(
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify all inspect modal controls exist and are functional.
+    GOAL: Verify the Details modal is read-only and remains functional.
 
     Flow:
     1. Seed database with test row
-    2. Open inspect modal
-    3. Verify decision dropdown exists and is enabled
-    4. Verify all decision options present: Accept, Needs follow-up, Defer, Reject, Return to system
-    5. Verify Notes field exists and is editable
-    6. Verify Record Decision button exists
-    7. Verify Cancel button exists
-    8. Close modal via Cancel
-    9. Reopen modal
-    10. Verify state is correct and controls still work
+    2. Open Details modal
+    3. Verify full record details are visible
+    4. Verify no duplicate decision dropdown exists
+    5. Verify no duplicate Record Decision button exists
+    6. Verify Close button exists
+    7. Close modal
+    8. Reopen modal
+    9. Verify the modal remains read-only
     """
     from playwright.async_api import async_playwright
 
@@ -1596,64 +1503,43 @@ async def test_inspect_modal_controls_comprehensive(
                 await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
                 await page.wait_for_selector('table', timeout=5000)
 
-                # Click Inspect button (FIRST OPEN)
+                # Click Details button (FIRST OPEN)
                 inspect_btn = await page.query_selector('a[data-action="inspect-record"]')
                 await inspect_btn.click()
 
                 # Wait for modal
                 await page.wait_for_selector('#record-modal', timeout=5000)
-                print("✓ E1: Inspect modal opened (first time)")
+                print("✓ E1: Details modal opened (first time)")
 
-                # Verify decision dropdown exists and is enabled
-                decision_dropdown = await page.query_selector('select[id^="row-decision-"]')
-                assert decision_dropdown is not None, "Decision dropdown should exist"
-                is_disabled = await decision_dropdown.is_disabled()
-                assert not is_disabled, "Decision dropdown should be enabled"
-                print("✓ E2: Decision dropdown exists and is enabled")
+                # Verify modal shows the record content and no duplicate decision controls
+                modal_body = await page.query_selector('#modal-record-content')
+                modal_text = await modal_body.inner_text()
+                assert 'Record #' in modal_text, "Modal should show record details"
+                assert 'Current Issues' in modal_text, "Modal should show current issues"
+                print("✓ E2: Details modal shows the record content")
 
-                # Verify all decision options
-                options = await page.query_selector_all('select[id^="row-decision-"] option')
-                option_values = []
-                for opt in options:
-                    val = await opt.get_attribute('value')
-                    text = await opt.inner_text()
-                    option_values.append((val, text))
+                decision_dropdown = await page.query_selector('#record-modal select[id^="row-decision-"]')
+                assert decision_dropdown is None, "Details modal should not contain a decision dropdown"
+                print("✓ E3: No duplicate decision dropdown exists")
 
-                expected_options = ['accept_as_is', 'needs_follow_up', 'defer', 'reject_row']
-                for expected in expected_options:
-                    found = any(val == expected for val, text in option_values)
-                    assert found, f"Option '{expected}' should exist in dropdown"
-                print(f"✓ E3: Decision dropdown has all expected options: {len(option_values)} options")
+                record_btn = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
+                assert record_btn is None, "Details modal should not contain a Record Decision button"
+                print("✓ E4: No duplicate Record Decision button exists")
 
-                # Verify Notes field exists and is editable
-                notes_field = await page.query_selector('textarea[id^="row-notes-"]')
-                assert notes_field is not None, "Notes field should exist"
-                is_disabled = await notes_field.is_disabled()
-                assert not is_disabled, "Notes field should be editable"
-                print("✓ E4: Notes field exists and is editable")
+                # Verify Close button exists in the modal footer
+                close_btn = await page.query_selector('#modal-record-footer button:has-text("Close")')
+                assert close_btn is not None, "Close button should exist in details modal"
+                print("✓ E5: Close button exists")
 
-                # Verify Record Decision button exists
-                record_btn = await page.query_selector('button[id^="record-row-decision-"]')
-                assert record_btn is not None, "Record Decision button should exist"
-                record_text = await record_btn.inner_text()
-                assert 'Record' in record_text or 'Decision' in record_text, \
-                    f"Button should be Record Decision, got: {record_text}"
-                print("✓ E5: Record Decision button exists")
-
-                # Verify Cancel button exists
-                cancel_btn = await page.query_selector('button:has-text("Cancel")')
-                assert cancel_btn is not None, "Cancel button should exist"
-                print("✓ E6: Cancel button exists")
-
-                # Click Cancel to close modal
-                await cancel_btn.click()
+                # Click Close to close modal
+                await close_btn.click()
 
                 # Wait for modal to close (show class removed)
                 await page.wait_for_function(
                     "() => !document.querySelector('#record-modal').classList.contains('show')",
                     timeout=5000
                 )
-                print("✓ E7: Modal closed via Cancel button")
+                print("✓ E6: Modal closed via Close button")
 
                 # REOPEN MODAL
                 inspect_btn = await page.query_selector('a[data-action="inspect-record"]')
@@ -1661,24 +1547,294 @@ async def test_inspect_modal_controls_comprehensive(
 
                 # Wait for modal
                 await page.wait_for_selector('#record-modal', timeout=5000)
-                print("✓ E8: Inspect modal reopened (second time)")
+                print("✓ E7: Details modal reopened (second time)")
 
-                # Verify controls still work
-                decision_dropdown = await page.query_selector('select[id^="row-decision-"]')
-                assert decision_dropdown is not None, "Decision dropdown should still exist after reopen"
-                options = await page.query_selector_all('select[id^="row-decision-"] option')
-                assert len(options) > 1, "Options should still be present"
-                print("✓ E9: Modal controls still functional after reopen")
+                # Verify controls remain read-only on reopen
+                decision_dropdown = await page.query_selector('#record-modal select[id^="row-decision-"]')
+                assert decision_dropdown is None, "Details modal should remain read-only after reopen"
+                record_btn = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
+                assert record_btn is None, "Details modal should not regain a Record Decision button"
+                print("✓ E8: Details modal remains read-only after reopen")
 
-                # Verify notes field still editable
-                notes_field = await page.query_selector('textarea[id^="row-notes-"]')
-                assert notes_field is not None, "Notes field should still exist"
-                await notes_field.fill('Test notes for defer')
-                current_value = await notes_field.input_value()
-                assert current_value == 'Test notes for defer', "Notes field should be editable"
-                print("✓ E10: Notes field still editable after reopen")
+                print(f"\n=== DETAILS MODAL CONTROLS E2E PASSED ===")
 
-                print(f"\n=== INSPECT MODAL CONTROLS E2E PASSED ===")
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_details_modal_ignores_stale_row_response_when_switching_rows(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify a slower Details response from one row cannot overwrite a later
+    row opened in the shared modal.
+    """
+    import asyncio
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch = ImportBatch(
+            id='modal-race-batch',
+            filename='modal_race.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=2,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row_1 = RawImportRow(
+            batch_id='modal-race-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Alpha Row',
+                'date': '2026-03-01',
+                'email': 'alpha@example.com',
+                'phone': '(555) 444-1111',
+                'amount': '111.00',
+                'address': '111 Alpha St',
+            },
+        )
+        raw_row_2 = RawImportRow(
+            batch_id='modal-race-batch',
+            row_index=2,
+            raw_csv_data={
+                'name': 'Beta Row',
+                'date': '2026-03-02',
+                'email': 'beta@example.com',
+                'phone': '(555) 555-2222',
+                'amount': '222.00',
+                'address': '222 Beta Ave',
+            },
+        )
+        session.add_all([raw_row_1, raw_row_2])
+        session.flush()
+
+        session.add_all([
+            ImportContact(
+                batch_id='modal-race-batch',
+                raw_import_row_id=raw_row_1.id,
+                first_name='Alpha',
+                last_name='Row',
+                email='alpha@example.com',
+                phone='(555) 444-1111',
+                amount=111.00,
+            ),
+            ImportContact(
+                batch_id='modal-race-batch',
+                raw_import_row_id=raw_row_2.id,
+                first_name='Beta',
+                last_name='Row',
+                email='beta@example.com',
+                phone='(555) 555-2222',
+                amount=222.00,
+            ),
+        ])
+        session.commit()
+
+        batch_id = 'modal-race-batch'
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            first_request_started = asyncio.Event()
+            allow_first_request = asyncio.Event()
+
+            async def delay_first_row(route):
+                first_request_started.set()
+                await allow_first_request.wait()
+                await route.continue_()
+
+            await page.route(f"**/imports/{batch_id}/row-decision/{raw_row_1.id}", delay_first_row)
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
+                await page.wait_for_selector('table', timeout=5000)
+
+                details_buttons = await page.query_selector_all('a[data-action="inspect-record"]')
+                assert len(details_buttons) >= 2, "Expected at least two Details buttons"
+
+                await details_buttons[0].click()
+                await first_request_started.wait()
+
+                await details_buttons[1].click()
+                await page.wait_for_selector('#record-modal', timeout=5000)
+
+                allow_first_request.set()
+                await page.wait_for_function(
+                    "() => document.querySelector('#record-modal .modal-title')?.textContent === 'Record Details'",
+                    timeout=5000,
+                )
+
+                modal_body = await page.query_selector('#modal-record-content')
+                modal_text = await modal_body.inner_text()
+                assert 'Beta Row' in modal_text, "Later row should win the shared modal render"
+                assert 'beta@example.com' in modal_text, "Later row details should remain visible"
+                assert 'Alpha Row' not in modal_text, "Stale earlier row should not overwrite the modal"
+                print("✓ Shared modal ignores stale earlier row response")
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_follow_up_save_response_does_not_close_later_modal(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify a delayed follow-up save response does not close or overwrite
+    a later Details modal that the reviewer opened on another row.
+    """
+    import asyncio
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch = ImportBatch(
+            id='follow-up-save-race-batch',
+            filename='follow_up_save_race.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=2,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row_1 = RawImportRow(
+            batch_id='follow-up-save-race-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Gamma Row',
+                'date': '2026-04-01',
+                'email': 'gamma@example.com',
+                'phone': '(555) 666-3333',
+                'amount': '333.00',
+                'address': '333 Gamma Rd',
+            },
+        )
+        raw_row_2 = RawImportRow(
+            batch_id='follow-up-save-race-batch',
+            row_index=2,
+            raw_csv_data={
+                'name': 'Delta Row',
+                'date': '2026-04-02',
+                'email': 'delta@example.com',
+                'phone': '(555) 777-4444',
+                'amount': '444.00',
+                'address': '444 Delta Ln',
+            },
+        )
+        session.add_all([raw_row_1, raw_row_2])
+        session.flush()
+        session.add_all([
+            ImportContact(
+                batch_id='follow-up-save-race-batch',
+                raw_import_row_id=raw_row_1.id,
+                first_name='Gamma',
+                last_name='Row',
+                email='gamma@example.com',
+                phone='(555) 666-3333',
+                amount=333.00,
+            ),
+            ImportContact(
+                batch_id='follow-up-save-race-batch',
+                raw_import_row_id=raw_row_2.id,
+                first_name='Delta',
+                last_name='Row',
+                email='delta@example.com',
+                phone='(555) 777-4444',
+                amount=444.00,
+            ),
+        ])
+        session.commit()
+
+        batch_id = 'follow-up-save-race-batch'
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            save_request_started = asyncio.Event()
+            allow_save_request = asyncio.Event()
+
+            async def hold_save(route):
+                save_request_started.set()
+                await allow_save_request.wait()
+                await route.continue_()
+
+            await page.route(f"**/imports/{batch_id}/row-decision", hold_save)
+            page.on('dialog', lambda dialog: asyncio.create_task(dialog.dismiss()))
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
+                await page.wait_for_selector('table', timeout=5000)
+
+                # Open follow-up notes for the first row and start saving it.
+                first_row_button = page.locator('a[data-action="inspect-record"]').nth(0)
+                await page.locator('select.row-status-dropdown').nth(0).select_option('needs_follow_up')
+                await page.wait_for_selector('#record-modal textarea[id^="followup-notes-"]', timeout=5000)
+                notes_field = await page.query_selector('#record-modal textarea[id^="followup-notes-"]')
+                await notes_field.fill('Follow up on gamma row')
+                save_btn = await page.query_selector('button[id^="save-followup-notes-"]')
+                await save_btn.click()
+                await save_request_started.wait()
+
+                # Close the first modal and open a later row before the POST resolves.
+                await page.evaluate(
+                    "() => document.getElementById('record-modal').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))"
+                )
+                await page.wait_for_function(
+                    "() => !document.querySelector('#record-modal')?.classList.contains('show')",
+                    timeout=5000,
+                )
+
+                second_row_button = page.locator('a[data-action="inspect-record"]').nth(1)
+                await second_row_button.click()
+                await page.wait_for_selector('#record-modal', timeout=5000)
+                allow_save_request.set()
+
+                await page.wait_for_function(
+                    "() => document.querySelector('#record-modal .modal-title')?.textContent === 'Record Details'",
+                    timeout=5000,
+                )
+
+                modal_body = await page.query_selector('#modal-record-content')
+                modal_text = await modal_body.inner_text()
+                assert 'Delta Row' in modal_text, "Later modal should remain visible after save response"
+                assert 'Gamma Row' not in modal_text, "Earlier save response should not overwrite later modal state"
+                assert await page.locator('#record-modal').evaluate("el => el.classList.contains('show')"), \
+                    "Later modal should remain open after earlier save response"
 
             finally:
                 await browser.close()
@@ -1692,16 +1848,12 @@ async def test_inspect_modal_controls_comprehensive(
 @pytest.mark.asyncio
 async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
     """
-    GOAL: Verify that selecting "Needs follow-up" from main table defaults modal Status.
+    GOAL: Verify that selecting "Needs follow-up" from the main table opens the
+    notes dialog with the current notes prefilled.
 
-    When a user selects "Needs follow-up" from the row status dropdown in the main
-    validation table, the modal should open with:
-    1. Status dropdown pre-selected to "Needs follow-up"
-    2. Notes textarea focused (ready for input)
-    3. Notes requirement error visible
-    4. All other data from the row displayed correctly
-
-    This tests the fix for the modal default status initialization bug.
+    The notes dialog is the only follow-up workflow. It should open focused on
+    the notes textarea, surface the record details, and keep the inline decision
+    dropdown authoritative.
     """
     from playwright.async_api import async_playwright
 
@@ -1783,22 +1935,19 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
                 await status_dropdown.select_option('needs_follow_up')
                 print("✓ F2: Selected 'Needs follow-up' from main table dropdown")
 
-                # F3: Wait for modal to open
+                # F3: Wait for notes modal to open
                 await page.wait_for_selector('#record-modal', timeout=5000)
                 modal = await page.query_selector('#record-modal')
                 assert modal is not None, "F3 FAILED: Modal should open when Follow-up is selected"
-                print("✓ F3: Modal opened after Follow-up selection")
+                print("✓ F3: Follow-up notes modal opened after selection")
 
-                # F4: Verify modal Status dropdown is set to "Needs follow-up"
+                # F4: Verify modal is notes-focused, not decision-focused
                 modal_status_dropdown = await page.query_selector('select[id^="row-decision-"]')
-                assert modal_status_dropdown is not None, "F4 FAILED: Modal status dropdown not found"
-                selected_value = await modal_status_dropdown.input_value()
-                assert selected_value == 'needs_follow_up', \
-                    f"F4 FAILED: Modal status should be 'needs_follow_up', got: {selected_value}"
-                print(f"✓ F4: Modal Status dropdown defaulted to 'needs_follow_up'")
+                assert modal_status_dropdown is None, "F4 FAILED: Follow-up modal should not contain a status dropdown"
+                print("✓ F4: Follow-up modal is notes-focused")
 
                 # F5: Verify Notes textarea is focused
-                notes_field = await page.query_selector('textarea[id^="row-notes-"]')
+                notes_field = await page.query_selector('textarea[id^="followup-notes-"]')
                 assert notes_field is not None, "F5 FAILED: Notes textarea not found"
                 focused_element = await page.evaluate("() => document.activeElement.id")
                 notes_id = await notes_field.get_attribute('id')
@@ -1807,7 +1956,7 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
                 print("✓ F5: Notes textarea is focused (ready for input)")
 
                 # F6: Verify Notes requirement message is visible
-                notes_requirement = await page.query_selector('div[id^="notes-requirement-"]')
+                notes_requirement = await page.query_selector('div[id^="followup-notes-requirement-"]')
                 assert notes_requirement is not None, "F6 FAILED: Notes requirement div not found"
                 visibility = await notes_requirement.evaluate("el => window.getComputedStyle(el).display")
                 assert visibility != 'none', \
@@ -1821,19 +1970,42 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
                 assert 'alice@example.com' in modal_text, "F7 FAILED: Email not in modal"
                 print("✓ F7: Row data displayed correctly in modal")
 
-                # F8: Type notes and verify Record Decision button works
+                # F8: Dismiss the modal by clicking the backdrop and verify rollback
+                await page.evaluate(
+                    "() => document.getElementById('record-modal').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))"
+                )
+                await page.wait_for_function(
+                    "() => !document.querySelector('#record-modal')?.classList.contains('show')",
+                    timeout=5000
+                )
+                restored_value = await status_dropdown.evaluate("el => el.value")
+                restored_marker = await status_dropdown.get_attribute('data-has-decision')
+                assert restored_value != 'needs_follow_up', \
+                    "F8 FAILED: Backdrop dismissal should roll back the follow-up selection"
+                assert restored_marker in (None, 'false'), \
+                    "F8 FAILED: Backdrop dismissal should clear the decision marker"
+                print("✓ F8: Backdrop dismissal safely restored the prior row state")
+
+                # Reopen follow-up notes modal to finish the happy path
+                await status_dropdown.select_option('needs_follow_up')
+                await page.wait_for_selector('#record-modal', timeout=5000)
+                notes_field = await page.query_selector('textarea[id^="followup-notes-"]')
+                assert notes_field is not None, "F8b FAILED: Notes textarea not found after reopening"
+                print("✓ F8b: Follow-up notes modal reopened after backdrop dismissal")
+
+                # F9: Type notes and verify Save Follow-up button works
                 await notes_field.fill('Follow up on pending verification')
                 current_notes = await notes_field.input_value()
                 assert current_notes == 'Follow up on pending verification', \
-                    "F8 FAILED: Notes should accept input"
-                print("✓ F8: Notes field accepts input")
+                    "F9 FAILED: Notes should accept input"
+                print("✓ F9: Notes field accepts input")
 
-                # F9: Verify Record Decision button exists and is clickable
-                record_btn = await page.query_selector('button[id^="record-row-decision-"]')
-                assert record_btn is not None, "F9 FAILED: Record Decision button not found"
+                # F10: Verify Save Follow-up button exists and is clickable
+                record_btn = await page.query_selector('button[id^="save-followup-notes-"]')
+                assert record_btn is not None, "F10 FAILED: Save Follow-up button not found"
                 is_enabled = await record_btn.evaluate("el => !el.disabled")
-                assert is_enabled, "F9 FAILED: Record Decision button should be enabled"
-                print("✓ F9: Record Decision button is present and clickable")
+                assert is_enabled, "F10 FAILED: Save Follow-up button should be enabled"
+                print("✓ F10: Save Follow-up button is present and clickable")
 
                 print(f"\n=== FOLLOW-UP STATUS DEFAULT E2E PASSED ===")
 
@@ -2904,56 +3076,26 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
                 await page.wait_for_selector('h1', timeout=5000)
                 print("✓ Validation review page loaded")
 
-                # Step 2: Open Inspect modal for the row
-                inspect_btn = await page.query_selector('a[data-action="inspect-record"]')
-                assert inspect_btn is not None, "Inspect button should exist"
-                await inspect_btn.click()
+                # Step 2: Select Defer directly from the row dropdown
+                row_dropdown = await page.query_selector('select.row-status-dropdown')
+                assert row_dropdown is not None, "Row status dropdown should exist"
+                await row_dropdown.select_option('defer')
+                print("✓ Selected 'Defer' decision in the row dropdown")
 
-                # Wait for modal to appear
-                modal = await page.query_selector('div[role="dialog"], div.modal, #inspect-modal')
-                assert modal is not None, "Modal should appear"
-                await page.wait_for_function(
-                    "() => document.querySelector('div[role=\"dialog\"], div.modal, #inspect-modal')?.style?.display !== 'none'",
-                    timeout=5000
-                )
-                print("✓ Inspect modal opened")
+                # Step 3: Verify no notes modal is required for Defer
+                modal = await page.query_selector('#record-modal')
+                if modal:
+                    is_visible = await modal.is_visible()
+                    assert not is_visible, "Notes modal should not open for Defer"
+                print("✓ No notes modal opened for Defer")
 
-                # Step 3: Select Defer decision
-                decision_select = await page.query_selector('#record-modal select[id^="row-decision-"]')
-                assert decision_select is not None, "Decision dropdown should exist"
-                await decision_select.select_option('defer')
-                print("✓ Selected 'Defer' decision")
-
-                # Step 4: Enter unique notes (optional for defer, but helps with audit visibility test)
-                unique_note = f"E2E audit visibility test {datetime.now(timezone.utc).isoformat()}"
-                notes_field = await page.query_selector('#record-modal textarea[id^="row-notes-"]')
-                if notes_field:
-                    await notes_field.fill(unique_note)
-                    print(f"✓ Entered notes: {unique_note[:50]}...")
-                else:
-                    print("✓ Notes field not required for Defer")
-
-                # Step 5: Submit decision
-                record_btn = await page.query_selector('button:has-text("Record")')
-                if not record_btn:
-                    record_btn = await page.query_selector('button:has-text("Decision")')
-                assert record_btn is not None, "Record Decision button should exist"
-                await record_btn.click()
-
-                # Wait for modal to close or just proceed (decision was submitted)
-                try:
-                    await page.wait_for_selector('div[role="dialog"].hidden, div.modal.hidden', timeout=2000)
-                except:
-                    pass  # Modal close timing can vary, proceed with audit page navigation
-                print("✓ Decision submitted, modal closed (or navigating)")
-
-                # Step 6: Navigate to audit page
+                # Step 4: Navigate to audit page
                 # Look for audit link or navigate directly
                 await page.goto(f'{base_url}/imports/{batch_id}/audit')
                 await page.wait_for_selector('h1, h2, table', timeout=5000)
                 print("✓ Audit page loaded")
 
-                # Step 7: Verify audit entry is visible
+                # Step 5: Verify audit entry is visible
                 page_text = await page.content()
 
                 # Check for decision-related text in audit table
@@ -3075,32 +3217,24 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
                 # Step 2: Create Follow Up decision with unique notes
                 unique_notes = f"Cross-screen audit test - {datetime.now(timezone.utc).isoformat()}"
 
-                # Open Inspect modal
-                inspect_btn = await page.query_selector('a[data-action="inspect-record"]')
-                assert inspect_btn is not None, "Inspect button should exist"
-                await inspect_btn.click()
+                # Select Follow Up from the row dropdown to open the notes modal
+                row_dropdown = await page.query_selector('select.row-status-dropdown')
+                assert row_dropdown is not None, "Row status dropdown should exist"
+                await row_dropdown.select_option('needs_follow_up')
+                print("✓ Selected 'Follow Up' decision in the row dropdown")
 
-                await page.wait_for_function(
-                    "() => document.querySelector('#record-modal select[id^=\"row-decision-\"]') !== null",
-                    timeout=5000
-                )
-                print("✓ Inspect modal opened")
-
-                # Select Follow Up
-                decision_select = await page.query_selector('#record-modal select[id^="row-decision-"]')
-                assert decision_select is not None, "Decision dropdown should exist"
-                await decision_select.select_option('needs_follow_up')
-                print("✓ Selected 'Follow Up' decision")
+                await page.wait_for_selector('#record-modal', timeout=5000)
+                print("✓ Follow-up notes modal opened")
 
                 # Enter notes
-                notes_field = await page.query_selector('#record-modal textarea[id^="row-notes-"]')
+                notes_field = await page.query_selector('#record-modal textarea[id^="followup-notes-"]')
                 assert notes_field is not None, "Notes field should exist"
                 await notes_field.fill(unique_notes)
                 print(f"✓ Entered notes: {unique_notes[:60]}...")
 
                 # Submit decision
-                record_btn = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
-                assert record_btn is not None, "Record Decision button should exist"
+                record_btn = await page.query_selector('#record-modal button[id^="save-followup-notes-"]')
+                assert record_btn is not None, "Save Follow-up button should exist"
                 await record_btn.click()
 
                 # Wait for modal to close
@@ -3256,27 +3390,22 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
                 )
                 print("✓ Autosave completed")
 
-                # Open Inspect modal and create Follow Up decision
-                inspect_btn = await page.query_selector('a[data-action="inspect-record"]')
-                assert inspect_btn is not None, "Inspect button should exist"
-                await inspect_btn.click()
-                print("✓ Opened Inspect modal")
-
-                # Select Follow Up and add notes
-                decision_select = await page.query_selector('select[id^="row-decision-"]')
-                assert decision_select is not None, "Decision dropdown should exist"
-                await decision_select.select_option('needs_follow_up')
+                # Open the notes modal by selecting Follow Up directly in the row dropdown
+                decision_dropdown = await page.query_selector('select.row-status-dropdown')
+                assert decision_dropdown is not None, "Row status dropdown should exist"
+                await decision_dropdown.select_option('needs_follow_up')
+                print("✓ Opened follow-up notes modal")
 
                 unique_notes = f"Golden path test - awaiting donor confirmation - {datetime.now(timezone.utc).isoformat()}"
-                notes_field = await page.query_selector('textarea[id^="row-notes-"]')
+                notes_field = await page.query_selector('#record-modal textarea[id^="followup-notes-"]')
                 assert notes_field is not None, "Notes field should exist"
                 await notes_field.fill(unique_notes)
 
                 print(f"✓ Selected Follow Up with notes: {unique_notes[:60]}...")
 
                 # Record decision
-                record_btn = await page.query_selector('button[id^="record-row-decision-"]')
-                assert record_btn is not None, "Record button should exist"
+                record_btn = await page.query_selector('button[id^="save-followup-notes-"]')
+                assert record_btn is not None, "Save Follow-up button should exist"
                 await record_btn.click()
 
                 try:

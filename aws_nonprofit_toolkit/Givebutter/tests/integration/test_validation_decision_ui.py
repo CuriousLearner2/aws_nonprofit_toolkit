@@ -209,34 +209,32 @@ class TestValidationDecisionUI:
         # Should show derived row status values
         assert 'No issues' in html or 'Warning' in html or 'Blocking' in html
 
-    def test_validation_page_contains_inspect_links(self, flask_client_with_validation_items):
-        """Validation page contains Inspect links for each record."""
+    def test_validation_page_contains_details_links(self, flask_client_with_validation_items):
+        """Validation page contains Details links for each record."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
 
         response = client.get('/imports/IMP-2025-0101-A/validation')
         assert response.status_code == 200
         html = response.data.decode('utf-8')
 
-        assert 'Inspect' in html
+        assert 'Details' in html
         assert 'data-action="inspect-record"' in html
 
     def test_form_posts_to_decision_route(self, flask_client_with_validation_items):
-        """Form in modal posts to correct validation decision route."""
+        """Validation page keeps row decision control inline and modal read-only."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
 
         # Get validation page to verify row status form structure
         response = client.get('/imports/IMP-2025-0101-A/validation')
         html = response.data.decode('utf-8')
 
-        # Verify row status dropdown is present
-        # The form is built dynamically by JavaScript in the modal
-        assert 'row-decision' in html or 'row_decision' in html
-        assert 'needs_follow_up' in html or 'needs follow-up' in html
-        assert 'accept_as_is' in html or 'accept as-is' in html
-        assert 'defer' in html
-        assert 'clear_decision' in html or 'clear decision' in html
-        assert 'notes' in html or 'Notes' in html
-        # Verify the form action will be constructed with the batch ID
+        assert 'row-status-dropdown' in html
+        assert 'Accept as-is' in html or 'accept_as_is' in html
+        assert 'Needs follow-up' in html or 'needs_follow_up' in html
+        assert 'Defer' in html
+        assert 'Reject row' in html
+        assert 'Return to system status' in html
+        assert 'Record Details' in html
         assert 'IMP-2025-0101-A' in html
 
     def test_valid_form_submission_creates_review_decision(self, flask_client_with_validation_items):
