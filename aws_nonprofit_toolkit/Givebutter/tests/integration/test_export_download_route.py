@@ -32,7 +32,7 @@ from sqlalchemy.orm import sessionmaker
 @pytest.fixture
 def sample_csv_content():
     """Sample CSV content."""
-    return "name,email,phone\nJohn,john@example.com,555-1234\nJane,jane@example.com,555-5678\n"
+    return "name,email,phone\nJohn,john@example.com,415-555-1234\nJane,jane@example.com,415-555-5678\n"
 
 
 @pytest.fixture
@@ -284,7 +284,7 @@ def test_downloaded_csv_matches_generated_content(flask_client_with_db_for_expor
             'first_name': 'John',
             'last_name': 'Smith',
             'email': 'john@example.com',
-            'phone': '555-1234',
+            'phone': '415-555-1234',
             'amount': '100.00'
         },
     )
@@ -296,7 +296,7 @@ def test_downloaded_csv_matches_generated_content(flask_client_with_db_for_expor
             'first_name': 'Jané',
             'last_name': 'Döé',
             'email': 'jane@example.com',
-            'phone': '555-5678',
+            'phone': '415-555-5678',
             'amount': '250.50'
         },
     )
@@ -311,7 +311,7 @@ def test_downloaded_csv_matches_generated_content(flask_client_with_db_for_expor
         first_name='John',
         last_name='Smith',
         email='john@example.com',
-        phone='555-1234',
+        phone='415-555-1234',
         amount=100.00,
     )
     contact2 = ImportContact(
@@ -320,7 +320,7 @@ def test_downloaded_csv_matches_generated_content(flask_client_with_db_for_expor
         first_name='Jané',
         last_name='Döé',
         email='jane@example.com',
-        phone='555-5678',
+        phone='415-555-5678',
         amount=250.50,
     )
     session.add(contact1)
@@ -426,7 +426,7 @@ def test_repeated_exports_create_separate_files_and_audit_records(flask_client_w
             'first_name': 'John',
             'last_name': 'Smith',
             'email': 'john@example.com',
-            'phone': '555-1234',
+            'phone': '415-555-1234',
             'amount': '100.00'
         },
     )
@@ -440,7 +440,7 @@ def test_repeated_exports_create_separate_files_and_audit_records(flask_client_w
         first_name='John',
         last_name='Smith',
         email='john@example.com',
-        phone='555-1234',
+        phone='415-555-1234',
         amount=100.00,
     )
     session.add(contact)
@@ -530,7 +530,7 @@ def test_deleted_export_file_returns_404_audit_persists(flask_client_with_db_for
             'first_name': 'Jane',
             'last_name': 'Doe',
             'email': 'jane@example.com',
-            'phone': '555-5678',
+            'phone': '415-555-5678',
             'amount': '250.00'
         },
     )
@@ -544,7 +544,7 @@ def test_deleted_export_file_returns_404_audit_persists(flask_client_with_db_for
         first_name='Jane',
         last_name='Doe',
         email='jane@example.com',
-        phone='555-5678',
+        phone='415-555-5678',
         amount=250.00,
     )
     session.add(contact)

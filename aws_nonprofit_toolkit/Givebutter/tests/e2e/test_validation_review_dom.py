@@ -4727,7 +4727,7 @@ async def test_multiple_blocking_validation_issues_render_together_and_refresh_p
             'name': 'Multi Issue Example',
             'date': '2026&05',
             'email': 'multi.issue@example.com',
-            'phone': '123',
+            'phone': '5612346',
             'amount': '100.00',
             'address': '123 Main St',
         }

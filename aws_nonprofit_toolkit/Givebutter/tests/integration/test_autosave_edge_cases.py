@@ -76,7 +76,7 @@ def flask_client_with_batch(temp_db, monkeypatch):
             raw_csv_data={
                 'name': f'Person {i}',
                 'email': f'person{i}@example.com',
-                'phone': f'555-000{i}'
+                'phone': f'415-555-00{i:02d}'
             }
         )
         session.add(row)

@@ -126,14 +126,14 @@ class TestPhoneValidation:
 
     @pytest.mark.unit
     def test_area_code_starting_with_0(self):
-        """Test area code starting with 0 is accepted when parseable."""
+        """Test 7-digit-shortened values are rejected under the strict 10-digit policy."""
         record = {'Phone': '0551234567'}
         header_map = {'phone': 'Phone'}
         rules = {'invalid_phone_patterns': []}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'PASS'
-        assert reason is None
+        assert tier == 'FAIL'
+        assert 'invalid' in reason.lower()
 
     @pytest.mark.unit
     def test_area_code_starting_with_1_as_first_digit(self):
@@ -148,14 +148,14 @@ class TestPhoneValidation:
 
     @pytest.mark.unit
     def test_unusual_formatting_warning(self):
-        """Test that unusual formatting generates warning."""
+        """Test that dotted formatting is accepted by the canonical phone validator."""
         record = {'Phone': '555.123.4567'}
         header_map = {'phone': 'Phone'}
         rules = {'invalid_phone_patterns': []}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'WARNING'
-        assert 'format' in reason.lower()
+        assert tier == 'PASS'
+        assert reason is None
 
     @pytest.mark.unit
     def test_phone_with_plus_sign(self):
@@ -165,8 +165,7 @@ class TestPhoneValidation:
         rules = {'invalid_phone_patterns': []}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        # Should handle + sign in extraction
-        assert tier in ['PASS', 'WARNING']
+        assert tier == 'PASS'
 
     @pytest.mark.unit
     def test_phone_case_insensitive(self):

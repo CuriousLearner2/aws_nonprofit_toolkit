@@ -1242,11 +1242,11 @@ class TestEmailValidationParity:
 class TestPhoneValidationParity:
     """Test DB-backed phone validation parity across route, approval, and export."""
 
-    def test_db_backed_possible_raw_phone_does_not_create_phone_issue(
+    def test_db_backed_invalid_raw_phone_is_visible_in_validation_route(
         self,
         flask_client_with_validation_batch,
     ):
-        """DB-backed validation route must not flag a policy-valid raw phone as invalid."""
+        """DB-backed validation route must surface a malformed raw phone as blocking."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
         batch_id = 'db-backed-phone-route-batch'
         raw_id = _seed_db_backed_date_phone_parity_batch(
@@ -1271,9 +1271,10 @@ class TestPhoneValidationParity:
         assert 'date — Date must use YYYY-MM-DD' in row_section, (
             f"Expected strict date validation copy, got: {row_section}"
         )
-        assert 'phone — Invalid phone format' not in row_section, (
-            f"Policy-valid phone 5612346 should not be flagged, got: {row_section}"
+        assert 'phone — Invalid phone format' in row_section, (
+            f"Malformed raw phone 5612346 should be flagged, got: {row_section}"
         )
+        assert 'Blocking' in row_section, f"Row should remain Blocking with two invalid fields, got: {row_section}"
 
         from scripts.householder.approval_service import check_batch_remaining_issues
         from scripts.householder.export_preview_service import build_export_preview
@@ -1286,12 +1287,12 @@ class TestPhoneValidationParity:
         ), (
             f"Expected approval readiness to report the invalid date, got: {remaining_issues}"
         )
-        assert not any(
+        assert any(
             issue.get('field') == 'phone'
             for row in remaining_issues
             for issue in row.get('issues', [])
         ), (
-            f"Policy-valid phone 5612346 should not be reported, got: {remaining_issues}"
+            f"Malformed raw phone 5612346 should be reported, got: {remaining_issues}"
         )
 
         preview = build_export_preview(
@@ -1306,7 +1307,7 @@ class TestPhoneValidationParity:
         )
         preview_text = ' '.join(list(preview.blockers) + list(preview.warnings))
         assert 'date' in preview_text.lower(), f"Expected date blocker in preview, got: {preview_text}"
-        assert 'phone' not in preview_text.lower(), f"Policy-valid phone 5612346 should not be reported, got: {preview_text}"
+        assert 'phone' in preview_text.lower(), f"Malformed raw phone 5612346 should be reported, got: {preview_text}"
 
     def test_db_backed_reviewed_valid_phone_supersedes_invalid_raw_phone(
         self,

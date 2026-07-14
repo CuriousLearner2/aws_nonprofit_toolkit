@@ -61,7 +61,7 @@ def seeded_batch(temp_db):
         raw_csv_data={
             'Name': 'John Smith',
             'Email': 'john@example.com',
-            'Phone': '555-1234',
+            'Phone': '415-555-1234',
             'Amount': '100.00',
             'Address': '123 Main St',
             'transaction_id': 'TXN-001'
@@ -77,7 +77,7 @@ def seeded_batch(temp_db):
         first_name='John',
         last_name='Smith',
         email='john@example.com',
-        phone='555-1234',
+        phone='415-555-1234',
         address_line1='123 Main St',
         city='Springfield',
         state='IL',
@@ -133,7 +133,7 @@ class TestExportPreviewBasicStructure:
         assert row.first_name == 'John'
         assert row.last_name == 'Smith'
         assert row.email == 'john@example.com'
-        assert row.phone == '555-1234'
+        assert row.phone == '415-555-1234'
         assert row.address_line1 == '123 Main St'
         assert row.city == 'Springfield'
         assert row.state == 'IL'

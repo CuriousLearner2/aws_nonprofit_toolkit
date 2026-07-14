@@ -240,13 +240,6 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
     if not validation.valid:
         return ('FAIL', validation.blocking_error or "Invalid phone format", "Please use a valid phone number")
 
-    # Preserve the existing import-stage UX by warning on obviously non-standard
-    # formatting while still using the canonical phonenumbers parser for validity.
-    has_unusual_format = '.' in phone_str or phone_str.count('-') > 2 or phone_str.count('(') > 1
-    if has_unusual_format:
-        suggestion = validation.national or phone_str
-        return ('WARNING', "Unusual phone format", f"Consider: {suggestion}")
-
     return ('PASS', None, None)
 
 

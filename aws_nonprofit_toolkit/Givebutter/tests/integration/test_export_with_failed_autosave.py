@@ -80,7 +80,7 @@ def flask_client_with_batch(temp_db_and_export_dir, monkeypatch):
             'transaction_id': 'TXN-001',
             'name': 'John Smith',
             'email': 'john.smith@example.com',
-            'phone': '555-1234',
+            'phone': '415-555-1234',
             'amount': '100.00'
         }
     )
@@ -95,7 +95,7 @@ def flask_client_with_batch(temp_db_and_export_dir, monkeypatch):
         first_name='John',
         last_name='Smith',
         email='john.smith@example.com',
-        phone='555-1234',
+        phone='415-555-1234',
         address_line1=None,
         address_line2=None,
         city=None,

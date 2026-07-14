@@ -38,15 +38,14 @@ class TestPhoneValidationService:
     def test_validate_international_gb(self):
         """Test validation of UK phone number."""
         result = validate_phone('2079460958', 'GB')
-        assert result['valid'] is True
-        assert result['country_code'] == 44
-        assert result['region'] == 'GB'
+        assert result['valid'] is False
+        assert 'error' in result
 
     def test_validate_international_fr(self):
         """Test validation of French phone number."""
         result = validate_phone('140205050', 'FR')
-        assert result['valid'] is True
-        assert result['country_code'] == 33
+        assert result['valid'] is False
+        assert 'error' in result
 
     def test_validate_invalid_too_short(self):
         """Test validation of too-short phone number."""
@@ -87,6 +86,12 @@ class TestPhoneValidationService:
         result = validate_review_phone('  (415) 555-2671  ', allow_blank=False)
         assert result.valid is True
         assert result.normalized_value == '(415) 555-2671'
+
+    def test_validate_review_phone_rejects_short_domestic_number(self):
+        """Test 7-digit domestic numbers are rejected under the strict 10-digit policy."""
+        result = validate_review_phone('5612346', allow_blank=False)
+        assert result.valid is False
+        assert result.blocking_error == 'Invalid phone format'
 
     def test_validate_returns_all_fields(self):
         """Test that validation returns all expected fields."""
@@ -156,9 +161,8 @@ class TestPhoneValidationService:
     def test_uk_phone_with_uk_country_code(self):
         """Test UK phone number with GB country code."""
         result = validate_phone('2079460958', 'GB')
-        assert result['valid'] is True
-        assert result['region'] == 'GB'
-        assert '+44' in result['formatted']
+        assert result['valid'] is False
+        assert 'error' in result
 
     def test_canadian_phone(self):
         """Test Canadian phone number."""
@@ -170,17 +174,16 @@ class TestPhoneValidationService:
     def test_australian_phone(self):
         """Test Australian phone number."""
         result = validate_phone('291234567', 'AU')
-        assert result['valid'] is True
-        assert result['country_code'] == 61
+        assert result['valid'] is False
+        assert 'error' in result
 
     # ===== Edge cases =====
 
     def test_phone_with_extension(self):
-        """Test phone with extension is accepted by phonenumbers."""
+        """Test phone with extension is rejected under the strict 10-digit policy."""
         result = validate_phone('4155552671x123', 'US')
-        assert result['valid'] is True
-        assert result['formatted'] == '+14155552671'
-        assert result['number_type'] in ['MOBILE', 'FIXED_LINE', 'FIXED_LINE_OR_MOBILE']
+        assert result['valid'] is False
+        assert 'error' in result
 
     def test_phone_with_leading_plus_and_country_mismatch(self):
         """Test that explicit +1 prefix works regardless of country param."""
@@ -195,8 +198,9 @@ class TestPhoneValidationService:
             '4155552671',
             '415-555-2671',
             '(415) 555-2671',
+            '415.555.2671',
             '+1 415 555 2671',
-            '1 415 555 2671',
+            '1-415-555-2671',
         ]
         for fmt in formats:
             result = validate_phone(fmt, 'US')
