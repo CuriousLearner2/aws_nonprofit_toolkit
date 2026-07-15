@@ -286,8 +286,10 @@ def upload():
         }
 
         # Check if database ingestion is explicitly enabled
-        ingest_enabled = os.environ.get('HOUSEHOLDER_INGEST_ON_UPLOAD', '').lower() == 'true'
-        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
+        ingest_enabled = str(
+            current_app.config.get('HOUSEHOLDER_INGEST_ON_UPLOAD', os.environ.get('HOUSEHOLDER_INGEST_ON_UPLOAD', ''))
+        ).lower() == 'true'
+        database_url = _get_runtime_database_url()
 
         if ingest_enabled and database_url:
             try:
@@ -557,7 +559,7 @@ def list_processing():
     files = []
 
     # Get database URL if configured
-    database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
+    database_url = _get_runtime_database_url()
 
     try:
         # Get most recent 5 files sorted by modification time
@@ -632,6 +634,7 @@ def list_processing():
                 files.append({
                     'filename': f.name,
                     'batch_id': batch_id,
+                    'review_url': f'/imports/{batch_id}/validation' if batch_id else '/imports',
                     'rows': record_count,
                     'pass_count': pass_count,
                     'warning_count': warning_count,
@@ -651,6 +654,35 @@ def list_processing():
         return jsonify({'error': 'Failed to list files'}), 500
 
     return jsonify(files)
+
+
+@app.context_processor
+def inject_review_navigation_target():
+    """Provide a stable Review navigation target for top-level nav bars."""
+    review_href = '/imports'
+
+    try:
+        import_id = None
+        if request.view_args:
+            import_id = request.view_args.get('import_id')
+
+        if import_id:
+            review_href = f'/imports/{import_id}/validation'
+        else:
+            runtime_config = _get_runtime_repository_config()
+            try:
+                imports = import_service.get_imports(config=runtime_config)
+            except Exception:
+                imports = []
+
+            if imports:
+                most_recent = imports[0].get('id')
+                if most_recent:
+                    review_href = f'/imports/{most_recent}/validation'
+    except Exception:
+        review_href = '/imports'
+
+    return {'review_nav_href': review_href}
 
 @app.route('/api/processing/<filename>')
 def get_processing(filename):

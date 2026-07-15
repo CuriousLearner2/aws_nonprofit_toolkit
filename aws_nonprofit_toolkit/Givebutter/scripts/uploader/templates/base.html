@@ -18,7 +18,7 @@
                 <li><a href="/" class="nav-tab">Upload</a></li>
                 <li><a href="/imports" class="nav-tab">Imports</a></li>
                 <li>
-                    <a href="#" class="nav-tab {% if request.path.startswith('/imports') and 'dashboard' in request.path %}active{% endif %}">
+                    <a href="{{ review_nav_href }}" class="nav-tab {% if request.path.startswith('/imports') and 'dashboard' in request.path %}active{% endif %}" id="topReviewNav">
                         Review
                     </a>
                 </li>
@@ -26,12 +26,12 @@
                 <li><a href="#" class="nav-tab">People</a></li>
                 <li><a href="#" class="nav-tab">Households</a></li>
                 <li>
-                    <a href="#" class="nav-tab {% if 'exports' in request.path %}active{% endif %}">
+                    <a href="{{ review_nav_href | replace('/validation', '/exports') }}" class="nav-tab {% if 'exports' in request.path %}active{% endif %}">
                         Exports
                     </a>
                 </li>
                 <li>
-                    <a href="#" class="nav-tab {% if 'audit' in request.path %}active{% endif %}">
+                    <a href="{{ review_nav_href | replace('/validation', '/audit') }}" class="nav-tab {% if 'audit' in request.path %}active{% endif %}">
                         Audit
                     </a>
                 </li>

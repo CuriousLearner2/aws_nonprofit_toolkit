@@ -648,11 +648,11 @@
         <div class="header-left">
             <div class="logo">DonorTrust</div>
             <nav>
-                <a href="#" class="active">Upload</a>
-                <a href="#">Imports</a>
-                <a href="#">Review</a>
-                <a href="#">Exports</a>
-                <a href="#">Audit</a>
+                <a href="/" class="active">Upload</a>
+                <a href="/imports">Imports</a>
+                <a href="{{ review_nav_href }}" id="topReviewNav">Review</a>
+                <a href="{{ review_nav_href | replace('/validation', '/exports') }}" id="topExportsNav">Exports</a>
+                <a href="{{ review_nav_href | replace('/validation', '/audit') }}" id="topAuditNav">Audit</a>
             </nav>
         </div>
         <div class="header-right">
@@ -787,11 +787,45 @@
     <script>
         const fileInput = document.getElementById('fileInput');
         const uploadStatus = document.getElementById('uploadStatus');
+        const topReviewNav = document.getElementById('topReviewNav');
+        const topExportsNav = document.getElementById('topExportsNav');
+        const topAuditNav = document.getElementById('topAuditNav');
+        const defaultReviewNavHref = {{ review_nav_href | tojson }};
+        const defaultExportsNavHref = {{ review_nav_href | replace('/validation', '/exports') | tojson }};
+        const defaultAuditNavHref = {{ review_nav_href | replace('/validation', '/audit') | tojson }};
+        let queueRefreshTimer = null;
 
         function clearUploadStatus() {
             uploadStatus.style.display = 'none';
             uploadStatus.textContent = '';
             uploadStatus.innerHTML = '';
+        }
+
+        function clearQueueRefreshTimer() {
+            if (queueRefreshTimer) {
+                clearTimeout(queueRefreshTimer);
+                queueRefreshTimer = null;
+            }
+        }
+
+        function setReviewNavigationHref(href) {
+            if (topReviewNav && href) {
+                topReviewNav.setAttribute('href', href);
+            }
+        }
+
+        function setTopNavigationHrefs(reviewHref) {
+            const exportsHref = reviewHref ? reviewHref.replace('/validation', '/exports') : defaultExportsNavHref;
+            const auditHref = reviewHref ? reviewHref.replace('/validation', '/audit') : defaultAuditNavHref;
+            if (topReviewNav && reviewHref) {
+                topReviewNav.setAttribute('href', reviewHref);
+            }
+            if (topExportsNav && exportsHref) {
+                topExportsNav.setAttribute('href', exportsHref);
+            }
+            if (topAuditNav && auditHref) {
+                topAuditNav.setAttribute('href', auditHref);
+            }
         }
 
         function showUploadError(data) {
@@ -835,6 +869,7 @@
         async function uploadFile(file) {
             const formData = new FormData();
             formData.append('file', file);
+            clearQueueRefreshTimer();
             clearUploadStatus();
 
             try {
@@ -847,16 +882,28 @@
 
                 if (!resp.ok) {
                     console.error('Upload error:', data);
+                    setReviewNavigationHref(defaultReviewNavHref);
+                    setTopNavigationHrefs(defaultReviewNavHref);
                     showUploadError(data);
                     return;
                 }
 
                 // Reload queue after successful upload
-                setTimeout(loadQueue, 500);
+                if (data.batch_id) {
+                    setTopNavigationHrefs(`/imports/${data.batch_id}/validation`);
+                }
+                clearQueueRefreshTimer();
+                queueRefreshTimer = setTimeout(() => {
+                    queueRefreshTimer = null;
+                    loadQueue();
+                }, 500);
                 fileInput.value = '';
                 clearUploadStatus();
             } catch (err) {
                 console.error('Upload error:', err);
+                clearQueueRefreshTimer();
+                setReviewNavigationHref(defaultReviewNavHref);
+                setTopNavigationHrefs(defaultReviewNavHref);
                 showUploadError({
                     title: 'Upload failed',
                     message: 'Something went wrong while uploading the file. No data was imported. Please try again.',
@@ -913,14 +960,14 @@
                     // Add action button with event listener
                     const actionCell = row.querySelector('.action-cell');
                     if (f.status === 'Pending Review' || f.status === 'In Review') {
-                        const btn = document.createElement('button');
+                        const btn = document.createElement('a');
                         btn.className = 'action-btn primary';
-                        btn.textContent = f.status === 'Pending Review' ? 'Review Import' : 'Continue Review';
-                        btn.dataset.batchId = f.batch_id || '';
+                        const hasReviewTarget = Boolean(f.batch_id && f.review_url);
+                        btn.textContent = hasReviewTarget
+                            ? (f.status === 'Pending Review' ? 'Review Import' : 'Continue Review')
+                            : 'Select Import';
+                        btn.href = hasReviewTarget ? f.review_url : '/imports';
                         btn.dataset.filename = f.filename;
-                        btn.addEventListener('click', function() {
-                            reviewFile(this);
-                        });
                         actionCell.appendChild(btn);
                     } else if (f.status === 'Completed') {
                         const btn = document.createElement('button');
@@ -951,18 +998,6 @@
             document.getElementById('activeImports').textContent = activeCount;
             document.getElementById('pendingItems').textContent = pendingCount.toLocaleString();
             document.getElementById('lastUpload').textContent = lastUpload;
-        }
-
-        function reviewFile(buttonElement) {
-            // Get batch_id from button's data attribute (from /api/processing response)
-            const batchId = buttonElement && buttonElement.dataset ? buttonElement.dataset.batchId : null;
-
-            if (batchId && batchId.trim()) {
-                const url = '/imports/' + batchId + '/validation';
-                window.location.href = url;
-            } else {
-                console.error('Unable to determine batch ID for review');
-            }
         }
 
         function viewSummary(filename) {

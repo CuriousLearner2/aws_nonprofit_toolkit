@@ -38,6 +38,7 @@ class TestDatabaseModeCanonicalRoutes:
         assert 'IMP-TEST-' in html  # Database-seeded batch ID pattern
         assert 'Imports' in html or 'Import' in html  # Page marker
         assert '<table' in html or '<div' in html  # Table/list structure
+        assert 'href="/imports/IMP-TEST-001/validation"' in html or 'href="/imports/IMP-TEST-002/validation"' in html
 
     def test_imports_dashboard_route_with_database(self, client_with_database):
         """Verify /imports/<batch_id>/dashboard renders database-backed summary."""
@@ -60,6 +61,7 @@ class TestDatabaseModeCanonicalRoutes:
         assert 'IMP-TEST-001' in html or 'validation' in html.lower()  # Batch ID or page marker
         # Validation data/table structure from database
         assert '<table' in html or '<div' in html or 'validation' in html.lower()
+        assert 'href="/imports/IMP-TEST-001/audit"' in html
 
     def test_imports_normalizations_route_with_database(self, client_with_database):
         """Verify /imports/<batch_id>/normalizations renders database-backed normalizations."""

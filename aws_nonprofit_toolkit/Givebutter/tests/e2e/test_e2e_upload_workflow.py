@@ -320,11 +320,11 @@ async def test_import_queue_table_structure(flask_app_database_mode, temp_dir, s
             # Wait for table to populate
             await page.wait_for_selector('tbody tr', timeout=5000)
 
-            # Wait for action buttons to be rendered
-            await page.wait_for_selector('table tbody button', timeout=5000)
+            # Wait for action controls to be rendered
+            await page.wait_for_selector('table tbody a.action-btn, table tbody button.action-btn', timeout=5000)
 
-            # Verify table has rows with action buttons
-            action_buttons = await page.query_selector_all('table tbody button')
+            # Verify table has rows with action controls
+            action_buttons = await page.query_selector_all('table tbody a.action-btn, table tbody button.action-btn')
             if action_buttons:  # Only assert if we have data
                 assert len(action_buttons) > 0, "Action buttons not found after upload"
 
@@ -339,5 +339,97 @@ async def test_import_queue_table_structure(flask_app_database_mode, temp_dir, s
                 found_action_button = any(label in button_texts for label in action_button_labels)
                 assert found_action_button, f"No valid action buttons found. Got: {button_texts}"
 
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_upload_navigation_controls_open_review_pages(flask_app_database_mode, temp_dir):
+    """Review controls should navigate after an upload error and a later successful upload."""
+    from playwright.async_api import async_playwright
+
+    bad_csv = temp_dir / "bad_upload.csv"
+    bad_csv.write_text("foo,bar,baz\n1,2,3\n")
+
+    good_csv = temp_dir / "good_upload.csv"
+    good_csv.write_text(
+        "Donation ID,Date,Donor Name,Email,Phone,Amount,Campaign Title\n"
+        "GB001,2026-05-25,Jane Doe,jane@example.com,4155552671,100.00,General Fund\n"
+    )
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        console_errors = []
+        page.on('console', lambda msg: console_errors.append(msg.text) if msg.type == 'error' else None)
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(bad_csv))
+            await page.wait_for_selector('#uploadStatus', timeout=10000)
+            assert 'supported Givebutter CSV' in (await page.text_content('#uploadStatus') or '')
+
+            await file_input.set_input_files(str(good_csv))
+            await page.wait_for_selector('a.action-btn.primary', timeout=10000)
+
+            review_import = page.locator('a.action-btn.primary', has_text='Review Import').first
+            href = await review_import.get_attribute('href')
+            assert href and href.startswith('/imports/') and href.endswith('/validation'), href
+            top_review = page.locator('#topReviewNav').first
+            top_exports = page.locator('#topExportsNav').first
+            top_audit = page.locator('#topAuditNav').first
+            assert (await top_review.get_attribute('href')).endswith('/validation')
+            assert (await top_exports.get_attribute('href')).endswith('/exports')
+            assert (await top_audit.get_attribute('href')).endswith('/audit')
+            await review_import.click()
+            await page.wait_for_url('**/imports/**/validation', timeout=10000)
+
+            audit_link = page.locator('a', has_text='Audit').first
+            audit_href = await audit_link.get_attribute('href')
+            assert audit_href and audit_href.startswith('/imports/') and audit_href.endswith('/audit'), audit_href
+            await audit_link.click()
+            await page.wait_for_url('**/imports/**/audit', timeout=10000)
+
+            await page.goto("http://127.0.0.1:8001/", wait_until='networkidle')
+            await page.wait_for_selector('.upload-card', timeout=5000)
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(good_csv))
+
+            top_review = page.locator('#topReviewNav').first
+            await page.wait_for_function(
+                """() => {
+                    const link = document.querySelector('#topReviewNav');
+                    return link && link.getAttribute('href') && link.getAttribute('href') !== '#';
+                }"""
+            )
+            top_href = await top_review.get_attribute('href')
+            assert top_href and top_href.startswith('/imports/') and top_href.endswith('/validation'), top_href
+            await top_review.click()
+            await page.wait_for_url('**/imports/**/validation', timeout=10000)
+
+            await page.goto("http://127.0.0.1:8001/", wait_until='networkidle')
+            await page.wait_for_selector('.upload-card', timeout=5000)
+            default_review_href = await page.locator('#topReviewNav').get_attribute('href')
+            default_exports_href = await page.locator('#topExportsNav').get_attribute('href')
+            default_audit_href = await page.locator('#topAuditNav').get_attribute('href')
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(bad_csv))
+            await page.wait_for_selector('#uploadStatus', timeout=10000)
+            assert 'supported Givebutter CSV' in (await page.text_content('#uploadStatus') or '')
+            assert await page.locator('#topReviewNav').get_attribute('href') == default_review_href
+            assert await page.locator('#topExportsNav').get_attribute('href') == default_exports_href
+            assert await page.locator('#topAuditNav').get_attribute('href') == default_audit_href
+
+            unexpected_console_errors = [
+                err for err in console_errors
+                if 'Upload error:' not in err
+                and 'Unsupported Givebutter CSV' not in err
+                and 'Failed to load resource: the server responded with a status of 400 (BAD REQUEST)' not in err
+            ]
+            assert not unexpected_console_errors, f"Unexpected browser console errors: {unexpected_console_errors}"
         finally:
             await browser.close()

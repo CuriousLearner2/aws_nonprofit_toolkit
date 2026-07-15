@@ -146,6 +146,30 @@ class TestDefaultUploadBehavior:
         # No way to verify no database records when database isn't configured,
         # but this verifies the upload completes without error
 
+    def test_processing_queue_without_batch_uses_imports_fallback(self, flask_client):
+        """Processing queue rows without a batch ID should fall back to the imports list."""
+        from io import BytesIO
+
+        csv_content = (
+            "Name,Email,Phone,Amount,Date,Transaction ID\n"
+            "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,TXN001"
+        )
+        data = {
+            'file': (BytesIO(csv_content.encode()), 'test.csv')
+        }
+
+        upload_response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+        assert upload_response.status_code == 200
+
+        processing_response = flask_client.get('/api/processing')
+        assert processing_response.status_code == 200
+        queue_items = processing_response.get_json()
+        assert queue_items, "Expected at least one processing queue item"
+
+        fallback_item = next((item for item in queue_items if item.get('batch_id') is None), None)
+        assert fallback_item is not None, "Expected a queue item without a batch ID"
+        assert fallback_item['review_url'] == '/imports'
+
 
 class TestDatabaseIngestOpt:
     """Test that ingestion is opt-in and requires explicit configuration."""
@@ -735,6 +759,42 @@ class TestUploadIngestedDataReadback:
         assert dashboard is not None, "Dashboard should exist for batch"
         assert dashboard.batch_id == batch_id, "Dashboard batch_id should match"
         assert dashboard.filename == 'test.csv', "Dashboard filename should match"
+
+    def test_upload_uses_runtime_database_config_without_env_ingest_flag(self, flask_client_with_database, monkeypatch):
+        """Upload ingestion should still work when the DB URL lives in app config only."""
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+
+        client_config = flask_client_with_database
+        client = client_config["client"]
+        db_url = client_config["db_url"]
+
+        monkeypatch.delenv("HOUSEHOLDER_INGEST_ON_UPLOAD", raising=False)
+        monkeypatch.delenv("GIVEBUTTER_DATABASE_URL", raising=False)
+        monkeypatch.setitem(app_module.app.config, "HOUSEHOLDER_INGEST_ON_UPLOAD", "true")
+        monkeypatch.setitem(app_module.app.config, "GIVEBUTTER_DATABASE_URL", db_url)
+        monkeypatch.setitem(app_module.app.config, "HOUSEHOLDER_REPOSITORY", "database")
+
+        csv_content = (
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
+            "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
+        )
+        data = {'file': (BytesIO(csv_content.encode()), 'config_only.csv')}
+
+        upload_response = client.post('/upload', data=data, content_type='multipart/form-data')
+        assert upload_response.status_code == 200
+
+        upload_data = upload_response.get_json()
+        assert upload_data['batch_id'], "Upload should return a batch_id in config-only DB mode"
+
+        queue_response = client.get('/api/processing')
+        assert queue_response.status_code == 200
+        queue_data = queue_response.get_json()
+        assert queue_data, "Queue should include the uploaded file"
+
+        queued = next(item for item in queue_data if item['filename'].endswith('config_only.csv'))
+        assert queued['batch_id'] == upload_data['batch_id']
+        assert queued['review_url'] == f"/imports/{upload_data['batch_id']}/validation"
 
 
 class TestUploadErrorTaxonomy:
