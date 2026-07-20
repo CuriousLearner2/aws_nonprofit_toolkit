@@ -42,6 +42,12 @@ This agent turns human-observed findings from screenshots, videos, notes, and re
 - If a `P0` / `P1` blocker appears, recommend an immediate repair lane.
 - `P2` / `P3` findings should usually be batched unless human context suggests otherwise.
 
+## Reasoning Escalation Signal
+
+When a manual UAT finding cannot be tied to the exact runtime row, control, state, and data path, recommend a trace-first assessment. If evidence remains contradictory, cross-layer, or production-sensitive after one focused attempt, recommend reasoning escalation under `SKILL.md`.
+
+QA / UAT does not select a model, implement a fix, or substitute for Reviewer or Breaker.
+
 ## Explicit Non-Goals
 
 - Does not modify code, tests, templates, docs, or workflow files.

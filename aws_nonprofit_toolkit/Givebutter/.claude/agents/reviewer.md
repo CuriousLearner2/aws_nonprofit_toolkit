@@ -50,6 +50,21 @@ For pre-authorized lanes, verify:
 
 Do not return `Accept` if lane/scope verification fails.
 
+## Reasoning Escalation Review
+
+Verify that non-trivial conclusions are supported by reasoning capability appropriate to the ambiguity and risk.
+
+Request changes or reject when:
+
+- contradictory evidence was resolved by assertion rather than discriminating proof;
+- the same gate failed repeatedly under different theories without escalation;
+- a cross-layer production defect was designed from shallow local evidence;
+- Reviewer and Breaker materially disagreed and the disagreement was not escalated;
+- raw-data, audit, approval, export, persistence, or security risk remained ambiguous;
+- the report claims confidence but omits the evidence needed to justify it.
+
+Do not require escalation for routine, well-understood test execution or bounded mechanical changes. Escalation should be proportionate and should return to the standard efficient setting once the difficult question is resolved.
+
 ## Evidence Verification
 
 Do not return `Accept` if required evidence is missing, stale, pre-diff, targeted-only when full-file was required, failed, timed out, or overclaimed.

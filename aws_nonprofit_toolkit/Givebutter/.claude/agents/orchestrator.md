@@ -48,6 +48,21 @@ If any field is uncertain, stop and ask or classify as assessment-only. Do not i
 
 
 
+## Reasoning Escalation Ownership
+
+Orchestrator owns reasoning-escalation decisions.
+
+Use the standard efficient reasoning setting for routine, well-understood execution. When a trigger from `SKILL.md` appears:
+
+1. preserve the worktree, logs, failing tests, and current evidence;
+2. stop repeated guessing;
+3. delegate the narrow unresolved question to a stronger or unpinned subagent when available;
+4. if the question remains unresolved, stop with the exact `REASONING ESCALATION REQUIRED` report from `SKILL.md`;
+5. do not authorize production edits while escalation is unresolved;
+6. after resolution, report that efficient reasoning is sufficient again when the remaining work is mechanical.
+
+Orchestrator must not treat Product UX Gatekeeper as a substitute for technical escalation, and must not infer that a stronger reasoning setting is available merely because subagent invocation is available.
+
 ## Session Review-Capability Preflight
 
 Before delegating implementation or starting any auto-commit-capable flow, verify that this session can invoke required review agents.

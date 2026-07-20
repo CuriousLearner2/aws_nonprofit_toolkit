@@ -107,6 +107,73 @@ Next human choices:
 3. Explicitly waive Reviewer/Breaker for this specific task
 ```
 
+## Reasoning Escalation Policy
+
+Use the standard efficient reasoning setting for routine work such as command execution, test runs, evidence ledgers, fixture classification, bounded test-only changes, scope audits, and ordinary handoffs.
+
+Do not repeatedly guess under an insufficient reasoning setting. Escalation is required when any of these concrete triggers appears:
+
+- evidence is contradictory, incomplete, or materially ambiguous;
+- a test produces evidence of a likely production defect, contradictory product behavior, or a failure whose root cause cannot be confidently classified within the authorized test-only scope;
+- root cause spans multiple production layers;
+- current behavior differs unexpectedly from a clean baseline;
+- the same gate fails twice with different plausible causes;
+- concurrency, stale state, browser-event behavior, fallback behavior, or mode-specific behavior remains unresolved after one focused attempt;
+- Reviewer and Breaker disagree on a material issue;
+- a production-code repair is being designed for a non-trivial defect;
+- raw-data integrity, append-only audit, approval correctness, export correctness, persistence, or security may be affected;
+- a failure cannot be confidently classified.
+
+### Escalation Procedure
+
+1. Preserve the current worktree and all relevant evidence.
+2. Do not weaken, skip, xfail, delete, or rewrite a valid failing test to avoid escalation.
+3. Do not edit production code while the escalation is unresolved.
+4. First delegate the narrow difficult question to a stronger or unpinned subagent when the session supports that.
+5. If the stronger subagent resolves the issue confidently, record its evidence and continue under the existing task contract.
+6. If stronger main-task reasoning is still required, stop with this exact report:
+
+```text
+REASONING ESCALATION REQUIRED
+
+- Current phase:
+- Unresolved question:
+- Evidence collected:
+- Competing explanations:
+- Why the current reasoning setting is insufficient:
+- Recommended stronger capability or setting:
+- Exact next action after escalation:
+- Production files currently modified? yes/no
+- Current git status:
+```
+
+7. Do not continue implementation until the escalation is resolved or the human explicitly authorizes a different path.
+
+### De-escalation Procedure
+
+After the difficult question is resolved and the remaining work is mechanical, explicitly report:
+
+```text
+MEDIUM/EFFICIENT REASONING IS SUFFICIENT AGAIN
+
+- Resolved question:
+- Evidence supporting resolution:
+- Remaining mechanical steps:
+```
+
+Then return to the standard efficient reasoning setting when the interface permits. Do not remain unnecessarily escalated for routine test execution, ledger maintenance, or already-understood implementation.
+
+### Role Ownership
+
+- **Orchestrator:** identifies escalation triggers, chooses stronger-subagent-first, stops for main-task escalation when needed, and records de-escalation.
+- **Implementer:** must stop rather than guess when the authorized change depends on unresolved ambiguous evidence.
+- **Reviewer:** may block acceptance when the reasoning level was insufficient to support the evidence or root-cause claim.
+- **Breaker:** may flag P0/P1 risk when unresolved ambiguity, shallow analysis, or contradictory evidence could mislead the reviewer.
+- **Product UX Gatekeeper:** handles product ambiguity only; it does not substitute for technical reasoning escalation.
+- **QA / UAT:** may recommend escalation when a manual finding cannot be tied to the exact runtime path.
+
+This policy is capability-based. Do not hardcode a specific model name or assume the main task can change its own setting automatically.
+
 ## Assessment-to-Implementation Firewall
 
 Assessment-only tasks are terminal at the assessment report. Proving root cause, identifying an obvious fix, finding a low-risk patch, or knowing the exact tests to add does **not** authorize implementation.

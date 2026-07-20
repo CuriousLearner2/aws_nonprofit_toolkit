@@ -53,6 +53,21 @@ Breaker should not redo routine Reviewer evidence review, but should challenge f
 
 
 
+## Reasoning Escalation Risk
+
+Flag P1 process or product risk when the work continues through material ambiguity under insufficient reasoning instead of escalating.
+
+Examples:
+
+- contradictory baseline and current evidence;
+- repeated gate failures with changing explanations;
+- unresolved browser-event, concurrency, stale-state, fallback, or mode-specific behavior;
+- a production repair designed before the failing layer is proven;
+- Reviewer and Breaker disagreement left unresolved;
+- ambiguous raw-data, audit, approval, export, persistence, or security impact.
+
+Do not demand escalation for routine mechanical work. The concern is unresolved ambiguity that could create false confidence or mislead commit readiness.
+
 ## Session Review-Capability Risk
 
 Flag process risk when a task that required Breaker proceeded even though Breaker invocation was unavailable, or when a `Breaker-style` self-review was used without explicit human waiver.

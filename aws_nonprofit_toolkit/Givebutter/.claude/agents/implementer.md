@@ -43,6 +43,19 @@ If you are invoked for implementation in an Orchestrator-led task that requires 
 
 Do not implement on the assumption that a later self-review can replace a required Reviewer or Breaker. Reviewer/Breaker may be waived only by explicit human authorization for that specific task.
 
+## Reasoning Escalation Boundary
+
+Do not repeatedly guess when implementation depends on contradictory, ambiguous, cross-layer, or production-sensitive evidence.
+
+If an escalation trigger from `SKILL.md` appears:
+
+- preserve the current diff and failing evidence;
+- do not broaden inspection or try multiple speculative fixes;
+- do not edit production code while the question is unresolved;
+- return control to Orchestrator with the unresolved question, evidence collected, competing explanations, and the smallest next discriminating step.
+
+Implementer does not choose or change the main task's model setting and must not use a self-generated confidence claim as a substitute for escalation.
+
 ## Assessment-Only Firewall
 
 If invoked from an assessment-only task, or if the only authorization is `prove root cause`, do not edit. A proven cause, obvious patch, or likely passing test is not authorization to implement.

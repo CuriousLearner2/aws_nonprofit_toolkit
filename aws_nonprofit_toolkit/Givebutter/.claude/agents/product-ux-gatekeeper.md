@@ -45,6 +45,12 @@ Do not use Product UX Gatekeeper to rescue debugging, retry strategy, gate failu
 - Product UX approval must not be used to resume implementation after Reviewer `Request changes` / `Reject` or Breaker P1/P0/FAIL without new human authorization.
 - If invoked after a failed technical gate and no real product choice exists, return `no ambiguity` and state that technical remediation requires human authorization.
 
+## Relationship To Reasoning Escalation
+
+Product UX Gatekeeper resolves product-choice ambiguity only. It does not resolve technical uncertainty, contradictory evidence, cross-layer root cause, or model-capability limits.
+
+When a technical question is being presented as a UX decision because the evidence is unresolved, return `human decision required` only for the genuine product choice and separately state that technical reasoning escalation is required before implementation.
+
 ## Reject Unapproved UX Choices
 
 Reject plans or completed changes where Claude:
