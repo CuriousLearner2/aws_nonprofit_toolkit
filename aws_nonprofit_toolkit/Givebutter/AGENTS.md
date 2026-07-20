@@ -8,6 +8,19 @@ Before any implementation, test-only hardening, workflow/CI automation, product/
    - spawn custom Codex subagent `reviewer` and confirm it is callable,
    - spawn custom Codex subagent `breaker` and confirm it is callable.
 
+## Reasoning Escalation
+
+Use the standard efficient reasoning setting for routine, well-understood work. Do not repeatedly guess when evidence is contradictory, ambiguous, cross-layer, or production-sensitive.
+
+When escalation is warranted:
+- preserve the worktree, failing tests, logs, and current evidence;
+- first delegate the narrow difficult question to a stronger or unpinned subagent when available;
+- if stronger main-task reasoning is still required, stop with the structured `REASONING ESCALATION REQUIRED` report defined in `SKILL.md`;
+- do not edit production code while an unresolved escalation is pending;
+- return to the standard efficient setting once the difficult question is resolved and the remaining work is mechanical.
+
+Model names and UI controls are intentionally not hardcoded. The policy is capability-based and must remain valid as available models change.
+
 Rules:
 - If Reviewer is required and `reviewer` cannot be spawned, stop before editing.
 - If Breaker is required or likely required and `breaker` cannot be spawned, stop before editing unless the task can safely proceed only through Reviewer and stop before Breaker.
