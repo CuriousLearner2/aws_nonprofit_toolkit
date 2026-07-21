@@ -21,6 +21,18 @@ When escalation is warranted:
 
 Model names and UI controls are intentionally not hardcoded. The policy is capability-based and must remain valid as available models change.
 
+## Project Command Bootstrap
+
+Before project gates, guards, pytest runs, or commits that invoke repository hooks:
+
+```bash
+GIVEBUTTER_DIR="/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
+cd "$GIVEBUTTER_DIR"
+export PATH="$GIVEBUTTER_DIR/.venv/bin:$PATH"
+```
+
+Verify that `python` and `pytest` resolve inside the Givebutter virtual environment before commit-capable work. A single environment-only recovery retry is allowed only under the narrow conditions defined in `SKILL.md`; it must not be used to retry a real test, product, hook, timeout, socket, or process failure.
+
 Rules:
 - If Reviewer is required and `reviewer` cannot be spawned, stop before editing.
 - If Breaker is required or likely required and `breaker` cannot be spawned, stop before editing unless the task can safely proceed only through Reviewer and stop before Breaker.
