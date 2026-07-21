@@ -277,12 +277,14 @@ Lanes define maximum allowed scope and approval flow. They do not bypass gates, 
 Intentional tradeoff: `Happy-path auto-commit: enabled` is required for all lanes, including Lane B/C. This preserves safety over speed because test-only/workflow-only tasks can still create false confidence, evidence gaps, or process drift.
 
 
-## Project Command Location and Interpreter
+## Project Command Location, Bootstrap, and Environment-Only Recovery
 
-Unless a task contract or repo-local workflow file explicitly states otherwise, run project gates, guards, and pytest commands from the Givebutter project directory:
+Unless a task contract or repo-local workflow file explicitly states otherwise, bootstrap the project command environment before gates, guards, pytest runs, or commits that invoke repository hooks:
 
 ```bash
-cd "/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
+GIVEBUTTER_DIR="/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
+cd "$GIVEBUTTER_DIR"
+export PATH="$GIVEBUTTER_DIR/.venv/bin:$PATH"
 ```
 
 Use the project virtualenv interpreter:
@@ -291,10 +293,68 @@ Use the project virtualenv interpreter:
 ./.venv/bin/python
 ```
 
+Before commit-capable work, verify command resolution:
+
+```bash
+command -v python
+command -v pytest
+python -c "import sys; print(sys.executable)"
+```
+
+When the changed path imports `email_validator`, also verify:
+
+```bash
+python -c "import email_validator; print(email_validator.__version__)"
+```
+
+Both `python` and `pytest` must resolve inside `$GIVEBUTTER_DIR/.venv`.
+
 Rules:
-- Do not use bare `python` for project commands.
+- Do not use bare `python` for project gates or guards.
+- Do not construct the virtualenv path from `$PWD` until the working directory has been verified.
 - Do not assume `./.venv/bin/python` exists from the Git repo root; first `cd` to the Givebutter project directory.
-- A wrong-directory or missing-interpreter error is a command-invocation failure, not evidence of product/test failure. Stop and report unless the current task explicitly authorizes correction and continuation.
+- Prefer the absolute Givebutter `.venv/bin` path for commit-hook bootstrap when the caller's working directory is uncertain.
+
+### One-Time Environment-Only Recovery
+
+A wrong-directory, wrong-`PATH`, wrong-interpreter, or wrong-`pytest` invocation may be corrected and retried once without new human authorization only when **all** of these conditions are proven:
+
+1. The intended product/test gate did not begin meaningful test execution; failure occurred during command startup, import bootstrap, or pre-collection environment initialization.
+2. Evidence identifies the wrong working directory, `python`, `pytest`, or `PATH` as the sole cause.
+3. The required interpreter and dependency import succeed in the Givebutter `.venv`.
+4. No repository file, hook, dependency, test, fixture, or product code is edited.
+5. The only correction is `cd` to `$GIVEBUTTER_DIR` and/or prepending `$GIVEBUTTER_DIR/.venv/bin` to `PATH`.
+6. The identical declared gate or commit command is retried.
+7. No prior environment-only retry has been used for that gate or commit attempt.
+
+Before retrying, record:
+
+```text
+Environment-only recovery:
+- Original working directory:
+- Original python:
+- Original pytest:
+- Proven environment cause:
+- Givebutter venv verification:
+- Files edited for recovery: none
+- Retry count: 1 of 1
+```
+
+If the retry succeeds, continue under the original task contract and record the recovery in the final evidence. If it fails, the normal failed-gate rule applies immediately.
+
+Environment-only recovery is **not allowed** for:
+
+- assertion failures;
+- collection/import failures under the verified Givebutter `.venv`;
+- a dependency genuinely missing from the Givebutter `.venv`;
+- a hook that hardcodes another interpreter or command;
+- localhost/socket or sandbox restrictions;
+- timeout, signal `-9`, exit `143`, interruption, hang, or uncertain process cleanup;
+- schema, database, fixture, product, test, or workflow defects;
+- any failure whose cause is ambiguous;
+- any retry that would alter the command, files, dependencies, or hook.
+
+This recovery rule distinguishes an intended gate failure from a case where the intended gate never ran in the declared project environment. It does not weaken the failed-gate terminal policy.
 
 ## Repository Automation Guardrails
 

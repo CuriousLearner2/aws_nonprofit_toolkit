@@ -91,13 +91,19 @@ Do not edit based on conceptual or invented file names from an assessment. If li
 
 ## Command Discipline
 
-Run project gates and guards from the Givebutter project directory unless the task contract explicitly states otherwise:
+Bootstrap project commands from the Givebutter project directory unless the task contract explicitly states otherwise:
 
 ```bash
-cd "/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
+GIVEBUTTER_DIR="/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
+cd "$GIVEBUTTER_DIR"
+export PATH="$GIVEBUTTER_DIR/.venv/bin:$PATH"
 ```
 
-Use `./.venv/bin/python` for project commands. Do not use bare `python` and do not assume the virtualenv exists from the Git repo root.
+Use `./.venv/bin/python` for project gates and guards. Do not use bare `python` and do not assume the virtualenv exists from the Git repo root.
+
+Before handing commit-capable work back to Orchestrator, report whether `python` and `pytest` resolve inside the Givebutter `.venv`.
+
+If a command fails solely during environment bootstrap because the wrong directory, interpreter, pytest, or PATH was used, do not edit files. Return the evidence to Orchestrator. Only Orchestrator may coordinate the single environment-only retry defined in `SKILL.md`.
 
 ## Scope Boundaries by Lane
 

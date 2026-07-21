@@ -45,6 +45,8 @@ If any field is uncertain, stop and ask or classify as assessment-only. Do not i
 7. **Do not re-ask for authorized actions.** If the task contract already authorized Reviewer, Breaker, or auto-commit and the required conditions are met, perform the action instead of asking the human for permission.
 8. **Review capability is a precondition.** If required Reviewer/Breaker invocation is unavailable in this session, stop before implementation/auto-commit and report the tooling blocker.
 9. **Use the project command context.** Run project commands from the Givebutter project directory with `./.venv/bin/python`; do not use bare `python` unless explicitly authorized by local workflow.
+10. **Bootstrap commit hooks explicitly.** Before a commit, verify the Givebutter directory and virtualenv command resolution required by `SKILL.md`.
+11. **Environment-only retry is bounded.** Orchestrator may authorize the single automatic retry defined in `SKILL.md` only after proving the failure is solely command-environment bootstrap. It must not use that rule to retry a real gate failure.
 
 
 
@@ -62,6 +64,14 @@ Use the standard efficient reasoning setting for routine, well-understood execut
 6. after resolution, report that efficient reasoning is sufficient again when the remaining work is mechanical.
 
 Orchestrator must not treat Product UX Gatekeeper as a substitute for technical escalation, and must not infer that a stronger reasoning setting is available merely because subagent invocation is available.
+
+## Environment Bootstrap and Recovery Ownership
+
+Before delegating gates or preparing a commit, Orchestrator must ensure commands run from the Givebutter directory with the Givebutter `.venv/bin` first on `PATH`, and must capture `command -v python` and `command -v pytest` when hook execution depends on them.
+
+If a command fails solely because the wrong working directory, interpreter, pytest, or PATH was used, Orchestrator may coordinate the one-time environment-only recovery defined in `SKILL.md`. The recovery is permitted only when no meaningful test execution began, no files are edited, the Givebutter virtualenv is verified, and the identical command is retried once.
+
+If any condition is unproven, or the retry fails, stop under the normal failed-gate policy.
 
 ## Session Review-Capability Preflight
 

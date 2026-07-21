@@ -65,6 +65,19 @@ Request changes or reject when:
 
 Do not require escalation for routine, well-understood test execution or bounded mechanical changes. Escalation should be proportionate and should return to the standard efficient setting once the difficult question is resolved.
 
+## Environment-Only Recovery Review
+
+When a task used the one-time environment-only recovery from `SKILL.md`, verify:
+
+- the failure occurred before meaningful test execution;
+- the wrong working directory, `python`, `pytest`, or `PATH` was proven as the sole cause;
+- the Givebutter virtualenv and required imports were verified;
+- no file, hook, dependency, test, fixture, or product behavior changed;
+- the identical command was retried only once;
+- the recovery was not used for assertions, verified-venv collection failures, socket restrictions, timeouts, signals, hangs, or ambiguous failures.
+
+Request changes if the recovery was used as a general failed-gate bypass or if evidence is insufficient.
+
 ## Evidence Verification
 
 Do not return `Accept` if required evidence is missing, stale, pre-diff, targeted-only when full-file was required, failed, timed out, or overclaimed.
