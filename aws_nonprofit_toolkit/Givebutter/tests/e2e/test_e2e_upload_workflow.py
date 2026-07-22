@@ -241,14 +241,217 @@ async def test_upload_drop_zone_ignores_empty_drop_and_recovers(flask_app_databa
                 'drop',
                 [],
             )
+            dragenter = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'dragenter',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            dragover = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'dragover',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            dragleave = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'dragleave',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
 
             assert empty_drop['defaultPrevented'] is True
             assert empty_drop['dispatchResult'] is False
+            assert dragenter['defaultPrevented'] is True
+            assert dragenter['dispatchResult'] is False
+            assert dragover['defaultPrevented'] is True
+            assert dragover['dispatchResult'] is False
+            assert dragleave['dispatchResult'] is True
             assert upload_request_count == 0
             assert await page.locator('#uploadStatus').is_hidden()
             assert await page.locator('.upload-card').evaluate("el => !el.classList.contains('is-drag-over')")
             assert await page.locator('#queueBody tr').count() >= 1
 
+            valid_dragenter = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'dragenter',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            valid_dragover = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'dragover',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            valid_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            assert valid_dragenter['defaultPrevented'] is True
+            assert valid_dragenter['dispatchResult'] is False
+            assert valid_dragover['defaultPrevented'] is True
+            assert valid_dragover['dispatchResult'] is False
+            assert valid_drop['defaultPrevented'] is True
+            assert valid_drop['dispatchResult'] is False
+            await page.wait_for_selector('a.action-btn.primary', timeout=10000)
+            assert upload_request_count == 1
+            assert await page.locator('a.action-btn.primary', has_text='Review Import').count() == 1
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_upload_drop_zone_rejects_invalid_drop_and_recovers_with_drag_drop(flask_app_database_mode, temp_dir, sample_csv):
+    """Test that an invalid drag-and-drop upload is rejected and drag-and-drop still recovers."""
+    from playwright.async_api import async_playwright
+
+    non_csv = temp_dir / "not_a_csv.txt"
+    non_csv.write_text("hello world", encoding='utf-8')
+    csv_text = sample_csv.read_text(encoding='utf-8')
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        upload_request_count = 0
+
+        async def track_upload(route):
+            nonlocal upload_request_count
+            upload_request_count += 1
+            await route.continue_()
+
+        await page.route('**/upload', track_upload)
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            invalid_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [{
+                    'name': non_csv.name,
+                    'content': non_csv.read_text(encoding='utf-8'),
+                    'type': 'text/plain',
+                }],
+            )
+            assert invalid_drop['defaultPrevented'] is True
+            assert invalid_drop['dispatchResult'] is False
+            assert upload_request_count == 0
+            assert 'Please select a CSV file.' in (await page.locator('#uploadStatus').text_content() or '')
+
+            valid_dragenter = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'dragenter',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            valid_dragover = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'dragover',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            valid_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            assert valid_dragenter['defaultPrevented'] is True
+            assert valid_dragenter['dispatchResult'] is False
+            assert valid_dragover['defaultPrevented'] is True
+            assert valid_dragover['dispatchResult'] is False
+            assert valid_drop['defaultPrevented'] is True
+            assert valid_drop['dispatchResult'] is False
+            await page.wait_for_selector('a.action-btn.primary', timeout=10000)
+            assert upload_request_count == 1
+            assert await page.locator('a.action-btn.primary', has_text='Review Import').count() == 1
+            assert await page.locator('#uploadStatus').is_hidden()
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_upload_drop_zone_rejects_multiple_file_drop(flask_app_database_mode, temp_dir, sample_csv):
+    """Test that a multi-file drag-and-drop upload is rejected safely."""
+    from playwright.async_api import async_playwright
+
+    bad_csv = temp_dir / "bad_drop.csv"
+    bad_csv.write_text("foo,bar,baz\n1,2,3\n", encoding='utf-8')
+
+    csv_text = sample_csv.read_text(encoding='utf-8')
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        upload_request_count = 0
+
+        async def track_upload(route):
+            nonlocal upload_request_count
+            upload_request_count += 1
+            await route.continue_()
+
+        await page.route('**/upload', track_upload)
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            multi_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [
+                    {'name': bad_csv.name, 'content': bad_csv.read_text(encoding='utf-8'), 'type': 'text/csv'},
+                    {'name': sample_csv.name, 'content': csv_text, 'type': 'text/csv'},
+                ],
+            )
+            assert multi_drop['defaultPrevented'] is True
+            assert multi_drop['dispatchResult'] is False
+            assert upload_request_count == 0
+            assert 'Please drop one CSV file at a time.' in (await page.locator('#uploadStatus').text_content() or '')
             valid_drop = await _dispatch_drag_event(
                 page,
                 '.upload-card',
@@ -260,8 +463,92 @@ async def test_upload_drop_zone_ignores_empty_drop_and_recovers(flask_app_databa
                 }],
             )
             assert valid_drop['defaultPrevented'] is True
+            assert valid_drop['dispatchResult'] is False
             await page.wait_for_selector('a.action-btn.primary', timeout=10000)
             assert upload_request_count == 1
+            assert await page.locator('a.action-btn.primary', has_text='Review Import').count() == 1
+            assert await page.locator('#uploadStatus').is_hidden()
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_upload_drop_zone_blocks_repeated_drops_while_upload_is_in_flight(flask_app_database_mode, temp_dir, sample_csv):
+    """Test that rapid repeated drops do not duplicate requests and later intentional uploads still work."""
+    from playwright.async_api import async_playwright
+
+    csv_text = sample_csv.read_text(encoding='utf-8')
+    replacement_csv = temp_dir / "same-name.csv"
+    replacement_csv.write_text(
+        csv_text.replace("John Smith", "John Smith Jr."),
+        encoding='utf-8',
+    )
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        request_count = 0
+
+        async def hold_first_upload(route):
+            nonlocal request_count
+            request_count += 1
+            if request_count == 1:
+                await asyncio.sleep(1)
+            await route.continue_()
+
+        await page.route('**/upload', hold_first_upload)
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            first_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            assert first_drop['defaultPrevented'] is True
+            assert first_drop['dispatchResult'] is False
+
+            second_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            assert second_drop['defaultPrevented'] is True
+            assert second_drop['dispatchResult'] is False
+            assert request_count == 1
+            assert 'Uploading' in (await page.locator('#uploadStatus').text_content() or '')
+
+            await page.wait_for_selector('a.action-btn.primary', timeout=10000)
+            assert request_count == 1
+
+            later_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [{
+                    'name': sample_csv.name,
+                    'content': replacement_csv.read_text(encoding='utf-8'),
+                    'type': 'text/csv',
+                }],
+            )
+            assert later_drop['defaultPrevented'] is True
+            assert later_drop['dispatchResult'] is False
+
+            await page.wait_for_selector('a.action-btn.primary', timeout=10000)
+            assert request_count == 2
             assert await page.locator('a.action-btn.primary', has_text='Review Import').count() == 1
         finally:
             await browser.close()
