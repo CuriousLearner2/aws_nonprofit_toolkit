@@ -1,6 +1,270 @@
 """End-to-end tests for upload workflow with Playwright."""
 import pytest
 import asyncio
+import json
+
+
+async def _dispatch_drag_event(page, selector, event_type, files):
+    return await page.evaluate(
+        """
+        ({ selector, eventType, files }) => {
+            const target = document.querySelector(selector);
+            if (!target) {
+                throw new Error(`Missing drag target: ${selector}`);
+            }
+
+            const dataTransfer = new DataTransfer();
+            for (const file of files) {
+                dataTransfer.items.add(new File([file.content], file.name, { type: file.type }));
+            }
+
+            const event = new DragEvent(eventType, {
+                bubbles: true,
+                cancelable: true,
+                dataTransfer,
+            });
+            const dispatchResult = target.dispatchEvent(event);
+            return {
+                defaultPrevented: event.defaultPrevented,
+                dispatchResult,
+            };
+        }
+        """,
+        {
+            "selector": selector,
+            "eventType": event_type,
+            "files": files,
+        },
+    )
+
+
+def _collect_browser_issues(page):
+    console_errors = []
+    request_failures = []
+
+    page.on(
+        "console",
+        lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
+    )
+    page.on("requestfailed", lambda request: request_failures.append(request.url))
+
+    return console_errors, request_failures
+
+
+async def _mock_processing_queue(page, queue_items):
+    async def fulfill_processing(route):
+        await route.fulfill(
+            status=200,
+            content_type='application/json',
+            body=json.dumps(queue_items),
+        )
+
+    await page.route('**/api/processing', fulfill_processing)
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_processing_queue_renders_untrusted_values_safely(flask_app_database_mode):
+    """Test that queue rendering treats hostile values as text and rejects unsafe review URLs."""
+    from playwright.async_api import async_playwright
+
+    hostile_filename = '<img src=x onerror="window.__queueXssTriggered = true">'
+    hostile_uploaded = '"><svg onload="window.__queueXssTriggered = true"></svg>'
+    hostile_count = '1 & <2> "quoted" \'single\''
+    safe_review_url = '/imports/alpha-batch/validation'
+
+    queue_items = [
+        {
+            'filename': hostile_filename,
+            'uploaded': hostile_uploaded,
+            'rows': hostile_count,
+            'pass_count': hostile_count,
+            'warning_count': hostile_count,
+            'fail_count': hostile_count,
+            'normalizations': hostile_count,
+            'households': hostile_count,
+            'duplicates': hostile_count,
+            'status': 'Pending Review',
+            'review_url': safe_review_url,
+        },
+        {
+            'batch_id': 'beta-batch',
+            'filename': 'same-origin-wrong-path.csv',
+            'uploaded': '2026-07-22 09:05',
+            'rows': 8,
+            'pass_count': 8,
+            'warning_count': 0,
+            'fail_count': 0,
+            'normalizations': 1,
+            'households': 0,
+            'duplicates': 0,
+            'status': 'Pending Review',
+            'review_url': '/exports/rogue-path',
+        },
+        {
+            'batch_id': 'gamma-batch',
+            'filename': 'javascript-url.csv',
+            'uploaded': '2026-07-22 09:10',
+            'rows': 4,
+            'pass_count': 4,
+            'warning_count': 0,
+            'fail_count': 0,
+            'normalizations': 0,
+            'households': 0,
+            'duplicates': 0,
+            'status': 'Pending Review',
+            'review_url': 'javascript:window.__queueUrlTriggered = true',
+        },
+        {
+            'filename': 'missing-review-url.csv',
+            'uploaded': '2026-07-22 09:16',
+            'rows': 2,
+            'pass_count': 2,
+            'warning_count': 0,
+            'fail_count': 0,
+            'normalizations': 0,
+            'households': 0,
+            'duplicates': 0,
+            'status': 'Pending Review',
+            'review_url': '',
+        },
+    ]
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        console_errors, request_failures = _collect_browser_issues(page)
+        await page.add_init_script(
+            """
+            window.__queueXssTriggered = false;
+            window.__queueUrlTriggered = false;
+            """
+        )
+        await _mock_processing_queue(page, queue_items)
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('#queueBody tr', timeout=5000)
+
+            rows = page.locator('#queueBody tr')
+            assert await rows.count() == len(queue_items)
+
+            hostile_row = rows.nth(0)
+            hostile_filename_cell = hostile_row.locator('td').first
+            hostile_text = await hostile_filename_cell.text_content()
+            assert hostile_text is not None
+            assert hostile_filename in hostile_text
+            assert hostile_uploaded in (await hostile_row.text_content() or '')
+            assert hostile_count in (await hostile_row.text_content() or '')
+            assert await hostile_row.locator('img, svg, script, [onload], [onerror], [onclick]').count() == 0
+            assert await page.evaluate("window.__queueXssTriggered === false")
+            valid_link = hostile_row.locator('a.action-btn.primary')
+            assert await valid_link.count() == 1
+            assert await valid_link.get_attribute('href') == safe_review_url
+
+            safe_row = rows.nth(1)
+            safe_text = await safe_row.locator('td').first.text_content()
+            assert safe_text is not None
+            assert 'same-origin-wrong-path.csv' in safe_text
+            safe_link = safe_row.locator('a.action-btn.primary')
+            assert await safe_link.count() == 0
+            safe_disabled = safe_row.locator('button.action-btn.primary')
+            assert await safe_disabled.count() == 1
+            assert await safe_disabled.is_disabled()
+            assert 'Review unavailable' in (await safe_disabled.text_content() or '')
+            imports_link = safe_row.locator('a.action-btn.secondary')
+            assert await imports_link.count() == 1
+            assert await imports_link.get_attribute('href') == '/imports'
+            assert 'Open Imports' in (await imports_link.text_content() or '')
+
+            completed_row = rows.nth(2)
+            assert 'javascript-url.csv' in (await completed_row.text_content() or '')
+            completed_link = completed_row.locator('button.action-btn.primary')
+            assert await completed_link.count() == 1
+            assert await completed_link.is_disabled()
+            assert 'Review unavailable' in (await completed_link.text_content() or '')
+            assert await completed_row.locator('a.action-btn.secondary').count() == 1
+
+            missing_review_row = rows.nth(3)
+            missing_review_text = await missing_review_row.text_content()
+            assert missing_review_text is not None
+            assert 'missing-review-url.csv' in missing_review_text
+            missing_review_button = missing_review_row.locator('button.action-btn.primary')
+            assert await missing_review_button.count() == 1
+            assert await missing_review_button.is_disabled()
+            imports_links = missing_review_row.locator('a.action-btn.secondary')
+            assert await imports_links.count() == 1
+            assert await imports_links.get_attribute('href') == '/imports'
+
+            await valid_link.click()
+            await page.wait_for_url('**/imports/alpha-batch/validation', timeout=10000)
+
+            unexpected_console_errors = [
+                err for err in console_errors
+                if 'Upload error:' not in err
+                and 'Failed to load resource: the server responded with a status of 400 (BAD REQUEST)' not in err
+            ]
+            assert not unexpected_console_errors, f"Unexpected browser console errors: {unexpected_console_errors}"
+            assert not request_failures, f"Unexpected browser request failures: {request_failures}"
+            assert await page.evaluate("window.__queueUrlTriggered === false")
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_upload_drop_zone_ignores_empty_drop_and_recovers(flask_app_database_mode, temp_dir, sample_csv):
+    """Test that an empty drop is ignored safely and drag-and-drop still recovers."""
+    from playwright.async_api import async_playwright
+
+    csv_text = sample_csv.read_text(encoding='utf-8')
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        upload_request_count = 0
+
+        async def track_upload(route):
+            nonlocal upload_request_count
+            upload_request_count += 1
+            await route.continue_()
+
+        await page.route('**/upload', track_upload)
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            empty_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [],
+            )
+
+            assert empty_drop['defaultPrevented'] is True
+            assert empty_drop['dispatchResult'] is False
+            assert upload_request_count == 0
+            assert await page.locator('#uploadStatus').is_hidden()
+            assert await page.locator('.upload-card').evaluate("el => !el.classList.contains('is-drag-over')")
+            assert await page.locator('#queueBody tr').count() >= 1
+
+            valid_drop = await _dispatch_drag_event(
+                page,
+                '.upload-card',
+                'drop',
+                [{
+                    'name': sample_csv.name,
+                    'content': csv_text,
+                    'type': 'text/csv',
+                }],
+            )
+            assert valid_drop['defaultPrevented'] is True
+            await page.wait_for_selector('a.action-btn.primary', timeout=10000)
+            assert upload_request_count == 1
+            assert await page.locator('a.action-btn.primary', has_text='Review Import').count() == 1
+        finally:
+            await browser.close()
 
 
 @pytest.mark.e2e
@@ -133,7 +397,13 @@ async def test_upload_non_givebutter_csv_shows_inline_error_banner(flask_app_dat
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(bad_csv))
 
-            await page.wait_for_selector('#uploadStatus:visible', timeout=5000)
+            await page.wait_for_function(
+                """() => {
+                    const status = document.querySelector('#uploadStatus');
+                    return status && status.textContent.includes('Unsupported Givebutter CSV');
+                }""",
+                timeout=10000,
+            )
             banner = await page.locator('#uploadStatus').text_content()
             assert 'Unsupported Givebutter CSV' in banner
             assert 'No data was imported' in banner
@@ -370,7 +640,13 @@ async def test_upload_navigation_controls_open_review_pages(flask_app_database_m
 
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(bad_csv))
-            await page.wait_for_selector('#uploadStatus', timeout=10000)
+            await page.wait_for_function(
+                """() => {
+                    const status = document.querySelector('#uploadStatus');
+                    return status && status.textContent.includes('Unsupported Givebutter CSV');
+                }""",
+                timeout=10000,
+            )
             assert 'supported Givebutter CSV' in (await page.text_content('#uploadStatus') or '')
 
             await file_input.set_input_files(str(good_csv))
@@ -418,7 +694,13 @@ async def test_upload_navigation_controls_open_review_pages(flask_app_database_m
             default_audit_href = await page.locator('#topAuditNav').get_attribute('href')
             file_input = await page.query_selector('input[type="file"]')
             await file_input.set_input_files(str(bad_csv))
-            await page.wait_for_selector('#uploadStatus', timeout=10000)
+            await page.wait_for_function(
+                """() => {
+                    const status = document.querySelector('#uploadStatus');
+                    return status && status.textContent.includes('Unsupported Givebutter CSV');
+                }""",
+                timeout=10000,
+            )
             assert 'supported Givebutter CSV' in (await page.text_content('#uploadStatus') or '')
             assert await page.locator('#topReviewNav').get_attribute('href') == default_review_href
             assert await page.locator('#topExportsNav').get_attribute('href') == default_exports_href

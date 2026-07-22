@@ -219,6 +219,12 @@
             border-color: var(--secondary);
         }
 
+        .upload-card.is-drag-over {
+            border-color: var(--secondary);
+            box-shadow: 0 0 0 3px rgba(0, 81, 213, 0.16);
+            background: rgba(0, 81, 213, 0.04);
+        }
+
         .upload-card > * {
             position: relative;
             z-index: 1;
@@ -787,6 +793,7 @@
     <script>
         const fileInput = document.getElementById('fileInput');
         const uploadStatus = document.getElementById('uploadStatus');
+        const uploadCard = document.querySelector('.upload-card');
         const topReviewNav = document.getElementById('topReviewNav');
         const topExportsNav = document.getElementById('topExportsNav');
         const topAuditNav = document.getElementById('topAuditNav');
@@ -794,11 +801,25 @@
         const defaultExportsNavHref = {{ review_nav_href | replace('/validation', '/exports') | tojson }};
         const defaultAuditNavHref = {{ review_nav_href | replace('/validation', '/audit') | tojson }};
         let queueRefreshTimer = null;
+        let uploadInFlight = false;
+        let dragDepth = 0;
 
         function clearUploadStatus() {
             uploadStatus.style.display = 'none';
             uploadStatus.textContent = '';
-            uploadStatus.innerHTML = '';
+            uploadStatus.replaceChildren();
+        }
+
+        function setUploadDragState(isActive) {
+            if (uploadCard) {
+                uploadCard.classList.toggle('is-drag-over', isActive);
+                uploadCard.setAttribute('aria-dropeffect', isActive ? 'copy' : 'none');
+            }
+        }
+
+        function clearUploadDragState() {
+            dragDepth = 0;
+            setUploadDragState(false);
         }
 
         function clearQueueRefreshTimer() {
@@ -828,12 +849,28 @@
             }
         }
 
+        function showUploadProgress(filename) {
+            uploadStatus.className = 'status-message info';
+            uploadStatus.replaceChildren();
+
+            const heading = document.createElement('strong');
+            heading.textContent = `Uploading ${filename}`;
+
+            const body = document.createElement('div');
+            body.style.marginTop = '4px';
+            body.textContent = 'Please wait while the import batch is created.';
+
+            uploadStatus.appendChild(heading);
+            uploadStatus.appendChild(body);
+            uploadStatus.style.display = 'block';
+        }
+
         function showUploadError(data) {
             const title = data.title || 'Upload failed';
             const message = data.message || data.error || 'Unknown error';
 
             uploadStatus.className = 'status-message error';
-            uploadStatus.innerHTML = '';
+            uploadStatus.replaceChildren();
 
             const heading = document.createElement('strong');
             heading.textContent = title;
@@ -855,22 +892,282 @@
             uploadStatus.style.display = 'block';
         }
 
+        function isCsvFile(file) {
+            return !!file && typeof file.name === 'string' && file.name.toLowerCase().endsWith('.csv');
+        }
+
+        function formatQueueValue(value, fallback = '') {
+            return value === null || value === undefined ? fallback : String(value);
+        }
+
+        function createQueueEmptyRow(message) {
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = 9;
+            cell.className = 'empty-state';
+            cell.textContent = message;
+            row.appendChild(cell);
+            return row;
+        }
+
+        function createQueueFilenameCell(filename) {
+            const cell = document.createElement('td');
+            cell.title = formatQueueValue(filename);
+
+            const icon = document.createElement('span');
+            icon.className = 'material-symbols-outlined file-icon';
+            icon.textContent = 'description';
+
+            const label = document.createElement('strong');
+            label.textContent = formatQueueValue(filename);
+
+            cell.append(icon, label);
+            return cell;
+        }
+
+        function createQueueMonoTextCell(value, trailingLabel) {
+            const cell = document.createElement('td');
+            cell.style.fontFamily = '\'JetBrains Mono\', monospace';
+            cell.append(document.createTextNode(formatQueueValue(value)));
+
+            if (trailingLabel) {
+                const suffix = document.createElement('span');
+                suffix.style.fontSize = '11px';
+                suffix.style.color = 'var(--slate-gray)';
+                suffix.textContent = trailingLabel;
+                cell.append(document.createTextNode(' '), suffix);
+            }
+            return cell;
+        }
+
+        function createQueueValidationCell(fileData) {
+            const cell = document.createElement('td');
+            const badges = document.createElement('div');
+            badges.className = 'validation-badges';
+
+            const badgeDefs = [
+                ['pass', fileData.pass_count, 'PASS'],
+                ['warn', fileData.warning_count, 'WARN'],
+                ['fail', fileData.fail_count, 'FAIL'],
+            ];
+
+            badgeDefs.forEach(([badgeClass, count, label]) => {
+                const badge = document.createElement('span');
+                badge.className = `badge ${badgeClass}`;
+                badge.textContent = `${formatQueueValue(count)} ${label}`;
+                badges.appendChild(badge);
+            });
+
+            cell.appendChild(badges);
+            return cell;
+        }
+
+        function createQueueStatusCell(status) {
+            const cell = document.createElement('td');
+            const statusText = document.createElement('span');
+            statusText.className = 'status-text';
+            statusText.textContent = formatQueueValue(status);
+            cell.appendChild(statusText);
+            return cell;
+        }
+
+        function normalizeReviewUrl(reviewUrl) {
+            if (typeof reviewUrl !== 'string') {
+                return null;
+            }
+
+            const trimmed = reviewUrl.trim();
+            if (!trimmed || trimmed.startsWith('//')) {
+                return null;
+            }
+
+            try {
+                const parsed = new URL(trimmed, window.location.origin);
+                if (parsed.origin !== window.location.origin) {
+                    return null;
+                }
+                if (!parsed.pathname.startsWith('/imports/')) {
+                    return null;
+                }
+                return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function createQueueActionControl(fileData) {
+            if (fileData.status === 'Completed') {
+                const btn = document.createElement('button');
+                btn.className = 'action-btn secondary';
+                btn.type = 'button';
+                btn.textContent = 'View Summary';
+                btn.addEventListener('click', () => {
+                    viewSummary(fileData.filename);
+                });
+                return btn;
+            }
+
+            if (fileData.status === 'Pending Review' || fileData.status === 'In Review') {
+                const wrapper = document.createElement('div');
+                wrapper.style.display = 'flex';
+                wrapper.style.flexDirection = 'column';
+                wrapper.style.alignItems = 'flex-end';
+                wrapper.style.gap = '4px';
+
+                const reviewUrlValue = formatQueueValue(fileData.review_url).trim();
+                const normalizedReviewUrl = normalizeReviewUrl(reviewUrlValue);
+                const importsLink = document.createElement('a');
+                importsLink.className = 'action-btn secondary';
+                importsLink.href = '/imports';
+                importsLink.textContent = 'Open Imports';
+                importsLink.dataset.filename = formatQueueValue(fileData.filename);
+
+                if (normalizedReviewUrl) {
+                    const btn = document.createElement('a');
+                    btn.className = 'action-btn primary';
+                    btn.textContent = fileData.status === 'Pending Review' ? 'Review Import' : 'Continue Review';
+                    btn.href = normalizedReviewUrl;
+                    btn.dataset.filename = formatQueueValue(fileData.filename);
+                    wrapper.append(btn, importsLink);
+                    return wrapper;
+                }
+
+                const unavailable = document.createElement('button');
+                unavailable.className = 'action-btn primary';
+                unavailable.type = 'button';
+                unavailable.disabled = true;
+                unavailable.setAttribute('aria-disabled', 'true');
+                unavailable.textContent = 'Review unavailable';
+                unavailable.title = reviewUrlValue ? 'Review link unavailable' : 'Review link unavailable';
+
+                wrapper.append(unavailable, importsLink);
+                return wrapper;
+            }
+
+            return null;
+        }
+
+        function createQueueRow(fileData) {
+            const row = document.createElement('tr');
+            row.appendChild(createQueueFilenameCell(fileData.filename));
+            row.appendChild(createQueueMonoTextCell(fileData.uploaded, ''));
+            row.appendChild(createQueueMonoTextCell(fileData.rows, ''));
+            row.appendChild(createQueueValidationCell(fileData));
+            row.appendChild(createQueueMonoTextCell(fileData.normalizations, 'pending'));
+            row.appendChild(createQueueMonoTextCell(fileData.households, 'suggested'));
+            row.appendChild(createQueueMonoTextCell(fileData.duplicates, 'candidates'));
+            row.appendChild(createQueueStatusCell(fileData.status));
+
+            const actionCell = document.createElement('td');
+            actionCell.style.textAlign = 'right';
+            actionCell.className = 'action-cell';
+
+            const actionControl = createQueueActionControl(fileData);
+            if (actionControl) {
+                actionCell.appendChild(actionControl);
+            }
+
+            row.appendChild(actionCell);
+            return row;
+        }
+
+        async function startUpload(file) {
+            if (!file || uploadInFlight) {
+                return;
+            }
+
+            if (!isCsvFile(file)) {
+                clearUploadDragState();
+                showUploadError({
+                    title: 'Upload failed',
+                    message: 'Please select a CSV file.'
+                });
+                return;
+            }
+
+            await uploadFile(file);
+        }
+
+        function handleDragEnter(event) {
+            if (!event.dataTransfer) {
+                return;
+            }
+            event.preventDefault();
+            if (event.dataTransfer.files.length === 0) {
+                return;
+            }
+            dragDepth += 1;
+            setUploadDragState(true);
+        }
+
+        function handleDragOver(event) {
+            if (!event.dataTransfer) {
+                return;
+            }
+            event.preventDefault();
+            if (event.dataTransfer.files.length === 0) {
+                return;
+            }
+            setUploadDragState(true);
+        }
+
+        function handleDragLeave(event) {
+            if (event.dataTransfer && event.dataTransfer.files.length === 0) {
+                return;
+            }
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (dragDepth === 0) {
+                clearUploadDragState();
+            }
+        }
+
+        function handleDrop(event) {
+            if (!event.dataTransfer) {
+                return;
+            }
+            event.preventDefault();
+            clearUploadDragState();
+
+            const files = Array.from(event.dataTransfer.files || []);
+            if (files.length === 0) {
+                return;
+            }
+            if (files.length > 1) {
+                showUploadError({
+                    title: 'Upload failed',
+                    message: 'Please drop one CSV file at a time.'
+                });
+                return;
+            }
+
+            startUpload(files[0]);
+        }
+
+        if (uploadCard) {
+            uploadCard.addEventListener('dragenter', handleDragEnter);
+            uploadCard.addEventListener('dragover', handleDragOver);
+            uploadCard.addEventListener('dragleave', handleDragLeave);
+            uploadCard.addEventListener('drop', handleDrop);
+        }
+
         // Upload file handler
         fileInput.addEventListener('change', () => {
             if (fileInput.files.length === 0) return;
-            const file = fileInput.files[0];
-            if (!file.name.endsWith('.csv')) {
-                alert('Please select a CSV file');
-                return;
-            }
-            uploadFile(file);
+            startUpload(fileInput.files[0]);
         });
 
         async function uploadFile(file) {
+            if (uploadInFlight) {
+                return;
+            }
+
+            uploadInFlight = true;
+            clearUploadDragState();
+            showUploadProgress(file.name);
+
             const formData = new FormData();
             formData.append('file', file);
             clearQueueRefreshTimer();
-            clearUploadStatus();
 
             try {
                 const resp = await fetch('/upload', {
@@ -909,6 +1206,8 @@
                     message: 'Something went wrong while uploading the file. No data was imported. Please try again.',
                     error: err.message
                 });
+            } finally {
+                uploadInFlight = false;
             }
         }
 
@@ -925,59 +1224,18 @@
                 const footer = document.getElementById('queueFooter');
 
                 if (files.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No imports yet. Upload a CSV to get started.</td></tr>';
-                    footer.innerHTML = '<span>No imports</span>';
+                    tbody.replaceChildren(createQueueEmptyRow('No imports yet. Upload a CSV to get started.'));
+                    footer.textContent = 'No imports';
                     updateStats(0, 0, '—');
                     return;
                 }
 
-                tbody.innerHTML = '';
+                tbody.replaceChildren();
                 let totalPending = 0;
 
                 files.forEach(f => {
-                    const row = document.createElement('tr');
-
-                    // Create cells and button
-                    row.innerHTML = `
-                        <td title="${f.filename}"><span class="material-symbols-outlined file-icon">description</span><strong>${f.filename}</strong></td>
-                        <td style="font-family: 'JetBrains Mono', monospace;">${f.uploaded}</td>
-                        <td style="font-family: 'JetBrains Mono', monospace;">${f.rows}</td>
-                        <td>
-                            <div class="validation-badges">
-                                <span class="badge pass">${f.pass_count} PASS</span>
-                                <span class="badge warn">${f.warning_count} WARN</span>
-                                <span class="badge fail">${f.fail_count} FAIL</span>
-                            </div>
-                        </td>
-                        <td style="font-family: 'JetBrains Mono', monospace;">${f.normalizations} <span style="font-size: 11px; color: var(--slate-gray);">pending</span></td>
-                        <td style="font-family: 'JetBrains Mono', monospace;">${f.households} <span style="font-size: 11px; color: var(--slate-gray);">suggested</span></td>
-                        <td style="font-family: 'JetBrains Mono', monospace;">${f.duplicates} <span style="font-size: 11px; color: var(--slate-gray);">candidates</span></td>
-                        <td><span class="status-text">${f.status}</span></td>
-                        <td style="text-align: right;" class="action-cell"></td>
-                    `;
+                    const row = createQueueRow(f);
                     tbody.appendChild(row);
-
-                    // Add action button with event listener
-                    const actionCell = row.querySelector('.action-cell');
-                    if (f.status === 'Pending Review' || f.status === 'In Review') {
-                        const btn = document.createElement('a');
-                        btn.className = 'action-btn primary';
-                        const hasReviewTarget = Boolean(f.batch_id && f.review_url);
-                        btn.textContent = hasReviewTarget
-                            ? (f.status === 'Pending Review' ? 'Review Import' : 'Continue Review')
-                            : 'Select Import';
-                        btn.href = hasReviewTarget ? f.review_url : '/imports';
-                        btn.dataset.filename = f.filename;
-                        actionCell.appendChild(btn);
-                    } else if (f.status === 'Completed') {
-                        const btn = document.createElement('button');
-                        btn.className = 'action-btn secondary';
-                        btn.textContent = 'View Summary';
-                        btn.addEventListener('click', function() {
-                            viewSummary(f.filename);
-                        });
-                        actionCell.appendChild(btn);
-                    }
 
                     if (f.status !== 'Completed') {
                         totalPending += f.rows;
@@ -985,7 +1243,7 @@
                 });
 
                 // Update footer
-                footer.innerHTML = `<span>Showing ${files.length} of ${files.length} active imports</span>`;
+                footer.textContent = `Showing ${files.length} of ${files.length} active imports`;
 
                 // Update stats
                 updateStats(files.length, totalPending, files[0]?.uploaded || '—');
