@@ -29,13 +29,13 @@ For browser-visible P1 behavior, source inspection, handler presence, unit tests
 
 ## Activation
 
-The active task contract must contain exactly:
+The active task contract must include the exact phrase:
 
 ```text
 P1 Acceptance Campaign: enabled
 ```
 
-Without that phrase, this skill is disabled.
+Without that exact phrase, this skill is disabled.
 
 Use it only when the active task contract independently authorizes:
 
@@ -101,6 +101,12 @@ Before meaningful work, Orchestrator must instantiate:
 ```text
 P1 campaign task contract:
 - P1 Acceptance Campaign enabled? yes/no
+- Post-Commit Residual Remediation enabled? yes/no
+- Commit under verification:
+- Named P1 defect:
+- Frozen residual repair files:
+- Maximum residual repair theories: zero / one
+- Maximum residual implementation iterations: zero / one / two
 - Task type:
 - Pre-authorized lane:
 - Frozen registry source:
@@ -114,7 +120,6 @@ P1 campaign task contract:
 - QA/UAT required? yes/no
 - Maximum repair attempts per P1:
 - Maximum repaired P1 items in campaign:
-- Maximum post-review correction cycles per repaired P1:
 - Maximum P1 repairs per commit:
 - Happy-path auto-commit enabled? yes/no
 - Push authorized? yes/no
@@ -251,7 +256,7 @@ Task compass
 - Forbidden files:
 - Item repair budget remaining:
 - Campaign repaired-item budget remaining:
-- Post-review correction budget remaining:
+- Residual implementation iterations remaining:
 - Next declared gate:
 - Stop conditions:
 ```
@@ -493,7 +498,7 @@ Default maximums, unless the active task contract is stricter:
 
 ```text
 Maximum repair attempts per P1 item: 1
-Maximum post-review correction cycles per repaired P1: 1
+Maximum residual implementation iterations per repaired P1: 2
 Maximum P1 repairs per commit: 1
 ```
 
@@ -509,6 +514,137 @@ Rules:
 - no opportunistic cleanup.
 
 A failed focused repair is terminal.
+
+## Post-Commit Verification and Residual Remediation
+
+A P1 task may combine post-commit verification with bounded residual remediation only when the active current task contract includes the exact phrase:
+
+```text
+Post-Commit Residual Remediation: enabled
+```
+
+Without that exact phrase, post-commit verification is verification-only. If a defect is found, record the runtime evidence and stop without editing.
+
+This mode is available only when the active task contract separately authorizes the task type, lane, frozen maximum repair files, required agents, repair budgets, and commit authority. It grants no standing authority.
+
+The active task contract must declare:
+
+```text
+Post-Commit Residual Remediation enabled? yes/no
+Commit under verification:
+Named P1 defect:
+Frozen residual repair files:
+Maximum residual repair theories: zero / one
+Maximum residual implementation iterations: one / two
+```
+
+### Same-Defect Boundary
+
+A failure qualifies as residual only when it preserves the same:
+
+- P1 ID;
+- user workflow;
+- product contract;
+- protected invariant;
+- expected outcome;
+- causal defect family addressed by the commit under verification.
+
+Qualifying examples:
+
+- a client-side stale-response fix prevents stale UI updates, but the same stale request still persists at the server;
+- browser duplicate suppression works, but the same no-op transition is still appended by the service;
+- the committed repair covers one already-declared runtime mode, but the same defect remains in another already-declared mode.
+
+Non-qualifying examples:
+
+- a different P1 workflow fails;
+- another screen or record type exposes a separate defect;
+- a new product or UX choice appears;
+- a new file outside the frozen residual scope is required;
+- schema or migration work is required;
+- the original causal defect family is disproven and a materially different architecture is needed.
+
+A non-residual or ambiguous defect requires a new human-authorized task.
+
+### Residual Repair Eligibility
+
+Residual remediation is permitted only when all are true:
+
+1. The failure is a direct-runtime reproduction of the same named P1 defect.
+2. The product behavior and acceptance criteria are unchanged.
+3. The maximum residual repair file set was frozen before verification began.
+4. The remaining failing layer is proven through discriminating runtime evidence.
+5. The repair uses one evidence-driven residual theory.
+6. No new product or UX decision is required.
+7. No schema, migration, authentication, export-policy, approval-policy, raw-data-policy, audit-policy, or external-writeback change is required.
+8. Security, persistence, and process-integrity impacts are understood.
+9. Required Reviewer, Breaker, and QA/UAT capabilities are available.
+10. Auto-commit is separately authorized when a commit may be created.
+11. Push remains separately authorized.
+
+### Residual Repair Limits
+
+Canonical maximums are:
+
+```text
+Maximum residual repair theories: one
+Maximum residual implementation iterations: two
+```
+
+The active task contract may set stricter limits.
+
+Iteration 2 is permitted only before Reviewer invocation, for a narrow implementation defect, within the same proven residual theory and frozen file set, and after a focused gate identifies the narrow issue. A new theory, additional file, third implementation iteration, or any post-review correction attempt is terminal.
+
+### Required Residual Sequence
+
+When this mode is enabled:
+
+```text
+post-commit runtime verification
+→ residual defect reproduction
+→ same-defect classification
+→ failing-layer proof
+→ scope-deviation check
+→ bounded residual repair
+→ focused test
+→ full focused tests
+→ direct runtime UAT
+→ affected frozen P1 regressions
+→ broad regression
+→ guards
+→ Reviewer
+→ Breaker
+→ QA/UAT
+→ commit if separately authorized
+```
+
+Continue through ordinary successful stages without pausing for a new prompt.
+
+### Failed-Gate Boundary
+
+Residual remediation does not authorize repair merely because a gate fails. Failed gates remain governed by the canonical Householder failed-gate policy and require its separate explicit authorization, including the Failed-First Repair Lane when applicable.
+
+Do not reclassify a timeout, socket denial, signal, assertion failure, collection failure, or ambiguous infrastructure failure as residual review feedback.
+
+### Residual Stop Conditions
+
+Stop without editing or committing when:
+
+- the defect is not clearly the same named P1 defect;
+- residual classification is ambiguous;
+- another file is required outside the frozen residual set;
+- a new product or UX choice is required;
+- schema or migration work is required;
+- security, raw-data, audit, approval, export, persistence, or external-writeback impact is unresolved;
+- the residual theory or iteration budget is exhausted;
+- Reviewer returns `Request changes`, `Reject`, or `Accept with minor follow-up`;
+- Breaker returns P1, P0, or FAIL;
+- QA/UAT returns `Fail`;
+- runtime execution remains unavailable or inconclusive.
+
+Reviewer verdicts remain governed by the canonical Householder workflow. `Request changes`, `Reject`, and `Accept with minor follow-up` are terminal for the current task. The P1 skill does not authorize post-review correction, reimplementation, rerun, or commit after a non-clean Reviewer verdict. Any remediation requires a new human-authorized task.
+
+Post-commit residual remediation never authorizes unrelated cleanup, another P1 repair, branch or stash changes, push, or broader architecture work.
 
 ## Exact Scope Checks
 
@@ -664,36 +800,6 @@ A pass requires:
 - no relevant console error;
 - no reliance on source inspection alone.
 
-## Post-Review Correction
-
-A maximum of one post-review correction cycle is permitted per repaired P1 item.
-
-It may occur only when:
-
-- Reviewer returns `Request changes`;
-- Reviewer identifies a narrow issue;
-- the same files remain authorized;
-- no new product choice is required;
-- no security or integrity issue is involved;
-- no failed gate is being reclassified as review feedback;
-- the active task contract authorizes the correction cycle.
-
-After correction:
-
-- focused tests rerun;
-- full focused file reruns;
-- required broad gates rerun;
-- guards rerun;
-- direct UAT reruns;
-- Reviewer is reinvoked;
-- Breaker and QA/UAT are reinvoked when affected.
-
-A second correction cycle is terminal.
-
-Reviewer `Reject` is terminal.
-
-Breaker P1/P0/FAIL is terminal.
-
 ## Commit Rules
 
 One P1 repair per commit.
@@ -838,7 +944,7 @@ P1 items blocked:
 P1 candidates proposed but not added:
 Repair attempts used:
 Campaign repaired-item budget remaining:
-Post-review correction cycles used:
+Residual implementation iterations used:
 Files changed:
 Commits created:
 Broad regression result:
