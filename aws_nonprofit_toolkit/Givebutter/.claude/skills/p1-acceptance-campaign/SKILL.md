@@ -107,6 +107,9 @@ P1 campaign task contract:
 - Frozen residual repair files:
 - Maximum residual repair theories: zero / one
 - Maximum residual implementation iterations: zero / one / two
+- Direct Contract-Caller Inventory required? yes/no
+- Frozen direct-caller scope rule:
+- Maximum pre-review caller-completion iterations: zero / one
 - Task type:
 - Pre-authorized lane:
 - Frozen registry source:
@@ -256,7 +259,7 @@ Task compass
 - Forbidden files:
 - Item repair budget remaining:
 - Campaign repaired-item budget remaining:
-- Residual implementation iterations remaining:
+- Pre-review caller completion budget remaining:
 - Next declared gate:
 - Stop conditions:
 ```
@@ -498,7 +501,7 @@ Default maximums, unless the active task contract is stricter:
 
 ```text
 Maximum repair attempts per P1 item: 1
-Maximum residual implementation iterations per repaired P1: 2
+Maximum pre-review caller-completion iterations: 1
 Maximum P1 repairs per commit: 1
 ```
 
@@ -535,7 +538,9 @@ Commit under verification:
 Named P1 defect:
 Frozen residual repair files:
 Maximum residual repair theories: zero / one
-Maximum residual implementation iterations: one / two
+Maximum residual implementation iterations: zero / one / two
+Direct Contract-Caller Inventory required? yes/no
+Maximum pre-review caller-completion iterations: zero / one
 ```
 
 ### Same-Defect Boundary
@@ -589,11 +594,12 @@ Canonical maximums are:
 ```text
 Maximum residual repair theories: one
 Maximum residual implementation iterations: two
+Maximum pre-review caller-completion iterations: one
 ```
 
 The active task contract may set stricter limits.
 
-Iteration 2 is permitted only before Reviewer invocation, for a narrow implementation defect, within the same proven residual theory and frozen file set, and after a focused gate identifies the narrow issue. A new theory, additional file, third implementation iteration, or any post-review correction attempt is terminal.
+Iteration 2 is permitted only before Reviewer invocation and only for a narrow implementation defect within the same proven residual theory and frozen file set. A new theory, additional product file, third implementation iteration, or second caller-completion iteration is terminal.
 
 ### Required Residual Sequence
 
@@ -637,14 +643,74 @@ Stop without editing or committing when:
 - schema or migration work is required;
 - security, raw-data, audit, approval, export, persistence, or external-writeback impact is unresolved;
 - the residual theory or iteration budget is exhausted;
-- Reviewer returns `Request changes`, `Reject`, or `Accept with minor follow-up`;
+- Reviewer does not return clean `Accept`;
 - Breaker returns P1, P0, or FAIL;
-- QA/UAT returns `Fail`;
+- QA/UAT fails after the allowed repair;
 - runtime execution remains unavailable or inconclusive.
 
-Reviewer verdicts remain governed by the canonical Householder workflow. `Request changes`, `Reject`, and `Accept with minor follow-up` are terminal for the current task. The P1 skill does not authorize post-review correction, reimplementation, rerun, or commit after a non-clean Reviewer verdict. Any remediation requires a new human-authorized task.
-
 Post-commit residual remediation never authorizes unrelated cleanup, another P1 repair, branch or stash changes, push, or broader architecture work.
+
+## Direct Contract-Caller Inventory and Pre-Review Completion
+
+When a P1 repair changes a repository-local request, service, event, payload, or persistence contract, the active task contract may require a direct-caller inventory before editing and before Reviewer handoff.
+
+This rule exists to prevent an otherwise correct contract change from missing repo-local callers and being discovered only during review. It is pre-review completion authority, not a post-review exception.
+
+The active task contract must declare:
+
+```text
+Direct Contract-Caller Inventory required? yes/no
+Frozen direct-caller scope rule:
+Maximum pre-review caller-completion iterations: zero / one
+```
+
+When enabled, Orchestrator must inventory every repository-local executable caller of the exact changed contract, including:
+
+- browser or template callers;
+- routes and internal service adapters;
+- unit, integration, and E2E tests;
+- internal scripts or fixtures that submit the same payload;
+Repository documentation may be inspected only to determine whether an external, legacy, or supported non-repo-local client exists.
+
+For each caller record:
+
+```text
+Caller path:
+Caller type:
+Contract used:
+Payload or invocation shape:
+Can adopt the changed contract mechanically? yes/no
+Compatibility promise found? yes/no
+Required action:
+```
+
+### Mechanical Caller Completion
+
+One pre-review caller-completion iteration may be used only when all are true:
+
+1. The caller is repo-local and directly invokes the exact contract changed by the current P1 repair.
+2. The caller is within the frozen direct-caller scope rule declared before implementation.
+3. The update is mechanical and preserves the caller's original purpose and assertions.
+4. No new production behavior, API policy, compatibility promise, product choice, schema, security, raw-data, audit, approval, or export decision is required.
+5. No additional product file outside the frozen repair scope is required.
+6. The completion occurs before Reviewer invocation.
+7. All affected focused tests, runtime UAT, broad gates, and guards are rerun before Reviewer.
+
+Examples of permitted completion:
+
+- adding the newly required deterministic interaction sequence to repo-local tests that POST to the changed internal route;
+- updating a directly associated fixture or browser caller already included in the frozen caller rule;
+- preserving the original cancellation or no-op assertion while adopting the new payload contract.
+
+Examples that require a stop:
+
+- a documented external or legacy client cannot adopt the contract without compatibility policy;
+- a new route, product file, schema, migration, or fallback mode is needed;
+- the caller reveals a different P1 defect;
+- the change alters the caller's product semantics rather than only adopting the contract;
+- Reviewer has already returned any verdict.
+
+A missed caller discovered by Reviewer remains subject to the canonical terminal-review boundary. Do not use this rule after `Request changes`, `Reject`, or `Accept with minor follow-up`. The purpose of the inventory is to find and complete direct callers before Reviewer.
 
 ## Exact Scope Checks
 
@@ -676,11 +742,12 @@ After a repair:
 10. lane guard;
 11. exact scope guard;
 12. `git diff --check`;
-13. Reviewer;
-14. Breaker;
-15. Product UX Gatekeeper when required;
-16. QA/UAT;
-17. commit only after clean verdicts.
+13. direct contract-caller inventory completion check when the changed contract requires it;
+14. Reviewer;
+15. Breaker;
+16. Product UX Gatekeeper when required;
+17. QA/UAT;
+18. commit only after clean verdicts.
 
 Use repository wrappers and explicit timeouts required by the canonical workflow.
 
@@ -718,7 +785,9 @@ Reviewer must also verify:
 - approval and export integrity remain intact;
 - security is not weakened;
 - final guards passed;
-- evidence is not overclaimed.
+- evidence is not overclaimed;
+- every repo-local caller of a changed contract was inventoried when required;
+- any mechanical caller completion occurred before Reviewer and within the frozen caller rule.
 
 Required clean result:
 
@@ -751,7 +820,9 @@ Breaker must attempt to falsify:
 - mixed P1 repairs;
 - budget violations;
 - runtime-path substitution;
-- test weakening.
+- test weakening;
+- hidden or unupdated repo-local callers of a changed contract;
+- use of caller-completion authority after Reviewer invocation.
 
 Breaker P1, P0, or FAIL is terminal.
 
@@ -799,6 +870,20 @@ A pass requires:
 - required adversarial and recovery cases;
 - no relevant console error;
 - no reliance on source inspection alone.
+
+## Reviewer Verdict Boundary
+
+Reviewer verdicts remain governed by the canonical Householder workflow.
+
+```text
+Request changes
+Reject
+Accept with minor follow-up
+```
+
+are terminal for the current task. This skill does not authorize post-review correction, reimplementation, rerun, or commit after a non-clean Reviewer verdict. Any remediation requires a new human-authorized task.
+
+Pre-review implementation Iteration 2 and the direct-caller completion rule below cannot be used after Reviewer invocation.
 
 ## Commit Rules
 
@@ -944,7 +1029,7 @@ P1 items blocked:
 P1 candidates proposed but not added:
 Repair attempts used:
 Campaign repaired-item budget remaining:
-Residual implementation iterations used:
+Pre-review caller completion cycles used:
 Files changed:
 Commits created:
 Broad regression result:
