@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.householder.database_models import (
     ReviewDecision,
+    AuditLogRecord,
     Base,
     ImportBatch,
     RawImportRow,
@@ -1689,6 +1690,179 @@ async def test_details_modal_ignores_stale_row_response_when_switching_rows(
                 assert 'beta@example.com' in modal_text, "Later row details should remain visible"
                 assert 'Alpha Row' not in modal_text, "Stale earlier row should not overwrite the modal"
                 print("✓ Shared modal ignores stale earlier row response")
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact_repeats(
+    e2e_database_and_app,
+):
+    """
+    GOAL: Verify the row-status dropdown keeps the latest visible decision even if
+    an earlier response arrives later, and exact retries do not duplicate history.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    try:
+        batch = ImportBatch(
+            id='row-decision-race-batch',
+            filename='row_decision_race.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id='row-decision-race-batch',
+            row_index=1,
+            raw_csv_data={
+                'name': 'Race Row',
+                'date': '2026-03-03',
+                'email': 'race@example.com',
+                'phone': '(555) 666-3333',
+                'amount': '333.00',
+                'address': '333 Race St',
+            },
+        )
+        session.add(raw_row)
+        session.flush()
+
+        session.add(
+            ImportContact(
+                batch_id='row-decision-race-batch',
+                raw_import_row_id=raw_row.id,
+                first_name='Race',
+                last_name='Row',
+                email='race@example.com',
+                phone='(555) 666-3333',
+                amount=333.00,
+                address_line1='333 Race St',
+            )
+        )
+        session.commit()
+
+        batch_id = 'row-decision-race-batch'
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            first_response_finished = asyncio.Event()
+            delayed_first_response = False
+
+            async def hold_first_row_decision(route):
+                nonlocal delayed_first_response
+                if not delayed_first_response:
+                    delayed_first_response = True
+                    upstream_response = await route.fetch()
+                    await asyncio.sleep(1)
+                    await route.fulfill(response=upstream_response)
+                    first_response_finished.set()
+                    return
+
+                await route.continue_()
+
+            await page.route(f"**/imports/{batch_id}/row-decision", hold_first_row_decision)
+            page.on('dialog', lambda dialog: asyncio.create_task(dialog.dismiss()))
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
+                await page.wait_for_selector('select.row-status-dropdown', timeout=5000)
+
+                dropdown = page.locator('select.row-status-dropdown').nth(0)
+                await dropdown.select_option('accept_as_is')
+                await dropdown.select_option('reject_row')
+
+                await page.wait_for_function(
+                    "() => document.querySelector('select.row-status-dropdown')?.value === 'reject_row'",
+                    timeout=5000,
+                )
+                await first_response_finished.wait()
+                await page.wait_for_function(
+                    "() => document.querySelector('select.row-status-dropdown')?.value === 'reject_row'",
+                    timeout=5000,
+                )
+
+                first_option_text = await page.locator('select.row-status-dropdown option').nth(0).inner_text()
+                assert 'reject' in first_option_text.lower(), \
+                    f"Latest visible row decision should remain reject_row, got: {first_option_text}"
+
+                def row_counts():
+                    count_session = Session()
+                    try:
+                        decision_count = count_session.query(ReviewDecision).filter_by(
+                            batch_id=batch_id,
+                            raw_import_row_id=raw_row.id,
+                        ).count()
+                        audit_count = count_session.query(AuditLogRecord).join(
+                            ReviewDecision,
+                            AuditLogRecord.decision_id == ReviewDecision.id,
+                        ).filter(
+                            ReviewDecision.batch_id == batch_id,
+                            ReviewDecision.raw_import_row_id == raw_row.id,
+                        ).count()
+                        return decision_count, audit_count
+                    finally:
+                        count_session.close()
+
+                decision_count_after_race, audit_count_after_race = row_counts()
+                assert decision_count_after_race == 2, \
+                    f"Race should record one entry per distinct decision, got {decision_count_after_race}"
+                assert audit_count_after_race == 2, \
+                    f"Race should record one audit per distinct decision, got {audit_count_after_race}"
+
+                duplicate_result = await page.evaluate(
+                    """
+                    async ({ batchId, rawId }) => {
+                        const response = await fetch(`/imports/${batchId}/row-decision`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                raw_import_row_id: rawId,
+                                decision: 'reject_row',
+                            }),
+                        });
+
+                        return {
+                            status: response.status,
+                            body: await response.json(),
+                        };
+                    }
+                    """,
+                    {
+                        'batchId': batch_id,
+                        'rawId': raw_row.id,
+                    }
+                )
+                assert duplicate_result['status'] == 200, \
+                    f"Exact repeated reject_row should succeed, got: {duplicate_result}"
+                assert duplicate_result['body'].get('idempotent') is True, \
+                    f"Exact repeated reject_row should be idempotent, got: {duplicate_result}"
+
+                decision_count_after_repeat, audit_count_after_repeat = row_counts()
+                assert decision_count_after_repeat == 2, \
+                    f"Exact repeated reject_row should not add a decision, got {decision_count_after_repeat}"
+                assert audit_count_after_repeat == 2, \
+                    f"Exact repeated reject_row should not add an audit, got {audit_count_after_repeat}"
 
             finally:
                 await browser.close()

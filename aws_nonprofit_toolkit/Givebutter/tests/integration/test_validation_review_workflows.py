@@ -38,6 +38,7 @@ from scripts.householder.database_models import (
     ReviewItem,
     ReviewItemSubject,
     ReviewDecision,
+    AuditLogRecord,
     create_db_engine,
 )
 from sqlalchemy.orm import sessionmaker
@@ -2601,6 +2602,80 @@ class TestDetailsModalControls:
         data = response.get_json()
         assert data['has_decision'] is True, \
             f"After recording decision, has_decision should be True, got: {data}"
+
+    def test_exact_duplicate_row_decision_is_idempotent(
+        self, flask_client_with_validation_batch
+    ):
+        """Exact repeated row decisions should not create duplicate audit trail entries."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        def counts():
+            session = Session()
+            try:
+                decision_count = session.query(ReviewDecision).filter_by(
+                    batch_id='validation-workflow-test-batch',
+                    raw_import_row_id=raw_id,
+                ).count()
+                linked_audit_count = session.query(AuditLogRecord).join(ReviewDecision, AuditLogRecord.decision_id == ReviewDecision.id).filter(
+                    ReviewDecision.batch_id == 'validation-workflow-test-batch',
+                    ReviewDecision.raw_import_row_id == raw_id,
+                ).count()
+                return decision_count, linked_audit_count, session.query(AuditLogRecord).count()
+            finally:
+                session.close()
+
+        first = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+            }
+        )
+        assert first.status_code == 200, f"Initial decision should succeed, got {first.status_code}: {first.get_json()}"
+
+        initial_decision_count, initial_linked_audit_count, initial_audit_count = counts()
+        assert initial_decision_count == 1, f"Expected one decision after initial save, got {initial_decision_count}"
+        assert initial_linked_audit_count == 1, f"Expected one audit after initial save, got {initial_linked_audit_count}"
+        assert initial_audit_count == 1, f"Expected one audit record after initial save, got {initial_audit_count}"
+
+        duplicate = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+            }
+        )
+        assert duplicate.status_code == 200, f"Duplicate decision should succeed, got {duplicate.status_code}: {duplicate.get_json()}"
+        duplicate_data = duplicate.get_json()
+        assert duplicate_data.get('idempotent') is True, \
+            f"Duplicate decision should be idempotent, got: {duplicate_data}"
+
+        duplicated_decision_count, duplicated_linked_audit_count, duplicated_audit_count = counts()
+        assert duplicated_decision_count == 1, \
+            f"Exact duplicate should not add a second decision, got {duplicated_decision_count}"
+        assert duplicated_linked_audit_count == 1, \
+            f"Exact duplicate should not add a second audit, got {duplicated_linked_audit_count}"
+        assert duplicated_audit_count == 1, \
+            f"Exact duplicate should not add a second audit record, got {duplicated_audit_count}"
+
+        changed = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+                'notes': 'Confirm with donor later',
+            }
+        )
+        assert changed.status_code == 200, f"Changed note should succeed, got {changed.status_code}: {changed.get_json()}"
+
+        changed_decision_count, changed_linked_audit_count, changed_audit_count = counts()
+        assert changed_decision_count == 2, \
+            f"Changed notes should create a new decision, got {changed_decision_count}"
+        assert changed_linked_audit_count == 2, \
+            f"Changed notes should create a new linked audit record, got {changed_linked_audit_count}"
+        assert changed_audit_count == 2, \
+            f"Changed notes should create a new audit record, got {changed_audit_count}"
 
     def test_row_decision_and_approval_use_app_config_database_url_when_env_cleared(
         self, flask_client_with_validation_batch, monkeypatch

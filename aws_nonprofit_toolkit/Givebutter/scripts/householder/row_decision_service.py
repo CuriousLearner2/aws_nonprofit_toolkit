@@ -20,6 +20,39 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import ReviewDecision, ImportBatch, RawImportRow, AuditLogRecord
 
 
+def _normalize_row_decision_notes(notes: Optional[str]) -> Optional[str]:
+    if notes is None:
+        return None
+
+    normalized = notes.strip()
+    return normalized or None
+
+
+def _get_latest_row_status_decision(session, batch_id: str, raw_import_row_id: int):
+    return (
+        session.query(ReviewDecision)
+        .filter_by(
+            batch_id=batch_id,
+            raw_import_row_id=raw_import_row_id
+        )
+        .filter(ReviewDecision.decision.like('row_status:%'))
+        .order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc())
+        .first()
+    )
+
+
+def _extract_row_status_decision_state(review_decision):
+    if not review_decision:
+        return None, None
+
+    decision_type = review_decision.decision.replace('row_status:', '', 1)
+    if decision_type == 'clear_decision':
+        return 'clear_decision', None
+
+    reviewed_values = review_decision.reviewed_values or {}
+    return decision_type, _normalize_row_decision_notes(reviewed_values.get('notes'))
+
+
 def record_row_decision(
     batch_id: str,
     raw_import_row_id: int,
@@ -94,12 +127,42 @@ def record_row_decision(
                 f"Raw import row {raw_import_row_id} does not belong to batch '{batch_id}'"
             )
 
+        normalized_notes = _normalize_row_decision_notes(notes)
+        latest_row_decision = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
+        latest_decision_type, latest_notes = _extract_row_status_decision_state(latest_row_decision)
+
+        if decision == 'clear_decision':
+            if latest_decision_type == 'clear_decision' or latest_row_decision is None:
+                from .row_status_service import derive_row_status
+                row_status = derive_row_status(batch_id, raw_import_row_id, database_url)
+                return {
+                    'decision_id': latest_row_decision.id if latest_row_decision else None,
+                    'decision': decision,
+                    'timestamp': latest_row_decision.created_at.isoformat() if latest_row_decision else datetime.now(timezone.utc).isoformat(),
+                    'success': True,
+                    'message': 'Row decision already cleared',
+                    'row_status': row_status,
+                    'idempotent': True,
+                }
+        elif latest_decision_type == decision and latest_notes == normalized_notes:
+            from .row_status_service import derive_row_status
+            row_status = derive_row_status(batch_id, raw_import_row_id, database_url)
+            return {
+                'decision_id': latest_row_decision.id if latest_row_decision else None,
+                'decision': decision,
+                'timestamp': latest_row_decision.created_at.isoformat() if latest_row_decision else datetime.now(timezone.utc).isoformat(),
+                'success': True,
+                'message': f'Row decision already recorded: {decision}',
+                'row_status': row_status,
+                'idempotent': True,
+            }
+
         # Build reviewed_values with decision and notes
         reviewed_values = {
             'reviewed_status': decision,
         }
-        if notes:
-            reviewed_values['notes'] = notes.strip()
+        if normalized_notes:
+            reviewed_values['notes'] = normalized_notes
 
         # Create new ReviewDecision record
         # Use decision as the decision type for row-level status decisions
@@ -119,8 +182,8 @@ def record_row_decision(
         audit_details = {
             'decision_value': decision,
         }
-        if notes:
-            audit_details['notes'] = notes
+        if normalized_notes:
+            audit_details['notes'] = normalized_notes
 
         audit_record = AuditLogRecord(
             batch_id=batch_id,

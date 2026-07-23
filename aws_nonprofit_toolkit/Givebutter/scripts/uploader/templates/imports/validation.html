@@ -1079,6 +1079,42 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
 }
 
 let recordModalOpenSequence = 0;
+const rowDecisionRequestState = Object.create(null);
+
+function markLatestRowDecisionInteraction(rawId) {
+    const currentState = rowDecisionRequestState[rawId];
+    if (currentState?.controller) {
+        currentState.controller.abort();
+    }
+
+    const token = (currentState?.token || 0) + 1;
+    rowDecisionRequestState[rawId] = {
+        token,
+        controller: null,
+    };
+
+    return token;
+}
+
+function beginRowDecisionRequest(rawId) {
+    const requestToken = markLatestRowDecisionInteraction(rawId);
+    const controller = new AbortController();
+    rowDecisionRequestState[rawId] = {
+        token: requestToken,
+        controller,
+    };
+    return { token: requestToken, controller };
+}
+
+function isCurrentRowDecisionRequest(rawId, requestToken) {
+    return rowDecisionRequestState[rawId]?.token === requestToken;
+}
+
+function clearRowDecisionRequest(rawId, requestToken) {
+    if (isCurrentRowDecisionRequest(rawId, requestToken)) {
+        delete rowDecisionRequestState[rawId];
+    }
+}
 
 function closeFollowUpNotesModal(dropdownState) {
     if (dropdownState && dropdownState.dropdown) {
@@ -1255,6 +1291,7 @@ async function openFollowUpNotesModal(recordId, dropdown) {
                 return;
             }
             const requestToken = modal?.dataset.requestToken || '';
+            const rowDecisionRequest = beginRowDecisionRequest(rawId);
             const notes = (notesField?.value || '').trim();
             if (!notes) {
                 if (notesRequirement) {
@@ -1279,7 +1316,12 @@ async function openFollowUpNotesModal(recordId, dropdown) {
                         decision: 'needs_follow_up',
                         notes: notes,
                     }),
+                    signal: rowDecisionRequest.controller.signal,
                 });
+
+                if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
+                    return;
+                }
 
                 if (response.ok) {
                     const result = await response.json();
@@ -1311,6 +1353,7 @@ async function openFollowUpNotesModal(recordId, dropdown) {
                         }
                         closeModal('record-modal');
                     }
+                    clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                     alert('Status recorded successfully');
                 } else {
                     if (modal && modal.dataset.requestToken === requestToken) {
@@ -1318,13 +1361,21 @@ async function openFollowUpNotesModal(recordId, dropdown) {
                         saveBtn.textContent = 'Save Follow-up';
                     }
                     const error = await response.json();
+                    clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                     alert('Error: ' + (error.error || 'Failed to record decision'));
                 }
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
+                    return;
+                }
                 if (modal && modal.dataset.requestToken === requestToken) {
                     saveBtn.disabled = false;
                     saveBtn.textContent = 'Save Follow-up';
                 }
+                clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                 alert('Error: ' + error.message);
             }
         });
@@ -1369,6 +1420,7 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
             }
 
             // Send clear_decision to backend (which is what return_to_system means)
+            const rowDecisionRequest = beginRowDecisionRequest(rawId);
             try {
                 const response = await fetch(`/imports/${batchId}/row-decision`, {
                     method: 'POST',
@@ -1377,7 +1429,12 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
                         raw_import_row_id: rawId,
                         decision: 'clear_decision'
                     }),
+                    signal: rowDecisionRequest.controller.signal,
                 });
+
+                if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
+                    return;
+                }
 
                 if (response.ok) {
                     const result = await response.json();
@@ -1398,14 +1455,20 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
                     }
 
                     // Show success message
+                    clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                     alert('Reviewer decision removed. Row status now reflects system status.');
                     console.log(`Row ${rawId} decision cleared`);
                 } else {
                     const error = await response.json();
+                    clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                     alert('Error: ' + (error.error || 'Failed to clear decision'));
                     this.value = '';
                 }
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                 alert('Error: ' + error.message);
                 this.value = '';
             }
@@ -1415,12 +1478,14 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
         // Handle "Needs follow-up" - open notes modal
         if (decision === 'needs_follow_up') {
             const recordId = row.getAttribute('data-record-id');
+            markLatestRowDecisionInteraction(rawId);
             await openFollowUpNotesModal(recordId, this);
             return;
         }
 
         // For other decisions, record immediately
         try {
+            const rowDecisionRequest = beginRowDecisionRequest(rawId);
             const response = await fetch(`/imports/${batchId}/row-decision`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1428,7 +1493,12 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
                     raw_import_row_id: rawId,
                     decision: decision
                 }),
+                signal: rowDecisionRequest.controller.signal,
             });
+
+            if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
+                return;
+            }
 
             if (response.ok) {
                 const result = await response.json();
@@ -1450,13 +1520,22 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
                     resetOption.style.display = 'block';
                 }
 
+                clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                 console.log(`Row ${rawId} decision recorded: ${decision}`);
             } else {
                 const error = await response.json();
+                clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                 alert('Error: ' + (error.error || 'Failed to record decision'));
                 this.value = '';
             }
         } catch (error) {
+            if (error.name === 'AbortError') {
+                return;
+            }
+            if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
+                return;
+            }
+            clearRowDecisionRequest(rawId, rowDecisionRequest.token);
             alert('Error: ' + error.message);
             this.value = '';
         }
