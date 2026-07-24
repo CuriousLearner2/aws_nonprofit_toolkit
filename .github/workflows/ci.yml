@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  merge_group:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    name: Baseline checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up Python
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: "3.11.9"
+
+      - name: Install Python tooling
+        working-directory: aws_nonprofit_toolkit/Givebutter
+        run: |
+          python -m pip install -r requirements.txt -r requirements-test.txt
+
+      - name: Verify core imports
+        working-directory: aws_nonprofit_toolkit/Givebutter
+        run: python -c "import email_validator, flask, pandas, phonenumbers, sqlalchemy; print('imports-ok')"
+
+      - name: Run canonical unit and integration tests
+        working-directory: aws_nonprofit_toolkit/Givebutter
+        run: python scripts/ci/test_gate.py --timeout 900 -- python -m pytest tests/unit tests/integration -x
+
+      - name: Check blocking artifacts
+        run: python aws_nonprofit_toolkit/Givebutter/scripts/ci/check_no_artifacts.py
+
+      - name: Compile repository Python files
+        working-directory: aws_nonprofit_toolkit/Givebutter
+        run: python -m compileall scripts tests
