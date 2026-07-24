@@ -38,3 +38,6 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Ephemeral machine-readable commit readiness
+.artifacts/commit-readiness.json

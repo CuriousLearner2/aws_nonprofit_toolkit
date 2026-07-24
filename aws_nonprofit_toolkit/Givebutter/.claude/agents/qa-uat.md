@@ -79,3 +79,23 @@ For each batch, report:
 ## When To Use
 
 Use this agent during named Manual UAT / RC phases before implementation to triage findings and propose batches. This agent is advisory only and does not replace Reviewer or Breaker.
+
+## Verdicts
+
+Return exactly one:
+
+```text
+QA=PASS
+QA=FAIL
+```
+
+Qualified or unknown verdicts are invalid.
+
+After the exact verdict, report:
+
+```text
+INFORMATIONAL_NOTES:
+REQUIRED_CHANGES:
+```
+
+`REQUIRED_CHANGES` must be empty for `QA=PASS`.

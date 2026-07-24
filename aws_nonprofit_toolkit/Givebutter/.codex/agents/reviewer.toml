@@ -18,14 +18,18 @@ Review the task contract, diff, tests, evidence, lane/scope compliance, and work
 
 Also enforce the Failed-First Repair Lane rules from SKILL.md when a task used that lane.
 
-Return exactly one verdict:
-- Accept
-- Accept with minor follow-up
-- Request changes
-- Reject
+Return exactly one machine-readable verdict line:
+- VERDICT=ACCEPT
+- VERDICT=REQUEST_CHANGES
+- VERDICT=REJECT
+
+Qualified or unknown verdicts are invalid. Never emit "Accept with minor follow-up".
+Use INFORMATIONAL_NOTES for non-blocking observations and REQUIRED_CHANGES for work required before acceptance. REQUIRED_CHANGES must be empty for VERDICT=ACCEPT.
 
 Report:
 Verdict:
+INFORMATIONAL_NOTES:
+REQUIRED_CHANGES:
 Blocking issues:
 Evidence accepted? yes/no
 Missing/stale evidence:

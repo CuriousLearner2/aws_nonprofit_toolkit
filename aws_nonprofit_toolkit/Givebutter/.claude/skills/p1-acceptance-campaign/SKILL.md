@@ -664,13 +664,16 @@ Frozen direct-caller scope rule:
 Maximum pre-review caller-completion iterations: zero / one
 ```
 
-When enabled, Orchestrator must inventory every repository-local executable caller of the exact changed contract, including:
+
+Direct-caller completion inventory is limited to repo-local executable callers of the exact changed contract. Repository documentation may be inspected only for compatibility discovery. A documented external, legacy, or supported non-repo-local client is a stop condition, not an authorized completion target.
+
+When enabled, Orchestrator must inventory every repository-local caller of the exact changed contract, including:
 
 - browser or template callers;
 - routes and internal service adapters;
 - unit, integration, and E2E tests;
 - internal scripts or fixtures that submit the same payload;
-Repository documentation may be inspected only to determine whether an external, legacy, or supported non-repo-local client exists.
+- repo-local executable scripts or fixtures that directly invoke the same contract.
 
 For each caller record:
 
@@ -711,6 +714,13 @@ Examples that require a stop:
 - Reviewer has already returned any verdict.
 
 A missed caller discovered by Reviewer remains subject to the canonical terminal-review boundary. Do not use this rule after `Request changes`, `Reject`, or `Accept with minor follow-up`. The purpose of the inventory is to find and complete direct callers before Reviewer.
+
+
+## Campaign Gate Classification and Harness Stabilization
+
+The active campaign contract must identify canonical acceptance gates and any diagnostic commands. Diagnostic failures follow the canonical Householder classification and cannot be used to excuse a failed canonical gate.
+
+A campaign may use one pre-review test-harness stabilization iteration only when the task contract explicitly enables it, freezes the test-file boundary and finite budget, runtime evidence proves the product behavior, and the canonical Householder stabilization requirements are met. It grants no product-code authority and expires at Reviewer invocation.
 
 ## Exact Scope Checks
 
@@ -792,7 +802,7 @@ Reviewer must also verify:
 Required clean result:
 
 ```text
-Verdict: Accept
+VERDICT=ACCEPT
 Happy-path auto-commit eligible? yes
 ```
 
@@ -876,12 +886,12 @@ A pass requires:
 Reviewer verdicts remain governed by the canonical Householder workflow.
 
 ```text
-Request changes
-Reject
-Accept with minor follow-up
+VERDICT=ACCEPT
+VERDICT=REQUEST_CHANGES
+VERDICT=REJECT
 ```
 
-are terminal for the current task. This skill does not authorize post-review correction, reimplementation, rerun, or commit after a non-clean Reviewer verdict. Any remediation requires a new human-authorized task.
+Qualified verdicts are invalid. Non-accept verdicts are terminal for the current task. This skill does not authorize post-review correction, reimplementation, rerun, or commit after a non-clean Reviewer verdict. Any remediation requires a new human-authorized task.
 
 Pre-review implementation Iteration 2 and the direct-caller completion rule below cannot be used after Reviewer invocation.
 
@@ -900,11 +910,12 @@ Commit only when:
 - lane guard passes;
 - exact scope guard passes;
 - `git diff --check` passes;
-- Reviewer returns clean `Accept`;
+- Reviewer returns exact `VERDICT=ACCEPT`;
 - Reviewer says auto-commit eligible;
-- Breaker passes when required by the active task contract or risk;
+- Breaker returns exact `BREAKER=PASS`;
+- QA/UAT returns exact `QA=PASS`;
+- The commit-readiness packet validates the reviewed task ID, reviewed HEAD, and reviewed staged diff fingerprint;
 - Product UX Gatekeeper is clear when required;
-- QA/UAT returns `Pass`;
 - staged files exactly match the frozen allowlist;
 - the active task contract contains `Happy-path auto-commit: enabled`.
 

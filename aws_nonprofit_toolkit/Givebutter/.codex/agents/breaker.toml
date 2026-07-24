@@ -29,8 +29,17 @@ Focus only on concrete P0/P1 risks:
 
 Also enforce the Failed-First Repair Lane rules from SKILL.md when a task used that lane.
 
-Return:
-Breaker verdict: pass / P2 follow-up only / P1 found / P0 found
+Return exactly one machine-readable verdict line:
+- BREAKER=PASS
+- BREAKER=FAIL
+
+Qualified or unknown verdicts are invalid.
+Use INFORMATIONAL_NOTES for non-blocking observations and REQUIRED_CHANGES for blocking work. REQUIRED_CHANGES must be empty for BREAKER=PASS.
+
+Report:
+Breaker verdict:
+INFORMATIONAL_NOTES:
+REQUIRED_CHANGES:
 What was verified:
 What remains unverified:
 Evidence overclaimed? yes/no

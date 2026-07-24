@@ -26,6 +26,8 @@ Before delegating, invoking agents, or running meaningful commands, instantiate 
 - Reviewer required? yes/no,
 - Breaker required? yes/no,
 - E2E involved and timeout required? yes/no,
+- canonical acceptance gates and any diagnostic commands,
+- test-harness stabilization authorization and finite budget,
 - gate commands,
 - Failed-First Repair Lane enabled? yes/no,
 - failed-first repair budget,
@@ -175,7 +177,7 @@ These are not terminal states:
 - `Reviewer task started but verdict not reported`
 - `Breaker required but not invoked`
 
-If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns clean Accept and Breaker is required, invoke Breaker. Required Reviewer/Breaker invocation is an action, not a status.
+If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns exact `VERDICT=ACCEPT` and Breaker is required, invoke Breaker. Required Reviewer/Breaker invocation is an action, not a status.
 
 You may stop before invocation only if:
 - the human explicitly requested preparation-only,
@@ -241,7 +243,7 @@ All gates passed. Working tree contains only expected files. Reviewer is require
 
 Do not re-ask the human for permission for an action already authorized by the task contract.
 
-If the task contract includes `Happy-path auto-commit: enabled`, and Reviewer returns clean `Accept` with `Happy-path auto-commit eligible? yes`, and Breaker passed if required, then `ready to commit` is not a human decision point. Run required commit guards, commit expected files, and stop. Do not ask `Would you like me to stage and commit?`
+If the task contract includes `Happy-path auto-commit: enabled`, and Reviewer returns exact `VERDICT=ACCEPT` with `Happy-path auto-commit eligible? yes`, and Breaker returned exact `BREAKER=PASS` if required, then `ready to commit` is not a human decision point. Run required commit guards, commit expected files, and stop. Do not ask `Would you like me to stage and commit?`
 
 If the task contract requires Reviewer or Breaker and prerequisites are met, invoke the required agent. Do not ask whether to proceed with the required handoff.
 
@@ -283,6 +285,15 @@ Lane mapping:
 If lane scope fails, stop. Do not fix, clean up, recategorize, change lanes, expand scope, or continue to exact scope guard without human authorization.
 
 Exact scope guard must list task-specific expected files. Do not use broad allowlists.
+
+
+## Canonical Versus Diagnostic Commands
+
+Record canonical acceptance gates in the task contract before implementation. Additional investigative commands are diagnostic unless explicitly promoted before execution. A diagnostic failure is non-blocking only under the classification rule in `SKILL.md`; it must still be reported to Reviewer. Never downgrade a failed canonical gate after the fact.
+
+## Test-Harness Stabilization Routing
+
+When explicitly enabled, coordinate no more than the declared finite pre-review stabilization budget and only in the named test files. Require runtime proof of product behavior, no product-code change, no weakened/skipped/quarantined/retried-away assertions, no arbitrary fixed sleep, repeated focused passes, and rerun canonical gates. Stop if any condition is unproven.
 
 ## Failed Gate Handling
 
@@ -327,13 +338,15 @@ Do not invoke Product UX Gatekeeper for mechanical implementation of an already-
 Reviewer packet should be concise and evidence-based. Include changed files, intended behavior, non-goals, product-code/assertion status, Product UX status, exact commands/results, and caveats/unproven claims.
 
 After Reviewer:
-- `Accept` + no Breaker required + auto-commit eligible → commit.
-- `Accept` + Breaker required → invoke Breaker.
-- `Accept with minor follow-up`, `Request changes`, or `Reject` → stop.
+- exact `VERDICT=ACCEPT` + no Breaker required + auto-commit eligible → prepare the readiness packet and commit.
+- exact `VERDICT=ACCEPT` + Breaker required → invoke Breaker.
+- `VERDICT=REQUEST_CHANGES`, `VERDICT=REJECT`, a qualified verdict, or an unknown verdict → stop.
 
 After Breaker:
-- `pass` or `P2 follow-up only` + auto-commit eligible → commit.
-- `P1 found`, `P0 found`, or `FAIL` → stop.
+- exact `BREAKER=PASS` + auto-commit eligible → continue to QA when required, then prepare the readiness packet and commit.
+- `BREAKER=FAIL`, a qualified verdict, or an unknown verdict → stop.
+
+When QA/UAT is required, only exact `QA=PASS` permits commit; `QA=FAIL`, qualified, missing, or unknown values are terminal. Non-blocking observations belong in `INFORMATIONAL_NOTES`; required work belongs in `REQUIRED_CHANGES`.
 
 Do not return to Implementer after Reviewer non-accept or Breaker fail without new explicit human authorization.
 
@@ -345,7 +358,7 @@ Auto-commit requires exact phrase:
 Happy-path auto-commit: enabled
 ```
 
-Commit only when Reviewer returned clean Accept, Breaker passed if required, all gates/guards passed, working tree contains only expected files, and staged files exactly match expected files.
+Commit only when Reviewer returned exact `VERDICT=ACCEPT`, Breaker returned exact `BREAKER=PASS` if required, QA returned exact `QA=PASS` if required, all canonical gates/guards passed, working tree contains only expected files, and staged files exactly match expected files. Orchestrator must create `.artifacts/commit-readiness.json` only after the final diff is staged, set `task_id` to the current `HOUSEHOLDER_TASK_ID`, fingerprint the staged diff using the canonical command from `SKILL.md`, and verify the pre-commit gate accepts the packet. The packet must remain ignored and unstaged.
 
 Auto-push requires exact phrase:
 

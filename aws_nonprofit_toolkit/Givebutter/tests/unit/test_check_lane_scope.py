@@ -27,6 +27,9 @@ class TestFileClassification:
         assert check_lane_scope.classify_file('.claude/agents/orchestrator.md') == 'workflow'
         assert check_lane_scope.classify_file('.claude/skills/householder-debug/SKILL.md') == 'workflow'
         assert check_lane_scope.classify_file('.github/workflows/test.yml') == 'workflow'
+        assert check_lane_scope.classify_file('.codex/agents/reviewer.toml') == 'workflow'
+        assert check_lane_scope.classify_file('.codex/agents/breaker.toml') == 'workflow'
+        assert check_lane_scope.classify_file('.gitignore') == 'workflow'
 
     def test_classify_ci_files(self):
         """CI files are classified as 'ci'."""
@@ -63,6 +66,8 @@ class TestFileClassification:
         """Unknown files are classified as 'other'."""
         assert check_lane_scope.classify_file('random_file.txt') == 'other'
         assert check_lane_scope.classify_file('config.yaml') == 'other'
+        assert check_lane_scope.classify_file('.codex/notes.txt') == 'other'
+        assert check_lane_scope.classify_file('.env') == 'other'
 
 
 class TestLaneRulesAssessment:
@@ -149,6 +154,21 @@ class TestLaneRulesWorkflowCI:
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['.claude/agents/orchestrator.md'])
         assert is_clean is True
 
+    def test_workflow_ci_codex_agents_files_allowed(self):
+        """Workflow-CI lane allows the reviewer and breaker TOML mirrors."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope(
+            'workflow-ci',
+            ['.codex/agents/reviewer.toml', '.codex/agents/breaker.toml'],
+        )
+        assert is_clean is True
+        assert len(conflicts) == 0
+
+    def test_workflow_ci_gitignore_allowed(self):
+        """Workflow-CI lane allows .gitignore because the packet must stay ignored."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['.gitignore'])
+        assert is_clean is True
+        assert len(conflicts) == 0
+
     def test_workflow_ci_ci_files_allowed(self):
         """Workflow-CI lane allows scripts/ci/* files."""
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['scripts/ci/check_scope.py'])
@@ -165,6 +185,18 @@ class TestLaneRulesWorkflowCI:
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['migrations/001.sql'])
         assert is_clean is False
         assert any('schema' in str(c) for c in conflicts)
+
+    def test_workflow_ci_unrelated_codex_path_blocked(self):
+        """Workflow-CI lane blocks unrelated .codex paths."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['.codex/notes.txt'])
+        assert is_clean is False
+        assert any('other' in str(c) for c in conflicts)
+
+    def test_workflow_ci_unrelated_root_dotfile_blocked(self):
+        """Workflow-CI lane blocks unrelated root dotfiles."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['.env'])
+        assert is_clean is False
+        assert any('other' in str(c) for c in conflicts)
 
 
 class TestLaneRulesProduct:

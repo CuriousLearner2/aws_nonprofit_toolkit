@@ -196,17 +196,18 @@ Reviewer owns correctness, scope, evidence, maintainability, and final verdict. 
 
 Return exactly one:
 
-- `Accept` — correct, scoped, evidence sufficient, no blocker/follow-up.
-- `Accept with minor follow-up` — safe but not clean happy path.
-- `Request changes` — fixable, but terminal for current task.
-- `Reject` — unsafe, wrong, overbroad, product-ambiguous, missing invalidating evidence, or needs redesign/fresh task; terminal for current task.
+- `VERDICT=ACCEPT` - correct, scoped, evidence sufficient, no blocker/follow-up.
+- `VERDICT=REQUEST_CHANGES` - fixable, but terminal for current task.
+- `VERDICT=REJECT` - unsafe, wrong, overbroad, product-ambiguous, missing invalidating evidence, or needs redesign/fresh task; terminal for current task.
 
-For `Request changes` or `Reject`, state that Orchestrator must stop and human authorization is required for remediation. Do not ask Orchestrator to continue to Implementer in the same task.
+Qualified verdicts are invalid. For `VERDICT=REQUEST_CHANGES` or `VERDICT=REJECT`, state that Orchestrator must stop and human authorization is required for remediation. Do not ask Orchestrator to continue to Implementer in the same task.
 
 Report:
 
 ```text
-Verdict:
+Verdict: VERDICT=ACCEPT / VERDICT=REQUEST_CHANGES / VERDICT=REJECT
+INFORMATIONAL_NOTES:
+REQUIRED_CHANGES:
 Blocking issues:
 Evidence accepted? yes/no
 Missing/stale evidence:
@@ -217,4 +218,4 @@ Happy-path auto-commit eligible? yes/no
 Reason if no:
 ```
 
-`Happy-path auto-commit eligible? yes` only when verdict is clean `Accept`, all required evidence passed, no blocking issues, guardrails passed, and staged files can match expected files.
+`Happy-path auto-commit eligible? yes` only when verdict is exact `VERDICT=ACCEPT`, `REQUIRED_CHANGES` is empty, all required evidence passed, no blocking issues, guardrails passed, and staged files can match expected files.

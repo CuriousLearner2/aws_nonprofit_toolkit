@@ -53,6 +53,10 @@ Task contract:
 - Why Breaker is/is not required:
 - E2E involved? yes/no
 - E2E timeout required? yes/no
+- Canonical acceptance gate(s):
+- Diagnostic command(s), if any:
+- Test-Harness Stabilization enabled? yes/no
+- Test-harness stabilization files and maximum iterations:
 - Gate command(s):
 - Failed-First Repair Lane enabled? yes/no
 - Failed-first repair budget: none / one per failed gate / max N across batch
@@ -468,7 +472,7 @@ Repair limits:
 - No broad diagnosis after failure; inspect only the assertion, the current diff, and the immediately relevant rendered/test context needed to classify the allowed repair.
 - No additional files beyond the original authorized scope.
 - No Reviewer/Breaker after a failed gate.
-- No commit unless all originally required gates later pass and Reviewer returns clean `Accept`.
+- No commit unless all originally required gates later pass and Reviewer returns exact `VERDICT=ACCEPT`.
 - If the failed-first repair gate fails, stop immediately and report a Failed Gate Stop Report with `Failed-first-fix triggered? yes`.
 
 For batched UX-only tasks:
@@ -642,6 +646,29 @@ Rules:
 - Reliability loops must use explicit timeout, fail-fast, and stop on first failure.
 - If product behavior cannot be proven deterministically, report product/test mismatch and stop instead of weakening the test.
 
+
+## Canonical and Diagnostic Gate Classification
+
+The active task contract must identify canonical acceptance gates before implementation begins. A command run only for investigation, comparison, reproduction, or diagnosis is diagnostic unless the task contract explicitly promotes it to a canonical gate.
+
+A failed diagnostic command is recorded but does not independently block acceptance when all canonical gates pass and the failure is proven to arise only from test ordering, fixture isolation, environment setup, selector acquisition, or another harness-only condition that does not invalidate canonical evidence.
+
+A diagnostic failure becomes blocking when it reveals a credible product, security, integrity, persistence, audit, raw-data, approval, or export defect; invalidates evidence from a canonical gate; or cannot be separated from application behavior. Codex must not relabel a declared canonical gate as diagnostic after it fails.
+
+The task contract must state:
+
+```text
+Canonical acceptance gates:
+Diagnostic commands, if any:
+Diagnostic-failure classification authority:
+```
+
+## Pre-Review Test-Harness Stabilization
+
+The active task contract may authorize one bounded test-harness stabilization iteration before Reviewer invocation. It is disabled unless the contract explicitly states `Test-Harness Stabilization: enabled`, names the authorized test files, and sets a finite iteration budget.
+
+It is permitted only when runtime evidence proves the intended application behavior exists and the failure is isolated to test timing, readiness, fixture setup, selector acquisition, or harness synchronization. The correction must not change product code or semantics, weaken/remove/skip/quarantine/retry-away an assertion, or use an arbitrary fixed sleep as the primary remedy. The focused test must pass repeatedly and all canonical gates must be rerun before Reviewer. This authority expires when Reviewer is invoked.
+
 ## Required Handoff State Machine
 
 ```text
@@ -652,7 +679,7 @@ Implementer ready-for-review + gates passed
    yes: Breaker required?
        no: commit if auto-commit eligible
        yes: Orchestrator invokes Breaker
-           Breaker PASS/P2 follow-up only?
+           BREAKER=PASS?
               no: stop (Breaker P1/P0/FAIL is terminal)
               yes: commit if auto-commit eligible
 → commit completed is terminal
@@ -668,7 +695,7 @@ Non-terminal status phrases:
 - `Reviewer task started but verdict not reported`
 - `Breaker required but not invoked`
 
-If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns clean Accept and Breaker is required, invoke Breaker. These are required actions, not optional human approvals.
+If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns exact `VERDICT=ACCEPT` and Breaker is required, invoke Breaker. These are required actions, not optional human approvals.
 
 
 
@@ -717,13 +744,13 @@ Human authorization is resolved by the task contract, not by the agent's comfort
 Do not re-ask for permission for an action already authorized by the task contract. If the task contract includes the relevant authorization and all required gates/verdicts have passed, Orchestrator must continue to the next authorized action instead of stopping to ask the human.
 
 Examples:
-- If `Happy-path auto-commit: enabled` is present, Reviewer returned clean `Accept`, `Happy-path auto-commit eligible? yes`, Breaker passed when required, and commit guards passed, Orchestrator must commit expected files and stop. Do not ask `Would you like me to commit?`
+- If `Happy-path auto-commit: enabled` is present, Reviewer returned exact `VERDICT=ACCEPT`, `Happy-path auto-commit eligible? yes`, Breaker returned exact `BREAKER=PASS` when required, and commit guards passed, Orchestrator must commit expected files and stop. Do not ask `Would you like me to commit?`
 - If Reviewer is required and implementation gates passed, invoke Reviewer. Do not ask whether to start review.
 - If Breaker is required after Reviewer `Accept`, invoke Breaker. Do not ask whether to start Breaker.
 
 Asking for permission at `ready to commit`, `ready for Reviewer`, or `ready for Breaker` is a workflow violation unless one of these blockers exists:
 - auto-commit was not enabled,
-- Reviewer has not returned clean `Accept`,
+- Reviewer has not returned exact `VERDICT=ACCEPT`,
 - Breaker is required and has not passed,
 - a declared gate or guard failed,
 - unexpected scope or dirty files appeared,
@@ -738,8 +765,8 @@ Before stopping, Orchestrator must verify:
 1. Did I reach a real terminal state from this file's state machine?
 2. Is there a required next gate, handoff, review, Breaker invocation, commit, or push already authorized by the task contract?
 3. Am I asking the human for permission that the task contract already gave?
-4. If `Happy-path auto-commit: enabled` is present, did Reviewer return clean `Accept` and `Happy-path auto-commit eligible? yes`?
-5. If Breaker was required, did Breaker return `pass` or `P2 follow-up only`?
+4. If `Happy-path auto-commit: enabled` is present, did Reviewer return exact `VERDICT=ACCEPT` and `Happy-path auto-commit eligible? yes`?
+5. If Breaker was required, did Breaker return exact `BREAKER=PASS`?
 6. If the commit path is eligible, did I commit expected files and stop?
 
 If a required authorized next action remains, continue to that action. Stop only at a true terminal state or an explicit blocker.
@@ -772,7 +799,7 @@ Any remediation requires a new explicit human-authorized task. If remediation to
 
 ## Breaker P1/P0/FAIL Boundary
 
-Breaker `P1 found`, `P0 found`, or `FAIL` blocks commit. Do not fix, rerun, or commit until the human explicitly authorizes a new remediation task. Breaker PASS or P2 follow-up only may proceed to commit if Reviewer accepted and commit gates are satisfied.
+Breaker `P1 found`, `P0 found`, or `FAIL` blocks commit. Do not fix, rerun, or commit until the human explicitly authorizes a new remediation task. Breaker exact `BREAKER=PASS` may proceed to commit if Reviewer accepted and commit gates are satisfied.
 
 ## Product UX Gatekeeper Triggers
 
@@ -826,6 +853,48 @@ Feature prompts should name exact expected files whenever possible and enforce l
 
 Product changes must protect: **The system suggests. The reviewer decides. Raw data stays unchanged.**
 
+
+## Machine-Readable Commit Readiness
+
+Commit-capable tasks must use the ignored runtime packet:
+
+```text
+.artifacts/commit-readiness.json
+```
+
+The packet is evidence, not authority by itself. It must be created only after the final staged diff has passed canonical gates and exact role verdicts. The commit gate must not create, rewrite, or infer packet values.
+
+Required fields:
+
+```text
+schema_version
+task_id
+reviewer_verdict
+breaker_verdict
+qa_verdict
+canonical_gates_passed
+scope_guard_passed
+commit_authorized
+push_authorized
+reviewed_head
+reviewed_diff_sha256
+reviewed_at
+informational_notes
+required_changes
+```
+
+Exact passing values are `VERDICT=ACCEPT`, `BREAKER=PASS`, and `QA=PASS`. Qualified or unknown verdicts are invalid. Non-blocking observations belong in `informational_notes`; work required before acceptance belongs in `required_changes`. A non-empty `required_changes` value blocks commit.
+
+The independent current task identity is supplied to the hook as `HOUSEHOLDER_TASK_ID`; it must exactly match `task_id`. The hook fails closed when the variable is absent.
+
+The reviewed fingerprint is SHA-256 over the exact byte output of:
+
+```bash
+git diff --cached --binary --full-index --no-ext-diff HEAD
+```
+
+run from the Git repository root. The packet itself must be ignored and unstaged. Immediately before commit, the hook must confirm the current HEAD equals `reviewed_head` and the staged fingerprint equals `reviewed_diff_sha256`. Any implementation or staging change after review therefore requires fresh role verdicts and a new packet. `push_authorized` remains separate and is never inferred from commit eligibility.
+
 ## Commit Gate
 
 Auto-commit is disabled unless the prompt includes exactly:
@@ -835,9 +904,14 @@ Happy-path auto-commit: enabled
 ```
 
 Commit only when all are true:
-- Reviewer verdict is exactly `Accept`.
+- Reviewer verdict is exactly `VERDICT=ACCEPT`.
 - Reviewer states `Happy-path auto-commit eligible? yes`.
-- Breaker PASS/P2 follow-up only if Breaker was required.
+- Breaker verdict is exactly `BREAKER=PASS` when Breaker was required.
+- QA verdict is exactly `QA=PASS` when QA/UAT was required.
+- The commit-readiness packet at `.artifacts/commit-readiness.json` exists, is valid JSON, and matches the reviewed task ID, reviewed HEAD, and staged diff fingerprint.
+- The packet sets `canonical_gates_passed=true`, `scope_guard_passed=true`, and `commit_authorized=true`.
+- The packet does not include any `REQUIRED_CHANGES` that would conflict with commit eligibility.
+- The packet was not staged as part of the commit.
 - All required gates passed.
 - Artifact guard passed.
 - Lane scope guard passed with the declared lane.
@@ -846,7 +920,7 @@ Commit only when all are true:
 - Staged files exactly match expected files.
 - No unresolved product questions, schema concerns, failed-first-fix violation, or workflow violation.
 
-Do not commit on `Accept with minor follow-up`, `Request changes`, `Reject`, Breaker P1/P0/FAIL, missing evidence, failed tests, unexpected files, or unresolved product questions.
+Do not commit on qualified or invalid verdicts, missing evidence, failed tests, unexpected files, unresolved product questions, mismatched fingerprints, packet staleness, or packet validation failure. `push_authorized` remains separate and must not be inferred from commit eligibility.
 
 ## Push Gate
 

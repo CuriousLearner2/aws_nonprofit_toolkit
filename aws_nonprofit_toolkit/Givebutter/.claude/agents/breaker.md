@@ -112,7 +112,9 @@ If Reviewer has not accepted, report that Breaker should not be used as a substi
 Return:
 
 ```text
-Breaker verdict: pass / P2 follow-up only / P1 found / P0 found
+Breaker verdict: BREAKER=PASS / BREAKER=FAIL
+INFORMATIONAL_NOTES:
+REQUIRED_CHANGES:
 What was verified:
 What remains unverified:
 Evidence overclaimed? yes/no
@@ -121,7 +123,7 @@ Commit readiness blocked? yes/no
 Push readiness blocked? yes/no
 ```
 
-- `pass` or `P2 follow-up only`: Orchestrator may proceed to commit only if Reviewer accepted, auto-commit is enabled, and commit gates pass.
-- `P1 found` or `P0 found`: terminal blocker. No fix, rerun, commit, or push without new human authorization.
+`BREAKER=PASS`: Orchestrator may proceed to commit only if Reviewer accepted, auto-commit is enabled, and commit gates pass.
+`BREAKER=FAIL`: terminal blocker. No fix, rerun, commit, or push without new human authorization.
 
 Breaker stops after verdict. Orchestrator owns commit/push decisions.

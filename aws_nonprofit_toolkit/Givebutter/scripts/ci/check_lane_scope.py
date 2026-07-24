@@ -128,7 +128,7 @@ def classify_file(filepath):
     parts = filepath.split('/')
 
     # Workflow files
-    if filepath.startswith('.claude/') or filepath.startswith('.github/'):
+    if filepath.startswith('.claude/') or filepath.startswith('.github/') or filepath == '.gitignore' or filepath.startswith('.codex/agents/'):
         return 'workflow'
 
     # CI automation files
