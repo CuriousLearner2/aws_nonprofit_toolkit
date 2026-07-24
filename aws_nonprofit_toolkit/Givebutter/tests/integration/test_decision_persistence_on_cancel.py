@@ -250,7 +250,8 @@ class TestValidationRowDecisionReset:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'defer',
-                'notes': 'Test defer decision'
+                'notes': 'Test defer decision',
+                'interaction_sequence': 1,
             }
         )
         # Verify decision was created
@@ -273,7 +274,8 @@ class TestValidationRowDecisionReset:
             '/imports/cancel-test-batch/row-decision',
             json={
                 'raw_import_row_id': raw_id,
-                'decision': 'clear_decision'
+                'decision': 'clear_decision',
+                'interaction_sequence': 2,
             }
         )
         # Should succeed
@@ -318,7 +320,8 @@ class TestValidationRowDecisionReset:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
-                'notes': 'Test follow-up'
+                'notes': 'Test follow-up',
+                'interaction_sequence': 1,
             }
         )
         assert response.status_code == 200, f"Record decision should succeed, got {response.status_code}"
@@ -328,7 +331,8 @@ class TestValidationRowDecisionReset:
             '/imports/cancel-test-batch/row-decision',
             json={
                 'raw_import_row_id': raw_id,
-                'decision': 'clear_decision'
+                'decision': 'clear_decision',
+                'interaction_sequence': 2,
             }
         )
         assert response.status_code == 200, f"Clear decision should succeed, got {response.status_code}"

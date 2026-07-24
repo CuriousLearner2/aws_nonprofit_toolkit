@@ -484,6 +484,10 @@ async function loadRowDecisions() {
             const response = await fetch(`/imports/${batchId}/row-decision/${rawId}`);
             if (response.ok) {
                 const data = await response.json();
+                rowDecisionSequenceState[rawId] = Math.max(
+                    rowDecisionSequenceState[rawId] || 0,
+                    data.interaction_sequence || 0
+                );
 
                 // Show/hide reset option in main table dropdown
                 const tableDropdown = document.querySelector(`.row-status-dropdown[data-raw-id="${rawId}"]`);
@@ -493,6 +497,12 @@ async function loadRowDecisions() {
                         resetOption.style.display = 'block';
                         // Store decision status in element for later use
                         tableDropdown.setAttribute('data-has-decision', 'true');
+                        const firstOption = tableDropdown.querySelector('option:first-child');
+                        if (firstOption && data.decision) {
+                            firstOption.textContent = data.decision.replace(/_/g, ' ');
+                        }
+                        tableDropdown.value = data.decision || '';
+                        tableDropdown.style.backgroundColor = '#fef3c7';
                     } else {
                         resetOption.style.display = 'none';
                         tableDropdown.setAttribute('data-has-decision', 'false');
@@ -993,12 +1003,12 @@ async function getRowDecisionData(rawId) {
     try {
         const response = await fetch(`/imports/${batchId}/row-decision/${rawId}`);
         if (!response.ok) {
-            return { has_decision: false, decision: null, notes: null, timestamp: null };
+            return { has_decision: false, decision: null, notes: null, timestamp: null, interaction_sequence: 0 };
         }
         return await response.json();
     } catch (error) {
         console.error(`Error loading row decision for ${rawId}:`, error);
-        return { has_decision: false, decision: null, notes: null, timestamp: null };
+        return { has_decision: false, decision: null, notes: null, timestamp: null, interaction_sequence: 0 };
     }
 }
 
@@ -1080,6 +1090,14 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
 
 let recordModalOpenSequence = 0;
 const rowDecisionRequestState = Object.create(null);
+const rowDecisionSequenceState = Object.create(null);
+
+function getNextRowDecisionSequence(rawId) {
+    const currentSequence = rowDecisionSequenceState[rawId] || 0;
+    const nextSequence = currentSequence + 1;
+    rowDecisionSequenceState[rawId] = nextSequence;
+    return nextSequence;
+}
 
 function markLatestRowDecisionInteraction(rawId) {
     const currentState = rowDecisionRequestState[rawId];
@@ -1098,12 +1116,14 @@ function markLatestRowDecisionInteraction(rawId) {
 
 function beginRowDecisionRequest(rawId) {
     const requestToken = markLatestRowDecisionInteraction(rawId);
+    const interactionSequence = getNextRowDecisionSequence(rawId);
     const controller = new AbortController();
     rowDecisionRequestState[rawId] = {
         token: requestToken,
         controller,
+        sequence: interactionSequence,
     };
-    return { token: requestToken, controller };
+    return { token: requestToken, controller, sequence: interactionSequence };
 }
 
 function isCurrentRowDecisionRequest(rawId, requestToken) {
@@ -1220,7 +1240,7 @@ async function openRecordDetailsModal(recordId) {
     openModal('record-modal');
 }
 
-async function openFollowUpNotesModal(recordId, dropdown) {
+async function openFollowUpNotesModal(recordId, dropdown, rowDecisionRequest) {
     const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
     if (!row) return;
 
@@ -1291,7 +1311,6 @@ async function openFollowUpNotesModal(recordId, dropdown) {
                 return;
             }
             const requestToken = modal?.dataset.requestToken || '';
-            const rowDecisionRequest = beginRowDecisionRequest(rawId);
             const notes = (notesField?.value || '').trim();
             if (!notes) {
                 if (notesRequirement) {
@@ -1315,6 +1334,7 @@ async function openFollowUpNotesModal(recordId, dropdown) {
                         raw_import_row_id: rawId,
                         decision: 'needs_follow_up',
                         notes: notes,
+                        interaction_sequence: rowDecisionRequest.sequence,
                     }),
                     signal: rowDecisionRequest.controller.signal,
                 });
@@ -1427,7 +1447,8 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         raw_import_row_id: rawId,
-                        decision: 'clear_decision'
+                        decision: 'clear_decision',
+                        interaction_sequence: rowDecisionRequest.sequence,
                     }),
                     signal: rowDecisionRequest.controller.signal,
                 });
@@ -1478,8 +1499,8 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
         // Handle "Needs follow-up" - open notes modal
         if (decision === 'needs_follow_up') {
             const recordId = row.getAttribute('data-record-id');
-            markLatestRowDecisionInteraction(rawId);
-            await openFollowUpNotesModal(recordId, this);
+            const rowDecisionRequest = beginRowDecisionRequest(rawId);
+            await openFollowUpNotesModal(recordId, this, rowDecisionRequest);
             return;
         }
 
@@ -1491,7 +1512,8 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     raw_import_row_id: rawId,
-                    decision: decision
+                    decision: decision,
+                    interaction_sequence: rowDecisionRequest.sequence,
                 }),
                 signal: rowDecisionRequest.controller.signal,
             });

@@ -14,10 +14,15 @@ Decision types:
 
 from typing import Optional, Mapping, Any
 from datetime import datetime, timezone
+import threading
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from .database_models import ReviewDecision, ImportBatch, RawImportRow, AuditLogRecord
+
+
+_ROW_DECISION_LOCKS = {}
+_ROW_DECISION_LOCKS_MUTEX = threading.Lock()
 
 
 def _normalize_row_decision_notes(notes: Optional[str]) -> Optional[str]:
@@ -26,6 +31,35 @@ def _normalize_row_decision_notes(notes: Optional[str]) -> Optional[str]:
 
     normalized = notes.strip()
     return normalized or None
+
+
+def _normalize_interaction_sequence(interaction_sequence: Optional[Any]) -> Optional[int]:
+    if interaction_sequence is None:
+        return None
+
+    try:
+        normalized = int(interaction_sequence)
+    except (TypeError, ValueError):
+        raise ValueError("Row decision requires a valid interaction_sequence")
+
+    if normalized < 1:
+        raise ValueError("Row decision requires interaction_sequence >= 1")
+
+    return normalized
+
+
+def _row_decision_lock_key(batch_id: str, raw_import_row_id: int) -> str:
+    return f"{batch_id}:{raw_import_row_id}"
+
+
+def _get_row_decision_lock(batch_id: str, raw_import_row_id: int) -> threading.Lock:
+    key = _row_decision_lock_key(batch_id, raw_import_row_id)
+    with _ROW_DECISION_LOCKS_MUTEX:
+        lock = _ROW_DECISION_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _ROW_DECISION_LOCKS[key] = lock
+        return lock
 
 
 def _get_latest_row_status_decision(session, batch_id: str, raw_import_row_id: int):
@@ -43,14 +77,20 @@ def _get_latest_row_status_decision(session, batch_id: str, raw_import_row_id: i
 
 def _extract_row_status_decision_state(review_decision):
     if not review_decision:
-        return None, None
+        return None, None, None
 
     decision_type = review_decision.decision.replace('row_status:', '', 1)
-    if decision_type == 'clear_decision':
-        return 'clear_decision', None
-
     reviewed_values = review_decision.reviewed_values or {}
-    return decision_type, _normalize_row_decision_notes(reviewed_values.get('notes'))
+    interaction_sequence = reviewed_values.get('interaction_sequence')
+
+    if decision_type == 'clear_decision':
+        return 'clear_decision', None, interaction_sequence
+
+    return (
+        decision_type,
+        _normalize_row_decision_notes(reviewed_values.get('notes')),
+        interaction_sequence,
+    )
 
 
 def record_row_decision(
@@ -58,6 +98,7 @@ def record_row_decision(
     raw_import_row_id: int,
     decision: str,
     notes: Optional[str] = None,
+    interaction_sequence: Optional[Any] = None,
     reviewer: Optional[str] = None,
     database_url: Optional[str] = None,
 ) -> dict:
@@ -72,6 +113,7 @@ def record_row_decision(
         raw_import_row_id: RawImportRow.id
         decision: One of: 'accept_as_is', 'needs_follow_up', 'defer', 'reject_row', 'clear_decision'
         notes: Optional reviewer notes (required for 'needs_follow_up')
+        interaction_sequence: Monotonic per-row interaction order number
         reviewer: Optional reviewer identifier
         database_url: Optional database connection URL
 
@@ -107,6 +149,14 @@ def record_row_decision(
     if decision == 'needs_follow_up' and not (notes and notes.strip()):
         raise ValueError("Notes are required when 'Needs follow-up' is selected")
 
+    normalized_sequence = _normalize_interaction_sequence(interaction_sequence)
+    use_sequence_guard = normalized_sequence is not None
+
+    lock = _get_row_decision_lock(batch_id, raw_import_row_id) if use_sequence_guard else None
+
+    if lock is not None:
+        lock.acquire()
+
     engine = create_engine(database_url, echo=False)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
@@ -129,40 +179,49 @@ def record_row_decision(
 
         normalized_notes = _normalize_row_decision_notes(notes)
         latest_row_decision = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
-        latest_decision_type, latest_notes = _extract_row_status_decision_state(latest_row_decision)
+        latest_decision_type, latest_notes, latest_sequence = _extract_row_status_decision_state(latest_row_decision)
 
-        if decision == 'clear_decision':
-            if latest_decision_type == 'clear_decision' or latest_row_decision is None:
+        if use_sequence_guard and latest_sequence is not None:
+            if normalized_sequence < latest_sequence:
                 from .row_status_service import derive_row_status
                 row_status = derive_row_status(batch_id, raw_import_row_id, database_url)
                 return {
                     'decision_id': latest_row_decision.id if latest_row_decision else None,
-                    'decision': decision,
+                    'decision': latest_decision_type,
                     'timestamp': latest_row_decision.created_at.isoformat() if latest_row_decision else datetime.now(timezone.utc).isoformat(),
                     'success': True,
-                    'message': 'Row decision already cleared',
+                    'message': 'Stale row decision ignored',
                     'row_status': row_status,
-                    'idempotent': True,
+                    'stale_ignored': True,
+                    'interaction_sequence': latest_sequence,
                 }
-        elif latest_decision_type == decision and latest_notes == normalized_notes:
-            from .row_status_service import derive_row_status
-            row_status = derive_row_status(batch_id, raw_import_row_id, database_url)
-            return {
-                'decision_id': latest_row_decision.id if latest_row_decision else None,
-                'decision': decision,
-                'timestamp': latest_row_decision.created_at.isoformat() if latest_row_decision else datetime.now(timezone.utc).isoformat(),
-                'success': True,
-                'message': f'Row decision already recorded: {decision}',
-                'row_status': row_status,
-                'idempotent': True,
-            }
 
-        # Build reviewed_values with decision and notes
+            if normalized_sequence == latest_sequence:
+                if latest_decision_type == decision and latest_notes == normalized_notes:
+                    from .row_status_service import derive_row_status
+                    row_status = derive_row_status(batch_id, raw_import_row_id, database_url)
+                    return {
+                        'decision_id': latest_row_decision.id if latest_row_decision else None,
+                        'decision': decision,
+                        'timestamp': latest_row_decision.created_at.isoformat() if latest_row_decision else datetime.now(timezone.utc).isoformat(),
+                        'success': True,
+                        'message': f'Row decision already recorded: {decision}',
+                        'row_status': row_status,
+                        'idempotent': True,
+                        'interaction_sequence': latest_sequence,
+                    }
+                raise ValueError("Row decision interaction_sequence already recorded for this row")
+
+        # Build reviewed_values with decision, notes, and ordering metadata
         reviewed_values = {
             'reviewed_status': decision,
+            'interaction_sequence': normalized_sequence if normalized_sequence is not None else None,
         }
         if normalized_notes:
             reviewed_values['notes'] = normalized_notes
+
+        # Remove null ordering metadata from stored payload
+        reviewed_values = {key: value for key, value in reviewed_values.items() if value is not None}
 
         # Create new ReviewDecision record
         # Use decision as the decision type for row-level status decisions
@@ -181,6 +240,7 @@ def record_row_decision(
         now = datetime.now(timezone.utc)
         audit_details = {
             'decision_value': decision,
+            'interaction_sequence': normalized_sequence,
         }
         if normalized_notes:
             audit_details['notes'] = normalized_notes
@@ -208,6 +268,59 @@ def record_row_decision(
             'success': True,
             'message': f'Row decision recorded: {decision}',
             'row_status': row_status,  # For frontend dropdown display
+            'interaction_sequence': normalized_sequence,
+        }
+
+    finally:
+        session.close()
+        if lock is not None and lock.locked():
+            lock.release()
+
+
+def get_row_decision_state(
+    batch_id: str,
+    raw_import_row_id: int,
+    database_url: Optional[str] = None,
+) -> dict:
+    """
+    Get the latest row-level decision state for a row, including ordering metadata.
+
+    Returns the latest decision record, whether or not it is currently active.
+    """
+    import os
+
+    if not database_url:
+        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
+
+    if not database_url:
+        raise ValueError("Row decision query requires database configuration")
+
+    engine = create_engine(database_url, echo=False)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+
+    try:
+        latest = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
+        if not latest:
+            return {
+                'has_decision': False,
+                'decision': None,
+                'notes': None,
+                'timestamp': None,
+                'reviewer': None,
+                'interaction_sequence': 0,
+            }
+
+        decision_type, notes, sequence = _extract_row_status_decision_state(latest)
+        has_decision = decision_type not in (None, 'clear_decision')
+
+        return {
+            'has_decision': has_decision,
+            'decision': decision_type if has_decision else None,
+            'notes': notes if has_decision else None,
+            'timestamp': latest.created_at.isoformat(),
+            'reviewer': latest.reviewer,
+            'interaction_sequence': sequence or 0,
         }
 
     finally:
@@ -241,46 +354,17 @@ def get_row_decision(
     if not database_url:
         raise ValueError("Row decision query requires database configuration")
 
-    engine = create_engine(database_url, echo=False)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
+    decision_state = get_row_decision_state(batch_id, raw_import_row_id, database_url)
+    if not decision_state['has_decision']:
+        return None
 
-    try:
-        # Get latest decision for this row
-        latest = (
-            session.query(ReviewDecision)
-            .filter_by(
-                batch_id=batch_id,
-                raw_import_row_id=raw_import_row_id
-            )
-            .filter(ReviewDecision.decision.like('row_status:%'))
-            .order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc())
-            .first()
-        )
-
-        if not latest:
-            return None
-
-        # Extract decision type from 'row_status:decision_type' format
-        decision_type = latest.decision.replace('row_status:', '', 1)
-
-        # If cleared, return None (system status applies)
-        if decision_type == 'clear_decision':
-            return None
-
-        # Extract notes from reviewed_values
-        reviewed_values = latest.reviewed_values or {}
-        notes = reviewed_values.get('notes')
-
-        return {
-            'decision': decision_type,
-            'notes': notes,
-            'timestamp': latest.created_at.isoformat(),
-            'reviewer': latest.reviewer,
-        }
-
-    finally:
-        session.close()
+    return {
+        'decision': decision_state['decision'],
+        'notes': decision_state['notes'],
+        'timestamp': decision_state['timestamp'],
+        'reviewer': decision_state['reviewer'],
+        'interaction_sequence': decision_state['interaction_sequence'],
+    }
 
 
 def get_rows_with_follow_up(

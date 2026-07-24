@@ -172,7 +172,8 @@ class TestRowDecisionReset:
             f'/imports/reset-test-batch/row-decision',
             json={
                 'raw_import_row_id': raw_id,
-                'decision': 'clear_decision'
+                'decision': 'clear_decision',
+                'interaction_sequence': 2,
             }
         )
 

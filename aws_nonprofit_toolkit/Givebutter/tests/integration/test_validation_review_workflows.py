@@ -1736,7 +1736,8 @@ class TestNeedsFollowUpDecision:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
-                'notes': None
+                'notes': None,
+                'interaction_sequence': 1,
             }
         )
 
@@ -1757,7 +1758,8 @@ class TestNeedsFollowUpDecision:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
-                'notes': 'Needs to verify donation amount with donor'
+                'notes': 'Needs to verify donation amount with donor',
+                'interaction_sequence': 1,
             }
         )
 
@@ -1784,7 +1786,8 @@ class TestDeferDecision:
             f'/imports/validation-workflow-test-batch/row-decision',
             json={
                 'raw_import_row_id': raw_id,
-                'decision': 'defer'
+                'decision': 'defer',
+                'interaction_sequence': 1,
             }
         )
 
@@ -1980,7 +1983,8 @@ class TestNeedsFollowUpWorkflow:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
-                'notes': None
+                'notes': None,
+                'interaction_sequence': 1,
             }
         )
 
@@ -2004,7 +2008,8 @@ class TestNeedsFollowUpWorkflow:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
-                'notes': notes_text
+                'notes': notes_text,
+                'interaction_sequence': 1,
             }
         )
 
@@ -2044,7 +2049,8 @@ class TestNeedsFollowUpWorkflow:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
-                'notes': 'Verify with donor'
+                'notes': 'Verify with donor',
+                'interaction_sequence': 1,
             }
         )
 
@@ -2074,7 +2080,8 @@ class TestDeferWorkflow:
             f'/imports/validation-workflow-test-batch/row-decision',
             json={
                 'raw_import_row_id': raw_id,
-                'decision': 'defer'
+                'decision': 'defer',
+                'interaction_sequence': 1,
             }
         )
 
@@ -2111,7 +2118,8 @@ class TestDeferWorkflow:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'defer',
-                'notes': 'Review in next batch cycle'
+                'notes': 'Review in next batch cycle',
+                'interaction_sequence': 1,
             }
         )
 
@@ -2590,7 +2598,8 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
-                'notes': 'Test note'
+                'notes': 'Test note',
+                'interaction_sequence': 1,
             }
         )
 
@@ -2630,6 +2639,7 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
+                'interaction_sequence': 1,
             }
         )
         assert first.status_code == 200, f"Initial decision should succeed, got {first.status_code}: {first.get_json()}"
@@ -2644,6 +2654,7 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
+                'interaction_sequence': 1,
             }
         )
         assert duplicate.status_code == 200, f"Duplicate decision should succeed, got {duplicate.status_code}: {duplicate.get_json()}"
@@ -2665,6 +2676,7 @@ class TestDetailsModalControls:
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
                 'notes': 'Confirm with donor later',
+                'interaction_sequence': 2,
             }
         )
         assert changed.status_code == 200, f"Changed note should succeed, got {changed.status_code}: {changed.get_json()}"
@@ -2676,6 +2688,97 @@ class TestDetailsModalControls:
             f"Changed notes should create a new linked audit record, got {changed_linked_audit_count}"
         assert changed_audit_count == 2, \
             f"Changed notes should create a new audit record, got {changed_audit_count}"
+
+    def test_row_decision_requires_interaction_sequence(
+        self, flask_client_with_validation_batch
+    ):
+        """The row-decision route should reject missing ordering metadata."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        response = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+            }
+        )
+
+        assert response.status_code == 400, (
+            f"Missing interaction_sequence should be rejected, got {response.status_code}: {response.get_json()}"
+        )
+        data = response.get_json()
+        assert 'interaction_sequence required' in data.get('error', ''), (
+            f"Missing sequence error should be explicit, got: {data}"
+        )
+
+    def test_stale_row_decision_sequence_is_ignored(
+        self, flask_client_with_validation_batch
+    ):
+        """A stale lower sequence should be ignored without adding new history."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+
+        def counts():
+            session = Session()
+            try:
+                decision_count = session.query(ReviewDecision).filter_by(
+                    batch_id='validation-workflow-test-batch',
+                    raw_import_row_id=raw_id,
+                ).count()
+                linked_audit_count = session.query(AuditLogRecord).join(ReviewDecision, AuditLogRecord.decision_id == ReviewDecision.id).filter(
+                    ReviewDecision.batch_id == 'validation-workflow-test-batch',
+                    ReviewDecision.raw_import_row_id == raw_id,
+                ).count()
+                return decision_count, linked_audit_count
+            finally:
+                session.close()
+
+        first = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+                'interaction_sequence': 1,
+            }
+        )
+        assert first.status_code == 200, f"Initial decision should succeed, got {first.status_code}: {first.get_json()}"
+
+        second = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'reject_row',
+                'interaction_sequence': 2,
+            }
+        )
+        assert second.status_code == 200, f"Later decision should succeed, got {second.status_code}: {second.get_json()}"
+
+        stale = client.post(
+            f'/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+                'interaction_sequence': 1,
+            }
+        )
+        assert stale.status_code == 200, f"Stale replay should return success, got {stale.status_code}: {stale.get_json()}"
+        stale_data = stale.get_json()
+        assert stale_data.get('stale_ignored') is True, (
+            f"Stale lower sequence should be ignored, got: {stale_data}"
+        )
+
+        decision_count, audit_count = counts()
+        assert decision_count == 2, f"Stale replay should not create a new decision, got {decision_count}"
+        assert audit_count == 2, f"Stale replay should not create a new audit, got {audit_count}"
+
+        persisted = client.get(
+            f'/imports/validation-workflow-test-batch/row-decision/{raw_id}'
+        ).get_json()
+        assert persisted['has_decision'] is True
+        assert persisted['decision'] == 'reject_row', (
+            f"Latest persisted decision should remain reject_row, got: {persisted}"
+        )
 
     def test_row_decision_and_approval_use_app_config_database_url_when_env_cleared(
         self, flask_client_with_validation_batch, monkeypatch
@@ -2694,6 +2797,7 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
+                'interaction_sequence': 1,
             }
         )
 
@@ -2741,6 +2845,7 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
+                'interaction_sequence': 1,
             }
         )
 
@@ -2879,7 +2984,8 @@ class TestModalPreservesFieldIssues:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'defer',
-                'notes': 'Will follow up'
+                'notes': 'Will follow up',
+                'interaction_sequence': 1,
             }
         )
         assert response.status_code == 200
@@ -2915,7 +3021,8 @@ class TestModalPreservesFieldIssues:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
-                'notes': 'Must contact donor'
+                'notes': 'Must contact donor',
+                'interaction_sequence': 1,
             }
         )
         assert response.status_code == 200

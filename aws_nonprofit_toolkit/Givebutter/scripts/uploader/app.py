@@ -1667,6 +1667,7 @@ def record_row_decision(import_id):
     raw_import_row_id = data.get('raw_import_row_id')
     decision = data.get('decision', '').strip()
     notes = data.get('notes', '').strip() if data.get('notes') else None
+    interaction_sequence = data.get('interaction_sequence')
     reviewer = request.headers.get('X-Reviewer-ID')
     database_url = _get_runtime_database_url()
 
@@ -1675,6 +1676,26 @@ def record_row_decision(import_id):
 
     if not decision:
         return jsonify({'error': 'decision required'}), 400
+
+    if interaction_sequence is None:
+        return jsonify({
+            'error': 'interaction_sequence required',
+            'success': False,
+        }), 400
+
+    try:
+        interaction_sequence = int(interaction_sequence)
+    except (TypeError, ValueError):
+        return jsonify({
+            'error': 'interaction_sequence must be a positive integer',
+            'success': False,
+        }), 400
+
+    if interaction_sequence < 1:
+        return jsonify({
+            'error': 'interaction_sequence must be a positive integer',
+            'success': False,
+        }), 400
 
     if not database_url:
         return jsonify({
@@ -1692,6 +1713,7 @@ def record_row_decision(import_id):
             raw_import_row_id=raw_import_row_id,
             decision=decision,
             notes=notes,
+            interaction_sequence=interaction_sequence,
             reviewer=reviewer,
             database_url=database_url,
         )
@@ -1720,30 +1742,17 @@ def get_row_decision(import_id, raw_import_row_id):
         'timestamp': str (ISO) or null
     }
     """
-    from householder.row_decision_service import get_row_decision as get_decision
+    from householder.row_decision_service import get_row_decision_state
     database_url = _get_runtime_database_url()
 
     try:
-        decision_data = get_decision(
+        decision_data = get_row_decision_state(
             batch_id=import_id,
             raw_import_row_id=raw_import_row_id,
             database_url=database_url,
         )
 
-        if decision_data:
-            return jsonify({
-                'has_decision': True,
-                'decision': decision_data.get('decision'),
-                'notes': decision_data.get('notes'),
-                'timestamp': decision_data.get('timestamp')
-            }), 200
-        else:
-            return jsonify({
-                'has_decision': False,
-                'decision': None,
-                'notes': None,
-                'timestamp': None
-            }), 200
+        return jsonify(decision_data), 200
 
     except ValueError as e:
         logger.warning(f"Error fetching row decision: {str(e)}")

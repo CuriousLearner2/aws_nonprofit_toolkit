@@ -26,6 +26,7 @@ See E2E_TEST_RELIABILITY.md for patterns and troubleshooting.
 
 import pytest
 import asyncio
+import json
 import sys
 import tempfile
 import threading
@@ -1705,8 +1706,8 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify the row-status dropdown keeps the latest visible decision even if
-    an earlier response arrives later, and exact retries do not duplicate history.
+    GOAL: Verify interaction order, not response order, determines row-decision
+    authority and exact retries remain idempotent.
     """
     from playwright.async_api import async_playwright
 
@@ -1724,12 +1725,12 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
             filename='row_decision_race.csv',
             upload_timestamp=datetime.now(timezone.utc),
             status='pending_review',
-            raw_row_count=1,
+            raw_row_count=2,
         )
         session.add(batch)
         session.flush()
 
-        raw_row = RawImportRow(
+        raw_row_1 = RawImportRow(
             batch_id='row-decision-race-batch',
             row_index=1,
             raw_csv_data={
@@ -1741,19 +1742,47 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                 'address': '333 Race St',
             },
         )
-        session.add(raw_row)
+        session.add(raw_row_1)
         session.flush()
 
         session.add(
             ImportContact(
                 batch_id='row-decision-race-batch',
-                raw_import_row_id=raw_row.id,
+                raw_import_row_id=raw_row_1.id,
                 first_name='Race',
                 last_name='Row',
                 email='race@example.com',
                 phone='(555) 666-3333',
                 amount=333.00,
                 address_line1='333 Race St',
+            )
+        )
+
+        raw_row_2 = RawImportRow(
+            batch_id='row-decision-race-batch',
+            row_index=2,
+            raw_csv_data={
+                'name': 'Neighbor Row',
+                'date': '2026-03-04',
+                'email': 'neighbor@example.com',
+                'phone': '(555) 666-4444',
+                'amount': '444.00',
+                'address': '444 Neighbor Ave',
+            },
+        )
+        session.add(raw_row_2)
+        session.flush()
+
+        session.add(
+            ImportContact(
+                batch_id='row-decision-race-batch',
+                raw_import_row_id=raw_row_2.id,
+                first_name='Neighbor',
+                last_name='Row',
+                email='neighbor@example.com',
+                phone='(555) 666-4444',
+                amount=444.00,
+                address_line1='444 Neighbor Ave',
             )
         )
         session.commit()
@@ -1766,22 +1795,43 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
             browser = await p.chromium.launch()
             page = await browser.new_page()
 
-            first_response_finished = asyncio.Event()
-            delayed_first_response = False
+            pending_accept_route = None
+            accept_hold_consumed = False
+            pending_accept_ready = asyncio.Event()
+            request_log = []
+            response_log = []
+            console_errors = []
 
-            async def hold_first_row_decision(route):
-                nonlocal delayed_first_response
-                if not delayed_first_response:
-                    delayed_first_response = True
-                    upstream_response = await route.fetch()
-                    await asyncio.sleep(1)
-                    await route.fulfill(response=upstream_response)
-                    first_response_finished.set()
+            async def hold_accept_as_is(route):
+                nonlocal pending_accept_route
+                try:
+                    data = json.loads(route.request.post_data or '{}')
+                except Exception:
+                    data = {}
+
+                request_log.append({
+                    'decision': data.get('decision'),
+                    'raw_import_row_id': data.get('raw_import_row_id'),
+                })
+
+                if data.get('decision') == 'accept_as_is' and not accept_hold_consumed:
+                    pending_accept_route = route
+                    pending_accept_ready.set()
                     return
 
-                await route.continue_()
+                upstream_response = await route.fetch()
+                response_log.append({
+                    'decision': data.get('decision'),
+                    'status': upstream_response.status,
+                })
+                await route.fulfill(response=upstream_response)
 
-            await page.route(f"**/imports/{batch_id}/row-decision", hold_first_row_decision)
+            await page.route(f"**/imports/{batch_id}/row-decision", hold_accept_as_is)
+            page.on('response', lambda response: response_log.append({
+                'url': response.url,
+                'status': response.status,
+            }) if f'/imports/{batch_id}/row-decision' in response.url else None)
+            page.on('console', lambda msg: console_errors.append(msg.text) if msg.type == 'error' else None)
             page.on('dialog', lambda dialog: asyncio.create_task(dialog.dismiss()))
 
             try:
@@ -1789,18 +1839,28 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                 await page.wait_for_selector('select.row-status-dropdown', timeout=5000)
 
                 dropdown = page.locator('select.row-status-dropdown').nth(0)
+                neighbor_dropdown = page.locator('select.row-status-dropdown').nth(1)
+
+                await dropdown.select_option('defer')
+                await page.wait_for_function(
+                    "() => document.querySelector('select.row-status-dropdown')?.value === 'defer'",
+                    timeout=5000,
+                )
+
                 await dropdown.select_option('accept_as_is')
+                await pending_accept_ready.wait()
+
                 await dropdown.select_option('reject_row')
 
                 await page.wait_for_function(
                     "() => document.querySelector('select.row-status-dropdown')?.value === 'reject_row'",
                     timeout=5000,
                 )
-                await first_response_finished.wait()
-                await page.wait_for_function(
-                    "() => document.querySelector('select.row-status-dropdown')?.value === 'reject_row'",
-                    timeout=5000,
-                )
+                upstream_response = await pending_accept_route.fetch()
+                await pending_accept_route.fulfill(response=upstream_response)
+                pending_accept_route = None
+                accept_hold_consumed = True
+                await asyncio.sleep(0.8)
 
                 first_option_text = await page.locator('select.row-status-dropdown option').nth(0).inner_text()
                 assert 'reject' in first_option_text.lower(), \
@@ -1811,14 +1871,14 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                     try:
                         decision_count = count_session.query(ReviewDecision).filter_by(
                             batch_id=batch_id,
-                            raw_import_row_id=raw_row.id,
+                            raw_import_row_id=raw_row_1.id,
                         ).count()
                         audit_count = count_session.query(AuditLogRecord).join(
                             ReviewDecision,
                             AuditLogRecord.decision_id == ReviewDecision.id,
                         ).filter(
                             ReviewDecision.batch_id == batch_id,
-                            ReviewDecision.raw_import_row_id == raw_row.id,
+                            ReviewDecision.raw_import_row_id == raw_row_1.id,
                         ).count()
                         return decision_count, audit_count
                     finally:
@@ -1826,9 +1886,17 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
 
                 decision_count_after_race, audit_count_after_race = row_counts()
                 assert decision_count_after_race == 2, \
-                    f"Race should record one entry per distinct decision, got {decision_count_after_race}"
+                    f"Race should record only defer and reject_row before the stale accept_as_is is ignored, got {decision_count_after_race}"
                 assert audit_count_after_race == 2, \
-                    f"Race should record one audit per distinct decision, got {audit_count_after_race}"
+                    f"Race should record only defer and reject_row before the stale accept_as_is is ignored, got {audit_count_after_race}"
+
+                target_decision = session.query(ReviewDecision).filter_by(
+                    batch_id=batch_id,
+                    raw_import_row_id=raw_row_1.id,
+                ).order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc()).first()
+                assert target_decision is not None
+                assert target_decision.decision == 'row_status:reject_row', \
+                    f"Latest persisted decision should remain reject_row, got {target_decision.decision}"
 
                 duplicate_result = await page.evaluate(
                     """
@@ -1839,6 +1907,7 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                             body: JSON.stringify({
                                 raw_import_row_id: rawId,
                                 decision: 'reject_row',
+                                interaction_sequence: 3,
                             }),
                         });
 
@@ -1850,7 +1919,7 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                     """,
                     {
                         'batchId': batch_id,
-                        'rawId': raw_row.id,
+                        'rawId': raw_row_1.id,
                     }
                 )
                 assert duplicate_result['status'] == 200, \
@@ -1863,6 +1932,72 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                     f"Exact repeated reject_row should not add a decision, got {decision_count_after_repeat}"
                 assert audit_count_after_repeat == 2, \
                     f"Exact repeated reject_row should not add an audit, got {audit_count_after_repeat}"
+
+                later_result = await page.evaluate(
+                    """
+                    async ({ batchId, rawId }) => {
+                        const response = await fetch(`/imports/${batchId}/row-decision`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                raw_import_row_id: rawId,
+                                decision: 'accept_as_is',
+                                interaction_sequence: 4,
+                            }),
+                        });
+
+                        return {
+                            status: response.status,
+                            body: await response.json(),
+                        };
+                    }
+                    """,
+                    {
+                        'batchId': batch_id,
+                        'rawId': raw_row_1.id,
+                    }
+                )
+                assert later_result['status'] == 200, \
+                    f"Later accept_as_is should succeed, got: {later_result}"
+                assert later_result['body'].get('success') is True, \
+                    f"Later accept_as_is should report success, got: {later_result}"
+
+                decision_count_after_later, audit_count_after_later = row_counts()
+                assert decision_count_after_later == 3, \
+                    f"Later accept_as_is should create one new decision, got {decision_count_after_later}"
+                assert audit_count_after_later == 3, \
+                    f"Later accept_as_is should create one new audit, got {audit_count_after_later}"
+
+                target_decision_after_later = session.query(ReviewDecision).filter_by(
+                    batch_id=batch_id,
+                    raw_import_row_id=raw_row_1.id,
+                ).order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc()).first()
+                assert target_decision_after_later is not None
+                assert target_decision_after_later.decision == 'row_status:accept_as_is', \
+                    f"Latest persisted decision should become accept_as_is after the later deliberate change, got {target_decision_after_later.decision}"
+
+                reload_result = await page.reload(timeout=5000)
+                await page.wait_for_selector('select.row-status-dropdown', timeout=5000)
+                await page.wait_for_function(
+                    "() => document.querySelector('select.row-status-dropdown')?.value === 'accept_as_is'",
+                    timeout=5000,
+                )
+
+                reloaded_first_option = await page.locator('select.row-status-dropdown option').nth(0).inner_text()
+                assert 'accept' in reloaded_first_option.lower(), \
+                    f"Reload should surface the latest persisted decision, got: {reloaded_first_option}"
+
+                neighbor_option_text = await neighbor_dropdown.locator('option').nth(0).inner_text()
+                assert 'No issues' in neighbor_option_text, \
+                    f"Neighbor row should remain unaffected, got: {neighbor_option_text}"
+
+                neighbor_decision = session.query(ReviewDecision).filter_by(
+                    batch_id=batch_id,
+                    raw_import_row_id=raw_row_2.id,
+                ).first()
+                assert neighbor_decision is None, "Neighbor row should not receive a decision from row 1 interactions"
+
+                assert not console_errors, f"No console errors expected, got: {console_errors}"
 
             finally:
                 await browser.close()
@@ -3571,6 +3706,8 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
                 print("✓ Opened follow-up notes modal")
 
                 unique_notes = f"Golden path test - awaiting donor confirmation - {datetime.now(timezone.utc).isoformat()}"
+                await page.wait_for_selector('#record-modal', state='visible', timeout=5000)
+                await page.wait_for_selector('#record-modal textarea[id^="followup-notes-"]', state='visible', timeout=5000)
                 notes_field = await page.query_selector('#record-modal textarea[id^="followup-notes-"]')
                 assert notes_field is not None, "Notes field should exist"
                 await notes_field.fill(unique_notes)
