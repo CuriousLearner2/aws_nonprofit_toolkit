@@ -25,28 +25,77 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
         with:
           python-version: "3.11.9"
+          cache: pip
+          cache-dependency-path: |
+            aws_nonprofit_toolkit/Givebutter/requirements.txt
+            aws_nonprofit_toolkit/Givebutter/requirements-test.txt
 
       - name: Install Python tooling
         working-directory: aws_nonprofit_toolkit/Givebutter
         run: |
-          python -m pip install -r requirements.txt -r requirements-test.txt
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-test.txt
 
       - name: Verify core imports
         working-directory: aws_nonprofit_toolkit/Givebutter
-        run: python -c "import email_validator, flask, pandas, phonenumbers, sqlalchemy; print('imports-ok')"
+        run: .venv/bin/python -c "import email_validator, flask, pandas, phonenumbers, sqlalchemy; print('imports-ok')"
 
       - name: Run canonical unit and integration tests
         working-directory: aws_nonprofit_toolkit/Givebutter
-        run: python scripts/ci/test_gate.py --timeout 900 -- python -m pytest tests/unit tests/integration -x
+        run: .venv/bin/python scripts/ci/test_gate.py --timeout 900 -- .venv/bin/python -m pytest tests/unit tests/integration -x
 
       - name: Check blocking artifacts
-        run: python aws_nonprofit_toolkit/Givebutter/scripts/ci/check_no_artifacts.py
+        run: aws_nonprofit_toolkit/Givebutter/.venv/bin/python aws_nonprofit_toolkit/Givebutter/scripts/ci/check_no_artifacts.py
+
+      - name: Check added tracked artifacts
+        working-directory: aws_nonprofit_toolkit/Givebutter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+        run: |
+          .venv/bin/python - <<'PY'
+          import subprocess
+          import sys
+          import os
+
+          sys.path.insert(0, "scripts/ci")
+          from check_no_artifacts import is_blocked_artifact
+
+          base_sha = os.environ["BASE_SHA"].strip()
+          head_sha = os.environ["HEAD_SHA"].strip()
+          if not base_sha:
+              default_branch = os.environ["DEFAULT_BRANCH"].strip() or "main"
+              subprocess.run(["git", "fetch", "origin", default_branch], check=True)
+              base_sha = subprocess.check_output(
+                  ["git", "merge-base", f"origin/{default_branch}", head_sha],
+                  text=True,
+              ).strip()
+
+          result = subprocess.run(
+              ["git", "diff", "--name-only", "--diff-filter=ACMR", "--find-renames", base_sha, head_sha],
+              capture_output=True,
+              text=True,
+              check=True,
+          )
+          blocked = [path for path in result.stdout.splitlines() if path and is_blocked_artifact(path)]
+          if blocked:
+              print("❌ Found tracked artifact files that must not be committed:", file=sys.stderr)
+              for artifact in sorted(blocked):
+                  print(f"  - {artifact}", file=sys.stderr)
+              print("\nPlease remove these files or add them to .gitignore if intentional.", file=sys.stderr)
+              sys.exit(1)
+          print("✅ No tracked artifact additions or renames found")
+          PY
 
       - name: Compile repository Python files
         working-directory: aws_nonprofit_toolkit/Givebutter
-        run: python -m compileall scripts tests
+        run: .venv/bin/python -m compileall scripts tests

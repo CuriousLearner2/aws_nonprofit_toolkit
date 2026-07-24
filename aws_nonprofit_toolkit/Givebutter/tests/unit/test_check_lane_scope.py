@@ -393,3 +393,11 @@ class TestPathNormalization:
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('product', files)
         assert is_clean is False
         assert any('workflow' in str(c) for c in conflicts)
+
+    def test_nested_project_root_dotfile_is_classified_as_workflow(self):
+        """Nested project-root dotfiles should still be treated as workflow files."""
+        files = ['aws_nonprofit_toolkit/Givebutter/.gitignore']
+        is_clean, conflicts, categorized = check_lane_scope.check_lane_scope('workflow-ci', files)
+        assert is_clean is True
+        assert 'workflow' in categorized
+        assert categorized['workflow'] == ['.gitignore']

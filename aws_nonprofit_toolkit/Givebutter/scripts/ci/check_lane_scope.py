@@ -31,6 +31,33 @@ import sys
 from pathlib import Path
 
 
+PROJECT_ROOT_NAME = Path(__file__).resolve().parents[2].name
+
+
+def _strip_workspace_prefix(filepath):
+    """Normalize nested repo paths back to the repository-relative form."""
+    normalized = filepath.replace('\\', '/')
+    anchors = (
+        f'/{PROJECT_ROOT_NAME}/',
+        f'{PROJECT_ROOT_NAME}/',
+        '/.claude/',
+        '/.github/',
+        '/.codex/agents/',
+        '/scripts/',
+        '/tests/',
+        '/docs/',
+        '/migrations/',
+        '/schema.sql',
+    )
+
+    for anchor in anchors:
+        index = normalized.find(anchor)
+        if index != -1:
+            return normalized[index + len(anchor):]
+
+    return normalized
+
+
 def get_repo_root():
     """Get git repository root path."""
     try:
@@ -70,10 +97,10 @@ def normalize_path(filepath, repo_root, current_dir):
     candidate = repo_root_path / filepath
     try:
         relative = candidate.relative_to(current_dir_path)
-        return str(relative).replace('\\', '/')
+        return _strip_workspace_prefix(str(relative))
     except ValueError:
         # Path is not under current_dir; return as-is
-        return filepath.replace('\\', '/')
+        return _strip_workspace_prefix(filepath)
 
 
 def get_changed_files():
