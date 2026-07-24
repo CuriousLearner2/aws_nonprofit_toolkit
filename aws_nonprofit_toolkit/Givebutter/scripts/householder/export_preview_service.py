@@ -51,6 +51,29 @@ def _get_validation_issue_type(payload):
     return payload.get('issue_type', 'unknown')
 
 
+def _get_validation_issue_field(payload, issue_type=None):
+    """
+    Resolve the affected field for a validation payload.
+
+    Real payloads usually provide an explicit `field`. When they do not, infer
+    the field from the issue type so that reviewer decisions can still suppress
+    the corresponding blocker for the same row.
+    """
+    if not payload:
+        return None
+
+    field = payload.get('field')
+    if field:
+        return str(field).strip().lower()
+
+    issue_type_lower = str(issue_type or '').lower()
+    for candidate in ('date', 'amount', 'email', 'phone'):
+        if candidate in issue_type_lower:
+            return candidate
+
+    return None
+
+
 def build_export_preview(
     import_id: str,
     config: Optional[Mapping[str, Any]] = None,
@@ -245,6 +268,7 @@ def build_export_preview(
         for contact in contacts:
             row_blockers = []
             row_warnings = []
+            validation_decision_fields = set()
 
             # Start with original snapshot values
             raw_row = raw_rows.get(contact.raw_import_row_id)
@@ -411,8 +435,11 @@ def build_export_preview(
                 issue_field = payload.get('field')
                 issue_reason = payload.get('reason')
                 issue_severity = str(payload.get('severity', 'warning')).lower()
+                resolved_issue_field = _get_validation_issue_field(payload, issue_type)
 
                 if val_decision:
+                    if resolved_issue_field:
+                        validation_decision_fields.add(resolved_issue_field)
                     if val_decision.decision == 'accept_issue':
                         validation_status = 'accepted'
                     elif val_decision.decision == 'dismiss_issue':
@@ -450,19 +477,19 @@ def build_export_preview(
                     else:
                         row_warnings.append(f"Validation issue unresolved: {issue_type}")
 
-            if date_validation_issue:
+            if date_validation_issue and 'date' not in validation_decision_fields:
                 row_blockers.append("Unresolved validation: date")
                 validation_issues.append(date_validation_issue)
                 validation_status = 'blocked'
-            if amount_validation_issue:
+            if amount_validation_issue and 'amount' not in validation_decision_fields:
                 row_blockers.append("Unresolved validation: amount")
                 validation_issues.append(amount_validation_issue)
                 validation_status = 'blocked'
-            if email_validation_issue:
+            if email_validation_issue and 'email' not in validation_decision_fields:
                 row_blockers.append("Unresolved validation: email")
                 validation_issues.append(email_validation_issue)
                 validation_status = 'blocked'
-            if phone_validation_issue:
+            if phone_validation_issue and 'phone' not in validation_decision_fields:
                 row_blockers.append("Unresolved validation: phone")
                 validation_issues.append(phone_validation_issue)
                 validation_status = 'blocked'
