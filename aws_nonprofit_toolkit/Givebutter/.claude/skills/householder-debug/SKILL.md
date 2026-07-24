@@ -31,7 +31,7 @@ During named Manual UAT / RC phases, use the QA / UAT Agent before implementatio
 5. **Timeout equals failed gate.** Treat it exactly like a test failure and deliver a failed-gate stop report.
 6. **Rewritten E2E tests require hard assertions.** No soft guards, no `if element: assert ...`, no print/networkidle-only success, no zombie tests, and no page-load-only replacement coverage.
 7. **Reviewer handoff:** For implementation flows requiring review, Implementer stops at ready-for-review and Orchestrator invokes Reviewer after passing gates. Do not invoke Reviewer for assessment-only, push-only, or status-only tasks unless explicitly required.
-8. **Terminal states stop:** assessment report, failed-gate report, cleanup completed, non-accept Reviewer verdict, Breaker P1/P0/FAIL, commit, and push. Do not auto-start the next task.
+8. **Terminal states stop:** assessment report, failed-gate report, cleanup completed, Reviewer `VERDICT=REQUEST_CHANGES` / `VERDICT=REJECT`, Breaker failure, commit, and push. A commit is non-terminal only under the explicit Autonomous Multi-Item P1 Campaign Exception below; otherwise do not auto-start the next task.
 9. **Breaker is concrete-risk-based, not routine.** Invoke only for concrete P0/P1 invariant or process-integrity risk, when Lane D/product risk requires it, or when the human asks.
 
 ## Mandatory Task Contract
@@ -669,6 +669,42 @@ The active task contract may authorize one bounded test-harness stabilization it
 
 It is permitted only when runtime evidence proves the intended application behavior exists and the failure is isolated to test timing, readiness, fixture setup, selector acquisition, or harness synchronization. The correction must not change product code or semantics, weaken/remove/skip/quarantine/retry-away an assertion, or use an arbitrary fixed sleep as the primary remedy. The focused test must pass repeatedly and all canonical gates must be rerun before Reviewer. This authority expires when Reviewer is invoked.
 
+## Autonomous Multi-Item P1 Campaign Exception
+
+Default behavior outside an explicitly enabled autonomous multi-item P1 campaign:
+
+- a successful commit is terminal for the current task;
+- do not begin another item automatically.
+
+Autonomous exception:
+
+- A per-item commit is a checkpoint, not terminal, only when the active current task contract contains all of:
+  - `P1 Acceptance Campaign: enabled`
+  - `Autonomous multi-item campaign enabled? yes`
+  - `Frozen P1 registry approved? yes`
+  - `Per-item commit is checkpoint? yes`
+  - `Continue after clean checkpoint? yes`
+  - a finite maximum item count
+  - a finite maximum accepted-commit count
+- The autonomous exception changes only post-commit continuation.
+- It does not weaken review, QA, Breaker, gate, scope, readiness-packet, commit, push, or restart boundaries.
+- Push remains separately authorized.
+- An item checkpoint does not authorize registry expansion.
+
+Campaign terminal states:
+
+- every frozen P1 item is complete;
+- maximum item or accepted-commit budget is reached;
+- any canonical gate remains failed after authorized recovery;
+- Reviewer is not `VERDICT=ACCEPT`;
+- Breaker is not `BREAKER=PASS`;
+- QA is not `QA=PASS`;
+- product or UX ambiguity appears;
+- schema, migration, external compatibility, security, raw-data, audit, approval, export, or persistence policy requires a decision;
+- scope changes or an unexpected file appears;
+- the defect is materially different from the current frozen P1;
+- runtime proof remains inconclusive.
+
 ## Required Handoff State Machine
 
 ```text
@@ -679,10 +715,10 @@ Implementer ready-for-review + gates passed
    yes: Breaker required?
        no: commit if auto-commit eligible
        yes: Orchestrator invokes Breaker
-           BREAKER=PASS?
+           `BREAKER=PASS`?
               no: stop (Breaker P1/P0/FAIL is terminal)
               yes: commit if auto-commit eligible
-→ commit completed is terminal
+→ a successful commit is terminal for the current task
 ```
 
 Non-terminal status phrases:
@@ -695,7 +731,7 @@ Non-terminal status phrases:
 - `Reviewer task started but verdict not reported`
 - `Breaker required but not invoked`
 
-If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns exact `VERDICT=ACCEPT` and Breaker is required, invoke Breaker. These are required actions, not optional human approvals.
+If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns `VERDICT=ACCEPT` and Breaker is required, invoke Breaker. These are required actions, not optional human approvals.
 
 
 
@@ -735,7 +771,7 @@ Good:
 All gates passed. Working tree contains only expected files. Reviewer is required, so invoking Reviewer now.
 ```
 
-After Reviewer `Accept`, invoke Breaker if required. If the task contract includes `Happy-path auto-commit: enabled` and the commit path is eligible, commit expected files and stop. Do not push unless separately authorized.
+After Reviewer `VERDICT=ACCEPT`, invoke Breaker if required. If the task contract includes `Happy-path auto-commit: enabled` and the commit path is eligible, commit expected files and stop. Do not push unless separately authorized.
 
 ## Auto-Authorized Action Enforcement Rule
 
@@ -746,7 +782,7 @@ Do not re-ask for permission for an action already authorized by the task contra
 Examples:
 - If `Happy-path auto-commit: enabled` is present, Reviewer returned exact `VERDICT=ACCEPT`, `Happy-path auto-commit eligible? yes`, Breaker returned exact `BREAKER=PASS` when required, and commit guards passed, Orchestrator must commit expected files and stop. Do not ask `Would you like me to commit?`
 - If Reviewer is required and implementation gates passed, invoke Reviewer. Do not ask whether to start review.
-- If Breaker is required after Reviewer `Accept`, invoke Breaker. Do not ask whether to start Breaker.
+- If Breaker is required after Reviewer `VERDICT=ACCEPT`, invoke Breaker. Do not ask whether to start Breaker.
 
 Asking for permission at `ready to commit`, `ready for Reviewer`, or `ready for Breaker` is a workflow violation unless one of these blockers exists:
 - auto-commit was not enabled,
@@ -754,7 +790,7 @@ Asking for permission at `ready to commit`, `ready for Reviewer`, or `ready for 
 - Breaker is required and has not passed,
 - a declared gate or guard failed,
 - unexpected scope or dirty files appeared,
-- a non-accept Reviewer verdict or Breaker P1/P0/FAIL occurred,
+- Reviewer `VERDICT=REQUEST_CHANGES` / `VERDICT=REJECT` or Breaker `P1/P0/FAIL` occurred,
 - the task contract is ambiguous,
 - the action is push and `Happy-path auto-push: enabled` or explicit push authorization is absent.
 
@@ -799,7 +835,7 @@ Any remediation requires a new explicit human-authorized task. If remediation to
 
 ## Breaker P1/P0/FAIL Boundary
 
-Breaker `P1 found`, `P0 found`, or `FAIL` blocks commit. Do not fix, rerun, or commit until the human explicitly authorizes a new remediation task. Breaker exact `BREAKER=PASS` may proceed to commit if Reviewer accepted and commit gates are satisfied.
+Breaker `P1 found`, `P0 found`, or `FAIL` blocks commit. Do not fix, rerun, or commit until the human explicitly authorizes a new remediation task. Breaker `BREAKER=PASS` may proceed to commit if Reviewer returned exact `VERDICT=ACCEPT` and commit gates are satisfied.
 
 ## Product UX Gatekeeper Triggers
 
@@ -827,7 +863,7 @@ For narrow test-only remediation, Reviewer defaults to bounded Level 1 review un
 - whether the specific fix matches the failed test/setup issue,
 - whether any adjacent test or fixture change is justified by the same narrow failure.
 
-Reviewer should not perform broad architecture review, unrelated UX review, whole-suite analysis, or future-work planning for bounded Level 1 review. Reviewer output should be `Accept` or a blocking verdict with a specific blocking reason.
+Reviewer should not perform broad architecture review, unrelated UX review, whole-suite analysis, or future-work planning for bounded Level 1 review. Reviewer output should be `VERDICT=ACCEPT` or a blocking verdict with a specific blocking reason.
 
 If Reviewer has not returned a verdict within 10 minutes for a narrow Level 1 review, Orchestrator must stop waiting and report Reviewer wait status. Do not infer acceptance, do not invoke Breaker, do not commit, and do not push.
 
@@ -849,7 +885,7 @@ Reviewers/Breakers report verified items, unverified items, blockers, and readin
 
 Feature/product behavior work should normally use Orchestrator with `Pre-authorized lane: product/invariant hardening`.
 
-Feature prompts should name exact expected files whenever possible and enforce lane scope, exact scope, bounded tests through `test_gate.py`/`e2e_gate.py`, Product UX Gatekeeper when triggers apply, Reviewer before commit, and Breaker after Reviewer Accept when P0/P1 risk exists.
+Feature prompts should name exact expected files whenever possible and enforce lane scope, exact scope, bounded tests through `test_gate.py`/`e2e_gate.py`, Product UX Gatekeeper when triggers apply, Reviewer before commit, and Breaker after exact `VERDICT=ACCEPT` when P0/P1 risk exists.
 
 Product changes must protect: **The system suggests. The reviewer decides. Raw data stays unchanged.**
 

@@ -101,6 +101,13 @@ Before meaningful work, Orchestrator must instantiate:
 ```text
 P1 campaign task contract:
 - P1 Acceptance Campaign enabled? yes/no
+- Autonomous multi-item campaign enabled? yes/no
+- Frozen P1 registry human-approved? yes/no
+- Per-item commit is checkpoint? yes/no
+- Maximum P1 items per batch:
+- Maximum accepted commits per campaign:
+- Continue after clean checkpoint? yes/no
+- Campaign terminal state:
 - Post-Commit Residual Remediation enabled? yes/no
 - Commit under verification:
 - Named P1 defect:
@@ -288,7 +295,7 @@ Evidence ledger entry
 Allowed classifications:
 
 ```text
-pass
+accepted
 deterministic product defect
 deterministic test-harness defect
 stale test expectation
@@ -414,7 +421,7 @@ For each P1 item:
 4. Execute the baseline user workflow.
 5. Collect runtime evidence.
 6. Classify the result.
-7. If pass, record the checkpoint and continue.
+7. If `QA=PASS`, record the checkpoint and continue.
 8. If deterministic product defect, assess repair eligibility.
 9. If deterministic test-harness defect, do not change product code.
 10. If stale expectation, do not change product behavior.
@@ -643,7 +650,7 @@ Stop without editing or committing when:
 - schema or migration work is required;
 - security, raw-data, audit, approval, export, persistence, or external-writeback impact is unresolved;
 - the residual theory or iteration budget is exhausted;
-- Reviewer does not return clean `Accept`;
+- Reviewer does not return exact `VERDICT=ACCEPT`;
 - Breaker returns P1, P0, or FAIL;
 - QA/UAT fails after the allowed repair;
 - runtime execution remains unavailable or inconclusive.
@@ -757,7 +764,7 @@ After a repair:
 15. Breaker;
 16. Product UX Gatekeeper when required;
 17. QA/UAT;
-18. commit only after clean verdicts.
+18. commit only after exact verdicts.
 
 Use repository wrappers and explicit timeouts required by the canonical workflow.
 
@@ -862,16 +869,16 @@ QA/UAT must execute the exact user workflow in a socket-capable real browser env
 QA/UAT must return:
 
 ```text
-Pass
+QA=PASS
 ```
 
 or:
 
 ```text
-Fail
+QA=FAIL
 ```
 
-A pass requires:
+A `QA=PASS` requires:
 
 - application startup;
 - browser action;
@@ -891,7 +898,7 @@ VERDICT=REQUEST_CHANGES
 VERDICT=REJECT
 ```
 
-Qualified verdicts are invalid. Non-accept verdicts are terminal for the current task. This skill does not authorize post-review correction, reimplementation, rerun, or commit after a non-clean Reviewer verdict. Any remediation requires a new human-authorized task.
+Qualified verdicts are invalid. Only exact `VERDICT=ACCEPT` can authorize commit-capable continuation. `VERDICT=REQUEST_CHANGES` and `VERDICT=REJECT` are terminal for the current task. This skill does not authorize post-review correction, reimplementation, rerun, or commit after any Reviewer verdict other than exact `VERDICT=ACCEPT`. Any remediation requires a new human-authorized task.
 
 Pre-review implementation Iteration 2 and the direct-caller completion rule below cannot be used after Reviewer invocation.
 
@@ -925,24 +932,104 @@ Do not amend prior commits.
 
 Do not push unless separately and explicitly authorized.
 
+## Autonomous Multi-Item Campaign Mode
+
+This file summarizes the Householder canonical rule for autonomous multi-item execution.
+
+Default behavior outside an explicitly enabled autonomous multi-item P1 campaign:
+
+- a successful commit is terminal for the current task;
+- do not begin another item automatically.
+
+Autonomous exception:
+
+- A per-item commit is a checkpoint, not terminal, only when the active current task contract contains all of:
+  - `P1 Acceptance Campaign: enabled`
+  - `Autonomous multi-item campaign enabled? yes`
+  - `Frozen P1 registry approved? yes`
+  - `Per-item commit is checkpoint? yes`
+  - `Continue after clean checkpoint? yes`
+  - a finite maximum item count
+  - a finite maximum accepted-commit count
+- The autonomous exception changes only post-commit continuation.
+- It does not weaken review, QA, Breaker, gate, scope, readiness-packet, commit, push, or restart boundaries.
+- Push remains separately authorized.
+- An item checkpoint does not authorize registry expansion.
+
+Campaign terminal states:
+
+- every frozen P1 item is complete;
+- maximum item or accepted-commit budget is reached;
+- any canonical gate remains failed after authorized recovery;
+- Reviewer is not `VERDICT=ACCEPT`;
+- Breaker is not `BREAKER=PASS`;
+- QA is not `QA=PASS`;
+- product or UX ambiguity appears;
+- schema, migration, external compatibility, security, raw-data, audit, approval, export, or persistence policy requires a decision;
+- scope changes or an unexpected file appears;
+- the defect is materially different from the current frozen P1;
+- runtime proof remains inconclusive.
+
+Before autonomous implementation begins, the human must approve the frozen registry, item order, workflow wording, acceptance criteria, runtime evidence, authorized files or bounded scope rule, forbidden files, repair budgets, batch boundaries, and commit boundaries.
+
+Codex must not add, remove, merge, split, reorder, reinterpret, or expand P1 items during execution. New candidates may be recorded only for the final report.
+
+### Autonomous Batch Limits
+
+- Process one P1 item at a time.
+- Never repair two P1 defects in one commit.
+- Never run parallel Implementers for separate P1 items.
+- Maximum batch size and accepted-commit count must be finite.
+- A batch may contain related workflows, but each item keeps separate evidence, budgets, review, QA, readiness packet, and commit.
+- Diagnostic discovery may be shared only when read-only and explicitly applicable to the frozen items.
+
+### Autonomous Campaign Stop Conditions
+
+Stop the whole campaign immediately for any ordinary stop condition and also when:
+
+- the human-approved registry is incomplete, ambiguous, or changes;
+- the next item requires a file outside its frozen scope rule;
+- a new product, UX, API-compatibility, schema, migration, security, raw-data, audit, approval, export, or persistence decision appears;
+- the defect is materially different from the frozen P1 item;
+- an item or campaign repair budget is exhausted;
+- a canonical gate remains failed after an explicitly authorized recovery lane;
+- Reviewer returns `VERDICT=REQUEST_CHANGES` or `VERDICT=REJECT`;
+- Breaker returns `BREAKER=FAIL`;
+- QA/UAT returns `QA=FAIL`;
+- the readiness packet or exact staged-diff fingerprint fails;
+- the worktree is not clean after a checkpoint;
+- an unexpected path, stash change, branch change, or unauthorized commit appears;
+- the maximum item, batch, or accepted-commit count is reached.
+
+Do not treat a successful earlier item as evidence that a later item is safe. Do not continue around a blocked item unless the human-approved registry explicitly marks that item as independent and the active task contract explicitly permits skip-on-block; default behavior is to stop the campaign.
+
 ## Checkpoint After Every Item
 
 Append:
 
 ```text
 P1 checkpoint
+- Campaign ID:
+- Batch ID:
 - P1 ID:
-- Result: pass / repaired / blocked / inconclusive
+- Result: accepted / repaired / blocked / inconclusive
 - Runtime workflow exercised? yes/no
+- Canonical gates:
 - Evidence collected:
 - Product defect found? yes/no
 - Test-harness defect found? yes/no
 - Files changed:
-- Repair budget used:
+- Item repair budget used:
+- Campaign repair budget remaining:
+- Reviewer verdict:
+- Breaker verdict:
+- QA/UAT verdict:
+- Readiness packet validated? yes/no
 - Commit:
 - Registry unchanged? yes/no
 - Scope remained exact? yes/no
-- Worktree state:
+- Worktree clean? yes/no
+- Accepted commits used / maximum:
 - Next P1 ID:
 ```
 
@@ -967,7 +1054,7 @@ Stop the entire campaign when:
 - root cause remains ambiguous after one focused investigation;
 - the focused repair fails;
 - a second repair theory is needed;
-- Reviewer does not return clean `Accept`;
+- Reviewer does not return exact `VERDICT=ACCEPT`;
 - Breaker returns P1/P0/FAIL;
 - QA/UAT fails after the one repair;
 - an unexpected file appears;

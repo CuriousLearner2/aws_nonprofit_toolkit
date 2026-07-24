@@ -27,6 +27,9 @@ Before delegating, invoking agents, or running meaningful commands, instantiate 
 - Breaker required? yes/no,
 - E2E involved and timeout required? yes/no,
 - canonical acceptance gates and any diagnostic commands,
+- autonomous multi-item campaign enabled? yes/no,
+- frozen P1 registry human-approved? yes/no,
+- per-item commit checkpoint and finite batch/campaign budgets,
 - test-harness stabilization authorization and finite budget,
 - gate commands,
 - Failed-First Repair Lane enabled? yes/no,
@@ -41,9 +44,9 @@ If any field is uncertain, stop and ask or classify as assessment-only. Do not i
 1. **Assessment-only is direct.** Do it in the current Orchestrator context. No child agents, no edits, no staging, no commit, no push. Root-cause proof is the terminal assessment outcome, not permission to implement.
 2. **Do not self-implement.** Use Implementer for code/test/doc changes unless the human explicitly chose another agent.
 3. **Passing gates are not terminal when Reviewer is required.** Invoke Reviewer immediately.
-4. **Reviewer Accept is not terminal when Breaker is required.** Invoke Breaker immediately.
-5. **Non-accept verdicts are terminal.** Reviewer `Request changes` / `Reject` and Breaker `P1/P0/FAIL` require new explicit human authorization before remediation.
-6. **Commit completed is terminal when auto-commit is enabled and eligible.** Stop after commit. Do not push.
+4. **Reviewer `VERDICT=ACCEPT` is not terminal when Breaker is required.** Invoke Breaker immediately.
+5. **`VERDICT=REQUEST_CHANGES` / `VERDICT=REJECT` and `BREAKER=P1/P0/FAIL` are terminal.** New explicit human authorization is required before remediation.
+6. **A successful commit is terminal for the current task by default.** Continue after commit only when the exact Autonomous Multi-Item P1 Campaign exception is active, the per-item commit is a validated checkpoint, the worktree is clean, the registry is unchanged, and finite budgets remain. Never push without separate authorization.
 7. **Do not re-ask for authorized actions.** If the task contract already authorized Reviewer, Breaker, or auto-commit and the required conditions are met, perform the action instead of asking the human for permission.
 8. **Review capability is a precondition.** If required Reviewer/Breaker invocation is unavailable in this session, stop before implementation/auto-commit and report the tooling blocker.
 9. **Use the project command context.** Run project commands from the Givebutter project directory with `./.venv/bin/python`; do not use bare `python` unless explicitly authorized by local workflow.
@@ -164,6 +167,46 @@ Passing one stage is not permission to skip to a later stage. After one-test pro
 
 Review Packets for E2E work must state: current proof stage, prior stage evidence if relied on, exact command/result, rewritten tests, timeout, `-x`/`--maxfail=1` for multi-test gates, and whether reliability evidence was required.
 
+## Autonomous Multi-Item P1 Campaign Coordination
+
+This file mirrors the Householder canonical rule for autonomous multi-item execution.
+
+Default behavior outside an explicitly enabled autonomous multi-item P1 campaign:
+
+- a successful commit is terminal for the current task;
+- do not begin another item automatically.
+
+Autonomous exception:
+
+- A per-item commit is a checkpoint, not terminal, only when the active current task contract contains all of:
+  - `P1 Acceptance Campaign: enabled`
+  - `Autonomous multi-item campaign enabled? yes`
+  - `Frozen P1 registry approved? yes`
+  - `Per-item commit is checkpoint? yes`
+  - `Continue after clean checkpoint? yes`
+  - a finite maximum item count
+  - a finite maximum accepted-commit count
+- The autonomous exception changes only post-commit continuation.
+- It does not weaken review, QA, Breaker, gate, scope, readiness-packet, commit, push, or restart boundaries.
+- Push remains separately authorized.
+- An item checkpoint does not authorize registry expansion.
+
+Campaign terminal states:
+
+- every frozen P1 item is complete;
+- maximum item or accepted-commit budget is reached;
+- any canonical gate remains failed after authorized recovery;
+- Reviewer is not `VERDICT=ACCEPT`;
+- Breaker is not `BREAKER=PASS`;
+- QA is not `QA=PASS`;
+- product or UX ambiguity appears;
+- schema, migration, external compatibility, security, raw-data, audit, approval, export, or persistence policy requires a decision;
+- scope changes or an unexpected file appears;
+- the defect is materially different from the current frozen P1;
+- runtime proof remains inconclusive.
+
+Orchestrator uses this rule to decide whether a successful per-item commit is a terminal stop or the checkpoint that advances to the next frozen item.
+
 ## Required Handoff Rule
 
 These are not terminal states:
@@ -177,7 +220,7 @@ These are not terminal states:
 - `Reviewer task started but verdict not reported`
 - `Breaker required but not invoked`
 
-If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns exact `VERDICT=ACCEPT` and Breaker is required, invoke Breaker. Required Reviewer/Breaker invocation is an action, not a status.
+If Reviewer is required and gates passed, invoke Reviewer. If Reviewer returns `VERDICT=ACCEPT` and Breaker is required, invoke Breaker. Required Reviewer/Breaker invocation is an action, not a status.
 
 You may stop before invocation only if:
 - the human explicitly requested preparation-only,
@@ -243,7 +286,7 @@ All gates passed. Working tree contains only expected files. Reviewer is require
 
 Do not re-ask the human for permission for an action already authorized by the task contract.
 
-If the task contract includes `Happy-path auto-commit: enabled`, and Reviewer returns exact `VERDICT=ACCEPT` with `Happy-path auto-commit eligible? yes`, and Breaker returned exact `BREAKER=PASS` if required, then `ready to commit` is not a human decision point. Run required commit guards, commit expected files, and stop. Do not ask `Would you like me to stage and commit?`
+If the task contract includes `Happy-path auto-commit: enabled`, and Reviewer returns exact `VERDICT=ACCEPT` with `Happy-path auto-commit eligible? yes`, and Breaker returns exact `BREAKER=PASS` if required, then `ready to commit` is not a human decision point. Run required commit guards, commit expected files, and stop. Do not ask `Would you like me to stage and commit?`
 
 If the task contract requires Reviewer or Breaker and prerequisites are met, invoke the required agent. Do not ask whether to proceed with the required handoff.
 
@@ -348,7 +391,7 @@ After Breaker:
 
 When QA/UAT is required, only exact `QA=PASS` permits commit; `QA=FAIL`, qualified, missing, or unknown values are terminal. Non-blocking observations belong in `INFORMATIONAL_NOTES`; required work belongs in `REQUIRED_CHANGES`.
 
-Do not return to Implementer after Reviewer non-accept or Breaker fail without new explicit human authorization.
+Do not return to Implementer after Reviewer `VERDICT=REQUEST_CHANGES` / `VERDICT=REJECT` or Breaker `BREAKER=FAIL` without new explicit human authorization.
 
 ## Commit and Push
 
