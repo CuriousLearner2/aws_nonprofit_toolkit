@@ -15,15 +15,13 @@ permissions:
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
-env:
-  GIVEBUTTER_DIR: ${{ github.workspace }}/aws_nonprofit_toolkit/Givebutter
-
 jobs:
   baseline:
     name: Baseline checks
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      GIVEBUTTER_DIR: ${{ github.workspace }}/aws_nonprofit_toolkit/Givebutter
 
     steps:
       - name: Check out repository
@@ -37,40 +35,70 @@ jobs:
           python-version: "3.11.9"
           cache: pip
           cache-dependency-path: |
-            aws_nonprofit_toolkit/Givebutter/requirements.txt
-            aws_nonprofit_toolkit/Givebutter/requirements-test.txt
+            ${{ env.GIVEBUTTER_DIR }}/requirements.txt
+            ${{ env.GIVEBUTTER_DIR }}/requirements-test.txt
 
-      - name: Create Givebutter virtualenv
-        shell: bash
+      - name: Verify clean runner assumptions
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
         run: |
-          set -euo pipefail
-          python -m venv "$GIVEBUTTER_DIR/.venv"
+          test ! -e "$GIVEBUTTER_DIR/.venv"
+
+      - name: Create and install Givebutter virtualenv
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
+        run: |
+          "$pythonLocation/bin/python" -m venv "$GIVEBUTTER_DIR/.venv"
           "$GIVEBUTTER_DIR/.venv/bin/python" -m pip install --upgrade pip
-          "$GIVEBUTTER_DIR/.venv/bin/python" -m pip install \
-            -r "$GIVEBUTTER_DIR/requirements.txt" \
-            -r "$GIVEBUTTER_DIR/requirements-test.txt"
+          "$GIVEBUTTER_DIR/.venv/bin/python" -m pip install -r requirements.txt -r requirements-test.txt
           echo "$GIVEBUTTER_DIR/.venv/bin" >> "$GITHUB_PATH"
 
-      - name: Verify Givebutter virtualenv
-        shell: bash
+      - name: Verify Givebutter virtualenv resolution
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
         run: |
           set -euo pipefail
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          echo "GIVEBUTTER_DIR=$GIVEBUTTER_DIR"
+          export PATH="$GIVEBUTTER_DIR/.venv/bin:$PATH"
+          printf '%s\n' "$GITHUB_WORKSPACE"
+          printf '%s\n' "$GIVEBUTTER_DIR"
           test -x "$GIVEBUTTER_DIR/.venv/bin/python"
           test -x "$GIVEBUTTER_DIR/.venv/bin/pytest"
           command -v python
           command -v pytest
           python -c "import sys; print(sys.executable)"
           "$GIVEBUTTER_DIR/.venv/bin/python" -c "import sys; print(sys.executable)"
-          test "$(python -c 'import sys; print(sys.executable)')" = \
-            "$GIVEBUTTER_DIR/.venv/bin/python"
-          test "$(command -v pytest)" = "$GIVEBUTTER_DIR/.venv/bin/pytest"
+          case "$(command -v python)" in
+            "$GIVEBUTTER_DIR/.venv/bin/python") ;;
+            *)
+              echo "❌ python does not resolve to the Givebutter virtualenv" >&2
+              exit 1
+              ;;
+          esac
+          case "$(command -v pytest)" in
+            "$GIVEBUTTER_DIR/.venv/bin/pytest") ;;
+            *)
+              echo "❌ pytest does not resolve to the Givebutter virtualenv" >&2
+              exit 1
+              ;;
+          esac
+          python_executable="$(python -c 'import sys; print(sys.executable)')"
+          venv_executable="$("$GIVEBUTTER_DIR/.venv/bin/python" -c 'import sys; print(sys.executable)')"
+          case "$python_executable" in
+            "$GIVEBUTTER_DIR/.venv/bin/python") ;;
+            *)
+              echo "❌ python sys.executable is not inside the Givebutter virtualenv" >&2
+              exit 1
+              ;;
+          esac
+          case "$venv_executable" in
+            "$GIVEBUTTER_DIR/.venv/bin/python") ;;
+            *)
+              echo "❌ direct Givebutter virtualenv python resolved unexpectedly" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Verify core imports
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
         run: |
-          "$GIVEBUTTER_DIR/.venv/bin/python" -c \
-            "import email_validator, flask, pandas, phonenumbers, sqlalchemy; print('imports-ok')"
+          "$GIVEBUTTER_DIR/.venv/bin/python" -c "import email_validator, flask, pandas, phonenumbers, sqlalchemy; print('imports-ok')"
 
       - name: Run canonical unit and integration tests
         working-directory: ${{ env.GIVEBUTTER_DIR }}
@@ -78,13 +106,12 @@ jobs:
           "$GIVEBUTTER_DIR/.venv/bin/python" \
             "$GIVEBUTTER_DIR/scripts/ci/test_gate.py" \
             --timeout 900 \
-            -- "$GIVEBUTTER_DIR/.venv/bin/python" -m pytest \
-            tests/unit tests/integration -x
+            -- "$GIVEBUTTER_DIR/.venv/bin/python" -m pytest tests/unit tests/integration -x
 
       - name: Check blocking artifacts
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
         run: |
-          "$GIVEBUTTER_DIR/.venv/bin/python" \
-            "$GIVEBUTTER_DIR/scripts/ci/check_no_artifacts.py"
+          "$GIVEBUTTER_DIR/.venv/bin/python" "$GIVEBUTTER_DIR/scripts/ci/check_no_artifacts.py"
 
       - name: Check added tracked artifacts
         working-directory: ${{ env.GIVEBUTTER_DIR }}
@@ -112,31 +139,17 @@ jobs:
               ).strip()
 
           result = subprocess.run(
-              [
-                  "git",
-                  "diff",
-                  "--name-only",
-                  "--diff-filter=ACMR",
-                  "--find-renames",
-                  base_sha,
-                  head_sha,
-              ],
+              ["git", "diff", "--name-only", "--diff-filter=ACMR", "--find-renames", base_sha, head_sha],
               capture_output=True,
               text=True,
               check=True,
           )
-          blocked = [
-              path
-              for path in result.stdout.splitlines()
-              if path and is_blocked_artifact(path)
-          ]
+          blocked = [path for path in result.stdout.splitlines() if path and is_blocked_artifact(path)]
           if blocked:
-              print(
-                  "❌ Found tracked artifact files that must not be committed:",
-                  file=sys.stderr,
-              )
+              print("❌ Found tracked artifact files that must not be committed:", file=sys.stderr)
               for artifact in sorted(blocked):
                   print(f"  - {artifact}", file=sys.stderr)
+              print("\nPlease remove these files or add them to .gitignore if intentional.", file=sys.stderr)
               sys.exit(1)
           print("✅ No tracked artifact additions or renames found")
           PY
