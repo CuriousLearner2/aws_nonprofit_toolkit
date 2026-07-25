@@ -393,6 +393,18 @@ Required for unit, integration, and targeted non-E2E pytest gates in implementat
 ```
 Required for E2E gates. Multi-test E2E gates must use `-x` or `--maxfail=1`.
 
+## GitHub Workflow Clean-Runner Policy
+
+For changes under `.github/workflows/**`, the acceptance chain must prove a clean runner, not just a developer checkout:
+
+- validate that the clean runner starts without an existing project `.venv`;
+- create the Givebutter virtualenv at `$GITHUB_WORKSPACE/aws_nonprofit_toolkit/Givebutter/.venv`;
+- use the exact Givebutter `.venv/bin/python` and `.venv/bin/pytest` paths for critical commands;
+- append `$GIVEBUTTER_DIR/.venv/bin` to `$GITHUB_PATH` for later steps and verify command resolution explicitly before running the canonical gate;
+- keep workflow-contract tests covering Python version, permissions, path resolution, and command-resolution assertions;
+- treat a live GitHub Actions run for the final workflow commit as required evidence before production acceptance;
+- when a new workflow commit is pushed, validate it with a new `workflow_dispatch` run from that commit rather than rerunning an older failed run.
+
 ## Interrupted Gate / Background Terminal Rule
 
 If a gate is interrupted, times out, hangs, exits 143, or cannot be confirmed stopped/cleaned up, stop and report. Do not continue gates, invoke Reviewer, invoke Breaker, commit, or push in the same session unless the human explicitly authorizes a recovery task. Do not leave background terminals running after a gate. If process cleanup cannot be confirmed because the environment cannot enumerate processes, report that limitation and stop.

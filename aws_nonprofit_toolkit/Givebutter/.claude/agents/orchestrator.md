@@ -78,6 +78,14 @@ If a command fails solely because the wrong working directory, interpreter, pyte
 
 If any condition is unproven, or the retry fails, stop under the normal failed-gate policy.
 
+## GitHub Workflow Change Coordination
+
+For changes to `.github/workflows/**`, Orchestrator must separate local commit readiness from live workflow acceptance. Before implementation, declare the exact clean-runner simulation, expected runner path, virtualenv path, interpreter assertions, workflow contract tests, review branch, and live GitHub Actions gate.
+
+Orchestrator must require a disposable checkout or equivalent environment without an existing `.venv`; verify cross-step `PATH` persistence or absolute executable use; and capture `command -v python`, `command -v pytest`, and `sys.executable` before the canonical test gate. A workflow is not production-accepted merely because it passes in the developer checkout.
+
+After local gates and exact role verdicts pass, a workflow commit may be created on an authorized non-default review branch. Do not merge to `main` or report the workflow complete until a live GitHub Actions run for the final workflow commit succeeds. Confirm the run SHA matches the reviewed commit. Re-running a historical run is not evidence for a newer workflow file. If live-run access is unavailable, stop with a deployment-verification blocker rather than inferring success.
+
 ## Session Review-Capability Preflight
 
 Before delegating implementation or starting any auto-commit-capable flow, verify that this session can invoke required review agents.

@@ -78,6 +78,20 @@ When a task used the one-time environment-only recovery from `SKILL.md`, verify:
 
 Request changes if the recovery was used as a general failed-gate bypass or if evidence is insufficient.
 
+## GitHub Workflow Acceptance Review
+
+For changes to `.github/workflows/**`, do not return `VERDICT=ACCEPT` for production acceptance from local checkout evidence alone. Verify:
+
+- the clean runner starts without a project `.venv`;
+- the workflow creates the virtualenv at the exact repository-expected path;
+- cross-step `PATH` persistence is explicit or every critical command uses the absolute venv executable;
+- interpreter-resolution assertions run before the canonical test gate;
+- repository-local workflow contract tests cover Python version, permissions, venv path, `$GITHUB_PATH`, and critical command resolution;
+- a disposable clean-runner simulation passed;
+- a live GitHub Actions run for the exact final workflow commit passed before merge to `main`.
+
+Check the run SHA. A rerun of an older workflow definition does not validate the current diff. If live-run evidence is unavailable, Reviewer may accept local branch-commit readiness only when the task contract explicitly separates it from production acceptance; otherwise return `VERDICT=REQUEST_CHANGES`.
+
 ## Evidence Verification
 
 Do not return `Accept` if required evidence is missing, stale, pre-diff, targeted-only when full-file was required, failed, timed out, or overclaimed.
