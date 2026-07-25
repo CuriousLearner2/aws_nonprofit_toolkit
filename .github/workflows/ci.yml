@@ -163,7 +163,7 @@ jobs:
 
   browser-e2e:
     name: Browser E2E checks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     needs: baseline
 

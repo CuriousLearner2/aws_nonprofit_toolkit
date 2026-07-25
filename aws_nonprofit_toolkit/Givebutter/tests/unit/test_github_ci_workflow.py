@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -32,6 +33,13 @@ def test_ci_uses_supported_python_and_read_only_permissions():
     assert "permissions:\n  contents: read" in text
     assert "pull-requests: write" not in text
     assert "contents: write" not in text
+
+
+def _job_block(text: str, job_name: str) -> str:
+    pattern = rf"^  {re.escape(job_name)}:\n(?:(?:    .*\n)|(?:\n))*?(?=^  [A-Za-z0-9_-]+:|\Z)"
+    match = re.search(pattern, text, flags=re.MULTILINE)
+    assert match is not None, f"Could not find job block for {job_name}"
+    return match.group(0)
 
 
 def test_ci_defines_one_canonical_givebutter_directory():
@@ -96,6 +104,17 @@ def test_ci_has_manual_and_pull_request_triggers():
     assert "pull_request:" in text
     assert "merge_group:" in text
     assert "workflow_dispatch:" in text
+
+
+def test_ci_pins_only_browser_job_to_ubuntu_22_04():
+    text = _workflow_text()
+
+    baseline = _job_block(text, "baseline")
+    browser = _job_block(text, "browser-e2e")
+
+    assert "runs-on: ubuntu-24.04" in baseline
+    assert "runs-on: ubuntu-22.04" in browser
+    assert "runs-on: ubuntu-24.04" not in browser
 
 
 def test_ci_adds_isolated_browser_e2e_job_for_approved_p1_workflows():
