@@ -32,9 +32,11 @@ import sys
 import tempfile
 import threading
 import os
+import requests
 from pathlib import Path
 from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
+from werkzeug.serving import make_server
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -59,13 +61,40 @@ def e2e_database_and_app_smoke():
     engine = create_db_engine(database_url)
     Base.metadata.create_all(engine)
 
+    original_repository_env = os.environ.get('HOUSEHOLDER_REPOSITORY')
+    original_database_env = os.environ.get('GIVEBUTTER_DATABASE_URL')
     os.environ['HOUSEHOLDER_REPOSITORY'] = 'database'
     os.environ['GIVEBUTTER_DATABASE_URL'] = database_url
 
+    original_testing = app.config.get('TESTING')
+    original_repository_mode = app.config.get('HOUSEHOLDER_REPOSITORY')
+    original_database_url = app.config.get('GIVEBUTTER_DATABASE_URL')
     app.config['TESTING'] = True
+    app.config['HOUSEHOLDER_REPOSITORY'] = 'database'
+    app.config['GIVEBUTTER_DATABASE_URL'] = database_url
 
     yield database_url, db_path, app
 
+    if original_testing is None:
+        app.config.pop('TESTING', None)
+    else:
+        app.config['TESTING'] = original_testing
+    if original_repository_mode is None:
+        app.config.pop('HOUSEHOLDER_REPOSITORY', None)
+    else:
+        app.config['HOUSEHOLDER_REPOSITORY'] = original_repository_mode
+    if original_database_url is None:
+        app.config.pop('GIVEBUTTER_DATABASE_URL', None)
+    else:
+        app.config['GIVEBUTTER_DATABASE_URL'] = original_database_url
+    if original_repository_env is None:
+        os.environ.pop('HOUSEHOLDER_REPOSITORY', None)
+    else:
+        os.environ['HOUSEHOLDER_REPOSITORY'] = original_repository_env
+    if original_database_env is None:
+        os.environ.pop('GIVEBUTTER_DATABASE_URL', None)
+    else:
+        os.environ['GIVEBUTTER_DATABASE_URL'] = original_database_env
     Path(db_path).unlink(missing_ok=True)
 
 
@@ -175,197 +204,204 @@ async def test_desktop_canonical_screens_smoke(e2e_database_and_app_smoke):
         session.add(import_batch_complete_2)
         session.commit()
 
-        # Start Flask server
-        def run_flask():
-            flask_app.run(host='127.0.0.1', port=8001, debug=False, use_reloader=False)
-
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        # Start Flask server on an ephemeral port to avoid cross-test port collisions.
+        server = make_server('127.0.0.1', 0, flask_app)
+        flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
+        base_url = None
 
-        # Wait for server
-        import requests
+        # Wait for server and capture the ephemeral port before browser traffic starts.
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                requests.get('http://127.0.0.1:8001/imports', timeout=2)
-                break
+                port = getattr(server, 'server_port', None)
+                if port is None:
+                    port = server.socket.getsockname()[1]
+                base_url = f'http://127.0.0.1:{port}'
+                if base_url:
+                    requests.get(f'{base_url}/imports', timeout=2)
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt < max_retries - 1:
                     await asyncio.sleep(1)
                 else:
                     raise RuntimeError("Flask server failed to start")
 
+        assert base_url is not None, "Smoke test server did not expose a listening port"
+
         # Launch browser at 1440x900 desktop viewport
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page(viewport={'width': 1440, 'height': 900})
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page(viewport={'width': 1440, 'height': 900})
 
+                try:
+                    screens = [
+                        ('Imports/List', f'{base_url}/imports', ['import', 'upload']),
+                        ('Dashboard', f'{base_url}/imports/smoke-test-batch/dashboard', ['dashboard', 'batch']),
+                        ('Validation Review', f'{base_url}/imports/smoke-test-batch/validation', ['validation', 'review']),
+                        ('Normalizations', f'{base_url}/imports/smoke-test-batch/normalizations', ['normalizations', 'field', 'accept', 'reject', 'defer']),
+                        ('Duplicates', f'{base_url}/imports/smoke-test-batch/duplicates', ['duplicate']),
+                        ('Households', f'{base_url}/imports/smoke-test-batch/households', ['household']),
+                        ('Audit Log', f'{base_url}/imports/smoke-test-batch/audit', ['audit']),
+                        ('Export Console', f'{base_url}/imports/smoke-test-batch/exports', ['export']),
+                    ]
+
+                    print("\n=== DESKTOP CANONICAL SCREENS SMOKE TEST ===")
+                    print("Viewport: 1440x900 (desktop only)")
+                    print("Coverage: 8 canonical screens (verified working)\n")
+
+                    for i, (screen_name, url, expected_keywords) in enumerate(screens, 1):
+                        await page.goto(url, wait_until='load')
+
+                        page_content = await page.content()
+                        content_lower = page_content.lower()
+
+                        body = await page.query_selector('body')
+                        assert body is not None, f"{screen_name}: body element should exist"
+
+                        assert len(page_content) > 500, \
+                            f"{screen_name}: page content should be > 500 bytes, got {len(page_content)}"
+
+                        error_markers = ['traceback', 'internal server error', 'not found', '<title>404', '<h1>404', '<h1>500']
+                        for marker in error_markers:
+                            assert marker not in content_lower, \
+                                f"{screen_name}: page should not contain error marker '{marker}'"
+
+                        has_keyword = any(kw.lower() in content_lower for kw in expected_keywords)
+                        assert has_keyword, \
+                            f"{screen_name}: page should contain one of {expected_keywords}"
+
+                        if screen_name == 'Imports/List':
+                            original_url = page.url
+                            filter_bar = page.get_by_test_id('imports-status-filter-controls')
+                            all_button = page.get_by_test_id('imports-status-filter-all')
+                            in_review_button = page.get_by_test_id('imports-status-filter-in-review')
+                            complete_button = page.get_by_test_id('imports-status-filter-complete')
+                            empty_state = page.get_by_test_id('imports-status-filter-empty-state')
+                            rows = page.locator('[data-import-row]')
+
+                            assert await filter_bar.count() == 1, "Imports/List: filter bar should render"
+                            assert await all_button.get_attribute('type') == 'button', "Imports/List: All imports control should be a button"
+                            assert await in_review_button.get_attribute('type') == 'button', "Imports/List: In Review control should be a button"
+                            assert await complete_button.get_attribute('type') == 'button', "Imports/List: Complete control should be a button"
+                            assert await page.locator('form').count() == 0, "Imports/List: page should not submit a form for filtering"
+                            assert page.url == original_url, "Imports/List: default URL should remain unchanged"
+                            assert await rows.count() == 3, "Imports/List: fixture should render three import rows"
+                            assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
+                                "Imports/List: default All imports view should show all rows"
+                            assert await page.locator('a.table-action:visible').count() == 3, \
+                                "Imports/List: visible review links should remain present in the default view"
+                            assert await empty_state.count() == 1, "Imports/List: empty-state container should render"
+                            assert await empty_state.is_hidden(), "Imports/List: empty-state container should be hidden by default"
+
+                            await in_review_button.click()
+                            assert page.url == original_url, "Imports/List: clicking filters should not change the URL"
+                            assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 1, \
+                                "Imports/List: In Review filter should hide non-matching rows"
+                            assert await rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 2, \
+                                "Imports/List: In Review filter should hide the other two rows"
+                            assert await page.locator('a.table-action:visible').count() == 1, \
+                                "Imports/List: visible review link should remain for the matching row"
+                            assert await empty_state.is_hidden(), \
+                                "Imports/List: empty state should remain hidden when matches exist"
+
+                            await all_button.click()
+                            assert page.url == original_url, "Imports/List: All imports should not change the URL"
+                            assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
+                                "Imports/List: All imports should restore all rows"
+                            assert await page.locator('a.table-action:visible').count() == 3, \
+                                "Imports/List: All visible review links should be restored"
+                            assert await empty_state.is_hidden(), \
+                                "Imports/List: empty state should stay hidden when all rows match"
+
+                            await complete_button.click()
+                            assert page.url == original_url, "Imports/List: clicking filters should keep the URL stable"
+                            assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 2, \
+                                "Imports/List: Complete filter should show the two matching rows"
+                            assert await rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 1, \
+                                "Imports/List: Complete filter should hide the non-matching row"
+                            assert await page.locator('a.table-action:visible').count() == 2, \
+                                "Imports/List: visible review links should remain for matching rows"
+                            assert await empty_state.is_hidden(), \
+                                "Imports/List: fixture does not expose a no-match filter, so the empty state container should exist and stay hidden"
+
+                            await all_button.click()
+                            assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
+                                "Imports/List: All imports should restore visibility after filtering"
+
+                        if screen_name == 'Dashboard':
+                            jump_strip = page.get_by_test_id('dashboard-jump-strip')
+                            validation_jump = page.get_by_test_id('dashboard-jump-validation')
+                            duplicates_jump = page.get_by_test_id('dashboard-jump-duplicates')
+                            normalizations_jump = page.get_by_test_id('dashboard-jump-normalizations')
+                            households_jump = page.get_by_test_id('dashboard-jump-households')
+                            validation_card = page.locator('#dashboard-validation-review')
+                            duplicates_card = page.locator('#dashboard-possible-duplicates')
+                            normalizations_card = page.locator('#dashboard-normalizations')
+                            households_card = page.locator('#dashboard-households')
+
+                            assert await jump_strip.count() == 1, "Dashboard: jump strip should render"
+                            assert await validation_jump.count() == 1, "Dashboard: Validation Review jump link should render"
+                            assert await duplicates_jump.count() == 1, "Dashboard: Possible Duplicates jump link should render"
+                            assert await normalizations_jump.count() == 1, "Dashboard: Normalizations jump link should render"
+                            assert await households_jump.count() == 1, "Dashboard: Households jump link should render"
+                            assert await validation_card.count() == 1, "Dashboard: Validation Review card should render"
+                            assert await duplicates_card.count() == 1, "Dashboard: Possible Duplicates card should render"
+                            assert await normalizations_card.count() == 1, "Dashboard: Normalizations card should render"
+                            assert await households_card.count() == 1, "Dashboard: Households card should render"
+                            assert await page.get_by_role('link', name='Review Records').count() == 1, \
+                                "Dashboard: Review Records action should remain present"
+                            assert await page.get_by_role('link', name='Review Duplicates').count() == 1, \
+                                "Dashboard: Review Duplicates action should remain present"
+                            assert await page.get_by_role('link', name='Review Normalizations').count() == 1, \
+                                "Dashboard: Review Normalizations action should remain present"
+                            assert await page.get_by_role('link', name='Review Households').count() == 1, \
+                                "Dashboard: Review Households action should remain present"
+                            assert await page.get_by_role('link', name='View Audit Log').count() == 1, \
+                                "Dashboard: View Audit Log action should remain present"
+                            assert await page.get_by_role('link', name='Open Export Console').count() == 1, \
+                                "Dashboard: Open Export Console action should remain present"
+
+                            await validation_jump.click()
+                            await page.wait_for_function(
+                                "() => window.location.hash === '#dashboard-validation-review'",
+                                timeout=5000,
+                            )
+
+                            target_outline_style = await validation_card.evaluate(
+                                "el => window.getComputedStyle(el).outlineStyle"
+                            )
+                            target_outline_width = await validation_card.evaluate(
+                                "el => window.getComputedStyle(el).outlineWidth"
+                            )
+                            assert target_outline_style == 'solid', \
+                                f"Dashboard: target card should be visibly highlighted, got outline style {target_outline_style}"
+                            assert target_outline_width == '2px', \
+                                f"Dashboard: target card should be visibly highlighted, got outline width {target_outline_width}"
+
+                        print(f"✓ {i}. {screen_name} renders correctly")
+
+                    viewport = await page.evaluate('() => ({ width: window.innerWidth, height: window.innerHeight })')
+                    assert viewport['width'] == 1440, f"Width should be 1440, got {viewport['width']}"
+                    assert viewport['height'] == 900, f"Height should be 900, got {viewport['height']}"
+
+                    print(f"\n✓ All 8 canonical screens verified at {viewport['width']}x{viewport['height']}")
+                    print("✓ Desktop viewport confirmed")
+                    print("✓ No destructive actions performed")
+                    print("✓ No export generation triggered")
+
+                finally:
+                    await browser.close()
+        finally:
             try:
-                screens = [
-                    ('Imports/List', 'http://127.0.0.1:8001/imports', ['import', 'upload']),
-                    ('Dashboard', 'http://127.0.0.1:8001/imports/smoke-test-batch/dashboard', ['dashboard', 'batch']),
-                    ('Validation Review', 'http://127.0.0.1:8001/imports/smoke-test-batch/validation', ['validation', 'review']),
-                    ('Normalizations', 'http://127.0.0.1:8001/imports/smoke-test-batch/normalizations', ['normalizations', 'field', 'accept', 'reject', 'defer']),
-                    ('Duplicates', 'http://127.0.0.1:8001/imports/smoke-test-batch/duplicates', ['duplicate']),
-                    ('Households', 'http://127.0.0.1:8001/imports/smoke-test-batch/households', ['household']),
-                    ('Audit Log', 'http://127.0.0.1:8001/imports/smoke-test-batch/audit', ['audit']),
-                    ('Export Console', 'http://127.0.0.1:8001/imports/smoke-test-batch/exports', ['export']),
-                ]
-
-                print("\n=== DESKTOP CANONICAL SCREENS SMOKE TEST ===")
-                print("Viewport: 1440x900 (desktop only)")
-                print("Coverage: 8 canonical screens (verified working)\n")
-
-                for i, (screen_name, url, expected_keywords) in enumerate(screens, 1):
-                    # Navigate to screen - let exceptions fail the test
-                    await page.goto(url, wait_until='load')
-
-                    # Get page content for assertions
-                    page_content = await page.content()
-                    content_lower = page_content.lower()
-
-                    # Assert 1: Body element exists
-                    body = await page.query_selector('body')
-                    assert body is not None, f"{screen_name}: body element should exist"
-
-                    # Assert 2: Content is meaningful (> 500 bytes)
-                    assert len(page_content) > 500, \
-                        f"{screen_name}: page content should be > 500 bytes, got {len(page_content)}"
-
-                    # Assert 3: No error markers
-                    error_markers = ['traceback', 'internal server error', 'not found', '<title>404', '<h1>404', '<h1>500']
-                    for marker in error_markers:
-                        assert marker not in content_lower, \
-                            f"{screen_name}: page should not contain error marker '{marker}'"
-
-                    # Assert 4: Screen-specific keyword(s) present
-                    has_keyword = any(kw.lower() in content_lower for kw in expected_keywords)
-                    assert has_keyword, \
-                        f"{screen_name}: page should contain one of {expected_keywords}"
-
-                    if screen_name == 'Imports/List':
-                        # Browser-executed proof for the client-side filter controls.
-                        original_url = page.url
-                        filter_bar = page.get_by_test_id('imports-status-filter-controls')
-                        all_button = page.get_by_test_id('imports-status-filter-all')
-                        in_review_button = page.get_by_test_id('imports-status-filter-in-review')
-                        complete_button = page.get_by_test_id('imports-status-filter-complete')
-                        empty_state = page.get_by_test_id('imports-status-filter-empty-state')
-                        rows = page.locator('[data-import-row]')
-
-                        assert await filter_bar.count() == 1, "Imports/List: filter bar should render"
-                        assert await all_button.get_attribute('type') == 'button', "Imports/List: All imports control should be a button"
-                        assert await in_review_button.get_attribute('type') == 'button', "Imports/List: In Review control should be a button"
-                        assert await complete_button.get_attribute('type') == 'button', "Imports/List: Complete control should be a button"
-                        assert await page.locator('form').count() == 0, "Imports/List: page should not submit a form for filtering"
-                        assert page.url == original_url, "Imports/List: default URL should remain unchanged"
-                        assert await rows.count() == 3, "Imports/List: fixture should render three import rows"
-                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
-                            "Imports/List: default All imports view should show all rows"
-                        assert await page.locator('a.table-action:visible').count() == 3, \
-                            "Imports/List: visible review links should remain present in the default view"
-                        assert await empty_state.count() == 1, "Imports/List: empty-state container should render"
-                        assert await empty_state.is_hidden(), "Imports/List: empty-state container should be hidden by default"
-
-                        await in_review_button.click()
-                        assert page.url == original_url, "Imports/List: clicking filters should not change the URL"
-                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 1, \
-                            "Imports/List: In Review filter should hide non-matching rows"
-                        assert await rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 2, \
-                            "Imports/List: In Review filter should hide the other two rows"
-                        assert await page.locator('a.table-action:visible').count() == 1, \
-                            "Imports/List: visible review link should remain for the matching row"
-                        assert await empty_state.is_hidden(), \
-                            "Imports/List: empty state should remain hidden when matches exist"
-
-                        await all_button.click()
-                        assert page.url == original_url, "Imports/List: All imports should not change the URL"
-                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
-                            "Imports/List: All imports should restore all rows"
-                        assert await page.locator('a.table-action:visible').count() == 3, \
-                            "Imports/List: All visible review links should be restored"
-                        assert await empty_state.is_hidden(), \
-                            "Imports/List: empty state should stay hidden when all rows match"
-
-                        await complete_button.click()
-                        assert page.url == original_url, "Imports/List: clicking filters should keep the URL stable"
-                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 2, \
-                            "Imports/List: Complete filter should show the two matching rows"
-                        assert await rows.evaluate_all("rows => rows.filter(row => row.hidden).length") == 1, \
-                            "Imports/List: Complete filter should hide the non-matching row"
-                        assert await page.locator('a.table-action:visible').count() == 2, \
-                            "Imports/List: visible review links should remain for matching rows"
-                        assert await empty_state.is_hidden(), \
-                            "Imports/List: fixture does not expose a no-match filter, so the empty state container should exist and stay hidden"
-
-                        await all_button.click()
-                        assert await rows.evaluate_all("rows => rows.filter(row => !row.hidden).length") == 3, \
-                            "Imports/List: All imports should restore visibility after filtering"
-
-                    if screen_name == 'Dashboard':
-                        jump_strip = page.get_by_test_id('dashboard-jump-strip')
-                        validation_jump = page.get_by_test_id('dashboard-jump-validation')
-                        duplicates_jump = page.get_by_test_id('dashboard-jump-duplicates')
-                        normalizations_jump = page.get_by_test_id('dashboard-jump-normalizations')
-                        households_jump = page.get_by_test_id('dashboard-jump-households')
-                        validation_card = page.locator('#dashboard-validation-review')
-                        duplicates_card = page.locator('#dashboard-possible-duplicates')
-                        normalizations_card = page.locator('#dashboard-normalizations')
-                        households_card = page.locator('#dashboard-households')
-
-                        assert await jump_strip.count() == 1, "Dashboard: jump strip should render"
-                        assert await validation_jump.count() == 1, "Dashboard: Validation Review jump link should render"
-                        assert await duplicates_jump.count() == 1, "Dashboard: Possible Duplicates jump link should render"
-                        assert await normalizations_jump.count() == 1, "Dashboard: Normalizations jump link should render"
-                        assert await households_jump.count() == 1, "Dashboard: Households jump link should render"
-                        assert await validation_card.count() == 1, "Dashboard: Validation Review card should render"
-                        assert await duplicates_card.count() == 1, "Dashboard: Possible Duplicates card should render"
-                        assert await normalizations_card.count() == 1, "Dashboard: Normalizations card should render"
-                        assert await households_card.count() == 1, "Dashboard: Households card should render"
-                        assert await page.get_by_role('link', name='Review Records').count() == 1, \
-                            "Dashboard: Review Records action should remain present"
-                        assert await page.get_by_role('link', name='Review Duplicates').count() == 1, \
-                            "Dashboard: Review Duplicates action should remain present"
-                        assert await page.get_by_role('link', name='Review Normalizations').count() == 1, \
-                            "Dashboard: Review Normalizations action should remain present"
-                        assert await page.get_by_role('link', name='Review Households').count() == 1, \
-                            "Dashboard: Review Households action should remain present"
-                        assert await page.get_by_role('link', name='View Audit Log').count() == 1, \
-                            "Dashboard: View Audit Log action should remain present"
-                        assert await page.get_by_role('link', name='Open Export Console').count() == 1, \
-                            "Dashboard: Open Export Console action should remain present"
-
-                        await validation_jump.click()
-                        await page.wait_for_function(
-                            "() => window.location.hash === '#dashboard-validation-review'",
-                            timeout=5000,
-                        )
-
-                        target_outline_style = await validation_card.evaluate(
-                            "el => window.getComputedStyle(el).outlineStyle"
-                        )
-                        target_outline_width = await validation_card.evaluate(
-                            "el => window.getComputedStyle(el).outlineWidth"
-                        )
-                        assert target_outline_style == 'solid', \
-                            f"Dashboard: target card should be visibly highlighted, got outline style {target_outline_style}"
-                        assert target_outline_width == '2px', \
-                            f"Dashboard: target card should be visibly highlighted, got outline width {target_outline_width}"
-
-                    print(f"✓ {i}. {screen_name} renders correctly")
-
-                # Verify viewport
-                viewport = await page.evaluate('() => ({ width: window.innerWidth, height: window.innerHeight })')
-                assert viewport['width'] == 1440, f"Width should be 1440, got {viewport['width']}"
-                assert viewport['height'] == 900, f"Height should be 900, got {viewport['height']}"
-
-                print(f"\n✓ All 8 canonical screens verified at {viewport['width']}x{viewport['height']}")
-                print("✓ Desktop viewport confirmed")
-                print("✓ No destructive actions performed")
-                print("✓ No export generation triggered")
-
-            finally:
-                await browser.close()
+                server.shutdown()
+            except Exception:
+                pass
+            try:
+                flask_thread.join(timeout=2)
+            except Exception:
+                pass
 
     finally:
         session.close()

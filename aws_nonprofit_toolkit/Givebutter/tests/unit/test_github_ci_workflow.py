@@ -67,6 +67,7 @@ def test_ci_verifies_interpreter_resolution_before_tests():
     assert "python -c \"import sys; print(sys.executable)\"" in text
     assert 'export PATH="$GIVEBUTTER_DIR/.venv/bin:$PATH"' in text
     assert 'python_executable="$(python -c \'import sys; print(sys.executable)\')"' in text
+    assert "from importlib.metadata import version; import sys; print(version('playwright')); print(sys.executable)" in text
 
 
 def test_ci_uses_absolute_venv_python_for_critical_commands():
@@ -76,6 +77,8 @@ def test_ci_uses_absolute_venv_python_for_critical_commands():
     assert '-- "$GIVEBUTTER_DIR/.venv/bin/python" -m pytest' in text
     assert '"$GIVEBUTTER_DIR/.venv/bin/python" "$GIVEBUTTER_DIR/scripts/ci/check_no_artifacts.py"' in text
     assert '"$GIVEBUTTER_DIR/.venv/bin/python" -m compileall scripts tests' in text
+    assert '"$GIVEBUTTER_DIR/.venv/bin/python" \\\n            "$GIVEBUTTER_DIR/scripts/ci/e2e_gate.py"' in text
+    assert '-- "$GIVEBUTTER_DIR/.venv/bin/python" -m pytest \\\n            tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_ignores_empty_drop_and_recovers' in text
     assert 'python scripts/ci/test_gate.py' not in text
     assert 'source .venv/bin/activate' not in text
 
@@ -93,3 +96,29 @@ def test_ci_has_manual_and_pull_request_triggers():
     assert "pull_request:" in text
     assert "merge_group:" in text
     assert "workflow_dispatch:" in text
+
+
+def test_ci_adds_isolated_browser_e2e_job_for_approved_p1_workflows():
+    text = _workflow_text()
+
+    assert "browser-e2e:" in text
+    assert "name: Browser E2E checks" in text
+    assert "needs: baseline" in text
+    assert "timeout-minutes: 45" in text
+    assert "- name: Install Playwright Chromium" in text
+    assert '"$GIVEBUTTER_DIR/.venv/bin/python" -m playwright install --with-deps chromium' in text
+    assert "- name: Run browser E2E checks" in text
+    assert '"$GIVEBUTTER_DIR/.venv/bin/python" \\\n            "$GIVEBUTTER_DIR/scripts/ci/e2e_gate.py"' in text
+    assert '"$GIVEBUTTER_DIR/.venv/bin/python" -m pytest \\\n            tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_ignores_empty_drop_and_recovers' in text
+    assert 'tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_rejects_invalid_drop_and_recovers_with_drag_drop' in text
+    assert 'tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_blocks_repeated_drops_while_upload_is_in_flight' in text
+    assert 'tests/e2e/test_e2e_upload_workflow.py::test_upload_non_givebutter_csv_shows_inline_error_banner' in text
+    assert 'tests/e2e/test_validation_export_blocking.py::test_validation_blocker_appears_in_export_console' in text
+    assert 'tests/e2e/test_validation_export_blocking.py::test_failed_autosave_values_not_exported' in text
+    assert 'tests/e2e/test_validation_export_blocking.py::test_persisted_validation_override_allows_export' in text
+    assert 'tests/e2e/test_validation_export_blocking.py::test_clean_validation_export_proceeds' in text
+    assert 'tests/e2e/test_validation_review_dom.py::test_all_inline_fields_persist_after_browser_refresh' in text
+    assert 'tests/e2e/test_e2e_decision_workflow.py::test_save_all_decisions_completes_review' in text
+    assert 'tests/e2e/test_desktop_canonical_screens_smoke.py::test_desktop_canonical_screens_smoke' in text
+    assert 'python -m pytest tests/e2e' not in text
+    assert 'playwright install --with-deps chromium' in text

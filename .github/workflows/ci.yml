@@ -15,13 +15,15 @@ permissions:
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+env:
+  GIVEBUTTER_DIR: ${{ github.workspace }}/aws_nonprofit_toolkit/Givebutter
+
 jobs:
   baseline:
     name: Baseline checks
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      GIVEBUTTER_DIR: ${{ github.workspace }}/aws_nonprofit_toolkit/Givebutter
 
     steps:
       - name: Check out repository
@@ -158,3 +160,74 @@ jobs:
         working-directory: ${{ env.GIVEBUTTER_DIR }}
         run: |
           "$GIVEBUTTER_DIR/.venv/bin/python" -m compileall scripts tests
+
+  browser-e2e:
+    name: Browser E2E checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs: baseline
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: "3.11.9"
+          cache: pip
+          cache-dependency-path: |
+            ${{ env.GIVEBUTTER_DIR }}/requirements.txt
+            ${{ env.GIVEBUTTER_DIR }}/requirements-test.txt
+
+      - name: Create and install Givebutter virtualenv
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
+        run: |
+          "$pythonLocation/bin/python" -m venv "$GIVEBUTTER_DIR/.venv"
+          "$GIVEBUTTER_DIR/.venv/bin/python" -m pip install --upgrade pip
+          "$GIVEBUTTER_DIR/.venv/bin/python" -m pip install -r requirements.txt -r requirements-test.txt
+          echo "$GIVEBUTTER_DIR/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Verify browser runtime assumptions
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
+        run: |
+          set -euo pipefail
+          export PATH="$GIVEBUTTER_DIR/.venv/bin:$PATH"
+          printf '%s\n' "$GITHUB_WORKSPACE"
+          printf '%s\n' "$GIVEBUTTER_DIR"
+          test -x "$GIVEBUTTER_DIR/.venv/bin/python"
+          test -x "$GIVEBUTTER_DIR/.venv/bin/pytest"
+          command -v python
+          command -v pytest
+          python -c "import sys; print(sys.executable)"
+          "$GIVEBUTTER_DIR/.venv/bin/python" -c "import sys; print(sys.executable)"
+          "$GIVEBUTTER_DIR/.venv/bin/python" -c "from importlib.metadata import version; import sys; print(version('playwright')); print(sys.executable)"
+
+      - name: Install Playwright Chromium
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
+        run: |
+          "$GIVEBUTTER_DIR/.venv/bin/python" -m playwright install --with-deps chromium
+
+      - name: Run browser E2E checks
+        working-directory: ${{ env.GIVEBUTTER_DIR }}
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          "$GIVEBUTTER_DIR/.venv/bin/python" \
+            "$GIVEBUTTER_DIR/scripts/ci/e2e_gate.py" \
+            --timeout 1800 \
+            -- "$GIVEBUTTER_DIR/.venv/bin/python" -m pytest \
+            tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_ignores_empty_drop_and_recovers \
+            tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_rejects_invalid_drop_and_recovers_with_drag_drop \
+            tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_blocks_repeated_drops_while_upload_is_in_flight \
+            tests/e2e/test_e2e_upload_workflow.py::test_upload_non_givebutter_csv_shows_inline_error_banner \
+            tests/e2e/test_validation_export_blocking.py::test_validation_blocker_appears_in_export_console \
+            tests/e2e/test_validation_export_blocking.py::test_failed_autosave_values_not_exported \
+            tests/e2e/test_validation_export_blocking.py::test_persisted_validation_override_allows_export \
+            tests/e2e/test_validation_export_blocking.py::test_clean_validation_export_proceeds \
+            tests/e2e/test_validation_review_dom.py::test_all_inline_fields_persist_after_browser_refresh \
+            tests/e2e/test_e2e_decision_workflow.py::test_save_all_decisions_completes_review \
+            tests/e2e/test_desktop_canonical_screens_smoke.py::test_desktop_canonical_screens_smoke \
+            -x

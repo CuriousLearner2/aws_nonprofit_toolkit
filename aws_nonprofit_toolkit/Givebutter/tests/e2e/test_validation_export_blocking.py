@@ -108,15 +108,42 @@ def e2e_database_and_app():
     Base.metadata.create_all(engine)
 
     # Set environment for Flask
+    original_repository_env = os.environ.get('HOUSEHOLDER_REPOSITORY')
+    original_database_env = os.environ.get('GIVEBUTTER_DATABASE_URL')
     os.environ['HOUSEHOLDER_REPOSITORY'] = 'database'
     os.environ['GIVEBUTTER_DATABASE_URL'] = database_url
 
     # Configure Flask for testing
+    original_testing = app.config.get('TESTING')
+    original_repository_mode = app.config.get('HOUSEHOLDER_REPOSITORY')
+    original_database_url = app.config.get('GIVEBUTTER_DATABASE_URL')
     app.config['TESTING'] = True
+    app.config['HOUSEHOLDER_REPOSITORY'] = 'database'
+    app.config['GIVEBUTTER_DATABASE_URL'] = database_url
 
     yield database_url, db_path, app
 
     # Cleanup
+    if original_testing is None:
+        app.config.pop('TESTING', None)
+    else:
+        app.config['TESTING'] = original_testing
+    if original_repository_mode is None:
+        app.config.pop('HOUSEHOLDER_REPOSITORY', None)
+    else:
+        app.config['HOUSEHOLDER_REPOSITORY'] = original_repository_mode
+    if original_database_url is None:
+        app.config.pop('GIVEBUTTER_DATABASE_URL', None)
+    else:
+        app.config['GIVEBUTTER_DATABASE_URL'] = original_database_url
+    if original_repository_env is None:
+        os.environ.pop('HOUSEHOLDER_REPOSITORY', None)
+    else:
+        os.environ['HOUSEHOLDER_REPOSITORY'] = original_repository_env
+    if original_database_env is None:
+        os.environ.pop('GIVEBUTTER_DATABASE_URL', None)
+    else:
+        os.environ['GIVEBUTTER_DATABASE_URL'] = original_database_env
     Path(db_path).unlink(missing_ok=True)
 
 
@@ -372,13 +399,18 @@ async def test_clean_validation_export_proceeds(e2e_database_and_app):
 
         contact_id = contact.id
 
-        # Start Flask server with proven lifecycle cleanup pattern
-        server = make_server('127.0.0.1', 8001, flask_app)
+        # Start Flask server on an ephemeral port to avoid collisions with other browser tests.
+        server = make_server('127.0.0.1', 0, flask_app)
         flask_thread = threading.Thread(target=server.serve_forever, daemon=True)
         flask_thread.start()
 
+        port = getattr(server, 'server_port', None)
+        if port is None:
+            port = server.socket.getsockname()[1]
+        base_url = f'http://127.0.0.1:{port}'
+
         # Wait for server using exponential backoff polling
-        await wait_for_validation_export_page_ready('http://127.0.0.1:8001/imports/clean-validation-batch-c/exports', timeout_seconds=10)
+        await wait_for_validation_export_page_ready(f'{base_url}/imports/clean-validation-batch-c/exports', timeout_seconds=10)
 
         # Launch browser
         try:
@@ -388,7 +420,7 @@ async def test_clean_validation_export_proceeds(e2e_database_and_app):
 
                 try:
                     # C0: Navigate to exports page
-                    await page.goto('http://127.0.0.1:8001/imports/clean-validation-batch-c/exports')
+                    await page.goto(f'{base_url}/imports/clean-validation-batch-c/exports')
 
                     # Wait for page to load
                     await page.wait_for_selector('h1', timeout=5000)
