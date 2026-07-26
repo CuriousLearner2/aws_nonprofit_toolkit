@@ -100,9 +100,9 @@ def flask_app_database_mode():
 
     # Prepare environment for subprocess
     env = os.environ.copy()
+    env.pop('HOUSEHOLDER_INGEST_ON_UPLOAD', None)
     env['HOUSEHOLDER_REPOSITORY'] = 'database'
     env['GIVEBUTTER_DATABASE_URL'] = database_url
-    env['HOUSEHOLDER_INGEST_ON_UPLOAD'] = 'true'
     env['FLASK_ENV'] = 'development'
 
     # Start Flask in subprocess on a different port (avoid conflicts with session-scoped fixture)
@@ -189,6 +189,7 @@ def flask_app_e2e(e2e_test_database):
 
     # Prepare environment for subprocess
     env = os.environ.copy()
+    env.pop('HOUSEHOLDER_INGEST_ON_UPLOAD', None)
     env['HOUSEHOLDER_REPOSITORY'] = 'database'
     env['GIVEBUTTER_DATABASE_URL'] = database_url
     env['FLASK_ENV'] = 'development'

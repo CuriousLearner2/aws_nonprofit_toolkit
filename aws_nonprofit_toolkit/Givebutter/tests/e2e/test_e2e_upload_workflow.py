@@ -320,9 +320,28 @@ async def test_upload_drop_zone_ignores_empty_drop_and_recovers(flask_app_databa
             assert valid_dragover['dispatchResult'] is False
             assert valid_drop['defaultPrevented'] is True
             assert valid_drop['dispatchResult'] is False
-            await page.wait_for_selector('a.action-btn.primary', timeout=10000)
+            queue_row = page.locator('#queueBody tr').filter(has_text=sample_csv.name).first
+            await queue_row.wait_for(state='visible', timeout=10000)
+            review_link = queue_row.locator('a.action-btn.primary')
+            await review_link.wait_for(state='visible', timeout=10000)
             assert upload_request_count == 1
-            assert await page.locator('a.action-btn.primary', has_text='Review Import').count() == 1
+            assert await review_link.count() == 1
+            review_href = await review_link.get_attribute('href')
+            assert review_href is not None
+            assert review_href.startswith('/imports/')
+            assert review_href.endswith('/validation')
+
+            await review_link.click()
+            await page.wait_for_url('**/imports/*/validation', timeout=10000)
+
+            await page.goto("http://127.0.0.1:8001/")
+            await page.reload()
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            reloaded_row = page.locator('#queueBody tr').filter(has_text=sample_csv.name).first
+            reloaded_review_link = reloaded_row.locator('a.action-btn.primary')
+            assert await reloaded_review_link.count() == 1
+            assert await reloaded_review_link.get_attribute('href') == review_href
         finally:
             await browser.close()
 
@@ -583,6 +602,109 @@ async def test_upload_valid_csv(flask_app_database_mode, temp_dir, sample_csv):
 
             # Check if file appears in processing queue or shows status
             assert 'processing' in content.lower() or 'sample' in content.lower() or 'records' in content.lower()
+
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_upload_file_picker_creates_review_link_and_opens_validation(flask_app_database_mode, temp_dir, sample_csv):
+    """Test that file-picker uploads create a review link that opens validation."""
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(sample_csv))
+
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
+            if submit_button:
+                await submit_button.click()
+
+            queue_row = page.locator('#queueBody tr').filter(has_text=sample_csv.name).first
+            await queue_row.wait_for(state='visible', timeout=10000)
+            review_link = queue_row.locator('a.action-btn.primary')
+            await review_link.wait_for(state='visible', timeout=10000)
+            assert await review_link.count() == 1
+            review_href = await review_link.get_attribute('href')
+            assert review_href is not None
+            assert review_href.startswith('/imports/')
+            assert review_href.endswith('/validation')
+
+            await review_link.click()
+            await page.wait_for_url('**/imports/*/validation', timeout=10000)
+
+        finally:
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_upload_file_picker_repeated_same_filename_keeps_distinct_review_links(flask_app_database_mode, temp_dir, sample_csv):
+    """Repeated file-picker uploads of the same filename stay independently reviewable."""
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(sample_csv))
+
+            submit_button = await page.query_selector('button[type="submit"], button:has-text("Upload"), input[type="submit"]')
+            if submit_button:
+                await submit_button.click()
+
+            first_rows = page.locator('#queueBody tr').filter(has_text=sample_csv.name)
+            await first_rows.first.wait_for(state='visible', timeout=10000)
+            assert await first_rows.count() == 1
+            first_link = first_rows.first.locator('a.action-btn.primary')
+            first_href = await first_link.get_attribute('href')
+            assert first_href is not None
+            assert first_href.startswith('/imports/')
+
+            await file_input.set_input_files(str(sample_csv))
+            if submit_button:
+                await submit_button.click()
+
+            repeated_rows = page.locator('#queueBody tr').filter(has_text=sample_csv.name)
+            await repeated_rows.first.wait_for(state='visible', timeout=10000)
+            await page.wait_for_function(
+                "() => document.querySelectorAll('#queueBody tr').length === 2",
+                timeout=10000,
+            )
+            assert await repeated_rows.count() == 2
+
+            hrefs = []
+            for idx in range(await repeated_rows.count()):
+                link = repeated_rows.nth(idx).locator('a.action-btn.primary')
+                href = await link.get_attribute('href')
+                assert href is not None
+                assert href.startswith('/imports/')
+                assert href.endswith('/validation')
+                hrefs.append(href)
+
+            assert len(set(hrefs)) == 2
+
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector('.upload-card', timeout=5000)
+            after_reload_rows = page.locator('#queueBody tr').filter(has_text=sample_csv.name)
+            assert await after_reload_rows.count() == 2
+            after_reload_hrefs = []
+            for idx in range(await after_reload_rows.count()):
+                after_reload_hrefs.append(await after_reload_rows.nth(idx).locator('a.action-btn.primary').get_attribute('href'))
+            assert set(after_reload_hrefs) == set(hrefs)
 
         finally:
             await browser.close()

@@ -17,6 +17,7 @@ Design principles:
 import csv
 import hashlib
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -110,10 +111,10 @@ class IngestionResult:
 
 def generate_batch_id(csv_file_contents: bytes, imported_at: Optional[datetime] = None) -> str:
     """
-    Generate unique batch ID with timestamp and content hash.
+    Generate unique batch ID with timestamp, content hash, and a unique suffix.
 
-    Format: IMP-YYYYMMDD-HHMMSS-<HASH8>
-    Example: IMP-20260612-121530-A7F2B3C1
+    Format: IMP-YYYYMMDD-HHMMSS-<HASH8><UNIQ8>
+    Example: IMP-20260612-121530-A7F2B3C1D4E5F6A7
 
     Args:
         csv_file_contents: Bytes of processed CSV file
@@ -128,10 +129,11 @@ def generate_batch_id(csv_file_contents: bytes, imported_at: Optional[datetime] 
 
     # Calculate file hash (first 8 chars of SHA256, uppercase)
     file_hash = hashlib.sha256(csv_file_contents).hexdigest()[:8].upper()
+    unique_suffix = uuid.uuid4().hex[:8].upper()
 
     # Format timestamp
     timestamp_str = imported_at.strftime("%Y%m%d%H%M%S")
-    batch_id = f"IMP-{timestamp_str[:8]}-{timestamp_str[8:]}-{file_hash}"
+    batch_id = f"IMP-{timestamp_str[:8]}-{timestamp_str[8:]}-{file_hash}{unique_suffix}"
 
     return batch_id
 
@@ -260,10 +262,10 @@ def find_batch_by_filename(
     database_url: str,
 ) -> Optional[str]:
     """
-    Find batch_id for a given filename (exact match).
+    Find batch_id for a given filename only when it resolves unambiguously.
 
-    Used by /api/processing to match uploaded files back to their ImportBatch.
-    Returns the most recent batch if multiple batches share the filename.
+    Used by /api/processing for legacy rows that predate explicit queue metadata.
+    Returns None when zero or multiple batches share the filename.
 
     Args:
         filename: Filename to search (e.g., 'test.csv' or 'upload_YYYYMMDD_HHMMSS_test.csv')
@@ -278,13 +280,16 @@ def find_batch_by_filename(
     try:
         session = get_db_session(database_url)
         try:
-            # Query batches with matching filename (exact match)
-            batch = session.query(ImportBatch).filter_by(filename=filename).order_by(
-                ImportBatch.upload_timestamp.desc()
-            ).first()
+            batches = session.query(ImportBatch).filter_by(filename=filename).all()
 
-            if batch:
-                return batch.id
+            if len(batches) == 1:
+                return batches[0].id
+            if len(batches) > 1:
+                logger.warning(
+                    "Ambiguous legacy filename lookup for %s returned %d batches",
+                    filename,
+                    len(batches),
+                )
             return None
         finally:
             session.close()

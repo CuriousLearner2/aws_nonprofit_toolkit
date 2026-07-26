@@ -45,6 +45,11 @@ def flask_client(tmp_path, monkeypatch):
     # Import Flask app (must be after directory setup for monkeypatch to work)
     import scripts.uploader.app as app_module
 
+    # Keep fixture-mode tests isolated from any inherited database-mode runtime.
+    monkeypatch.delenv("HOUSEHOLDER_REPOSITORY", raising=False)
+    monkeypatch.delenv("GIVEBUTTER_DATABASE_URL", raising=False)
+    monkeypatch.delenv("HOUSEHOLDER_INGEST_ON_UPLOAD", raising=False)
+
     # Patch the module-level variables before app usage
     monkeypatch.setattr(app_module, "INTAKE_DIR", intake_dir)
     monkeypatch.setattr(app_module, "PROCESSING_DIR", processing_dir)
@@ -71,6 +76,7 @@ def flask_client_with_database(tmp_path, monkeypatch):
     init_db(db_url)
 
     # Set environment variables for ingestion
+    monkeypatch.delenv("HOUSEHOLDER_REPOSITORY", raising=False)
     monkeypatch.setenv("HOUSEHOLDER_INGEST_ON_UPLOAD", "true")
     monkeypatch.setenv("GIVEBUTTER_DATABASE_URL", db_url)
 
@@ -172,73 +178,102 @@ class TestDefaultUploadBehavior:
 
 
 class TestDatabaseIngestOpt:
-    """Test that ingestion is opt-in and requires explicit configuration."""
+    """Test database-mode ingestion behavior and safe fallback coverage."""
 
-    def test_ingest_disabled_without_flag(self, tmp_path, monkeypatch):
-        """Ingestion does not occur even with database URL unless flag is set."""
+    def test_upload_ingests_in_database_mode_without_env_flag(self, flask_client_with_database, monkeypatch):
+        """Database mode should create a durable batch link even when the env flag is absent."""
         from io import BytesIO
-
-        # Set up temporary directories
-        intake_dir = tmp_path / "intake" / "new"
-        processing_dir = tmp_path / "processing"
-        intake_dir.mkdir(parents=True)
-        processing_dir.mkdir(parents=True)
-
-        # Create temporary database
-        db_path = tmp_path / "test.db"
-        db_url = f"sqlite:///{db_path}"
-        init_db(db_url)
-
-        # Set ONLY database URL, NOT ingestion flag
-        monkeypatch.setenv("GIVEBUTTER_DATABASE_URL", db_url)
-        monkeypatch.delenv("HOUSEHOLDER_INGEST_ON_UPLOAD", raising=False)
-
-        # Import Flask app and patch directories
         import scripts.uploader.app as app_module
-        monkeypatch.setattr(app_module, "INTAKE_DIR", intake_dir)
-        monkeypatch.setattr(app_module, "PROCESSING_DIR", processing_dir)
 
-        app = app_module.app
-        app.config["TESTING"] = True
-        client = app.test_client()
+        client_config = flask_client_with_database
+        client = client_config["client"]
+        db_url = client_config["db_url"]
 
-        # Create and upload CSV
+        monkeypatch.delenv("HOUSEHOLDER_INGEST_ON_UPLOAD", raising=False)
+        monkeypatch.delenv("GIVEBUTTER_DATABASE_URL", raising=False)
+        monkeypatch.setitem(app_module.app.config, "GIVEBUTTER_DATABASE_URL", db_url)
+        monkeypatch.setitem(app_module.app.config, "HOUSEHOLDER_REPOSITORY", "database")
+
         csv_content = (
             "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
         )
-        data = {
-            'file': (BytesIO(csv_content.encode()), 'test.csv')
-        }
+        data = {'file': (BytesIO(csv_content.encode()), 'config_only.csv')}
 
-        response = client.post('/upload', data=data, content_type='multipart/form-data')
+        upload_response = client.post('/upload', data=data, content_type='multipart/form-data')
+        assert upload_response.status_code == 200
 
-        # Verify upload succeeded with process-only response
-        assert response.status_code == 200
-        response_data = response.get_json()
+        upload_data = upload_response.get_json()
+        assert upload_data['batch_id'], "Upload should return a batch_id in database mode"
 
-        # Verify response has standard fields (no ingestion fields)
-        assert 'filename' in response_data
-        assert 'record_count' in response_data
-        assert 'status' in response_data
-        assert response_data['status'] == 'processed'
+        queue_response = client.get('/api/processing')
+        assert queue_response.status_code == 200
+        queue_data = queue_response.get_json()
+        assert queue_data, "Queue should include the uploaded file"
 
-        # Verify ingestion fields are NOT present
-        assert 'batch_id' not in response_data
-        assert 'ingestion_status' not in response_data
-        assert 'audit_log_id' not in response_data
+        queued = next(item for item in queue_data if item['filename'].endswith('config_only.csv'))
+        assert queued['batch_id'] == upload_data['batch_id']
+        assert queued['review_url'] == f"/imports/{upload_data['batch_id']}/validation"
 
-        # Verify database is completely empty (no ingestion occurred)
-        session = get_session(init_db(db_url))
-        try:
-            assert session.query(ImportBatch).count() == 0, "Database should have no ImportBatch"
-            assert session.query(RawImportRow).count() == 0, "Database should have no RawImportRow"
-            assert session.query(ImportContact).count() == 0, "Database should have no ImportContact"
-            assert session.query(ReviewItem).count() == 0, "Database should have no ReviewItem"
-            assert session.query(ReviewDecision).count() == 0, "Database should have no ReviewDecision"
-            assert session.query(AuditLogRecord).count() == 0, "Database should have no AuditLogRecord"
-        finally:
-            session.close()
+    def test_upload_respects_explicit_false_in_database_mode(self, flask_client_with_database, monkeypatch):
+        """Explicit false should leave database ingestion off and keep the fallback safe."""
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+
+        client_config = flask_client_with_database
+        client = client_config["client"]
+        db_url = client_config["db_url"]
+
+        monkeypatch.setenv("HOUSEHOLDER_INGEST_ON_UPLOAD", "false")
+        monkeypatch.setitem(app_module.app.config, "GIVEBUTTER_DATABASE_URL", db_url)
+        monkeypatch.setitem(app_module.app.config, "HOUSEHOLDER_REPOSITORY", "database")
+
+        csv_content = (
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
+            "Jane Doe,jane@gmail.com,5559876543,200.00,2026-06-13,PASS,None,,TXN002"
+        )
+        data = {'file': (BytesIO(csv_content.encode()), 'explicit_false.csv')}
+
+        upload_response = client.post('/upload', data=data, content_type='multipart/form-data')
+        assert upload_response.status_code == 200
+
+        upload_data = upload_response.get_json()
+        assert 'batch_id' not in upload_data
+
+        queue_response = client.get('/api/processing')
+        assert queue_response.status_code == 200
+        queue_data = queue_response.get_json()
+        queued = next(item for item in queue_data if item['filename'].endswith('explicit_false.csv'))
+        assert queued['batch_id'] is None
+        assert queued['review_url'] == '/imports'
+
+    def test_upload_in_database_mode_without_database_url_falls_back_safely(self, flask_client, monkeypatch):
+        """Database mode without a database URL should not invent ingestion state."""
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+
+        monkeypatch.setitem(app_module.app.config, "HOUSEHOLDER_REPOSITORY", "database")
+        monkeypatch.delenv("HOUSEHOLDER_INGEST_ON_UPLOAD", raising=False)
+        monkeypatch.delenv("GIVEBUTTER_DATABASE_URL", raising=False)
+
+        csv_content = (
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
+            "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
+        )
+        data = {'file': (BytesIO(csv_content.encode()), 'database_missing.csv')}
+
+        upload_response = flask_client.post('/upload', data=data, content_type='multipart/form-data')
+        assert upload_response.status_code == 200
+
+        upload_data = upload_response.get_json()
+        assert 'batch_id' not in upload_data
+
+        queue_response = flask_client.get('/api/processing')
+        assert queue_response.status_code == 200
+        queue_data = queue_response.get_json()
+        queued = next(item for item in queue_data if item['filename'].endswith('database_missing.csv'))
+        assert queued['batch_id'] is None
+        assert queued['review_url'] == '/imports'
 
 
 class TestDatabaseIngestionPath:
@@ -795,6 +830,99 @@ class TestUploadIngestedDataReadback:
         queued = next(item for item in queue_data if item['filename'].endswith('config_only.csv'))
         assert queued['batch_id'] == upload_data['batch_id']
         assert queued['review_url'] == f"/imports/{upload_data['batch_id']}/validation"
+
+    def test_repeated_same_filename_uploads_keep_distinct_batch_links(self, flask_client_with_database, monkeypatch):
+        """Repeated uploads of the same filename stay independently reviewable."""
+        from io import BytesIO
+        import scripts.uploader.app as app_module
+        from scripts.householder.database_models import get_session, init_db, ImportBatch
+
+        client_config = flask_client_with_database
+        client = client_config["client"]
+        db_url = client_config["db_url"]
+
+        monkeypatch.delenv("HOUSEHOLDER_INGEST_ON_UPLOAD", raising=False)
+        monkeypatch.delenv("GIVEBUTTER_DATABASE_URL", raising=False)
+        monkeypatch.setitem(app_module.app.config, "GIVEBUTTER_DATABASE_URL", db_url)
+        monkeypatch.setitem(app_module.app.config, "HOUSEHOLDER_REPOSITORY", "database")
+
+        csv_content = (
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
+            "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
+        )
+        data = {'file': (BytesIO(csv_content.encode()), 'repeat_same_name.csv')}
+
+        first_upload = client.post('/upload', data=data, content_type='multipart/form-data')
+        assert first_upload.status_code == 200
+        first_data = first_upload.get_json()
+        assert first_data['batch_id']
+
+        second_upload = client.post('/upload', data={'file': (BytesIO(csv_content.encode()), 'repeat_same_name.csv')}, content_type='multipart/form-data')
+        assert second_upload.status_code == 200
+        second_data = second_upload.get_json()
+        assert second_data['batch_id']
+        assert second_data['batch_id'] != first_data['batch_id']
+
+        queue_response = client.get('/api/processing')
+        assert queue_response.status_code == 200
+        queue_items = queue_response.get_json()
+        repeated_items = [item for item in queue_items if item['filename'].endswith('repeat_same_name.csv')]
+        assert len(repeated_items) == 2
+        assert {item['batch_id'] for item in repeated_items} == {
+            first_data['batch_id'],
+            second_data['batch_id'],
+        }
+        assert all(
+            item['review_url'] == f"/imports/{item['batch_id']}/validation"
+            for item in repeated_items
+        )
+
+        reload_queue_response = client.get('/api/processing')
+        assert reload_queue_response.status_code == 200
+        reload_items = reload_queue_response.get_json()
+        reload_repeated_items = [item for item in reload_items if item['filename'].endswith('repeat_same_name.csv')]
+        assert sorted((item['filename'], item['batch_id'], item['review_url']) for item in reload_repeated_items) == sorted(
+            (item['filename'], item['batch_id'], item['review_url']) for item in repeated_items
+        )
+
+        session = get_session(init_db(db_url))
+        try:
+            batches = session.query(ImportBatch).filter_by(filename='repeat_same_name.csv').all()
+            assert len(batches) == 2
+            assert {batch.id for batch in batches} == {
+                first_data['batch_id'],
+                second_data['batch_id'],
+            }
+        finally:
+            session.close()
+
+    def test_legacy_same_filename_rows_fail_safe_when_ambiguous(self, flask_client_with_database):
+        """Legacy rows without metadata should not relink to an arbitrary batch."""
+        import scripts.uploader.app as app_module
+        from scripts.householder.database_models import get_session, init_db
+        from scripts.householder.ingestion_service import ingest_processed_csv
+
+        client_config = flask_client_with_database
+        client = client_config["client"]
+        db_url = client_config["db_url"]
+
+        csv_content = (
+            "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications,Transaction ID\n"
+            "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,,TXN001"
+        )
+        temp_dir = app_module.PROCESSING_DIR
+        legacy_processing = temp_dir / "upload_20260725_123456_legacy_same_name.csv"
+        legacy_processing.write_text(csv_content, encoding='utf-8')
+
+        ingest_processed_csv(str(legacy_processing), "legacy_same_name.csv", db_url, imported_at=None)
+        ingest_processed_csv(str(legacy_processing), "legacy_same_name.csv", db_url, imported_at=None)
+
+        queue_response = client.get('/api/processing')
+        assert queue_response.status_code == 200
+        queue_items = queue_response.get_json()
+        legacy_row = next(item for item in queue_items if item['filename'] == legacy_processing.name)
+        assert legacy_row['batch_id'] is None
+        assert legacy_row['review_url'] == '/imports'
 
 
 class TestUploadErrorTaxonomy:

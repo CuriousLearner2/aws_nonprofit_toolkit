@@ -1,9 +1,12 @@
 """Unit tests for ingestion service (Phase 1C-Step 4 core)."""
 
+import hashlib
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from scripts.householder.ingestion_service import (
     IngestionResult,
@@ -33,12 +36,14 @@ class TestBatchIDGeneration:
         assert "121530" in batch_id
 
     def test_batch_id_includes_file_hash(self):
-        """Batch ID includes 8-char file content hash."""
+        """Batch ID includes 8-char file content hash prefix."""
         csv_content = b"test data"
         batch_id = generate_batch_id(csv_content)
         hash_part = batch_id.split("-")[-1]
+        expected_hash = hashlib.sha256(csv_content).hexdigest()[:8].upper()
 
-        assert len(hash_part) == 8
+        assert len(hash_part) == 16
+        assert hash_part[:8] == expected_hash
         assert hash_part.isupper()
 
     def test_different_files_generate_different_hashes(self):
@@ -52,7 +57,7 @@ class TestBatchIDGeneration:
         assert hash1 != hash2
 
     def test_batch_id_format_is_correct(self):
-        """Batch ID format matches IMP-YYYYMMDD-HHMMSS-HASH8."""
+        """Batch ID format matches IMP-YYYYMMDD-HHMMSS-HASH8UNIQ8."""
         csv_content = b"test data"
         batch_id = generate_batch_id(csv_content)
 
@@ -61,7 +66,26 @@ class TestBatchIDGeneration:
         assert parts[0] == "IMP"
         assert len(parts[1]) == 8  # YYYYMMDD
         assert len(parts[2]) == 6  # HHMMSS
-        assert len(parts[3]) == 8  # HASH
+        assert len(parts[3]) == 16  # HASH + unique suffix
+
+    def test_same_second_same_content_generates_unique_ids(self):
+        """Two retries in the same second get different batch IDs."""
+        csv_content = b"test data"
+        imported_at = datetime(2026, 6, 12, 12, 15, 30, tzinfo=timezone.utc)
+
+        with patch(
+            "scripts.householder.ingestion_service.uuid.uuid4",
+            side_effect=[
+                SimpleNamespace(hex="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                SimpleNamespace(hex="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+            ],
+        ):
+            batch_id1 = generate_batch_id(csv_content, imported_at)
+            batch_id2 = generate_batch_id(csv_content, imported_at)
+
+        assert batch_id1 != batch_id2
+        assert batch_id1.startswith("IMP-20260612-121530-")
+        assert batch_id2.startswith("IMP-20260612-121530-")
 
 
 class TestNameSplitting:

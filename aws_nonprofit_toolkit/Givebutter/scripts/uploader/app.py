@@ -161,6 +161,78 @@ def _get_runtime_repository_config() -> dict:
         runtime_config['GIVEBUTTER_DATABASE_URL'] = database_url
     return runtime_config
 
+
+def _processing_metadata_path(processing_path: Path) -> Path:
+    """Return the durable metadata sidecar path for a processing CSV."""
+    return processing_path.with_suffix(processing_path.suffix + ".meta.json")
+
+
+def _write_processing_metadata(
+    processing_path: Path,
+    *,
+    batch_id: str,
+    original_filename: str,
+    request_id: str,
+    uploaded_at: datetime,
+) -> None:
+    """Persist the exact queue-to-batch association beside the processing CSV."""
+    metadata = {
+        "batch_id": batch_id,
+        "original_filename": original_filename,
+        "request_id": request_id,
+        "uploaded_at": uploaded_at.isoformat(),
+    }
+    _processing_metadata_path(processing_path).write_text(
+        json.dumps(metadata, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _load_processing_metadata(processing_path: Path) -> dict | None:
+    """Load the queue metadata sidecar if present."""
+    metadata_path = _processing_metadata_path(processing_path)
+    if not metadata_path.exists():
+        return None
+    try:
+        return json.loads(metadata_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning(f"Failed to read processing metadata for {processing_path.name}: {e}")
+        return None
+
+
+def _move_processing_metadata(source_path: Path, destination_path: Path) -> None:
+    """Move a processing CSV's metadata sidecar with the CSV itself."""
+    source_metadata = _processing_metadata_path(source_path)
+    if not source_metadata.exists():
+        return
+
+    destination_metadata = _processing_metadata_path(destination_path)
+    destination_metadata.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source_metadata), str(destination_metadata))
+
+
+def _extract_original_filename_from_processing_name(processing_name: str) -> str | None:
+    """Derive the user-uploaded filename from the internal queue filename."""
+    parts = processing_name.split('_')
+    if len(parts) >= 5 and parts[0] == 'upload':
+        return '_'.join(parts[4:])
+    if len(parts) >= 4 and parts[0] == 'upload':
+        return '_'.join(parts[3:])
+    return None
+
+
+def _should_ingest_upload(
+    database_url: str | None,
+    repository_mode: str | None,
+    ingest_setting: object | None,
+) -> bool:
+    """Resolve upload ingestion using the database-backed default contract."""
+    normalized_mode = (repository_mode or '').strip().lower()
+    if ingest_setting is None:
+        return bool(database_url) and normalized_mode == 'database'
+    return bool(database_url) and str(ingest_setting).strip().lower() == 'true'
+
+
 def validate_filename(filename: str) -> bool:
     """Prevent path traversal attacks."""
     try:
@@ -252,7 +324,7 @@ def upload():
         # Capture timestamp at the start for consistent batch identification
         upload_timestamp = datetime.now()
         timestamp = upload_timestamp.strftime('%Y%m%d_%H%M%S')
-        safe_name = f"upload_{timestamp}_{file.filename}"
+        safe_name = f"upload_{timestamp}_{request_id}_{file.filename}"
         intake_path = INTAKE_DIR / safe_name
 
         # Save uploaded file
@@ -285,11 +357,18 @@ def upload():
             'status': 'processed'
         }
 
-        # Check if database ingestion is explicitly enabled
-        ingest_enabled = str(
-            current_app.config.get('HOUSEHOLDER_INGEST_ON_UPLOAD', os.environ.get('HOUSEHOLDER_INGEST_ON_UPLOAD', ''))
-        ).lower() == 'true'
         database_url = _get_runtime_database_url()
+        repository_mode = (
+            current_app.config.get('HOUSEHOLDER_REPOSITORY')
+            or os.environ.get('HOUSEHOLDER_REPOSITORY', '')
+        )
+        ingest_setting = current_app.config.get('HOUSEHOLDER_INGEST_ON_UPLOAD')
+        if ingest_setting is None:
+            ingest_setting = os.environ.get('HOUSEHOLDER_INGEST_ON_UPLOAD')
+
+        # Database-backed UAT/browser runs should create a durable batch link
+        # even when the legacy opt-in env var is omitted.
+        ingest_enabled = _should_ingest_upload(database_url, repository_mode, ingest_setting)
 
         if ingest_enabled and database_url:
             try:
@@ -301,6 +380,21 @@ def upload():
                     uploader='system',
                     imported_at=upload_timestamp
                 )
+                try:
+                    _write_processing_metadata(
+                        processed_path,
+                        batch_id=ingestion_result.batch_id,
+                        original_filename=file.filename,
+                        request_id=request_id,
+                        uploaded_at=upload_timestamp,
+                    )
+                except Exception as metadata_error:
+                    logger.warning(
+                        "Uploaded batch %s committed but queue metadata write failed for %s: %s",
+                        ingestion_result.batch_id,
+                        processed_path.name,
+                        metadata_error,
+                    )
 
                 # Enhance response with ingestion data
                 response_data.update({
@@ -602,23 +696,26 @@ def list_processing():
                 else:
                     status = 'In Review'
 
-                # Lookup batch_id from database if configured
+                # Prefer the durable queue metadata sidecar; fall back to a
+                # bounded legacy lookup only when exact metadata is absent.
                 batch_id = None
                 uploaded_str = 'Unknown'
                 try:
+                    metadata = _load_processing_metadata(f)
+                    if metadata and metadata.get('batch_id'):
+                        batch_id = metadata['batch_id']
+
                     parts = f.name.split('_')
-                    if len(parts) >= 4:  # At least: upload, YYYYMMDD, HHMMSS, filename
+                    if len(parts) >= 4:  # upload, YYYYMMDD, HHMMSS, [request_id], filename
                         upload_time = datetime.strptime(f"{parts[1]}_{parts[2]}", '%Y%m%d_%H%M%S')
                         uploaded_str = format_relative_time(upload_time)
+                        original_filename = (
+                            metadata.get('original_filename')
+                            if metadata and metadata.get('original_filename')
+                            else _extract_original_filename_from_processing_name(f.name)
+                        )
 
-                        # Extract original filename from safe_name
-                        # Format: upload_YYYYMMDD_HHMMSS_original_filename.csv
-                        # parts[0]='upload', parts[1]=YYYYMMDD, parts[2]=HHMMSS, parts[3:]=original_filename_parts
-                        original_filename_parts = parts[3:]
-                        original_filename = '_'.join(original_filename_parts)
-
-                        # Use helper function to find batch by filename (respects arch boundary)
-                        if database_url:
+                        if not batch_id and database_url and original_filename:
                             try:
                                 batch_id = find_batch_by_filename(
                                     filename=original_filename,
@@ -914,6 +1011,7 @@ def submit_decisions(filename):
             # Archive the processed file
             archive_path = ARCHIVE_DIR / filename
             shutil.move(str(processing_path), str(archive_path))
+            _move_processing_metadata(processing_path, archive_path)
             logger.info(f"Archived processed file {filename}")
 
             return jsonify({
@@ -1166,6 +1264,7 @@ def cancel_review(filename):
     try:
         intake_path = INTAKE_DIR / filename
         shutil.move(str(processing_path), str(intake_path))
+        _move_processing_metadata(processing_path, intake_path)
         logger.info(f"Cancelled review for {filename}")
         return jsonify({'status': 'cancelled'})
     except Exception as e:
