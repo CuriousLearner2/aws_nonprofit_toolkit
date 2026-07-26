@@ -25,7 +25,26 @@ reviewed_diff_sha256
 reviewed_at
 informational_notes
 required_changes
+gate_results
+authorized_exceptions
 ```
+
+Schema version `2` requires an explicit gate ledger:
+
+- `gate_results` records every declared canonical gate and lane guard with its
+  `gate_id`, `group`, `command`, `required`, `status`, `exit_code`, and
+  optional `exception_id`.
+- `authorized_exceptions` records only structured, machine-readable exception
+  records. Free-form prose cannot authorize a failed gate.
+- `canonical_gates_passed` and `scope_guard_passed` must truthfully reflect the
+  recorded gate results. A failed gate must never be hidden behind a `true`
+  summary boolean.
+- `commit_authorized` may be `true` only when the recorded failures are either
+  absent or explicitly authorized by a matching structured exception that is
+  independently verified against the current staged diff by the lane-guard
+  runner. The lane guard must independently verify the normal pass path as well
+  as the expected conflict exit code for authorized mixed-scope exceptions;
+  crashes and other nonstandard exits fail closed.
 
 Exact passing verdicts:
 
