@@ -30,6 +30,7 @@ from householder.autosave_service import autosave_row_corrections, get_effective
 from householder.row_status_service import derive_row_status, is_row_overridden
 from householder.issue_recalculation_service import recalculate_row_issues, is_issue_resolved
 from householder.approval_service import approve_batch, get_batch_approval_status
+from householder.readiness_service import get_export_readiness
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -532,6 +533,31 @@ class TestApprovalFlows:
             raw_import_row_id=sample_batch['row2_id'],
             database_url=sample_batch['db_url']
         ) is True
+
+    def test_approved_overrides_make_export_readiness_ready(self, sample_batch):
+        """Approved override rows should no longer block export readiness."""
+        rows_with_overrides = [
+            {
+                'raw_import_row_id': sample_batch['row2_id'],
+                'row_index': 2,
+                'issues': [{'field': 'phone', 'reason': 'missing'}]
+            }
+        ]
+
+        approve_batch(
+            batch_id=sample_batch['batch_id'],
+            approval_status='approved_with_overrides',
+            rows_with_overrides=rows_with_overrides,
+            database_url=sample_batch['db_url']
+        )
+
+        readiness = get_export_readiness(
+            sample_batch['batch_id'],
+            config={'GIVEBUTTER_DATABASE_URL': sample_batch['db_url']}
+        )
+
+        assert readiness.is_export_ready is True
+        assert readiness.blocker_count == 0
 
 
 class TestAuditLogging:

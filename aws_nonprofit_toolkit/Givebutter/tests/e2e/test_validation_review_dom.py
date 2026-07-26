@@ -7475,3 +7475,137 @@ async def test_sticky_action_bar_with_approval_modal(
     finally:
         stop_flask_server(server, flask_thread)
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_approval_overrides_produce_export_ready_readiness_after_reload(
+    e2e_database_and_app,
+):
+    """
+    Verify browser approval with overrides persists the approval transaction and
+    makes the batch export-ready after reload.
+
+    This proves the durable chain:
+    user action -> approval route -> service persistence -> batch approval state
+    -> readiness view model -> browser-visible export-ready state -> reload.
+    """
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    batch_id = 'approval-readiness-batch'
+    raw_row_id = None
+
+    try:
+        raw_row_id = await seed_validation_batch(
+            session,
+            batch_id=batch_id,
+            filename='approval_readiness.csv',
+            field_values={
+                'name': 'Ready Reviewer',
+                'date': '2026-06-18',
+                'email': '',
+                'phone': '(555) 444-4444',
+                'amount': '275.00',
+                'address': '123 Readiness Rd',
+            },
+        )
+
+        review_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='validation',
+            confidence=1.0,
+            payload_json={
+                'field': 'email',
+                'reason': 'missing',
+                'description': 'Missing email address',
+                'severity': 'error',
+            },
+        )
+        session.add(review_item)
+        session.flush()
+        contact_id = session.query(ImportContact).filter_by(batch_id=batch_id).one().id
+        session.add(
+            ReviewItemSubject(
+                review_item_id=review_item.id,
+                subject_type='import_contact_snapshot',
+                subject_id=contact_id,
+                role='primary',
+            )
+        )
+        session.commit()
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_selector('table tbody tr', timeout=5000)
+
+                approve_button = page.locator('.validation-sticky-action-bar #approve-file-btn')
+                assert await approve_button.count() == 1, 'Approve File button should render'
+                assert await approve_button.is_visible(), 'Approve File button should be visible'
+
+                await approve_button.click()
+                await page.wait_for_selector('#approval-modal', state='visible', timeout=5000)
+
+                confirm_button = page.locator('#approval-modal #confirm-override-btn')
+                assert await confirm_button.count() == 1, 'Confirm override button should render'
+                await confirm_button.wait_for(state='visible', timeout=5000)
+
+                page.once('dialog', lambda dialog: dialog.accept())
+                await confirm_button.click()
+                await page.wait_for_url(f'**/imports/{batch_id}/dashboard', timeout=10000)
+
+                session.expire_all()
+                batch = session.query(ImportBatch).filter_by(id=batch_id).one()
+                assert batch.approval_status == 'approved_with_overrides'
+                assert batch.override_details is not None
+                overrides = batch.override_details.get('overrides', [])
+                assert len(overrides) == 1
+                assert overrides[0]['raw_import_row_id'] == raw_row_id
+                assert overrides[0]['field'] == 'email'
+                assert overrides[0]['issues']
+                assert overrides[0]['issues'][0]['field'] == 'email'
+
+                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).one()
+                assert raw_row.raw_csv_data['email'] == ''
+
+                await page.goto(f'{base_url}/imports/{batch_id}/readiness')
+                await page.wait_for_selector('h1', timeout=5000)
+                await page.locator('h2', has_text='Export Ready').wait_for(
+                    state='visible',
+                    timeout=5000,
+                )
+                assert await page.locator('[data-testid="readiness-related-links"]').count() == 1
+                related_export_link = page.locator(
+                    '[data-testid="readiness-related-links"] a[href$="/exports"]'
+                )
+                assert await related_export_link.count() == 1
+                assert await related_export_link.first.inner_text() == 'Export Console'
+                assert await page.locator('a[href$="/exports"]', has_text='Open Export Console').count() >= 1
+
+                await page.reload()
+                await page.wait_for_selector('h1', timeout=5000)
+                await page.locator('h2', has_text='Export Ready').wait_for(
+                    state='visible',
+                    timeout=5000,
+                )
+                assert 'Export Ready' in await page.inner_text('body')
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()

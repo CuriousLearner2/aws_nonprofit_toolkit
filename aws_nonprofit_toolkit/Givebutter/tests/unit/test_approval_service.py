@@ -115,6 +115,13 @@ class TestApproveBatch:
         assert result['approval_status'] == 'approved_with_overrides'
         assert result['override_count'] == 1
 
+        status = get_batch_approval_status(
+            batch_id='test-batch-001',
+            database_url=db_url
+        )
+        assert status['override_details'] is not None
+        assert status['override_details']['overrides'][0]['field'] == 'email'
+
     def test_invalid_approval_status_raises_error(self, temp_db):
         """Test that invalid approval_status raises error."""
         db_url, row_ids = temp_db

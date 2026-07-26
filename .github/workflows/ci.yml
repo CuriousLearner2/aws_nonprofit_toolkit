@@ -223,11 +223,14 @@ jobs:
             tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_rejects_invalid_drop_and_recovers_with_drag_drop \
             tests/e2e/test_e2e_upload_workflow.py::test_upload_drop_zone_blocks_repeated_drops_while_upload_is_in_flight \
             tests/e2e/test_e2e_upload_workflow.py::test_upload_non_givebutter_csv_shows_inline_error_banner \
+            tests/e2e/test_e2e_upload_workflow.py::test_upload_file_picker_creates_review_link_and_opens_validation \
+            tests/e2e/test_e2e_upload_workflow.py::test_upload_file_picker_repeated_same_filename_keeps_distinct_review_links \
             tests/e2e/test_validation_export_blocking.py::test_validation_blocker_appears_in_export_console \
             tests/e2e/test_validation_export_blocking.py::test_failed_autosave_values_not_exported \
             tests/e2e/test_validation_export_blocking.py::test_persisted_validation_override_allows_export \
             tests/e2e/test_validation_export_blocking.py::test_clean_validation_export_proceeds \
             tests/e2e/test_validation_review_dom.py::test_all_inline_fields_persist_after_browser_refresh \
+            tests/e2e/test_validation_review_dom.py::test_approval_overrides_produce_export_ready_readiness_after_reload \
             tests/e2e/test_e2e_decision_workflow.py::test_save_all_decisions_completes_review \
             tests/e2e/test_desktop_canonical_screens_smoke.py::test_desktop_canonical_screens_smoke \
             -x
