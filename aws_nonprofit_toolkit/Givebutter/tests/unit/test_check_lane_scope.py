@@ -55,6 +55,7 @@ class TestFileClassification:
         assert check_lane_scope.classify_file('docs/ROADMAP.md') == 'docs'
         assert check_lane_scope.classify_file('README.md') == 'docs'
         assert check_lane_scope.classify_file('CONTRIBUTING.md') == 'docs'
+        assert check_lane_scope.classify_file('AGENTS.md') == 'docs'
 
     def test_classify_schema_files(self):
         """Schema files are classified as 'schema'."""
@@ -154,6 +155,12 @@ class TestLaneRulesWorkflowCI:
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['.claude/agents/orchestrator.md'])
         assert is_clean is True
 
+    def test_workflow_ci_agents_md_allowed(self):
+        """Workflow-CI lane allows the Givebutter-root AGENTS.md file."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['AGENTS.md'])
+        assert is_clean is True
+        assert len(conflicts) == 0
+
     def test_workflow_ci_codex_agents_files_allowed(self):
         """Workflow-CI lane allows the reviewer and breaker TOML mirrors."""
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope(
@@ -197,6 +204,18 @@ class TestLaneRulesWorkflowCI:
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['.env'])
         assert is_clean is False
         assert any('other' in str(c) for c in conflicts)
+
+    def test_workflow_ci_root_markdown_blocked(self):
+        """Workflow-CI lane blocks arbitrary root markdown files."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['NOTES.md'])
+        assert is_clean is False
+        assert any('docs' in str(c) for c in conflicts)
+
+    def test_workflow_ci_docs_directory_blocked(self):
+        """Workflow-CI lane blocks docs/ files."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['docs/example.md'])
+        assert is_clean is False
+        assert any('docs' in str(c) for c in conflicts)
 
 
 class TestLaneRulesProduct:

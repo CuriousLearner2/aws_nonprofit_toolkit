@@ -234,8 +234,13 @@ def check_lane_scope(lane, changed_files, allow_schema=False, simulate=False, ve
                 conflicts.append(('product', 'workflow-ci does not allow product files; split into separate product task'))
             elif category == 'schema':
                 conflicts.append(('schema', 'workflow-ci does not allow schema/migration files'))
-            elif category == 'docs' and not categorized[category][0].startswith('.claude/'):
-                conflicts.append(('docs', 'workflow-ci allows .claude/* docs only, not general docs/'))
+            elif category == 'docs':
+                allowed_docs = all(
+                    filepath.startswith('.claude/') or filepath == 'AGENTS.md'
+                    for filepath in categorized[category]
+                )
+                if not allowed_docs:
+                    conflicts.append(('docs', 'workflow-ci allows .claude/* docs and AGENTS.md only, not general docs/'))
             elif category == 'other':
                 conflicts.append(('other', 'workflow-ci does not allow miscellaneous files'))
 

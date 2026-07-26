@@ -1,29 +1,40 @@
 # Householder / DonorTrust Codex Instructions
 
-Before any implementation, test-only hardening, workflow/CI automation, product/invariant hardening, or auto-commit-capable task:
+Before implementation, test, workflow/CI, product/invariant, or commit-capable work:
 
-1. Read `.claude/skills/householder-debug/SKILL.md` as canonical workflow policy.
-2. Instantiate the task contract required by `SKILL.md`.
-3. Run session review-capability preflight:
-   - spawn custom Codex subagent `reviewer` and confirm it is callable,
-   - spawn custom Codex subagent `breaker` and confirm it is callable.
+1. Read `.claude/skills/householder-debug/SKILL.md`.
+2. Read every policy module required by its task-condition table.
+3. Instantiate the mandatory task contract.
+4. Verify Reviewer/Breaker subagent capability when required.
+5. Bootstrap from the Givebutter directory and use its `.venv`.
 
-## Reasoning Escalation
+## Stateful P1
 
-Use the standard efficient reasoning setting for routine, well-understood work. Do not repeatedly guess when evidence is contradictory, ambiguous, cross-layer, or production-sensitive.
+Define and prove:
 
-When escalation is warranted:
-- preserve the worktree, failing tests, logs, and current evidence;
-- first delegate the narrow difficult question to a stronger or unpinned subagent when available;
-- if stronger main-task reasoning is still required, stop with the structured `REASONING ESCALATION REQUIRED` report defined in `SKILL.md`;
-- do not edit production code while an unresolved escalation is pending;
-- return to the standard efficient setting once the difficult question is resolved and the remaining work is mechanical.
+- upstream action;
+- durable business outcome;
+- authoritative identity;
+- commit boundary;
+- downstream handoff;
+- reload behavior;
+- configuration defaults;
+- duplicate/retry/stale/partial-failure behavior;
+- exact transaction-level test.
 
-Model names and UI controls are intentionally not hardcoded. The policy is capability-based and must remain valid as available models change.
+Do not accept UI text, HTTP success, queue-row creation, or isolated component tests as sufficient proof.
+Do not use filename, label, timestamp, list position, or newest-first ordering as authoritative identity.
 
-## Project Command Bootstrap
+## Review Capability
 
-Before project gates, guards, pytest runs, or commits that invoke repository hooks:
+Policy files existing on disk do not prove Reviewer/Breaker can be invoked.
+Do not substitute self-review or auto-commit when required agents are unavailable.
+
+## Assessment
+
+Assessment-only work does not edit, test a fix, invoke implementation agents, commit, or push.
+
+## Project Bootstrap
 
 ```bash
 GIVEBUTTER_DIR="/Users/gautambiswas/Claude Code/aws_nonprofit_toolkit/aws_nonprofit_toolkit/Givebutter"
@@ -31,16 +42,4 @@ cd "$GIVEBUTTER_DIR"
 export PATH="$GIVEBUTTER_DIR/.venv/bin:$PATH"
 ```
 
-Verify that `python` and `pytest` resolve inside the Givebutter virtual environment before commit-capable work. A single environment-only recovery retry is allowed only under the narrow conditions defined in `SKILL.md`; it must not be used to retry a real test, product, hook, timeout, socket, or process failure.
-
-Rules:
-- If Reviewer is required and `reviewer` cannot be spawned, stop before editing.
-- If Breaker is required or likely required and `breaker` cannot be spawned, stop before editing unless the task can safely proceed only through Reviewer and stop before Breaker.
-- Do not treat `.claude/agents/reviewer.md` or `.claude/agents/breaker.md` existing on disk as proof that Reviewer/Breaker are callable.
-- Do not substitute self-review or “Reviewer-style” review for the dedicated Reviewer subagent.
-- Do not auto-commit when a required Reviewer/Breaker subagent is unavailable.
-- Reviewer/Breaker may be waived only by explicit human authorization for that specific task.
-
-For assessment-only, push-only, or status-only tasks:
-- do not spawn Reviewer/Breaker unless explicitly required by the human or by `SKILL.md`;
-- still read `SKILL.md` and obey the task contract.
+Use canonical policy for environment recovery, failed gates, E2E, review, readiness, workflow acceptance, commit, and push.
