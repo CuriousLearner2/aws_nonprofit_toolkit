@@ -373,7 +373,12 @@ class DatabaseImportRepository:
                 # Fetch transaction_id from raw import row
                 raw_row = session.query(RawImportRow).filter_by(id=contact.raw_import_row_id).first()
                 raw_csv_data = raw_row.raw_csv_data if raw_row else {}
-                transaction_id = raw_csv_data.get('transaction_id', '')
+                transaction_id = (
+                    raw_csv_data.get('transaction_id')
+                    or raw_csv_data.get('Donation ID')
+                    or raw_csv_data.get('donation_id')
+                    or ''
+                )
 
                 # Get effective values (raw + corrections) first
                 try:
@@ -480,7 +485,13 @@ class DatabaseImportRepository:
                 row = ValidationRow(
                     id=str(contact.id),
                     transaction_id=transaction_id,
-                    date=effective.get('date', ''),  # Effective date from corrections if any
+                    date=(
+                        effective.get('date')
+                        or effective.get('Date')
+                        or raw_csv_data.get('date')
+                        or raw_csv_data.get('Date')
+                        or ''
+                    ),  # Effective date from corrections if any
                     name=effective_name,  # Effective name (corrected or raw)
                     email=effective_email,  # Effective email (corrected or raw)
                     phone=effective_phone,  # Effective phone (corrected or raw)

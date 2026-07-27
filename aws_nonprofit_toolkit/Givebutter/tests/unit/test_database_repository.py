@@ -2722,3 +2722,76 @@ class TestRecentExportsLimit:
         assert 'generated_timestamp' in export
         assert 'row_count' in export
         assert 'warning_count' in export
+
+
+class TestDatabaseImportRepositoryValidationMapping:
+    """DB-backed validation rows should preserve raw Donation ID and Date values."""
+
+    def test_validation_maps_raw_donation_id_and_date_without_mutating_raw_csv(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / 'validation_mapping.db'
+            db_url = f'sqlite:///{db_path}'
+
+            engine = create_engine(db_url)
+            Base.metadata.create_all(engine)
+            Session = sessionmaker(bind=engine)
+            session = Session()
+
+            batch_id = 'IMP-TEST-VALIDATION-MAPPING'
+            raw_csv_data = {
+                'Donation ID': 'GB201',
+                'Date': '2026-05-20',
+                'name': 'Mapping Test',
+                'email': 'mapping@example.com',
+                'phone': '(415) 555-2671',
+                'amount': '50.00',
+                'address': '123 Main St',
+            }
+
+            batch = ImportBatch(
+                id=batch_id,
+                filename='validation_mapping.csv',
+                upload_timestamp=datetime.now(timezone.utc),
+                status='pending_review',
+                raw_row_count=1,
+            )
+            session.add(batch)
+            session.flush()
+
+            raw_row = RawImportRow(
+                batch_id=batch_id,
+                row_index=1,
+                raw_csv_data=raw_csv_data,
+            )
+            session.add(raw_row)
+            session.flush()
+            raw_row_id = raw_row.id
+
+            contact = ImportContact(
+                batch_id=batch_id,
+                raw_import_row_id=raw_row_id,
+                first_name='Mapping',
+                last_name='Test',
+                email='mapping@example.com',
+                phone='(415) 555-2671',
+                address_line1='123 Main St',
+                amount=50.0,
+            )
+            session.add(contact)
+            session.commit()
+            session.close()
+
+            repo = DatabaseImportRepository(database_url=db_url)
+            validation_vm = repo.get_validation(batch_id)
+
+            assert len(validation_vm.validation_rows) == 1
+            row = validation_vm.validation_rows[0]
+            assert row.transaction_id == 'GB201'
+            assert row.date == '2026-05-20'
+
+            session = Session()
+            persisted_raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).one()
+            assert persisted_raw_row.raw_csv_data == raw_csv_data
+            assert 'transaction_id' not in persisted_raw_row.raw_csv_data
+            assert 'date' not in persisted_raw_row.raw_csv_data
+            session.close()

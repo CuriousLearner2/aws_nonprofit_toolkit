@@ -69,6 +69,10 @@
         .validation-row:focus > td:first-child {
             box-shadow: inset 4px 0 0 #2563eb;
         }
+
+        .validation-row td {
+            vertical-align: top;
+        }
     </style>
 
     <div class="status-filter-bar" data-testid="validation-status-filter-controls" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 16px 0;">
@@ -116,6 +120,7 @@
             {% for record in validation_issues %}
             <tr data-record-id="{{ record.id }}"
                 data-raw-id="{{ record.raw_import_row_id }}"
+                data-issues-json='{{ record.issues | tojson | forceescape }}'
                 data-testid="row-{{ record.id }}"
                 id="validation-row-{{ record.id }}"
                 data-row-status="{{ record.row_status or 'No issues' }}"
@@ -123,12 +128,12 @@
                 class="validation-row{% if record.row_status == 'Overridden' %} row-overridden{% endif %}"
                 {% if record.row_status == 'Overridden' %}style="background-color: #eef2ff;"{% endif %}>
                 <!-- Read-only: Txn ID -->
-                <td style="font-weight: 500; background-color: #f9fafb;">{{ record.transaction_id }}</td>
+                <td style="font-weight: 500; background-color: #f9fafb;" title="{{ record.transaction_id or '' }}">{{ record.transaction_id }}</td>
 
                 <!-- Editable: Date -->
                 <td>
                     <input type="text" class="inline-edit-field autosave-field" data-field="date" data-raw-id="{{ record.raw_import_row_id }}"
-                           value="{{ record.date or '' }}" placeholder="YYYY-MM-DD"
+                           value="{{ record.date or '' }}" placeholder="YYYY-MM-DD" title="{{ record.date or '' }}"
                            style="width: 65px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
                     <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
@@ -187,11 +192,12 @@
                 </td>
 
                 <!-- Read-only: Issues -->
-                <td class="issues-cell" data-testid="issues-cell-{{ record.id }}" style="font-size: 11px;">
+                <td class="issues-cell" data-testid="issues-cell-{{ record.id }}" data-issues-json='{{ record.issues | tojson | forceescape }}' style="font-size: 11px;">
                     {% if record.issues %}
                         {% for issue in record.issues %}
                         <div style="margin-bottom: 4px;">
-                            <span style="background-color: {% if issue.severity == 'error' %}#fee2e2{% else %}#fef3c7{% endif %};
+                            <span title="{{ issue.field or 'unknown' }} — {{ issue.reason or 'issue' }}"
+                                  style="background-color: {% if issue.severity == 'error' %}#fee2e2{% else %}#fef3c7{% endif %};
                                          color: {% if issue.severity == 'error' %}#991b1b{% else %}#78350f{% endif %};
                                          padding: 2px 4px; border-radius: 2px; display: inline-block;">
                                 {{ issue.field or 'unknown' }} — {{ issue.reason or 'issue' }}
@@ -373,23 +379,162 @@ function removeActiveError(rawId, field) {
     }
 }
 
-// Merge persisted and active errors for a row (used by both Issues and Row Status)
-function getMergedIssues(rawId, persistedIssues) {
-    const issuesByField = {};
-
-    // First, add persisted issues
-    (persistedIssues || []).forEach(issue => {
-        issuesByField[issue.field] = issue;
-    });
-
-    // Then, add/override with active errors (these take precedence for current validation state)
-    if (activeValidationErrors[rawId]) {
-        Object.values(activeValidationErrors[rawId]).forEach(error => {
-            issuesByField[error.field] = error;
-        });
+function parseIssuesJson(issuesJson) {
+    if (!issuesJson) {
+        return [];
     }
 
-    return Object.values(issuesByField);
+    try {
+        const parsed = JSON.parse(issuesJson);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        console.warn('Unable to parse validation issues JSON', error);
+        return [];
+    }
+}
+
+function getRowIssuesData(row) {
+    const issuesCell = row.querySelector('.issues-cell');
+    if (!issuesCell) {
+        return [];
+    }
+
+    return parseIssuesJson(
+        issuesCell.dataset.issuesJson
+        || row.dataset.issuesJson
+        || ''
+    );
+}
+
+function getIssueReason(issue) {
+    return String(issue?.reason || issue?.description || 'issue').trim();
+}
+
+function normalizeIssueGroupingLabel(reason) {
+    const text = String(reason || '').trim();
+    if (!text) {
+        return '';
+    }
+
+    const candidateSuffixMatch = text.match(/^(.*?):\s*([A-Za-z0-9][A-Za-z0-9_-]*)$/);
+    if (candidateSuffixMatch) {
+        return candidateSuffixMatch[1].trim();
+    }
+
+    return text;
+}
+
+function getIssueGroupingKey(issue) {
+    return [
+        issue?.field || 'unknown',
+        issue?.issue_type || '',
+        issue?.severity || 'warning',
+        normalizeIssueGroupingLabel(getIssueReason(issue)),
+    ].join('::');
+}
+
+function getIssueIdentityKey(issue) {
+    return [
+        issue?.field || 'unknown',
+        issue?.issue_type || '',
+        issue?.severity || 'warning',
+        getIssueReason(issue),
+    ].join('::');
+}
+
+function groupIssuesByField(issues) {
+    const groups = [];
+    const groupIndexByField = new Map();
+
+    (issues || []).forEach(issue => {
+        const field = issue.field || 'unknown';
+        const severity = issue.severity || 'warning';
+        const groupKey = getIssueGroupingKey(issue);
+
+        if (!groupIndexByField.has(groupKey)) {
+            groupIndexByField.set(groupKey, groups.length);
+            groups.push({
+                field,
+                severity,
+                displayLabel: normalizeIssueGroupingLabel(getIssueReason(issue)) || field,
+                count: 0,
+                issues: [],
+            });
+        }
+
+        const group = groups[groupIndexByField.get(groupKey)];
+        group.count += 1;
+        group.issues.push(issue);
+    });
+
+    return groups;
+}
+
+function buildIssueSummaryHtml(issues) {
+    if (!issues || issues.length === 0) {
+        return '<span style="color: #9ca3af; font-style: italic;">None</span>';
+    }
+
+    const groups = groupIssuesByField(issues);
+    return groups.map(group => {
+        const severity = group.issues.some(issue => issue.severity === 'error') ? 'error' : 'warning';
+        const bgColor = severity === 'error' ? '#fee2e2' : '#fef3c7';
+        const textColor = severity === 'error' ? '#991b1b' : '#78350f';
+        const label = group.count > 1
+            ? `${escapeHtml(group.displayLabel)} ×${group.count}`
+            : `${escapeHtml(group.field)} — ${escapeHtml(getIssueReason(group.issues[0]))}`;
+        const title = group.issues
+            .map(issue => `${issue.field || 'unknown'} — ${getIssueReason(issue)}`)
+            .join(' | ');
+        return `<div style="margin-bottom: 4px; align-self: flex-start;">
+            <span title="${escapeHtml(title)}"
+                  style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
+                ${label}
+            </span>
+        </div>`;
+    }).join('');
+}
+
+function buildIssueDetailsHtml(issues) {
+    if (!issues || issues.length === 0) {
+        return '<span style="color: #9ca3af; font-style: italic;">None</span>';
+    }
+
+    return issues.map((issue, index) => {
+        const severity = issue.severity === 'error' ? 'error' : 'warning';
+        const bgColor = severity === 'error' ? '#fee2e2' : '#fef3c7';
+        const textColor = severity === 'error' ? '#991b1b' : '#78350f';
+        const label = `${escapeHtml(issue.field || 'unknown')} — ${escapeHtml(issue.reason || 'issue')}`;
+        const title = `${issue.field || 'unknown'} — ${issue.reason || 'issue'}`;
+        return `<div style="margin-bottom: 4px;">
+            <span data-issue-index="${index + 1}"
+                  title="${escapeHtml(title)}"
+                  style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
+                ${label}
+            </span>
+        </div>`;
+    }).join('');
+}
+
+// Merge persisted and active errors for a row while preserving all persisted issue identities.
+function getMergedIssues(rawId, persistedIssues) {
+    const issues = Array.isArray(persistedIssues) ? [...persistedIssues] : [];
+    const activeErrors = activeValidationErrors[rawId]
+        ? Object.values(activeValidationErrors[rawId])
+        : [];
+
+    if (!activeErrors.length) {
+        return issues;
+    }
+
+    const mergedByKey = new Map();
+    issues.forEach(issue => {
+        mergedByKey.set(getIssueIdentityKey(issue), issue);
+    });
+    activeErrors.forEach(issue => {
+        mergedByKey.set(getIssueIdentityKey(issue), issue);
+    });
+    return Array.from(mergedByKey.values());
 }
 
 // Calculate Row Status from merged issue list (persisted + active errors)
@@ -413,32 +558,27 @@ function calculateRowStatus(allIssues) {
     return 'No issues';
 }
 
-// Render Issues cell with accumulated persisted + active errors (no duplication)
-function renderIssuesCell(issuesCell, persistedIssues) {
+// Render Issues cell with grouped summary while preserving the complete issue list for Details.
+function renderIssuesCell(issuesCell, persistedIssues, updateRowStatus = true) {
     const rawId = issuesCell.closest('tr').getAttribute('data-raw-id');
     // Store persisted issues on the element for later retrieval (used by cancelFieldEdit)
     issuesCell._persistedIssues = persistedIssues || [];
     const allIssues = getMergedIssues(rawId, persistedIssues);
+    issuesCell.dataset.issuesJson = JSON.stringify(allIssues);
 
-    // Render all issues together
-    if (allIssues.length === 0) {
-        issuesCell.innerHTML = '<span style="color: #9ca3af; font-style: italic;">None</span>';
-    } else {
-        let issuesHtml = '';
-        allIssues.forEach(issue => {
-            const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
-            const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
-            issuesHtml += `<div style="margin-bottom: 4px;">
-                <span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
-                    ${issue.field || 'unknown'} — ${issue.reason || 'issue'}
-                </span>
-            </div>`;
-        });
-        issuesCell.innerHTML = issuesHtml;
-    }
+    issuesCell.innerHTML = buildIssueSummaryHtml(allIssues);
 
     // Also update Row Status based on merged issues
-    updateRowStatusFromIssues(issuesCell.closest('tr'), allIssues);
+    if (updateRowStatus) {
+        updateRowStatusFromIssues(issuesCell.closest('tr'), allIssues);
+    }
+}
+
+function initializeValidationIssuePresentation() {
+    document.querySelectorAll('.issues-cell[data-issues-json]').forEach(issuesCell => {
+        const issues = parseIssuesJson(issuesCell.dataset.issuesJson || '');
+        renderIssuesCell(issuesCell, issues, false);
+    });
 }
 
 // Update Row Status dropdown based on merged issues
@@ -1018,11 +1158,7 @@ function getRowFieldValue(row, field) {
 }
 
 function getRowIssuesMarkup(row) {
-    const issuesCell = row.querySelector('.issues-cell');
-    if (!issuesCell) {
-        return '<span style="color: #9ca3af; font-style: italic;">None</span>';
-    }
-    return issuesCell.innerHTML || '<span style="color: #9ca3af; font-style: italic;">None</span>';
+    return buildIssueDetailsHtml(getRowIssuesData(row));
 }
 
 function getRowStatusLabel(row) {
@@ -1087,6 +1223,8 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
         </div>
     `;
 }
+
+document.addEventListener('DOMContentLoaded', initializeValidationIssuePresentation);
 
 let recordModalOpenSequence = 0;
 const rowDecisionRequestState = Object.create(null);

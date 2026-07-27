@@ -26,6 +26,7 @@ See E2E_TEST_RELIABILITY.md for patterns and troubleshooting.
 
 import pytest
 import asyncio
+import copy
 import json
 import sys
 import tempfile
@@ -564,6 +565,285 @@ async def test_email_typo_save_feedback_remains_issue_aware(
                 assert 'Saved' in valid_status_text, (
                     f"Valid email save should still show Saved, got: {valid_status_text}"
                 )
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_dense_validation_row_groups_repeated_name_matches_and_preserves_details(
+    e2e_database_and_app,
+):
+    """Dense validation rows should group repeated name matches without losing detail."""
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    batch_id = 'dense-validation-row-batch'
+
+    try:
+        batch = ImportBatch(
+            id=batch_id,
+            filename='dense_validation.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id=batch_id,
+            row_index=1,
+            raw_csv_data={
+                'Donation ID': 'GB201',
+                'Date': '2026-05-20',
+                'name': 'Morgan 1',
+                'email': 'morgan1@gmail.com',
+                'phone': None,
+                'amount': '50',
+                'Issues': (
+                    'Duplicate: Name match (70%): GB208; '
+                    'Name match (70%): GB210; '
+                    'Name match (70%): GB214; '
+                    'Name match (70%): GB217; '
+                    'Name match (70%): GB222; '
+                    'Name match (70%): GB228; '
+                    'Name match (70%): GB229; '
+                    'Name match (70%): GB230; '
+                    'Name match (70%): GB231; '
+                    'Name match (70%): GB233; '
+                    'Name match (70%): GB234; '
+                    'Phone: Phone number not found'
+                ),
+            },
+        )
+        session.add(raw_row)
+        session.flush()
+        raw_row_id = raw_row.id
+
+        contact = ImportContact(
+            batch_id=batch_id,
+            raw_import_row_id=raw_row_id,
+            first_name='Morgan',
+            last_name='1',
+            email='morgan1@gmail.com',
+            phone=None,
+            address_line1='',
+            amount=50.0,
+        )
+        session.add(contact)
+        session.flush()
+
+        secondary_raw_row = RawImportRow(
+            batch_id=batch_id,
+            row_index=2,
+            raw_csv_data={
+                'Donation ID': 'GB240',
+                'Date': '2026-05-21',
+                'name': 'Morgan 2',
+                'email': 'morgan2@gmail.com',
+                'phone': '(415) 555-2700',
+                'amount': '60',
+                'address': '200 Main St',
+            },
+        )
+        session.add(secondary_raw_row)
+        session.flush()
+        secondary_raw_row_id = secondary_raw_row.id
+
+        secondary_contact = ImportContact(
+            batch_id=batch_id,
+            raw_import_row_id=secondary_raw_row_id,
+            first_name='Morgan',
+            last_name='2',
+            email='morgan2@gmail.com',
+            phone='(415) 555-2700',
+            address_line1='200 Main St',
+            amount=60.0,
+        )
+        session.add(secondary_contact)
+        session.flush()
+
+        review_specs = [
+            ('Duplicate', 'Duplicate: Name match (70%): GB208', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB210', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB214', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB217', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB222', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB228', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB229', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB230', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB231', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB233', 'Review duplicate entries'),
+            ('Name match (70%)', 'Name match (70%): GB234', 'Review duplicate entries'),
+            ('Phone', 'Phone: Phone number not found', 'Review duplicate entries'),
+        ]
+
+        for field, issue, suggestion in review_specs:
+            review_item = ReviewItem(
+                batch_id=batch_id,
+                item_type='validation',
+                confidence=1.0,
+                payload_json={
+                    'field': field,
+                    'issue': issue,
+                    'description': issue,
+                    'suggestion': suggestion,
+                    'validation_tier': 'WARNING',
+                },
+            )
+            session.add(review_item)
+            session.flush()
+            session.add(
+                ReviewItemSubject(
+                    review_item_id=review_item.id,
+                    subject_type='import_contact_snapshot',
+                    subject_id=raw_row_id,
+                    role='primary',
+                )
+            )
+
+        secondary_review_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='validation',
+            confidence=1.0,
+            payload_json={
+                'field': 'Name match (80%)',
+                'issue': 'Name match (80%): GB240',
+                'description': 'Name match (80%): GB240',
+                'suggestion': 'Review duplicate entries',
+                'validation_tier': 'WARNING',
+            },
+        )
+        session.add(secondary_review_item)
+        session.flush()
+        session.add(
+            ReviewItemSubject(
+                review_item_id=secondary_review_item.id,
+                subject_type='import_contact_snapshot',
+                subject_id=secondary_raw_row_id,
+                role='primary',
+            )
+        )
+
+        session.commit()
+        raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).one()
+        original_raw_snapshot = copy.deepcopy(raw_row.raw_csv_data)
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page(viewport={'width': 1440, 'height': 900})
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                row = page.locator(f'#validation-row-{contact.id}')
+                await row.wait_for(state='visible', timeout=5000)
+                await page.wait_for_function(
+                    f"() => document.querySelector('#validation-row-{contact.id} .issues-cell')?.innerText.includes('Name match (70%) ×10')",
+                    timeout=5000,
+                )
+
+                assert (await row.locator('td').nth(0).inner_text()).strip() == 'GB201'
+                assert await row.locator('input[data-field="date"]').input_value() == '2026-05-20'
+                assert (await row.locator('.row-status-dropdown option:first-child').text_content() or '').strip() == 'Warning'
+
+                issues_text = await row.locator('.issues-cell').inner_text()
+                summary_lines = [line.strip() for line in issues_text.splitlines() if line.strip()]
+                assert summary_lines == [
+                    'Duplicate — Duplicate: Name match (70%): GB208',
+                    'Name match (70%) ×10',
+                    'Phone — Phone: Phone number not found',
+                    'address — Missing address',
+                ], f'Unexpected grouped summary order: {summary_lines}'
+                assert 'Name match (70%) ×10' in issues_text
+                assert 'Duplicate — Duplicate: Name match (70%): GB208' in issues_text
+                assert 'Phone — Phone: Phone number not found' in issues_text
+                assert 'address — Missing address' in issues_text
+                assert 'GB210' not in issues_text
+                assert 'GB214' not in issues_text
+                assert issues_text.count('\n') <= 4, f'Expected grouped summary to stay compact, got: {issues_text}'
+
+                row_box = await row.bounding_box()
+                assert row_box is not None
+                assert row_box['height'] < 260, f'Expected grouped row to stay compact, got height={row_box["height"]}'
+
+                assert await page.locator('.validation-sticky-action-bar #approve-file-btn').is_visible()
+                assert await row.locator('a[data-action="inspect-record"]').is_visible()
+                assert await row.locator('.row-status-dropdown').is_visible()
+
+                await row.locator('a[data-action="inspect-record"]').click()
+                await page.locator('#record-modal').wait_for(state='visible', timeout=5000)
+                modal_text = await page.locator('#modal-record-content').inner_text()
+                assert 'GB210' in modal_text
+                assert 'GB234' in modal_text
+                assert 'Duplicate — Duplicate: Name match (70%): GB208' in modal_text
+                assert 'Phone — Phone: Phone number not found' in modal_text
+                assert 'Missing address' in modal_text
+
+                secondary_row = page.locator(f'#validation-row-{secondary_contact.id}')
+                await secondary_row.wait_for(state='visible', timeout=5000)
+                secondary_issues_text = await secondary_row.locator('.issues-cell').inner_text()
+                assert 'Name match (80%) — Name match (80%): GB240' in secondary_issues_text
+                assert 'Name match (70%) ×10' not in secondary_issues_text
+                assert (await secondary_row.locator('.row-status-dropdown option:first-child').text_content() or '').strip() == 'Warning'
+
+                await page.locator('#record-modal button:has-text("Close")').click()
+                await page.wait_for_function(
+                    "() => !document.querySelector('#record-modal')?.classList.contains('show')",
+                    timeout=5000,
+                )
+
+                await page.reload()
+                await page.wait_for_selector(f'#validation-row-{contact.id}', timeout=5000)
+                row = page.locator(f'#validation-row-{contact.id}')
+                await page.wait_for_function(
+                    f"() => document.querySelector('#validation-row-{contact.id} .issues-cell')?.innerText.includes('Name match (70%) ×10')",
+                    timeout=5000,
+                )
+
+                reloaded_issues_text = await row.locator('.issues-cell').inner_text()
+                reloaded_lines = [line.strip() for line in reloaded_issues_text.splitlines() if line.strip()]
+                assert reloaded_lines == [
+                    'Duplicate — Duplicate: Name match (70%): GB208',
+                    'Name match (70%) ×10',
+                    'Phone — Phone: Phone number not found',
+                    'address — Missing address',
+                ], f'Unexpected reloaded grouped summary order: {reloaded_lines}'
+                assert 'Name match (70%) ×10' in reloaded_issues_text
+                assert 'Duplicate — Duplicate: Name match (70%): GB208' in reloaded_issues_text
+                assert 'Phone — Phone: Phone number not found' in reloaded_issues_text
+                assert 'Missing address' in reloaded_issues_text
+                assert (await row.locator('.row-status-dropdown option:first-child').text_content() or '').strip() == 'Warning'
+
+                reloaded_secondary_text = await secondary_row.locator('.issues-cell').inner_text()
+                assert 'Name match (80%) — Name match (80%): GB240' in reloaded_secondary_text
+                assert 'Name match (70%) ×10' not in reloaded_secondary_text
+                assert (await secondary_row.locator('.row-status-dropdown option:first-child').text_content() or '').strip() == 'Warning'
+
+                verify_session = Session()
+                try:
+                    persisted_raw_row = verify_session.query(RawImportRow).filter_by(id=raw_row_id).one()
+                    assert persisted_raw_row.raw_csv_data == original_raw_snapshot
+                    assert persisted_raw_row.raw_csv_data['Donation ID'] == 'GB201'
+                    assert persisted_raw_row.raw_csv_data['Date'] == '2026-05-20'
+                    assert 'transaction_id' not in persisted_raw_row.raw_csv_data
+                    assert 'date' not in persisted_raw_row.raw_csv_data
+                finally:
+                    verify_session.close()
 
             finally:
                 await browser.close()
