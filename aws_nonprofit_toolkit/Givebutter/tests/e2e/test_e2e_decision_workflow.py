@@ -1,4 +1,5 @@
 """End-to-end tests for decision workflow with Playwright."""
+import csv
 import pytest
 
 
@@ -102,6 +103,220 @@ async def test_save_decisions_partial(flask_app_database_mode, temp_dir, sample_
 
                     content = await page.content()
                     assert any(text in content.lower() for text in ['saved', 'progress'])
+
+        finally:
+            await browser.close()
+
+
+def _write_dense_decision_csv(temp_dir):
+    csv_path = temp_dir / "dense_decision_workflow.csv"
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "Donation ID",
+                "Date",
+                "Donor Name",
+                "Email",
+                "Amount",
+                "Phone",
+                "Address",
+                "Campaign",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "Donation ID": "GB201",
+                "Date": "2026-05-20",
+                "Donor Name": (
+                    "Alexandria Montgomery-Wentworth the Third With a Very Long "
+                    "Display Name for Decision Workflow Stress Coverage"
+                ),
+                "Email": (
+                    "alexandria.montgomery.wentworth.the.third.with.a.very.long.name@gmal.com"
+                ),
+                "Amount": "125.00",
+                "Phone": "",
+                "Address": (
+                    "9876 Extremely Long Example Avenue, Suite 12345, Very Long City Name, CA 94107"
+                ),
+                "Campaign": (
+                    "Annual Campaign With An Exceptionally Long Title That Must Stay Readable "
+                    "In Dense Validation Rows"
+                ),
+            }
+        )
+        writer.writerow(
+            {
+                "Donation ID": "GB202",
+                "Date": "2026-05-21",
+                "Donor Name": "Taylor Reed",
+                "Email": "taylor.reed@gmail.com",
+                "Amount": "75.00",
+                "Phone": "(415) 555-1212",
+                "Address": "200 Main St",
+                "Campaign": "Spring Fundraiser",
+            }
+        )
+    return csv_path
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_dense_row_decision_controls_stay_visible_and_persist_after_reload(
+    flask_app_database_mode, temp_dir
+):
+    """Dense validation rows should keep decision controls usable and persist after reload."""
+    from playwright.async_api import async_playwright
+
+    csv_path = _write_dense_decision_csv(temp_dir)
+    long_name = (
+        "Alexandria Montgomery-Wentworth the Third With a Very Long "
+        "Display Name for Decision Workflow Stress Coverage"
+    )
+    long_email = (
+        "alexandria.montgomery.wentworth.the.third.with.a.very.long.name@gmal.com"
+    )
+    long_address = (
+        "9876 Extremely Long Example Avenue, Suite 12345, Very Long City Name, CA 94107"
+    )
+    long_campaign = (
+        "Annual Campaign With An Exceptionally Long Title That Must Stay Readable "
+        "In Dense Validation Rows"
+    )
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page(viewport={"width": 1440, "height": 900})
+
+        try:
+            await page.goto("http://127.0.0.1:8001/")
+            await page.wait_for_selector(".upload-card", timeout=5000)
+
+            file_input = await page.query_selector('input[type="file"]')
+            await file_input.set_input_files(str(csv_path))
+
+            submit_button = await page.query_selector(
+                'button[type="submit"], button:has-text("Upload"), input[type="submit"]'
+            )
+            if submit_button:
+                await submit_button.click()
+
+            await page.wait_for_selector("a.action-btn.primary", timeout=10000)
+            review_button = page.locator("a.action-btn.primary").first
+            await review_button.click()
+            await page.wait_for_url("**/validation", timeout=10000)
+
+            row = page.locator("tr.validation-row").first
+            await row.wait_for(state="visible", timeout=10000)
+            await row.scroll_into_view_if_needed()
+
+            row_text = await row.text_content()
+            assert row_text is not None
+            assert "GB201" in row_text
+            assert "GB202" not in row_text
+            assert await row.locator('input[data-field="date"]').input_value() == "2026-05-20"
+
+            row_box = await row.bounding_box()
+            assert row_box is not None
+            assert row_box["height"] < 260, (
+                f"Dense decision row should stay compact, got height={row_box['height']}"
+            )
+
+            decision_dropdown = row.locator("select.row-status-dropdown")
+            inspect_button = row.locator('a[data-action="inspect-record"]')
+            assert await decision_dropdown.is_visible(), "Decision control should be visible"
+            assert await inspect_button.is_visible(), "Details control should be visible"
+
+            await inspect_button.click()
+            await page.locator("#record-modal").wait_for(state="visible", timeout=5000)
+            modal_text = await page.locator("#modal-record-content").inner_text()
+            assert "GB201" in modal_text
+            assert "2026-05-20" in modal_text
+            assert long_name in modal_text
+            assert long_email in modal_text
+            assert "Current Issues" in modal_text
+
+            assert await row.locator('input.autosave-field[data-field="name"]').input_value() == long_name
+            assert await row.locator('input.autosave-field[data-field="email"]').input_value() == long_email
+            assert await row.locator('input.autosave-field[data-field="date"]').input_value() == "2026-05-20"
+
+            await page.locator('#record-modal button:has-text("Close")').click()
+            await page.wait_for_function(
+                "() => !document.querySelector('#record-modal')?.classList.contains('show')",
+                timeout=5000,
+            )
+
+            await inspect_button.click()
+            await page.locator("#record-modal").wait_for(state="visible", timeout=5000)
+            reopened_text = await page.locator("#modal-record-content").inner_text()
+            assert "GB201" in reopened_text
+            assert long_name in reopened_text
+            assert long_email in reopened_text
+            assert "Current Issues" in reopened_text
+            await page.locator('#record-modal button:has-text("Close")').click()
+            await page.wait_for_function(
+                "() => !document.querySelector('#record-modal')?.classList.contains('show')",
+                timeout=5000,
+            )
+
+            await decision_dropdown.select_option(value="needs_follow_up")
+            await page.locator("#record-modal").wait_for(state="visible", timeout=5000)
+            followup_notes = page.locator('#record-modal textarea[id^="followup-notes-"]')
+            assert await followup_notes.is_visible(), "Follow-up notes field should be visible"
+            await followup_notes.fill("Please verify the long-value dense row before export.")
+
+            save_followup = page.locator('#record-modal button[id^="save-followup-notes-"]')
+            assert await save_followup.is_visible(), "Save Follow-up button should be visible"
+            await save_followup.click()
+            await page.wait_for_function(
+                "() => !document.querySelector('#record-modal')?.classList.contains('show')",
+                timeout=5000,
+            )
+
+            await page.wait_for_function(
+                "() => document.querySelector('select.row-status-dropdown')?.value === 'needs_follow_up'",
+                timeout=5000,
+            )
+            assert await decision_dropdown.evaluate("el => el.value") == "needs_follow_up"
+            assert await decision_dropdown.get_attribute("data-has-decision") == "true"
+
+            await page.reload()
+            await page.wait_for_selector("tr.validation-row", timeout=10000)
+            reloaded_row = page.locator("tr.validation-row").first
+            await reloaded_row.wait_for(state="visible", timeout=10000)
+            await reloaded_row.scroll_into_view_if_needed()
+
+            reloaded_text = await reloaded_row.text_content()
+            assert reloaded_text is not None
+            assert "GB201" in reloaded_text
+            assert "GB202" not in reloaded_text
+            assert await reloaded_row.locator('input[data-field="date"]').input_value() == "2026-05-20"
+
+            reloaded_box = await reloaded_row.bounding_box()
+            assert reloaded_box is not None
+            assert reloaded_box["height"] < 260, (
+                f"Reloaded dense decision row should stay compact, got height={reloaded_box['height']}"
+            )
+
+            reloaded_dropdown = reloaded_row.locator("select.row-status-dropdown")
+            reloaded_inspect = reloaded_row.locator('a[data-action="inspect-record"]')
+            assert await reloaded_dropdown.is_visible(), "Decision control should remain visible"
+            assert await reloaded_inspect.is_visible(), "Details control should remain visible"
+            assert await reloaded_dropdown.evaluate("el => el.value") == "needs_follow_up"
+            assert await reloaded_dropdown.get_attribute("data-has-decision") == "true"
+
+            await reloaded_inspect.click()
+            await page.locator("#record-modal").wait_for(state="visible", timeout=5000)
+            reloaded_modal = await page.locator("#modal-record-content").inner_text()
+            assert "GB201" in reloaded_modal
+            assert long_name in reloaded_modal
+            assert long_email in reloaded_modal
+            assert "Current Issues" in reloaded_modal
+            assert await reloaded_row.locator('input.autosave-field[data-field="name"]').input_value() == long_name
+            assert await reloaded_row.locator('input.autosave-field[data-field="email"]').input_value() == long_email
+            assert await reloaded_row.locator('input.autosave-field[data-field="date"]').input_value() == "2026-05-20"
 
         finally:
             await browser.close()

@@ -134,13 +134,19 @@ def test_ci_adds_isolated_browser_e2e_job_for_approved_p1_workflows():
     assert 'tests/e2e/test_e2e_upload_workflow.py::test_upload_non_givebutter_csv_shows_inline_error_banner' in text
     assert 'tests/e2e/test_e2e_upload_workflow.py::test_upload_file_picker_creates_review_link_and_opens_validation' in text
     assert 'tests/e2e/test_e2e_upload_workflow.py::test_upload_file_picker_repeated_same_filename_keeps_distinct_review_links' in text
+    assert 'tests/e2e/test_e2e_upload_workflow.py::test_processing_queue_renders_untrusted_values_safely' in text
     assert 'tests/e2e/test_validation_export_blocking.py::test_validation_blocker_appears_in_export_console' in text
     assert 'tests/e2e/test_validation_export_blocking.py::test_failed_autosave_values_not_exported' in text
     assert 'tests/e2e/test_validation_export_blocking.py::test_persisted_validation_override_allows_export' in text
     assert 'tests/e2e/test_validation_export_blocking.py::test_clean_validation_export_proceeds' in text
+    assert 'tests/e2e/test_validation_export_blocking.py::test_mixed_validation_household_export_warnings' in text
     assert 'tests/e2e/test_validation_review_dom.py::test_all_inline_fields_persist_after_browser_refresh' in text
     assert 'tests/e2e/test_validation_review_dom.py::test_approval_overrides_produce_export_ready_readiness_after_reload' in text
+    assert 'tests/e2e/test_validation_review_dom.py::test_dense_validation_row_groups_repeated_name_matches_and_preserves_details' in text
+    assert 'tests/e2e/test_validation_review_dom.py::test_validation_review_desktop_dense_table_layout_at_supported_widths' in text
+    assert 'tests/e2e/test_validation_review_dom.py::test_sticky_action_bar_with_approval_modal' in text
     assert 'tests/e2e/test_e2e_decision_workflow.py::test_save_all_decisions_completes_review' in text
+    assert 'tests/e2e/test_e2e_decision_workflow.py::test_dense_row_decision_controls_stay_visible_and_persist_after_reload' in text
     assert 'tests/e2e/test_desktop_canonical_screens_smoke.py::test_desktop_canonical_screens_smoke' in text
     assert 'python -m pytest tests/e2e' not in text
     assert 'playwright install --with-deps chromium' in text
