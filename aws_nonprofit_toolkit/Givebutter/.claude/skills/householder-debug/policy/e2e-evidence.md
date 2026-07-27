@@ -40,6 +40,25 @@ Forbidden as sole proof:
 - network-idle-only success;
 - absence of exceptions without state verification.
 
+## Visual Robustness for Browser-Visible P1 Work
+
+When data shape can materially affect usability, require one or two representative stress shapes rather than exhaustive permutations. Relevant stress shapes include zero issues, one issue, many distinct issues, repeated issue types, many candidate matches, long names/emails/phones/addresses, missing values, mixed warnings and failures, and maximum realistic row density at the supported desktop viewport, normally `1440x900`.
+
+Prefer semantic geometry and usability assertions over pixel-perfect screenshots. Acceptance evidence should show:
+
+- no overlapping content;
+- no controls pushed outside usable view;
+- no unbounded row growth without an intentional approved design;
+- key actions remain visible and operable;
+- full values remain accessible when visually clipped;
+- repeated issues remain distinguishable or intentionally grouped;
+- Details retains complete information;
+- row status agrees with the complete underlying state;
+- keyboard and pointer interaction remain usable;
+- reload preserves both state and presentation.
+
+Visual robustness supplements durable-outcome proof; it does not replace it. Low-risk stateless changes remain proportionate, and stress testing is required only when the data shape can materially affect usability.
+
 ## Timeouts
 
 Default wall-clock limits unless stricter task gates apply:

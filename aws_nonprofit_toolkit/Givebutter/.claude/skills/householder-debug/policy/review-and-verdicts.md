@@ -30,6 +30,8 @@ durably persisted business object after reload?
 
 Reviewer rejects evidence limited to UI success, HTTP 2xx, queue-row creation, service return values, separate component passes, non-authoritative identity, or favorable explicit configuration that omits the documented default path.
 
+For browser-visible P1 work, Reviewer must also expect representative stress-shape evidence when data density or repeated candidates can materially affect usability. The evidence must be semantic and durable, not pixel-perfect: no overlapping content, no controls pushed out of view, full values remain accessible, repeated issues remain distinguishable or intentionally grouped, Details remains complete, and reload preserves presentation as well as state.
+
 Exact verdicts:
 
 - `VERDICT=ACCEPT`
@@ -108,3 +110,4 @@ QA never replaces Reviewer or Breaker and never authorizes implementation, commi
 Use only for unresolved product choices: labels, statuses, warnings, approval/export behavior, notes, navigation, hiding/disabling controls, confirmation behavior, or similar UX semantics.
 
 It does not resolve technical uncertainty, failed gates, root cause, commit, or push.
+When multiple presentation patterns are reasonable for a browser-visible P1, Product UX Gatekeeper is required before choosing the final visual treatment or stress-shape expectation.
