@@ -141,15 +141,16 @@ def recalculate_row_issues(
             issue_field = payload.get('field')  # e.g., 'email'
             issue_reason = payload.get('reason')  # e.g., 'possible_typo'
             severity = payload.get('severity', 'warning')
+            normalized_field = issue_field.strip().lower() if isinstance(issue_field, str) else ''
 
             # Get the corrected value for this field (if any)
-            effective_value = effective_values.get(issue_field)
-            raw_value = raw_data.get(issue_field)
+            effective_value = effective_values.get(normalized_field)
+            raw_value = raw_data.get(normalized_field)
 
             # Check if issue is still valid with the effective value
             # Logic: if a correction was made to the field, we assume the issue is resolved
 
-            if is_issue_resolved(issue_field, effective_value, issue_reason, raw_value):
+            if is_issue_resolved(normalized_field, effective_value, issue_reason, raw_value):
                 # Issue is resolved, don't include it
                 continue
             else:
@@ -171,12 +172,16 @@ def recalculate_row_issues(
                 'overridden': _is_issue_overridden(batch, raw_import_row_id, issue_field)
             })
             if issue_field:
-                current_fields.add(issue_field)
+                current_fields.add(normalized_field)
 
         # Validate effective date even when there is no autosave proposal.
         # This keeps DB-backed validation, approval readiness, and export parity
         # aligned with the strict ISO date policy for both raw and reviewed values.
-        existing_fields = {issue.get('field') for issue in current_issues if issue.get('field')}
+        existing_fields = {
+            str(issue.get('field')).strip().lower()
+            for issue in current_issues
+            if issue.get('field')
+        }
         date_value = effective_values.get('date')
         date_validation = validate_review_date(date_value, allow_blank=True)
         if not date_validation.valid and 'date' not in existing_fields:
@@ -206,7 +211,8 @@ def recalculate_row_issues(
         # agree on the same canonical field rules.
         new_validation_issues = _validate_effective_values(effective_values)
         for new_issue in new_validation_issues:
-            if new_issue.get('field') not in existing_fields:
+            new_issue_field = str(new_issue.get('field')).strip().lower() if new_issue.get('field') else ''
+            if new_issue_field not in existing_fields:
                 current_issues.append(new_issue)
 
         # Address is warning-only but should be visible on load and edit.
@@ -358,15 +364,21 @@ def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[st
     # Validate phone if present
     if 'phone' in effective_values:
         phone_value = effective_values.get('phone')
-        if phone_value:
-            phone_str = str(phone_value).strip()
-            if phone_str and not is_valid_phone(phone_str):
-                issues.append({
-                    'field': 'phone',
-                    'description': 'Invalid phone format',
-                    'severity': 'error',
-                    'is_new': True
-                })
+        phone_str = '' if phone_value is None else str(phone_value).strip()
+        if not phone_str:
+            issues.append({
+                'field': 'phone',
+                'description': 'Phone number is empty',
+                'severity': 'error',
+                'is_new': True
+            })
+        elif not is_valid_phone(phone_str):
+            issues.append({
+                'field': 'phone',
+                'description': 'Invalid phone format',
+                'severity': 'error',
+                'is_new': True
+            })
 
     # Validate amount if present (must validate even if falsy like 0, "", etc.)
     if 'amount' in effective_values:

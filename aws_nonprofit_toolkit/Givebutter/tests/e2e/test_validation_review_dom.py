@@ -5212,6 +5212,277 @@ async def test_validation_review_desktop_dense_table_layout_at_supported_widths(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_phone_field_is_readable_and_missing_phone_renders_blocking(
+    e2e_database_and_app,
+):
+    """Validation Review should keep phone values readable and phone-missing issues blocking."""
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    server = None
+    flask_thread = None
+
+    batch_id = 'phone-presentation-batch'
+
+    def add_row(
+        row_index: int,
+        raw_values: dict,
+        contact_values: dict,
+        review_items: list[dict] | None = None,
+    ) -> int:
+        raw_row = RawImportRow(
+            batch_id=batch_id,
+            row_index=row_index,
+            raw_csv_data=raw_values,
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id=batch_id,
+            raw_import_row_id=raw_row.id,
+            first_name=contact_values.get('first_name', raw_values.get('name', 'Test')).split()[0],
+            last_name=contact_values.get('last_name', raw_values.get('name', 'User')).split()[-1],
+            email=contact_values.get('email', raw_values.get('email', 'test@example.com')),
+            phone=contact_values.get('phone', raw_values.get('phone')),
+            address_line1=contact_values.get('address_line1', raw_values.get('address', '')),
+            amount=float(contact_values.get('amount', raw_values.get('amount', 0)) or 0),
+        )
+        session.add(contact)
+        session.flush()
+
+        for payload in review_items or []:
+            review_item = ReviewItem(
+                batch_id=batch_id,
+                item_type='validation',
+                confidence=1.0,
+                payload_json=payload,
+            )
+            session.add(review_item)
+            session.flush()
+            session.add(
+                ReviewItemSubject(
+                    review_item_id=review_item.id,
+                    subject_type='import_raw_row',
+                    subject_id=raw_row.id,
+                    role='primary',
+                )
+            )
+
+        return raw_row.id
+
+    try:
+        batch = ImportBatch(
+            id=batch_id,
+            filename='phone_presentation.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=3,
+        )
+        session.add(batch)
+        session.flush()
+
+        clean_row_id = add_row(
+            1,
+            {
+                'Donation ID': 'GB201',
+                'Date': '2026-05-20',
+                'name': 'Morgan Example With Long Desktop Copy',
+                'email': 'morgan.example.with.long.desktop.copy@example.org',
+                'phone': '(555) 555-5555',
+                'amount': '50',
+                'address': '100 Long Accessibility Avenue, Example City, CA 94105',
+            },
+            {
+                'first_name': 'Morgan',
+                'last_name': 'Example',
+                'email': 'morgan.example.with.long.desktop.copy@example.org',
+                'phone': '(555) 555-5555',
+                'address_line1': '100 Long Accessibility Avenue, Example City, CA 94105',
+                'amount': 50.0,
+            },
+        )
+        missing_phone_row_id = add_row(
+            2,
+            {
+                'Donation ID': 'GB202',
+                'Date': '2026-05-21',
+                'name': 'Pat Missing Phone',
+                'email': 'pat.missing.phone@example.org',
+                'phone': '',
+                'amount': '75',
+                'address': '',
+            },
+            {
+                'first_name': 'Pat',
+                'last_name': 'Missing',
+                'email': 'pat.missing.phone@example.org',
+                'phone': '',
+                'address_line1': '',
+                'amount': 75.0,
+            },
+            review_items=[
+                {
+                    'field': 'phone',
+                    'reason': 'missing',
+                    'description': 'Phone number is empty',
+                    'severity': 'error',
+                },
+                {
+                    'field': 'address',
+                    'reason': 'missing',
+                    'description': 'Missing address',
+                    'severity': 'warning',
+                },
+            ],
+        )
+        invalid_phone_row_id = add_row(
+            3,
+            {
+                'Donation ID': 'GB203',
+                'Date': '2026-05-22',
+                'name': 'Ivy Invalid Phone',
+                'email': 'ivy.invalid.phone@example.org',
+                'phone': '555123',
+                'amount': '90',
+                'address': '200 Short Road',
+            },
+            {
+                'first_name': 'Ivy',
+                'last_name': 'Invalid',
+                'email': 'ivy.invalid.phone@example.org',
+                'phone': '555123',
+                'address_line1': '200 Short Road',
+                'amount': 90.0,
+            },
+            review_items=[
+                {
+                    'field': 'phone',
+                    'reason': 'format',
+                    'description': 'Invalid phone format',
+                    'severity': 'error',
+                },
+            ],
+        )
+        session.commit()
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page(viewport={'width': 1440, 'height': 900})
+
+            try:
+                await page.goto(f'{base_url}/imports/{batch_id}/validation')
+                await page.wait_for_function(
+                    """() => {
+                        const rows = Array.from(document.querySelectorAll('tr.validation-row'));
+                        return rows.length >= 3 && rows.every(row => row.offsetParent !== null);
+                    }""",
+                    timeout=10000,
+                )
+
+                clean_row = page.locator(f'#validation-row-{clean_row_id}')
+                clean_phone = clean_row.locator('input[data-testid^="phone-input-"]')
+                assert await clean_phone.input_value() == '(555) 555-5555'
+                assert await clean_phone.get_attribute('title') == '(555) 555-5555'
+
+                clean_box = await clean_phone.bounding_box()
+                assert clean_box is not None and clean_box['width'] >= 118, (
+                    f"Phone input should remain wide enough to read the formatted value, got {clean_box}"
+                )
+                clean_metrics = await clean_phone.evaluate(
+                    """el => ({
+                        clientWidth: el.clientWidth,
+                        scrollWidth: el.scrollWidth,
+                        value: el.value,
+                        title: el.title,
+                    })"""
+                )
+                assert clean_metrics['clientWidth'] >= clean_metrics['scrollWidth'], (
+                    f"Phone value should not clip at 1440x900, got {clean_metrics}"
+                )
+
+                await clean_phone.fill('(555) 555-5556')
+                await clean_phone.evaluate('el => el.blur()')
+                await page.wait_for_function(
+                    """() => {
+                        const status = document.querySelector('#validation-row-%s [data-testid^="phone-status-"]');
+                        return status && status.textContent.includes('Saved');
+                    }""" % clean_row_id,
+                    timeout=5000,
+                )
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_function(
+                    """() => {
+                        const rows = Array.from(document.querySelectorAll('tr.validation-row'));
+                        return rows.length >= 3 && rows.every(row => row.offsetParent !== null);
+                    }""",
+                    timeout=10000,
+                )
+                refreshed_clean_phone = page.locator(f'#validation-row-{clean_row_id} input[data-testid^="phone-input-"]')
+                assert await refreshed_clean_phone.input_value() == '(555) 555-5556'
+                assert await refreshed_clean_phone.get_attribute('title') == '(555) 555-5556'
+
+                missing_phone_row = page.locator(f'#validation-row-{missing_phone_row_id}')
+                missing_phone_status = await missing_phone_row.locator('select.row-status-dropdown option:first-child').inner_text()
+                assert missing_phone_status.strip() == 'Blocking'
+
+                missing_phone_issues = missing_phone_row.locator('td[data-testid^="issues-cell-"] span')
+                assert await missing_phone_issues.count() == 2
+                assert await missing_phone_issues.nth(0).inner_text() == 'phone — Phone number is empty'
+                assert await missing_phone_issues.nth(0).evaluate("el => getComputedStyle(el).backgroundColor") == 'rgb(254, 226, 226)'
+                assert await missing_phone_issues.nth(1).inner_text() == 'address — Missing address'
+                assert await missing_phone_issues.nth(1).evaluate("el => getComputedStyle(el).backgroundColor") == 'rgb(254, 243, 199)'
+
+                invalid_phone_row = page.locator(f'#validation-row-{invalid_phone_row_id}')
+                invalid_phone_status = await invalid_phone_row.locator('select.row-status-dropdown option:first-child').inner_text()
+                assert invalid_phone_status.strip() == 'Blocking'
+                invalid_phone_issue = invalid_phone_row.locator('td[data-testid^="issues-cell-"] span').first
+                assert await invalid_phone_issue.inner_text() == 'phone — Invalid phone format'
+                assert await invalid_phone_issue.evaluate("el => getComputedStyle(el).backgroundColor") == 'rgb(254, 226, 226)'
+
+                details_button = missing_phone_row.locator('a[data-action="inspect-record"]')
+                await details_button.click()
+                await page.wait_for_selector('#record-modal', timeout=5000)
+                modal_text = await page.locator('#modal-record-content').inner_text()
+                assert 'Phone number is empty' in modal_text
+                assert 'Missing address' in modal_text
+                await page.locator('#record-modal button:has-text("Close")').click()
+                await page.wait_for_function(
+                    "() => !document.querySelector('#record-modal')?.classList.contains('show')",
+                    timeout=5000,
+                )
+
+                await page.reload(wait_until='domcontentloaded')
+                await page.wait_for_function(
+                    """() => {
+                        const rows = Array.from(document.querySelectorAll('tr.validation-row'));
+                        return rows.length >= 3 && rows.every(row => row.offsetParent !== null);
+                    }""",
+                    timeout=10000,
+                )
+                reloaded_phone_issues = page.locator(f'#validation-row-{missing_phone_row_id} td[data-testid^="issues-cell-"] span')
+                assert await reloaded_phone_issues.count() == 2
+                assert await reloaded_phone_issues.nth(0).inner_text() == 'phone — Phone number is empty'
+                assert await reloaded_phone_issues.nth(1).inner_text() == 'address — Missing address'
+
+            finally:
+                await browser.close()
+
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_db_backed_autosave_ignores_fixture_env_override_and_persists(
     e2e_database_and_app,
     monkeypatch,

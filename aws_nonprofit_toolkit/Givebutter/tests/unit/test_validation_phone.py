@@ -121,7 +121,7 @@ class TestPhoneValidation:
         rules = {'invalid_phone_patterns': []}
 
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'WARNING'
+        assert tier == 'FAIL'
         assert 'empty' in reason.lower()
 
     @pytest.mark.unit

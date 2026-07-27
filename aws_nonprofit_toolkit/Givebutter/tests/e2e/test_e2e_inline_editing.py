@@ -706,11 +706,11 @@ async def test_inline_editing_recalculates_tier_on_edit(flask_app_database_mode,
                             # Wait for tier recalculation
                             await page.wait_for_timeout(500)
 
-                            # Check tier again (should still be WARNING due to missing phone)
+                            # Check tier again (should still be FAIL due to missing phone)
                             tier_cell_updated = await page.query_selector('tr[data-record-idx="0"] td:nth-child(10)')
                             if tier_cell_updated:
                                 updated_tier_text = await tier_cell_updated.text_content()
-                                assert 'WARNING' in updated_tier_text, f"After email fix, tier should still be WARNING (phone missing), got {updated_tier_text}"
+                                assert 'FAIL' in updated_tier_text, f"After email fix, tier should still be FAIL (phone missing), got {updated_tier_text}"
 
                                 # Now fix the phone number
                                 phone_cell = await page.query_selector('td.editable-cell[data-field="phone"]')

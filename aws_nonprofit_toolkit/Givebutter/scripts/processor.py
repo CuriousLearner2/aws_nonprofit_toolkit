@@ -262,7 +262,7 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
 
     phone = record.get(phone_col)
     if pd.isna(phone) or str(phone).strip() == '':
-        return ('WARNING', "Phone number is empty", None)  # Frontend validates required; absence is notable
+        return ('FAIL', "Phone number is empty", "Please enter a phone number")
 
     phone_str = str(phone).strip()
     validation = validate_review_phone(phone_str, allow_blank=False, default_region='US')

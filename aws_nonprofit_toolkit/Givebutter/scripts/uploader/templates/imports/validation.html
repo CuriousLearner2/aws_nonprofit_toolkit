@@ -108,7 +108,7 @@
                 <th style="width: 70px;">Date</th>
                 <th style="width: 100px;">Name</th>
                 <th style="width: 110px;">Email</th>
-                <th style="width: 90px;">Phone</th>
+                <th style="width: 120px;">Phone</th>
                 <th style="width: 70px;">Amount</th>
                 <th style="width: 100px;">Address</th>
                 <th style="width: 100px;">Row Status</th>
@@ -156,9 +156,9 @@
 
                 <!-- Editable: Phone -->
                 <td>
-                    <input type="text" class="inline-edit-field autosave-field" data-field="phone" data-raw-id="{{ record.raw_import_row_id }}" data-testid="phone-input-{{ record.id }}"
+                    <input type="text" class="inline-edit-field autosave-field" data-field="phone" data-raw-id="{{ record.raw_import_row_id }}" data-testid="phone-input-{{ record.id }}" title="{{ record.phone or '' }}"
                            value="{{ record.phone or '' }}" placeholder="(555) 555-5555"
-                           style="width: 85px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                           style="width: 120px; min-width: 120px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
                     <span class="autosave-status" data-testid="phone-status-{{ record.id }}" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
