@@ -11,6 +11,10 @@ These routes render HTML templates (not JSON). Tests verify:
 """
 
 import pytest
+from datetime import datetime, timezone
+from sqlalchemy.orm import sessionmaker
+
+from scripts.householder.database_models import AuditLogRecord, create_db_engine
 
 
 class TestDatabaseModeRoutes:
@@ -144,3 +148,63 @@ class TestDatabaseModeRoutes:
         assert 'IMP-TEST-001' in html
         # Verify export-related content
         assert 'Export' in html or 'export' in html or 'EXPORT' in html
+
+    def test_exports_recent_exports_from_database(self, client_with_database, initialized_test_db):
+        """Verify /imports/<id>/exports renders durable recent export history from audit log."""
+        engine = create_db_engine(initialized_test_db)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+
+        try:
+            older = AuditLogRecord(
+                batch_id='IMP-TEST-001',
+                action_type='export_generated',
+                action_timestamp=datetime(2026, 7, 27, 12, 0, 1, tzinfo=timezone.utc),
+                actor='tester',
+                details={
+                    'filename': 'IMP-TEST-001_export_20260727_120001.csv',
+                    'export_type': 'csv',
+                    'row_count': 5,
+                    'warning_count': 0,
+                },
+            )
+            newer = AuditLogRecord(
+                batch_id='IMP-TEST-001',
+                action_type='export_generated',
+                action_timestamp=datetime(2026, 7, 27, 12, 5, 1, tzinfo=timezone.utc),
+                actor='tester',
+                details={
+                    'filename': 'IMP-TEST-001_export_20260727_120501.csv',
+                    'export_type': 'csv',
+                    'row_count': 5,
+                    'warning_count': 1,
+                },
+            )
+            foreign_batch = AuditLogRecord(
+                batch_id='IMP-TEST-OTHER',
+                action_type='export_generated',
+                action_timestamp=datetime(2026, 7, 27, 12, 10, 1, tzinfo=timezone.utc),
+                actor='tester',
+                details={
+                    'filename': 'IMP-TEST-OTHER_export_20260727_121001.csv',
+                    'export_type': 'csv',
+                    'row_count': 3,
+                    'warning_count': 0,
+                },
+            )
+            session.add_all([older, newer])
+            session.add(foreign_batch)
+            session.commit()
+        finally:
+            session.close()
+
+        response = client_with_database.get('/imports/IMP-TEST-001/exports')
+        assert response.status_code == 200
+
+        html = response.get_data(as_text=True)
+        assert 'Recent Exports' in html
+        assert 'IMP-TEST-001_export_20260727_120501.csv' in html
+        assert 'IMP-TEST-001_export_20260727_120001.csv' in html
+        assert 'IMP-TEST-OTHER_export_20260727_121001.csv' not in html
+        assert html.index('IMP-TEST-001_export_20260727_120501.csv') < html.index('IMP-TEST-001_export_20260727_120001.csv')
+        assert 'data-action="download-export"' in html

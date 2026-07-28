@@ -40,8 +40,19 @@ def get_export_console(import_id: str, config: Optional[Mapping[str, Any]] = Non
         ValueError: If database mode requested without required configuration.
     """
     repository = get_import_repository(config)
-    exports_vm = repository.get_exports(import_id)
-    return exports_vm.to_template_dict()
+    exports_data = repository.get_exports(import_id).to_template_dict()
+
+    if _is_database_repository_mode(config):
+        exports_data["recent_exports"] = get_recent_exports(import_id, config=config)
+
+    return exports_data
+
+
+def _is_database_repository_mode(config: Optional[Mapping[str, Any]] = None) -> bool:
+    """Return True when the active repository mode is database-backed."""
+    if config and "HOUSEHOLDER_REPOSITORY" in config:
+        return str(config["HOUSEHOLDER_REPOSITORY"]).lower() == "database"
+    return os.environ.get("HOUSEHOLDER_REPOSITORY", "").lower() == "database"
 
 
 def get_recent_exports(import_id: str, config: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:

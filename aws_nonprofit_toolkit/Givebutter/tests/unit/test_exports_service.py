@@ -6,6 +6,7 @@ into view models and dictionaries suitable for template rendering.
 """
 
 import pytest
+from types import SimpleNamespace
 from scripts.householder.service_contracts import (
     ExportCard,
     ExportConsoleViewModel,
@@ -240,6 +241,51 @@ class TestExportsService:
         result = get_export_console("IMP-2025-0101-A")
         # Verify no file writing side effects by checking recent_exports is empty
         assert len(result["recent_exports"]) == 0
+
+    def test_get_export_console_database_mode_overlays_recent_exports(self, monkeypatch):
+        """Test that database mode overlays durable export history onto the console."""
+        recent_exports = [
+            {
+                "audit_log_id": 222,
+                "filename": "IMP-2025-0101-A_export_20260727_120001.csv",
+                "export_type": "csv",
+                "generated_at": "2026-07-27T12:00:01+00:00",
+                "generated_timestamp": "2026-07-27 12:00",
+                "row_count": 5,
+                "warning_count": 1,
+                "file_size": "0 B",
+            }
+        ]
+
+        base_template = {
+            "batch": {"id": "IMP-2025-0101-A", "filename": "donors_q1_2025.csv", "progress": 42},
+            "export_options": [],
+            "staged_record_count": 5,
+            "total_decisions": 10,
+            "household_count": 5,
+            "recent_exports": [],
+        }
+
+        fake_repository = SimpleNamespace(
+            get_exports=lambda import_id: SimpleNamespace(to_template_dict=lambda: dict(base_template))
+        )
+
+        monkeypatch.setattr(
+            "scripts.householder.exports_service.get_import_repository",
+            lambda config=None: fake_repository,
+        )
+        monkeypatch.setattr(
+            "scripts.householder.exports_service.get_recent_exports",
+            lambda import_id, config=None: recent_exports,
+        )
+
+        result = get_export_console(
+            "IMP-2025-0101-A",
+            config={"HOUSEHOLDER_REPOSITORY": "database", "GIVEBUTTER_DATABASE_URL": "sqlite:///tmp.db"},
+        )
+
+        assert result["recent_exports"] == recent_exports
+        assert result["recent_exports"][0]["filename"] == "IMP-2025-0101-A_export_20260727_120001.csv"
 
 
 class TestExportsServiceProviderWiring:
