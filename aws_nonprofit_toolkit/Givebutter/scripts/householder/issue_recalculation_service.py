@@ -248,7 +248,7 @@ def recalculate_row_issues(
         has_authoritative_address = (
             _validation_issue_value_for_field(raw_data, 'address') is not None
             or any(
-                getattr(contact, attribute, None)
+                getattr(contact, attribute, None) is not None
                 for attribute in ('address_line1', 'address_line2', 'city', 'state', 'postal_code')
             )
         )
