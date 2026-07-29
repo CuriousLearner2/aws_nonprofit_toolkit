@@ -13,13 +13,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from .database_models import (
-    ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject
+    ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewItemSubject
 )
 from .autosave_service import get_effective_values
 from .amount_validation_service import validate_review_amount
 from .email_validation_service import validate_review_email
 from .date_validation_service import validate_review_date
 from .phone_validation_service import is_valid_phone
+from .issue_identity import (
+    normalize_validation_issue_field,
+    validation_issue_identity,
+)
 import os
 
 # Top 30 recognized email domains - strict validation applied to these
@@ -63,6 +67,15 @@ COMMON_TYPO_DOMAINS = {
     'hotmial.com': 'hotmail.com',  # letter swap
     'hotmal.com': 'hotmail.com',   # missing i
 }
+
+
+def _validation_issue_value_for_field(values: Dict[str, Any], field: Any) -> Any:
+    canonical_field = normalize_validation_issue_field(field)
+    if canonical_field:
+        for key, value in values.items():
+            if normalize_validation_issue_field(key) == canonical_field:
+                return value
+    return values.get(field)
 
 
 def recalculate_row_issues(
@@ -119,6 +132,10 @@ def recalculate_row_issues(
 
         # Get raw data for comparison
         raw_data = raw_row.raw_csv_data or {}
+        contact = session.query(ImportContact).filter_by(
+            batch_id=batch_id,
+            raw_import_row_id=raw_import_row_id,
+        ).first()
 
         # Get all existing validation issues for this row
         # Check both import_raw_row (Phase 1B raw data) and import_contact_snapshot (demo data)
@@ -134,18 +151,22 @@ def recalculate_row_issues(
 
         # For each existing issue, check if it's still valid given the effective values
         current_issues = []
-        current_fields = set()
+        current_address_issue_identities = set()
 
         for issue in existing_issues:
             payload = issue.payload_json or {}
             issue_field = payload.get('field')  # e.g., 'email'
             issue_reason = payload.get('reason')  # e.g., 'possible_typo'
             severity = payload.get('severity', 'warning')
-            normalized_field = issue_field.strip().lower() if isinstance(issue_field, str) else ''
+            normalized_field = normalize_validation_issue_field(issue_field)
 
             # Get the corrected value for this field (if any)
-            effective_value = effective_values.get(normalized_field)
-            raw_value = raw_data.get(normalized_field)
+            if normalized_field == 'address':
+                effective_value = _validation_issue_value_for_field(effective_values, issue_field)
+                raw_value = _validation_issue_value_for_field(raw_data, issue_field)
+            else:
+                effective_value = effective_values.get(normalized_field)
+                raw_value = raw_data.get(normalized_field)
 
             # Check if issue is still valid with the effective value
             # Logic: if a correction was made to the field, we assume the issue is resolved
@@ -171,8 +192,15 @@ def recalculate_row_issues(
                 'severity': severity,
                 'overridden': _is_issue_overridden(batch, raw_import_row_id, issue_field)
             })
-            if issue_field:
-                current_fields.add(normalized_field)
+            if normalized_field == 'address':
+                current_address_issue_identities.add(
+                    validation_issue_identity({
+                        'field': issue_field,
+                        'reason': issue_reason,
+                        'severity': severity,
+                        'source': payload.get('source'),
+                    })
+                )
 
         # Validate effective date even when there is no autosave proposal.
         # This keeps DB-backed validation, approval readiness, and export parity
@@ -216,8 +244,23 @@ def recalculate_row_issues(
                 current_issues.append(new_issue)
 
         # Address is warning-only but should be visible on load and edit.
-        address_issue = _validate_address(effective_values.get('address', ''))
-        if address_issue and 'address' not in current_fields:
+        address_issue = _validate_address(_validation_issue_value_for_field(effective_values, 'address'))
+        has_authoritative_address = (
+            _validation_issue_value_for_field(raw_data, 'address') is not None
+            or any(
+                getattr(contact, attribute, None)
+                for attribute in ('address_line1', 'address_line2', 'city', 'state', 'postal_code')
+            )
+        )
+        if (
+            address_issue
+            and has_authoritative_address
+            and validation_issue_identity({
+                'field': 'address',
+                'reason': 'missing',
+                'severity': 'warning',
+            }) not in current_address_issue_identities
+        ):
             current_issues.append(address_issue)
 
         return current_issues
@@ -465,6 +508,7 @@ def _validate_address(address: str) -> Optional[Dict[str, Any]]:
     if not address or not str(address).strip():
         return {
             'field': 'address',
+            'reason': 'missing',
             'description': 'Missing address',
             'severity': 'warning',
             'is_new': True,
