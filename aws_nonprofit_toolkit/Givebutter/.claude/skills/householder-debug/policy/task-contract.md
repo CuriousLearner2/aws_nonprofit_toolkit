@@ -42,6 +42,23 @@ Task contract:
 - Per-item commit checkpoint and finite campaign budgets:
 - Happy-path auto-commit enabled? yes/no
 - Push authorized? yes/no
+- Execution classification: fast fix / engineering investigation / architecture pilot
+- Execution-context map confirmed? yes/no
+- Deterministic defect proof:
+- Adjacent compatibility proof:
+- Authoritative owner:
+- Expected product files:
+- Expected product diff size:
+- Product file budget:
+- Product diff budget:
+- Dirty tracked-file provenance:
+- Milestones:
+- Compatibility tripwires:
+- Primary implementation attempts allowed:
+- Narrow corrections allowed:
+- Automatic continuation within bounds? yes/no
+- Reassessment threshold:
+- Deferred nonessential improvements:
 - Stop condition:
 - Terminal state:
 ```
@@ -55,6 +72,29 @@ Rules:
 - Breaker is concrete-risk-based, not routine.
 - Stateful P1 work requires the durable-outcome fields.
 - Stateless low-risk work must set `Durable-outcome contract required? no` with a reason.
+
+Provenance declaration:
+
+- `Dirty tracked-file provenance` must classify each tracked dirty file as one
+  of:
+  - authorized current-task scope;
+  - authorized pre-existing work protected by exact scope;
+  - unresolved provenance that blocks implementation.
+- If a dirty tracked file cannot be placed in one of those buckets, the task is
+  blocked until provenance is resolved.
+
+Budget declaration:
+
+- `Expected product files` names the primary file set for the focused proof.
+- `Product file budget` is the hard maximum number of product files that may be
+  changed.
+- `Product diff budget` is the hard maximum product diff size allowed.
+- Optional files must be named explicitly and require a proof statement that the
+  focused evidence cannot be completed without them.
+- A third product file, or an optional file without proof, exceeds budget.
+
+Detailed execution mechanics live in `policy/execution-safety.md`; this file
+declares task-specific values only.
 
 ## Lanes
 

@@ -28,63 +28,10 @@ Do not edit files; delegate changes to Implementer.
 Write the full task contract from `policy/task-contract.md`.
 If any field is uncertain, stop or classify as assessment-only.
 
-## Durable Outcome Planning
+Enforce `policy/execution-safety.md` as the single source for proof-first checks,
+classification, budgets, and continuation rules.
 
-For stateful P1 work, define:
+## Enforced Flow
 
-- user action;
-- durable result;
-- authoritative identity;
-- commit boundary;
-- browser/route/service/persistence/serializer handoffs;
-- reload/restart;
-- configuration defaults;
-- duplicate/retry/stale/partial-failure expectations;
-- exact cross-boundary test.
-
-Ask:
-
-```text
-Can the upstream action report success while the required downstream durable
-outcome is missing, ambiguous, stale, uncommitted, or attached to the wrong
-record?
-```
-
-If yes or unknown, require trace-first assessment before implementation.
-
-## Sequencing
-
-- Assessment-only: perform directly and stop.
-- Implementation: invoke Implementer.
-- Passing gates + Reviewer required: invoke Reviewer immediately.
-- Reviewer Accept + Breaker required: invoke Breaker immediately.
-- QA required: invoke QA in the declared mode.
-- Non-accept verdict: stop.
-- Eligible auto-commit: prepare readiness packet and commit.
-- Push only with explicit current authorization.
-
-Do not ask for permission already granted by the current contract.
-
-## GitHub Workflow Changes
-
-Apply `policy/github-workflow-acceptance.md`.
-Separate local commit readiness from live exact-SHA acceptance.
-
-## Gates
-
-Use project bootstrap, wrappers, artifact/lane/exact-scope guards, and failed-gate handling from canonical modules.
-
-## Output
-
-```text
-Acceptance gate passed? yes/no
-Failed-first-fix triggered? yes/no
-Reviewer invoked? yes/no
-Reviewer verdict:
-Breaker invoked? yes/no
-Breaker verdict:
-QA invoked? yes/no
-QA verdict:
-Ready for commit prep? yes/no
-Ready to push? yes/no
-```
+Use the contract and `execution-safety.md` to decide whether to assess, implement,
+review, or stop. Invoke roles only when the contract authorizes them.
