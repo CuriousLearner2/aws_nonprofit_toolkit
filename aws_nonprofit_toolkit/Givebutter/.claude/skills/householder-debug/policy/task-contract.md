@@ -51,7 +51,6 @@ Task contract:
 - Expected product diff size:
 - Product file budget:
 - Product diff budget:
-- Dirty tracked-file provenance:
 - Milestones:
 - Compatibility tripwires:
 - Primary implementation attempts allowed:
@@ -72,29 +71,6 @@ Rules:
 - Breaker is concrete-risk-based, not routine.
 - Stateful P1 work requires the durable-outcome fields.
 - Stateless low-risk work must set `Durable-outcome contract required? no` with a reason.
-
-Provenance declaration:
-
-- `Dirty tracked-file provenance` must classify each tracked dirty file as one
-  of:
-  - authorized current-task scope;
-  - authorized pre-existing work protected by exact scope;
-  - unresolved provenance that blocks implementation.
-- If a dirty tracked file cannot be placed in one of those buckets, the task is
-  blocked until provenance is resolved.
-
-Budget declaration:
-
-- `Expected product files` names the primary file set for the focused proof.
-- `Product file budget` is the hard maximum number of product files that may be
-  changed.
-- `Product diff budget` is the hard maximum product diff size allowed.
-- Optional files must be named explicitly and require a proof statement that the
-  focused evidence cannot be completed without them.
-- A third product file, or an optional file without proof, exceeds budget.
-
-Detailed execution mechanics live in `policy/execution-safety.md`; this file
-declares task-specific values only.
 
 ## Lanes
 
@@ -117,3 +93,21 @@ Only explicitly authorized product/test/doc files. Product UX Gatekeeper is requ
 ### Push only
 
 No edits or new commits. Push only when explicitly authorized.
+
+## Focused-First Contract Rules
+
+The detailed execution rules live in `policy/execution-safety.md`.
+This contract declares the task-specific values.
+
+- Classify the task before product edits.
+- Fast fixes require a deterministic defect proof, an adjacent compatibility proof,
+  a named authoritative owner, and explicit file/diff budgets.
+- Engineering investigations normally stop after diagnosis and a recommended
+  implementation task unless implementation is separately authorized.
+- Architecture pilots require milestone gates, mandatory compatibility tripwires,
+  a narrow vertical slice, and automatic stop bounds.
+- Automatic continuation is allowed only while the current milestone is green,
+  tripwires pass, scope remains within budget, and no stop condition is triggered.
+- The implementation/focused-proof budget is separate from final release acceptance.
+- Exceeding a budget requires reclassification or stop; it is not implicit authority
+  to widen scope.

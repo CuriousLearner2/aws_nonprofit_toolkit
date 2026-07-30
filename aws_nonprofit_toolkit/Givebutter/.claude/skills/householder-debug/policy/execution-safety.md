@@ -119,31 +119,6 @@ A current task contract is required before editing, testing, staging, committing
 
 Focused-first changes execution efficiency, not the final acceptance standard.
 
-### Evidence-Backed Focused-First Rules
-
-Before diagnosis or implementation, every execution-context claim must be proven
-with an exact command, file lookup, or tool-capability check. Report missing,
-absent, or unavailable items explicitly; do not guess paths, wrappers,
-interpreters, or role mechanisms.
-
-Verify the active local Python and pytest runtime against the supported CI
-baseline. If they differ, declare the mismatch rather than treating the local
-runtime as canonical.
-
-Prove Reviewer, Breaker, and QA invocation plus verdict collection before any
-role is spawned. Presence of policy files does not prove the tools are callable.
-
-Classification starts as engineering investigation whenever the authoritative
-owner is ambiguous or multiple layers disagree. Keep implementation unauthorized
-until that ambiguity is resolved by focused evidence.
-
-Assessment and implementation are separate explicit authorizations. Assessment
-never implies implementation authorization.
-
-Automatic continuation is allowed only after explicit implementation
-authorization and explicit reclassification to a narrower execution class, and
-only while the declared milestones, tripwires, scope, and budgets remain green.
-
 ### Execution-Context Preflight
 
 Before diagnosis or implementation, confirm once:
@@ -167,9 +142,6 @@ Execution context:
 
 Do not guess paths, interpreters, wrappers, gate names, or role-collection mechanics.
 Two failed path or command guesses trigger reassessment before continuing.
-
-If a wrapper or command does not exist, report it as absent instead of
-substituting a nearby command or assuming a renamed script.
 
 ### Five-Minute Feasibility Classification
 
@@ -241,34 +213,6 @@ For an Architecture pilot:
 - advance automatically only when the current milestone and all tripwires are green;
 - stop after a second failed approach at any milestone;
 - stop when file, diff, schema, migration, consumer, or vertical-slice bounds are crossed.
-
-### Dirty-File Provenance
-
-If tracked files are already dirty before implementation, classify each file
-explicitly:
-
-- authorized current-task scope;
-- authorized pre-existing work protected by an exact scope allowance;
-- unresolved provenance that blocks implementation.
-
-If any dirty tracked file cannot be placed in one of those three buckets, stop
-and do not implement. Unresolved provenance blocks implementation until it is
-either attributed to the current task or excluded by exact scope.
-
-### Budget Semantics
-
-Budgets are concrete and internally consistent:
-
-- primary expected files are the default file set for the proven owner;
-- maximum authorized files is the hard ceiling;
-- optional second files require proof that the focused evidence cannot be
-  completed without that exact companion file, and the contract must name it;
-- third product file or any unproven optional file exceeds the budget
-  immediately.
-
-For a fast fix, the normal budget is one primary file plus at most one proven
-optional file. Any request for a third product file, or any optional file that
-cannot be proven necessary, is a stop-and-reclassify condition.
 
 ### Autonomous Checkpoints
 
