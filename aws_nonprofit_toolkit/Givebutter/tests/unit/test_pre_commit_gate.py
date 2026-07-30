@@ -13,7 +13,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts/ci"))
 
+import pre_commit_gate  # noqa: E402
 from pre_commit_gate import (  # noqa: E402
+    EXPECTED_GATE_SPECS,
     PACKET_REPO_PATH,
     build_env,
     check_blocked_artifacts,
@@ -23,6 +25,8 @@ from pre_commit_gate import (  # noqa: E402
     get_venv_python,
     is_blocked_artifact,
     resolve_command,
+    run_staged_tree_integrity_guard,
+    run_task_untracked_guard,
     run_pytest_gate,
     staged_diff_sha256,
     validate_readiness_packet,
@@ -39,10 +43,12 @@ def gate_result(
     command: str | None = None,
     exception_id: str | None = None,
 ) -> dict:
+    default_command = EXPECTED_GATE_SPECS[gate_id]["command"] if gate_id in EXPECTED_GATE_SPECS else None
     return {
         "gate_id": gate_id,
         "group": group,
         "command": command
+        or default_command
         or (
             "./.venv/bin/python scripts/ci/check_lane_scope.py --lane workflow-ci --verbose"
             if group == "scope"
@@ -82,6 +88,8 @@ def valid_packet(diff_hash: str = "abc", head: str = "deadbeef", task_id: str = 
         "required_changes": [],
         "gate_results": [
             gate_result("check_no_artifacts", "canonical"),
+            gate_result("check_task_untracked", "canonical"),
+            gate_result("check_staged_tree_integrity", "canonical"),
             gate_result("workflow_ci_lane_guard", "scope"),
         ],
         "authorized_exceptions": [],
@@ -160,9 +168,9 @@ def test_schema_version_two_required(readiness_context):
 def test_malformed_gate_ledger_values_return_structured_errors(monkeypatch, readiness_context):
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: MagicMock(returncode=1))
     packet = valid_packet()
-    packet["gate_results"][1]["status"] = "failed"
-    packet["gate_results"][1]["exit_code"] = 1
-    packet["gate_results"][1]["exception_id"] = "mixed-scope-1"
+    packet["gate_results"][3]["status"] = "failed"
+    packet["gate_results"][3]["exit_code"] = 1
+    packet["gate_results"][3]["exception_id"] = "mixed-scope-1"
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = True
@@ -246,8 +254,8 @@ def test_failed_scope_gate_requires_structured_exception(readiness_context):
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = False
-    packet["gate_results"][1]["status"] = "failed"
-    packet["gate_results"][1]["exit_code"] = 1
+    packet["gate_results"][3]["status"] = "failed"
+    packet["gate_results"][3]["exit_code"] = 1
     errors = validate_readiness_packet(packet, readiness_context)
     assert any("authorized exception" in e for e in errors)
     assert any("commit_authorized" in e for e in errors)
@@ -258,9 +266,9 @@ def test_failed_scope_gate_with_matching_exception_passes(monkeypatch, readiness
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = True
-    packet["gate_results"][1]["status"] = "failed"
-    packet["gate_results"][1]["exit_code"] = 1
-    packet["gate_results"][1]["exception_id"] = "mixed-scope-1"
+    packet["gate_results"][3]["status"] = "failed"
+    packet["gate_results"][3]["exit_code"] = 1
+    packet["gate_results"][3]["exception_id"] = "mixed-scope-1"
     packet["authorized_exceptions"] = [gate_exception("mixed-scope-1", "workflow_ci_lane_guard")]
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: SimpleNamespace(returncode=1))
     assert validate_readiness_packet(packet, readiness_context) == []
@@ -271,9 +279,9 @@ def test_failed_scope_gate_with_lane_guard_crash_fails_closed(monkeypatch, readi
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = True
-    packet["gate_results"][1]["status"] = "failed"
-    packet["gate_results"][1]["exit_code"] = 1
-    packet["gate_results"][1]["exception_id"] = "mixed-scope-1"
+    packet["gate_results"][3]["status"] = "failed"
+    packet["gate_results"][3]["exit_code"] = 1
+    packet["gate_results"][3]["exception_id"] = "mixed-scope-1"
     packet["authorized_exceptions"] = [gate_exception("mixed-scope-1", "workflow_ci_lane_guard")]
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: None)
     errors = validate_readiness_packet(packet, readiness_context)
@@ -285,9 +293,9 @@ def test_failed_scope_gate_with_nonstandard_lane_exit_fails_closed(monkeypatch, 
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = True
-    packet["gate_results"][1]["status"] = "failed"
-    packet["gate_results"][1]["exit_code"] = 1
-    packet["gate_results"][1]["exception_id"] = "mixed-scope-1"
+    packet["gate_results"][3]["status"] = "failed"
+    packet["gate_results"][3]["exit_code"] = 1
+    packet["gate_results"][3]["exception_id"] = "mixed-scope-1"
     packet["authorized_exceptions"] = [gate_exception("mixed-scope-1", "workflow_ci_lane_guard")]
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: SimpleNamespace(returncode=2))
     errors = validate_readiness_packet(packet, readiness_context)
@@ -306,7 +314,7 @@ def test_missing_scope_gate_fails(readiness_context):
 
 def test_missing_canonical_gate_fails(readiness_context):
     packet = valid_packet()
-    packet["gate_results"] = [packet["gate_results"][1]]
+    packet["gate_results"] = [packet["gate_results"][3]]
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = True
     packet["commit_authorized"] = True
@@ -316,7 +324,7 @@ def test_missing_canonical_gate_fails(readiness_context):
 
 def test_required_false_gate_fails(readiness_context):
     packet = valid_packet()
-    packet["gate_results"][1]["required"] = False
+    packet["gate_results"][3]["required"] = False
     errors = validate_readiness_packet(packet, readiness_context)
     assert any("required must be true" in e for e in errors)
 
@@ -339,8 +347,8 @@ def test_required_gate_not_run_fails(readiness_context):
     packet["scope_guard_passed"] = False
     packet["canonical_gates_passed"] = True
     packet["commit_authorized"] = False
-    packet["gate_results"][1]["status"] = "not_run"
-    packet["gate_results"][1]["exit_code"] = None
+    packet["gate_results"][3]["status"] = "not_run"
+    packet["gate_results"][3]["exit_code"] = None
     errors = validate_readiness_packet(packet, readiness_context)
     assert any("not_run" in e for e in errors)
 
@@ -378,3 +386,34 @@ def test_valid_packet_file_passes(monkeypatch, tmp_path, readiness_context):
     path.write_text(json.dumps(valid_packet()), encoding="utf-8")
     monkeypatch.setattr("pre_commit_gate.get_readiness_packet_path", lambda: path)
     assert check_commit_readiness(readiness_context) == 0
+
+
+def test_run_task_untracked_guard_preserves_failure_exit_code(monkeypatch):
+    monkeypatch.setattr("pre_commit_gate.subprocess.run", lambda *args, **kwargs: MagicMock(returncode=4))
+    assert run_task_untracked_guard().returncode == 4
+
+
+def test_run_staged_tree_integrity_guard_preserves_failure_exit_code(monkeypatch):
+    monkeypatch.setattr("pre_commit_gate.subprocess.run", lambda *args, **kwargs: MagicMock(returncode=6))
+    assert run_staged_tree_integrity_guard().returncode == 6
+
+
+def test_main_runs_new_integrity_guards_before_readiness(monkeypatch, capsys):
+    calls: list[str] = []
+
+    monkeypatch.setattr("pre_commit_gate.verify_venv_commands", lambda env: calls.append("verify") or 0)
+    monkeypatch.setattr(
+        "pre_commit_gate.run_task_untracked_guard",
+        lambda: calls.append("task") or SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr(
+        "pre_commit_gate.run_staged_tree_integrity_guard",
+        lambda: calls.append("staged") or SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr("pre_commit_gate.check_blocked_artifacts", lambda: calls.append("artifacts") or 0)
+    monkeypatch.setattr("pre_commit_gate.check_commit_readiness", lambda env: calls.append("readiness") or 0)
+    monkeypatch.setattr("pre_commit_gate.run_pytest_gate", lambda env: calls.append("tests") or 0)
+
+    assert pre_commit_gate.main() == 0
+    assert calls == ["verify", "task", "staged", "artifacts", "readiness", "tests"]
+    assert "Pre-commit" in capsys.readouterr().out

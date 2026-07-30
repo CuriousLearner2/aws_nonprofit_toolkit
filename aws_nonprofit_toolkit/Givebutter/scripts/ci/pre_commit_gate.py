@@ -33,6 +33,14 @@ EXPECTED_GATE_SPECS = {
         "group": "canonical",
         "command": "./.venv/bin/python scripts/ci/check_no_artifacts.py",
     },
+    "check_task_untracked": {
+        "group": "canonical",
+        "command": "./.venv/bin/python scripts/ci/check_task_untracked.py",
+    },
+    "check_staged_tree_integrity": {
+        "group": "canonical",
+        "command": "./.venv/bin/python scripts/ci/check_staged_tree_integrity.py",
+    },
     "workflow_ci_lane_guard": {
         "group": "scope",
         "command": "./.venv/bin/python scripts/ci/check_lane_scope.py --lane workflow-ci --verbose",
@@ -343,9 +351,13 @@ def _validate_authorized_exceptions(
 
 
 def run_workflow_ci_lane_guard() -> subprocess.CompletedProcess[Any] | None:
+    return run_guard([str(get_venv_python()), "scripts/ci/check_lane_scope.py", "--lane", "workflow-ci", "--verbose"])
+
+
+def run_guard(command: list[str]) -> subprocess.CompletedProcess[Any] | None:
     try:
         return subprocess.run(
-            [str(get_venv_python()), "scripts/ci/check_lane_scope.py", "--lane", "workflow-ci", "--verbose"],
+            command,
             cwd=get_givebutter_dir(),
             env=build_env(),
             capture_output=True,
@@ -354,6 +366,14 @@ def run_workflow_ci_lane_guard() -> subprocess.CompletedProcess[Any] | None:
         )
     except OSError:
         return None
+
+
+def run_task_untracked_guard() -> subprocess.CompletedProcess[Any] | None:
+    return run_guard([str(get_venv_python()), "scripts/ci/check_task_untracked.py"])
+
+
+def run_staged_tree_integrity_guard() -> subprocess.CompletedProcess[Any] | None:
+    return run_guard([str(get_venv_python()), "scripts/ci/check_staged_tree_integrity.py"])
 
 
 def load_readiness_packet(path: Path | None = None) -> dict[str, Any]:
@@ -564,6 +584,14 @@ def main() -> int:
     env = build_env()
     print("\033[1;33mPre-commit: validating readiness, artifacts, and tests...\033[0m\n")
     if verify_venv_commands(env) != 0:
+        return 1
+    task_guard_result = run_task_untracked_guard()
+    if task_guard_result is None or task_guard_result.returncode != 0:
+        print("\n❌ COMMIT BLOCKED: Untracked task files must be removed or staged before committing.")
+        return 1
+    staged_tree_guard_result = run_staged_tree_integrity_guard()
+    if staged_tree_guard_result is None or staged_tree_guard_result.returncode != 0:
+        print("\n❌ COMMIT BLOCKED: Staged-tree integrity must pass before committing.")
         return 1
     if check_blocked_artifacts() != 0:
         return 1
