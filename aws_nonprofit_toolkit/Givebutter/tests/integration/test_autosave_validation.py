@@ -17,9 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.uploader.app import app
 from scripts.householder.database_models import (
-    Base, ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject,
+    Base, ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewItemSubject,
     ReviewDecision, create_db_engine
 )
+from scripts.householder.database_repository import DatabaseImportRepository
+from scripts.householder.issue_recalculation_service import recalculate_row_issues
 from scripts.householder.autosave_service import get_effective_values, validate_corrected_values
 from sqlalchemy.orm import sessionmaker
 
@@ -146,6 +148,72 @@ def setup_validation_batch(database_url):
         session.close()
 
 
+def setup_missing_address_batch(database_url):
+    """Seed a database-backed batch with a blank address row and one missing-address issue."""
+    SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+    session = SessionLocal()
+
+    try:
+        batch = ImportBatch(
+            id='autosave-address-test-batch',
+            filename='address-test.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(
+            batch_id=batch.id,
+            row_index=1,
+            raw_csv_data={
+                'Name': 'Address Row',
+                'Address 1': '',
+                'address': '',
+            },
+        )
+        session.add(raw_row)
+        session.flush()
+
+        contact = ImportContact(
+            batch_id=batch.id,
+            raw_import_row_id=raw_row.id,
+            first_name='Address',
+            last_name='Row',
+            address_line1='',
+        )
+        session.add(contact)
+        session.flush()
+
+        review_item = ReviewItem(
+            batch_id=batch.id,
+            item_type='validation',
+            status='pending',
+            confidence=1.0,
+            payload_json={
+                'field': 'ADDRESS 1',
+                'reason': 'missing',
+                'severity': 'warning',
+                'description': 'Missing address',
+            },
+        )
+        session.add(review_item)
+        session.flush()
+        session.add(
+            ReviewItemSubject(
+                review_item_id=review_item.id,
+                subject_type='import_raw_row',
+                subject_id=raw_row.id,
+                role='primary',
+            )
+        )
+        session.commit()
+        return batch.id, raw_row.id
+    finally:
+        session.close()
+
+
 @pytest.mark.integration
 class TestAutosaveValidation:
     """Test suite for autosave validation (validate-before-save)."""
@@ -195,6 +263,61 @@ class TestAutosaveValidation:
         is_valid, errors = validate_corrected_values({'date': '2026-05-15'})
         assert is_valid is True
         assert errors is None
+
+    def test_autosave_valid_address_persists_and_clears_missing_address_issue(self, client_with_db):
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_missing_address_batch(database_url)
+        saved_address = '456 New St'
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {
+                    'address': saved_address,
+                },
+            },
+        )
+
+        result = response.get_json()
+        assert response.status_code == 200
+        assert result['success'] is True
+        assert result['decision_id'] not in (None, 0)
+        assert result['effective_values']['address'] == saved_address
+        assert result['row_status'] in {'Warning', 'No issues'}
+        assert result['issues'] == []
+
+        session = sessionmaker(bind=create_db_engine(database_url))()
+        try:
+            decision = session.query(ReviewDecision).filter_by(
+                batch_id=batch_id,
+                raw_import_row_id=raw_row_id,
+            ).order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc()).first()
+            assert decision is not None
+            assert decision.reviewed_values is not None
+            assert decision.reviewed_values.get('address') == saved_address
+
+            raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).one()
+            assert raw_row.raw_csv_data['Address 1'] == ''
+            assert raw_row.raw_csv_data['address'] == ''
+        finally:
+            session.close()
+
+        effective_values = get_effective_values(batch_id, raw_row_id, database_url)
+        assert effective_values['address'] == saved_address
+
+        recalculated_issues = recalculate_row_issues(batch_id, raw_row_id, database_url)
+        assert all(issue.get('field') != 'address' for issue in recalculated_issues)
+
+        repository = DatabaseImportRepository(database_url)
+        validation_page = repository.get_validation(batch_id)
+        row = next(
+            item for item in validation_page.validation_rows
+            if item.raw_import_row_id == raw_row_id
+        )
+        assert row.address == saved_address
+        assert row.issue_type is None
+        assert row.issue_description is None
 
     def test_autosave_invalid_email_not_saved(self, client_with_db):
         """CRITICAL: Invalid email correction is REJECTED and NOT saved."""

@@ -20,10 +20,8 @@ from .amount_validation_service import validate_review_amount
 from .email_validation_service import validate_review_email
 from .date_validation_service import validate_review_date
 from .phone_validation_service import is_valid_phone
-from .issue_identity import (
-    normalize_validation_issue_field,
-    validation_issue_identity,
-)
+from .issue_identity import normalize_validation_issue_field
+from .issue_reconciliation import reconcile_missing_address_issues
 import os
 
 # Top 30 recognized email domains - strict validation applied to these
@@ -72,9 +70,15 @@ COMMON_TYPO_DOMAINS = {
 def _validation_issue_value_for_field(values: Dict[str, Any], field: Any) -> Any:
     canonical_field = normalize_validation_issue_field(field)
     if canonical_field:
+        blank_match = None
         for key, value in values.items():
             if normalize_validation_issue_field(key) == canonical_field:
-                return value
+                if value is not None and str(value).strip():
+                    return value
+                if blank_match is None:
+                    blank_match = value
+        if blank_match is not None:
+            return blank_match
     return values.get(field)
 
 
@@ -151,7 +155,6 @@ def recalculate_row_issues(
 
         # For each existing issue, check if it's still valid given the effective values
         current_issues = []
-        current_address_issue_identities = set()
 
         for issue in existing_issues:
             payload = issue.payload_json or {}
@@ -188,19 +191,13 @@ def recalculate_row_issues(
                 'issue_id': issue.id,
                 'issue_type': issue.item_type,
                 'field': issue_field,
+                'reason': issue_reason,
+                'source': payload.get('source'),
                 'description': description,
+                'message': description,
                 'severity': severity,
                 'overridden': _is_issue_overridden(batch, raw_import_row_id, issue_field)
             })
-            if normalized_field == 'address':
-                current_address_issue_identities.add(
-                    validation_issue_identity({
-                        'field': issue_field,
-                        'reason': issue_reason,
-                        'severity': severity,
-                        'source': payload.get('source'),
-                    })
-                )
 
         # Validate effective date even when there is no autosave proposal.
         # This keeps DB-backed validation, approval readiness, and export parity
@@ -238,12 +235,19 @@ def recalculate_row_issues(
         # as well as reviewed rows so the validation, approval, and export paths
         # agree on the same canonical field rules.
         new_validation_issues = _validate_effective_values(effective_values)
+        new_address_issues = []
         for new_issue in new_validation_issues:
             new_issue_field = str(new_issue.get('field')).strip().lower() if new_issue.get('field') else ''
+            if new_issue_field == 'address':
+                new_address_issues.append(new_issue)
+                continue
             if new_issue_field not in existing_fields:
                 current_issues.append(new_issue)
 
-        # Address is warning-only but should be visible on load and edit.
+        # Preserve the legacy address synthesis path for rows with an
+        # authoritative address source (raw row or contact snapshot).
+        # The reconciliation boundary below deduplicates this against any
+        # existing persisted missing-address issue.
         address_issue = _validate_address(_validation_issue_value_for_field(effective_values, 'address'))
         has_authoritative_address = (
             _validation_issue_value_for_field(raw_data, 'address') is not None
@@ -252,16 +256,23 @@ def recalculate_row_issues(
                 for attribute in ('address_line1', 'address_line2', 'city', 'state', 'postal_code')
             )
         )
-        if (
-            address_issue
-            and has_authoritative_address
-            and validation_issue_identity({
-                'field': 'address',
-                'reason': 'missing',
-                'severity': 'warning',
-            }) not in current_address_issue_identities
-        ):
-            current_issues.append(address_issue)
+        if address_issue and has_authoritative_address:
+            new_address_issues.append(address_issue)
+
+        existing_address_issues = [
+            issue
+            for issue in current_issues
+            if normalize_validation_issue_field(issue.get('field')) == 'address'
+        ]
+        non_address_issues = [
+            issue
+            for issue in current_issues
+            if normalize_validation_issue_field(issue.get('field')) != 'address'
+        ]
+        current_issues = non_address_issues + reconcile_missing_address_issues(
+            existing_address_issues,
+            new_address_issues,
+        )
 
         return current_issues
 
