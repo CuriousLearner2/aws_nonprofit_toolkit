@@ -34,6 +34,21 @@ Identify:
 
 Assessment-only or root-cause-only authorization does not permit edits.
 
+## Focused-First Execution
+
+Before editing, apply `policy/execution-safety.md` and the task contract's execution
+classification, defect proof, compatibility tripwires, authoritative owner, file/diff
+budgets, attempts, milestones, and stop conditions.
+
+Continue automatically while within bounds. Stop and return control to Orchestrator
+when a tripwire remains red after one narrow correction, scope or diff budget is
+exceeded, ownership becomes ambiguous, a product decision is required, or the task
+must be reclassified.
+
+Do not use broad gates to discover whether an approach is viable. Iterate with the
+smallest focused proof until stable, then run only the broader evidence invalidated
+by the final edit.
+
 ## Stateful P1
 
 Do not stop at UI text, HTTP success, queue-row creation, or service return.
