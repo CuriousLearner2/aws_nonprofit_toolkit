@@ -104,6 +104,59 @@ def test_missing_address_is_single_issue_and_clears_on_valid_correction():
             session.close()
 
 
+def _seed_batch_with_duplicate_address_issues(
+    database_url: str,
+    *,
+    raw_row_data: dict[str, str],
+) -> int:
+    engine = create_engine(database_url)
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        batch = ImportBatch(
+            id="address-integrity-batch",
+            filename="address.csv",
+            upload_timestamp=datetime.now(timezone.utc),
+            status="pending_review",
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        raw_row = RawImportRow(batch_id=batch.id, row_index=1, raw_csv_data=raw_row_data)
+        session.add(raw_row)
+        session.flush()
+
+        for index, field in enumerate(("ADDRESS 1", "street address"), start=1):
+            review_item = ReviewItem(
+                batch_id=batch.id,
+                item_type="validation",
+                status="pending",
+                confidence=1.0,
+                payload_json={
+                    "field": field,
+                    "reason": "missing",
+                    "severity": "warning",
+                    "description": f"Missing address #{index}",
+                },
+            )
+            session.add(review_item)
+            session.flush()
+            session.add(
+                ReviewItemSubject(
+                    review_item_id=review_item.id,
+                    subject_type="import_raw_row",
+                    subject_id=raw_row.id,
+                    role="primary",
+                )
+            )
+
+        session.commit()
+        return raw_row.id
+    finally:
+        session.close()
+
+
 def test_non_address_row_does_not_gain_missing_address():
     with tempfile.TemporaryDirectory() as tmpdir:
         database_url = f"sqlite:///{Path(tmpdir) / 'no-address.db'}"
@@ -120,3 +173,40 @@ def test_non_address_row_does_not_gain_missing_address():
 
         issues = recalculate_row_issues("address-integrity-batch", raw_row_id, database_url)
         assert all(issue.get("field") != "address" for issue in issues)
+
+
+def test_duplicate_missing_address_issues_collapse_and_clear_on_valid_correction():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        database_url = f"sqlite:///{Path(tmpdir) / 'address-duplicates.db'}"
+        raw_row_id = _seed_batch_with_duplicate_address_issues(
+            database_url,
+            raw_row_data={"Address 1": ""},
+        )
+
+        first = recalculate_row_issues("address-integrity-batch", raw_row_id, database_url)
+        second = recalculate_row_issues("address-integrity-batch", raw_row_id, database_url)
+
+        assert len(first) == 1
+        assert first == second
+        assert first[0]["field"].lower() in {"address", "address 1", "street address"}
+        assert "Missing address" in first[0]["description"]
+
+        autosave_row_corrections(
+            "address-integrity-batch",
+            raw_row_id,
+            {"Address 1": "123 Main St"},
+            database_url=database_url,
+        )
+
+        after_correction = recalculate_row_issues("address-integrity-batch", raw_row_id, database_url)
+        after_reload = recalculate_row_issues("address-integrity-batch", raw_row_id, database_url)
+
+        assert after_correction == []
+        assert after_reload == []
+
+        session = sessionmaker(bind=create_engine(database_url))()
+        try:
+            raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).one()
+            assert raw_row.raw_csv_data["Address 1"] == ""
+        finally:
+            session.close()
