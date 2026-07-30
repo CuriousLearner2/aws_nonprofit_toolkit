@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "task_id": "MACHINE-ENFORCED-CAMPAIGN-STATE-20260730",
+  "campaign_id": "MACHINE-ENFORCED-CAMPAIGN-STATE-20260730",
+  "execution_classification": "workflow_ci_architecture_pilot",
+  "authorization_purpose": "Implement independent runtime evidence and commit-readiness validation against this frozen authorization.",
+  "authorized_phases": [
+    "runtime_evidence",
+    "readiness_aggregation",
+    "acceptance",
+    "delivery"
+  ],
+  "current_authorized_phase": "runtime_evidence",
+  "authorized_implementation_files": [
+    "Givebutter/scripts/ci/campaign_state.py",
+    "Givebutter/scripts/ci/pre_commit_gate.py"
+  ],
+  "authorized_optional_implementation_files": [
+    "Givebutter/scripts/ci/runtime_evidence.py"
+  ],
+  "authorized_test_files": [
+    "Givebutter/tests/unit/test_campaign_state.py",
+    "Givebutter/tests/unit/test_pre_commit_gate.py"
+  ],
+  "maximum_implementation_files": 3,
+  "implementation_line_budget": 450,
+  "maximum_test_files": 2,
+  "test_line_budget": 550,
+  "primary_attempts_allowed": 1,
+  "narrow_corrections_allowed": 1,
+  "required_existing_gates": [
+    "check_task_untracked",
+    "check_staged_tree_integrity",
+    "check_no_artifacts"
+  ],
+  "required_roles": [
+    "Reviewer",
+    "Breaker"
+  ],
+  "frozen_files": [
+    "Givebutter/scripts/ci/check_task_untracked.py",
+    "Givebutter/scripts/ci/check_staged_tree_integrity.py"
+  ],
+  "stop_conditions": [
+    "authorization file changes during implementation",
+    "implementation exceeds authorized files",
+    "implementation exceeds implementation line budget",
+    "tests exceed test line budget",
+    "allowed values are derived from actual staged values",
+    "runtime evidence can be manually asserted without an execution record",
+    "an exception is accepted without preauthorization",
+    "push-readiness or GitHub-authentication work enters scope"
+  ],
+  "preauthorized_exceptions": [],
+  "commit_authorized_in_principle": true,
+  "push_authorized_in_principle": false
+}
