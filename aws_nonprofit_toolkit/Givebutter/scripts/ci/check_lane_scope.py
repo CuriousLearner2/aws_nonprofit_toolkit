@@ -146,14 +146,53 @@ def get_changed_files():
         sys.exit(2)
 
 
+def get_changed_entries():
+    """Get changed files with their git status codes."""
+    changed_entries = []
+    repo_root = get_repo_root()
+    current_dir = Path.cwd()
+
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        for line in result.stdout.rstrip('\n').split('\n'):
+            if not line:
+                continue
+
+            status = line[:2]
+
+            if status[0] == 'R':
+                remainder = line[3:]
+                if ' -> ' in remainder:
+                    parts = remainder.split(' -> ')
+                    filepath = parts[-1].strip()
+                else:
+                    filepath = remainder.strip()
+            else:
+                filepath = line[3:]
+
+            if filepath:
+                normalized = normalize_path(filepath, repo_root, current_dir)
+                changed_entries.append((status, normalized))
+
+        return changed_entries
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error reading git status: {e}", file=sys.stderr)
+        sys.exit(2)
+
+
 def classify_file(filepath):
     """
     Classify a file into a semantic category.
 
-    Returns: one of 'workflow', 'ci', 'product', 'tests', 'docs', 'schema', 'other'
+    Returns: one of 'workflow', 'ci', 'product', 'tests', 'docs', 'schema', 'runtime_output', 'other'
     """
-    parts = filepath.split('/')
-
     # Workflow files
     if filepath.startswith('.claude/') or filepath.startswith('.github/') or filepath == '.gitignore' or filepath.startswith('.codex/agents/'):
         return 'workflow'
@@ -185,6 +224,14 @@ def classify_file(filepath):
         filepath.endswith('.sql')):
         return 'schema'
 
+    # Known ephemeral runtime output
+    parts = [part for part in filepath.split('/') if part]
+    if 'exports_uat' in parts:
+        exports_index = parts.index('exports_uat')
+        prefix = parts[:exports_index]
+        if prefix in ([], ['Givebutter'], ['aws_nonprofit_toolkit', 'Givebutter']):
+            return 'runtime_output'
+
     # Other
     return 'other'
 
@@ -203,9 +250,15 @@ def check_lane_scope(lane, changed_files, allow_schema=False, simulate=False, ve
     current_dir = Path.cwd()
 
     # Categorize all files (normalize nested paths first)
-    for filepath in changed_files:
+    for changed in changed_files:
+        status = None
+        filepath = changed
+        if isinstance(changed, tuple) and len(changed) == 2:
+            status, filepath = changed
         normalized = normalize_path(filepath, repo_root, current_dir)
         category = classify_file(normalized)
+        if category == 'runtime_output' and status not in (None, '??'):
+            category = 'other'
         if category not in categorized:
             categorized[category] = []
         categorized[category].append(normalized)
@@ -253,6 +306,8 @@ def check_lane_scope(lane, changed_files, allow_schema=False, simulate=False, ve
                 conflicts.append(('ci', 'product does not allow scripts/ci/* files; split into separate workflow-ci task'))
             elif category == 'schema' and not allow_schema:
                 conflicts.append(('schema', 'product does not allow schema/migration files without --allow-schema'))
+            elif category == 'runtime_output':
+                conflicts.append(('runtime_output', 'product does not allow runtime output files; split into separate workflow-ci task'))
             elif category == 'other':
                 conflicts.append(('other', 'product does not allow miscellaneous files'))
 
@@ -303,7 +358,7 @@ def main():
         sys.exit(2)
 
     # Get changed files and check lane scope
-    changed_files = get_changed_files()
+    changed_files = get_changed_entries()
     is_clean, conflicts, categorized = check_lane_scope(lane, changed_files, allow_schema, simulate, verbose)
 
     # Print report

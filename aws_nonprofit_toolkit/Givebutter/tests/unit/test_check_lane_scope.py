@@ -13,6 +13,8 @@ Tests verify:
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add scripts/ci to path so we can import check_lane_scope
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "ci"))
 
@@ -69,6 +71,12 @@ class TestFileClassification:
         assert check_lane_scope.classify_file('config.yaml') == 'other'
         assert check_lane_scope.classify_file('.codex/notes.txt') == 'other'
         assert check_lane_scope.classify_file('.env') == 'other'
+
+    def test_classify_runtime_output_files(self):
+        """Known exports_uat runtime files are classified as runtime output."""
+        assert check_lane_scope.classify_file('exports_uat/result.csv') == 'runtime_output'
+        assert check_lane_scope.classify_file('Givebutter/exports_uat/nested/result.json') == 'runtime_output'
+        assert check_lane_scope.classify_file('Givebutter/export_uat/result.csv') == 'other'
 
 
 class TestLaneRulesAssessment:
@@ -181,6 +189,18 @@ class TestLaneRulesWorkflowCI:
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['scripts/ci/check_scope.py'])
         assert is_clean is True
 
+    def test_workflow_ci_exports_uat_runtime_output_allowed(self):
+        """Workflow-CI lane allows exports_uat runtime output."""
+        is_clean, conflicts, categorized = check_lane_scope.check_lane_scope(
+            'workflow-ci',
+            ['Givebutter/exports_uat/result.csv'],
+            verbose=True,
+        )
+        assert is_clean is True
+        assert len(conflicts) == 0
+        assert 'runtime_output' in categorized
+        assert categorized['runtime_output'] == ['exports_uat/result.csv']
+
     def test_workflow_ci_product_blocked(self):
         """Workflow-CI lane blocks product files."""
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['scripts/householder/repository.py'])
@@ -216,6 +236,31 @@ class TestLaneRulesWorkflowCI:
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['docs/example.md'])
         assert is_clean is False
         assert any('docs' in str(c) for c in conflicts)
+
+    def test_workflow_ci_tracked_exports_uat_file_blocked(self):
+        """Tracked exports_uat files remain blocked by lane scope."""
+        is_clean, conflicts, categorized = check_lane_scope.check_lane_scope(
+            'workflow-ci',
+            [(' M', 'Givebutter/exports_uat/tracked.csv')],
+        )
+        assert is_clean is False
+        assert any('other' in str(c) for c in conflicts)
+        assert 'other' in categorized
+
+    @pytest.mark.parametrize(
+        'filepath',
+        [
+            'Givebutter/exports/result.csv',
+            'Givebutter/export_uat/result.csv',
+            'Givebutter/misc/output.csv',
+        ],
+    )
+    def test_workflow_ci_similar_names_still_blocked(self, filepath):
+        """Only exports_uat is treated as runtime output; similar names stay blocked."""
+        is_clean, conflicts, categorized = check_lane_scope.check_lane_scope('workflow-ci', [filepath])
+        assert is_clean is False
+        assert any('other' in str(c) for c in conflicts)
+        assert 'other' in categorized
 
 
 class TestLaneRulesProduct:
@@ -319,13 +364,15 @@ class TestVerboseFlag:
         files = [
             'scripts/householder/repository.py',
             'tests/unit/test.py',
-            '.claude/agents/orchestrator.md'
+            '.claude/agents/orchestrator.md',
+            'Givebutter/exports_uat/result.csv',
         ]
         is_clean, conflicts, categorized = check_lane_scope.check_lane_scope('product', files, verbose=True)
         # Verbose should still work the same logically
         assert 'product' in categorized
         assert 'tests' in categorized
         assert 'workflow' in categorized
+        assert 'runtime_output' in categorized
 
 
 class TestInvalidLaneHandling:
