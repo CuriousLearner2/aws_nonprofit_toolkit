@@ -33,6 +33,7 @@ from pathlib import Path
 
 PROJECT_ROOT_NAME = Path(__file__).resolve().parents[2].name
 HOUSEHOLDER_ARTIFACT_DIR = ".artifacts"
+HOUSEHOLDER_READINESS_FILE = "commit-readiness.json"
 HOUSEHOLDER_STATE_FILE = "householder-task-state.json"
 HOUSEHOLDER_STATE_LOCK = "householder-task-state.json.lock"
 HOUSEHOLDER_STATE_ARCHIVE_PREFIX = "householder-task-state."
@@ -242,7 +243,8 @@ def classify_file(filepath):
         if len(leaf) == 1:
             name = leaf[0]
             if (
-                name == HOUSEHOLDER_STATE_FILE
+                name == HOUSEHOLDER_READINESS_FILE
+                or name == HOUSEHOLDER_STATE_FILE
                 or name == HOUSEHOLDER_STATE_LOCK
                 or (name.startswith(HOUSEHOLDER_STATE_ARCHIVE_PREFIX) and name.endswith(HOUSEHOLDER_STATE_ARCHIVE_SUFFIX))
             ):

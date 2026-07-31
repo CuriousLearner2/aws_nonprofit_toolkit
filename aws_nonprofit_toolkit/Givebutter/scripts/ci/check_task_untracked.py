@@ -26,6 +26,7 @@ ALLOWED_RUNTIME_PATTERNS = (
     "exports_uat/",
 )
 HOUSEHOLDER_ARTIFACT_DIR = ".artifacts"
+HOUSEHOLDER_READINESS_FILE = f"{HOUSEHOLDER_ARTIFACT_DIR}/commit-readiness.json"
 HOUSEHOLDER_STATE_FILE = f"{HOUSEHOLDER_ARTIFACT_DIR}/householder-task-state.json"
 HOUSEHOLDER_STATE_LOCK = f"{HOUSEHOLDER_ARTIFACT_DIR}/householder-task-state.json.lock"
 HOUSEHOLDER_STATE_ARCHIVE_PREFIX = f"{HOUSEHOLDER_ARTIFACT_DIR}/householder-task-state."
@@ -80,6 +81,7 @@ def _matches_runtime_pattern(path: str) -> bool:
         path == ".DS_Store"
         or path.endswith("/.DS_Store")
         or path.startswith("exports_uat/")
+        or path == HOUSEHOLDER_READINESS_FILE
         or _matches_householder_runtime_state(path)
     )
 

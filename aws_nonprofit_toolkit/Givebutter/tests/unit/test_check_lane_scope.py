@@ -76,6 +76,7 @@ class TestFileClassification:
         """Known exports_uat runtime files are classified as runtime output."""
         assert check_lane_scope.classify_file('exports_uat/result.csv') == 'runtime_output'
         assert check_lane_scope.classify_file('Givebutter/exports_uat/nested/result.json') == 'runtime_output'
+        assert check_lane_scope.classify_file('Givebutter/.artifacts/commit-readiness.json') == 'runtime_output'
         assert check_lane_scope.classify_file('Givebutter/.artifacts/householder-task-state.json') == 'runtime_output'
         assert check_lane_scope.classify_file('Givebutter/.artifacts/householder-task-state.json.lock') == 'runtime_output'
         assert (
@@ -214,6 +215,7 @@ class TestLaneRulesWorkflowCI:
         is_clean, conflicts, categorized = check_lane_scope.check_lane_scope(
             'workflow-ci',
             [
+                'Givebutter/.artifacts/commit-readiness.json',
                 'Givebutter/.artifacts/householder-task-state.json',
                 'Givebutter/.artifacts/householder-task-state.json.lock',
                 'Givebutter/.artifacts/householder-task-state.20260731T123456000000Z.1234567890abcdef.archive.json',
@@ -224,6 +226,7 @@ class TestLaneRulesWorkflowCI:
         assert len(conflicts) == 0
         assert 'runtime_output' in categorized
         assert categorized['runtime_output'] == [
+            '.artifacts/commit-readiness.json',
             '.artifacts/householder-task-state.json',
             '.artifacts/householder-task-state.json.lock',
             '.artifacts/householder-task-state.20260731T123456000000Z.1234567890abcdef.archive.json',
@@ -291,6 +294,7 @@ class TestLaneRulesWorkflowCI:
             'Givebutter/exports/result.csv',
             'Givebutter/export_uat/result.csv',
             'Givebutter/misc/output.csv',
+            'Givebutter/.artifacts/commit-readiness.snapshot.json',
             'Givebutter/.artifacts/householder-task-state.snapshot.json',
         ],
     )
