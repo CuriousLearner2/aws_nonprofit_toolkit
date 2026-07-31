@@ -389,12 +389,12 @@ class TestValidationIssuesRendering:
             # Restore original CONTACTS
             fixtures.CONTACTS[:] = original_contacts
 
-    def test_validation_route_fixture_fallback_date_and_present_address_remains_clean(self, client_with_fixture, monkeypatch):
-        """Test that Validation Review fallback validates date while leaving present addresses clean.
+    def test_validation_route_fixture_fallback_date_and_malformed_address_are_visible(self, client_with_fixture, monkeypatch):
+        """Test that Validation Review fallback validates date and surfaces malformed addresses.
 
-        This documents the present Validation Review contract: when issue_type is None,
-        the fallback path validates amount/email/phone/date but does not generate
-        missing-address warnings for rows that already have an address.
+        This documents the Validation Review contract: when issue_type is None,
+        the fallback path validates amount/email/phone/date and surfaces malformed
+        address fragments without treating them as clean.
         """
         from scripts.uploader import fixtures
 
@@ -435,7 +435,7 @@ class TestValidationIssuesRendering:
                 "Validation Review fallback should surface strict date validation copy, "
                 f"but got row section: {row_section}"
             )
-            assert 'Missing address' not in row_section
+            assert 'Malformed address' in row_section
             assert 'No issues' not in row_section
 
         finally:

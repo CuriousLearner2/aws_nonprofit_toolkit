@@ -622,8 +622,8 @@ class TestValidationServiceFixtureFallbackValidation:
                 f"but got row_status={row['row_status']}"
             )
 
-    def test_fixture_fallback_address_is_currently_unsupported_in_validation_review(self):
-        """Test that Validation Review fallback currently does not validate address-only issues."""
+    def test_fixture_fallback_marks_malformed_address_in_validation_review(self):
+        """Test that Validation Review fallback surfaces malformed addresses as review issues."""
         from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
         from scripts.householder.validation_service import get_validation_review
         from unittest.mock import patch, MagicMock
@@ -658,12 +658,12 @@ class TestValidationServiceFixtureFallbackValidation:
             result = get_validation_review("IMP-TEST-UNSUPPORTED-ADDRESS")
 
             row = result['validation_issues'][0]
-            assert row['issues'] == [], (
-                "Validation Review fallback currently ignores address-only issues, "
-                f"but got: {row['issues']}"
-            )
-            assert row['row_status'] == 'No issues', (
-                "Validation Review fallback currently treats malformed addresses as clean, "
+            assert len(row['issues']) == 1
+            assert row['issues'][0]['field'] == 'address'
+            assert row['issues'][0]['reason'] == 'Malformed address'
+            assert row['issues'][0]['severity'] == 'warning'
+            assert row['row_status'] == 'Warning', (
+                "Validation Review fallback should surface malformed addresses as warnings, "
                 f"but got row_status={row['row_status']}"
             )
 

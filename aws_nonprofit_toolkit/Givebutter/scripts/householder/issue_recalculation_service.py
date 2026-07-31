@@ -8,6 +8,7 @@ Returns updated list of issues for display in Issues column.
 
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import re
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -511,10 +512,11 @@ def _validate_amount(amount: Any) -> Optional[Dict[str, Any]]:
 
 def _validate_address(address: str) -> Optional[Dict[str, Any]]:
     """
-    Validate address field and return a warning if it is missing.
+    Validate address field and return a warning if it is missing or malformed.
 
     Validation Review only requires that an address be present. It does not
-    require ZIP, city, or state completeness on this screen.
+    require ZIP, city, or state completeness on this screen, but it should not
+    silently treat malformed city/state fragments as clean addresses.
     """
     if not address or not str(address).strip():
         return {
@@ -524,6 +526,18 @@ def _validate_address(address: str) -> Optional[Dict[str, Any]]:
             'severity': 'warning',
             'is_new': True,
         }
+
+    normalized = " ".join(str(address).strip().split())
+    if normalized.count(",") == 1:
+        suffix = normalized.split(",", 1)[1].strip()
+        if re.fullmatch(r"[A-Za-z .'-]+\s+[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?", suffix):
+            return {
+                'field': 'address',
+                'reason': 'malformed',
+                'description': 'Malformed address',
+                'severity': 'warning',
+                'is_new': True,
+            }
 
     return None
 
