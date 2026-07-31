@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "task_id": "CAMPAIGN-RUNTIME-EVIDENCE-20260730",
+  "campaign_id": "CAMPAIGN-RUNTIME-EVIDENCE-20260730",
+  "execution_classification": "workflow_ci_architecture_pilot",
+  "authorization_purpose": "Generate canonical runtime evidence from executed repository gates and structured external role receipts.",
+  "authorized_phases": [
+    "runtime_evidence",
+    "acceptance",
+    "delivery"
+  ],
+  "current_authorized_phase": "runtime_evidence",
+  "authorized_implementation_files": [
+    "Givebutter/scripts/ci/runtime_evidence.py"
+  ],
+  "authorized_test_files": [
+    "Givebutter/tests/unit/test_runtime_evidence.py"
+  ],
+  "maximum_implementation_files": 1,
+  "implementation_line_budget": 400,
+  "maximum_test_files": 1,
+  "test_line_budget": 320,
+  "primary_attempts_allowed": 1,
+  "narrow_corrections_allowed": 2,
+  "required_existing_gates": [
+    "check_no_artifacts",
+    "check_task_untracked",
+    "check_staged_tree_integrity",
+    "workflow_ci_lane_guard"
+  ],
+  "required_roles": [
+    "Reviewer",
+    "Breaker"
+  ],
+  "preauthorized_exceptions": [],
+  "commit_authorized_in_principle": true,
+  "push_authorized_in_principle": false
+}
