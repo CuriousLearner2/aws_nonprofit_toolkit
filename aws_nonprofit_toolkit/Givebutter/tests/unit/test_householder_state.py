@@ -55,6 +55,7 @@ def make_state(*, state: str = "idle", **overrides) -> dict[str, object]:
         "state": state,
         "created_at": "2026-07-31T00:00:00Z",
         "updated_at": "2026-07-31T00:00:00Z",
+        "deadline_at": None,
         "primary_allowed": 1,
         "primary_used": 0,
         "implementation_repair_allowed": 1,
@@ -67,6 +68,15 @@ def make_state(*, state: str = "idle", **overrides) -> dict[str, object]:
         "focused_runs_used": 0,
         "review_cycles_allowed": 2,
         "review_cycles_used": 0,
+        "active_batch": None,
+        "focused_run_active": False,
+        "failure_classified": False,
+        "failure_type": None,
+        "environment_retry_used": False,
+        "review_active": False,
+        "review_fingerprint": None,
+        "acceptance_green": False,
+        "terminal_reason": None,
     }
     record.update(overrides)
     record["state_digest"] = householder_state._digest(record)
@@ -76,6 +86,10 @@ def make_state(*, state: str = "idle", **overrides) -> dict[str, object]:
 def write_state(record: dict[str, object]) -> None:
     state_path().parent.mkdir(parents=True, exist_ok=True)
     state_path().write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def patch_fingerprint(monkeypatch, value: str) -> None:
+    monkeypatch.setattr(householder_state, "current_staged_fingerprint", lambda: value)
 
 
 def stage_extra(repo: Path, app: Path, rel: str) -> None:
@@ -239,6 +253,193 @@ def test_reset_uses_distinct_archive_names_within_same_second(monkeypatch, tmp_p
     assert len({archive.name for archive in archives}) == 2
 
 
+def test_transition_flow_primary_to_review_accepts(monkeypatch, tmp_path):
+    _, app = new_repo(tmp_path)
+    bind(monkeypatch, app)
+    patch_fingerprint(monkeypatch, "fp-1")
+    householder_state.initialize(TASK_ID)
+    householder_state.begin_edit(TASK_ID, "primary")
+    state = householder_state.begin_focused_run(TASK_ID)
+    assert state["state"] == "focused"
+    state = householder_state.finish_focused_run(TASK_ID, 0)
+    assert state["state"] == "editing"
+    state = householder_state.begin_review(TASK_ID)
+    assert state["state"] == "review"
+    state = householder_state.finish_review(TASK_ID, "ACCEPT", "PASS")
+    assert state["acceptance_green"] is True
+    assert state["state"] == "review_green"
+    report = householder_state.can_write(TASK_ID)
+    assert report["allowed"] is False
+    assert report["reason"] == "review frozen at current staged fingerprint"
+
+
+@pytest.mark.parametrize(
+    "failure_type,repair_batch",
+    [
+        ("implementation", "implementation_repair"),
+        ("test_harness", "test_harness_repair"),
+    ],
+)
+def test_classified_failure_requires_matching_repair_batch(monkeypatch, tmp_path, failure_type, repair_batch):
+    _, app = new_repo(tmp_path)
+    bind(monkeypatch, app)
+    patch_fingerprint(monkeypatch, "fp-2")
+    householder_state.initialize(TASK_ID)
+    householder_state.begin_edit(TASK_ID, "primary")
+    householder_state.begin_focused_run(TASK_ID)
+    householder_state.finish_focused_run(TASK_ID, 7)
+    with pytest.raises(ValueError, match="classification required"):
+        householder_state.begin_edit(TASK_ID, repair_batch)
+    householder_state.classify_failure(TASK_ID, failure_type)
+    assert load_state()["state"] == "blocked"
+    wrong_batch = "test_harness_repair" if repair_batch == "implementation_repair" else "implementation_repair"
+    with pytest.raises(ValueError, match="wrong repair batch"):
+        householder_state.begin_edit(TASK_ID, wrong_batch)
+    householder_state.begin_edit(TASK_ID, repair_batch)
+    with pytest.raises(ValueError, match="repair batch required"):
+        householder_state.begin_review(TASK_ID)
+    householder_state.begin_focused_run(TASK_ID)
+    householder_state.finish_focused_run(TASK_ID, 0)
+    state = householder_state.begin_review(TASK_ID)
+    assert state["review_active"] is True
+    assert state["state"] == "review"
+    assert householder_state.finish_review(TASK_ID, "ACCEPT", "PASS")["acceptance_green"] is True
+
+
+def test_review_failure_requires_review_repair_and_refreezes(monkeypatch, tmp_path):
+    _, app = new_repo(tmp_path)
+    bind(monkeypatch, app)
+    patch_fingerprint(monkeypatch, "fp-3")
+    householder_state.initialize(TASK_ID)
+    householder_state.begin_edit(TASK_ID, "primary")
+    householder_state.begin_focused_run(TASK_ID)
+    householder_state.finish_focused_run(TASK_ID, 0)
+    householder_state.begin_review(TASK_ID)
+    householder_state.finish_review(TASK_ID, "REQUEST_CHANGES", "FAIL")
+    with pytest.raises(ValueError, match="wrong repair batch"):
+        householder_state.begin_edit(TASK_ID, "implementation_repair")
+    with pytest.raises(ValueError, match="review repair batch required"):
+        householder_state.begin_review(TASK_ID)
+    householder_state.begin_edit(TASK_ID, "review_repair")
+    with pytest.raises(ValueError, match="repair batch required"):
+        householder_state.begin_review(TASK_ID)
+    householder_state.begin_focused_run(TASK_ID)
+    householder_state.finish_focused_run(TASK_ID, 0)
+    state = householder_state.begin_review(TASK_ID)
+    assert state["review_active"] is True
+    assert householder_state.finish_review(TASK_ID, "ACCEPT", "PASS")["acceptance_green"] is True
+
+
+def test_environment_retry_allows_one_identical_retry_only(monkeypatch, tmp_path):
+    _, app = new_repo(tmp_path)
+    bind(monkeypatch, app)
+    patch_fingerprint(monkeypatch, "fp-4")
+    householder_state.initialize(TASK_ID)
+    householder_state.begin_edit(TASK_ID, "primary")
+    state = householder_state.begin_focused_run(TASK_ID)
+    assert state["state"] == "focused"
+    state = householder_state.finish_focused_run(TASK_ID, 9)
+    assert state["state"] == "blocked"
+    householder_state.classify_failure(TASK_ID, "environment_only")
+    report = householder_state.can_write(TASK_ID)
+    assert report["allowed"] is False
+    assert report["reason"] == "environment retry is focused only"
+    state = householder_state.begin_focused_run(TASK_ID)
+    assert state["state"] == "focused"
+    state = householder_state.finish_focused_run(TASK_ID, 0)
+    assert state["state"] == "editing"
+    assert householder_state.can_write(TASK_ID)["allowed"] is True
+    with pytest.raises(ValueError, match="environment retry already used"):
+        householder_state.begin_focused_run(TASK_ID)
+
+
+def test_status_reports_counters_and_remaining_envelope(monkeypatch, tmp_path):
+    _, app = new_repo(tmp_path)
+    bind(monkeypatch, app)
+    patch_fingerprint(monkeypatch, "fp-5")
+    householder_state.initialize(TASK_ID)
+    householder_state.begin_edit(TASK_ID, "primary")
+    householder_state.begin_focused_run(TASK_ID)
+    report = householder_state.status(TASK_ID)
+    assert report["counters"]["primary_used"] == 1
+    assert report["remaining"]["primary_batches"] == 0
+    assert report["remaining"]["focused_runs"] == 3
+    assert report["remaining"]["review_cycles"] == 2
+
+
+def test_duplicate_primary_focused_deadline_and_terminal_state_block(monkeypatch, tmp_path):
+    _, app = new_repo(tmp_path)
+    bind(monkeypatch, app)
+    patch_fingerprint(monkeypatch, "fp-6")
+    householder_state.initialize(TASK_ID)
+    with pytest.raises(ValueError, match="no active batch"):
+        householder_state.begin_focused_run(TASK_ID)
+    householder_state.begin_edit(TASK_ID, "primary")
+    with pytest.raises(ValueError, match="duplicate primary batch"):
+        householder_state.begin_edit(TASK_ID, "primary")
+
+    limited = make_state(active_batch="primary", focused_runs_used=4)
+    write_state(limited)
+    assert householder_state.can_write(TASK_ID)["allowed"] is False
+    assert householder_state.can_write(TASK_ID)["reason"] == "focused-run limit exceeded"
+    with pytest.raises(ValueError, match="focused-run limit exceeded"):
+        householder_state.begin_focused_run(TASK_ID)
+    assert load_state()["state"] == "terminal"
+    write_state(make_state(active_batch="primary", focused_runs_used=4))
+    with pytest.raises(ValueError, match="focused-run limit exceeded"):
+        householder_state.begin_edit(TASK_ID, "implementation_repair")
+    assert load_state()["state"] == "terminal"
+
+    deadline = make_state(active_batch="primary", deadline_at="2026-07-30T00:00:00Z")
+    write_state(deadline)
+    with pytest.raises(ValueError, match="deadline exceeded"):
+        householder_state.begin_edit(TASK_ID, "implementation_repair")
+    with pytest.raises(ValueError, match="deadline exceeded"):
+        householder_state.begin_focused_run(TASK_ID)
+    with pytest.raises(ValueError, match="deadline exceeded"):
+        householder_state.begin_review(TASK_ID)
+
+    deadline_focused = make_state(
+        state="focused",
+        active_batch="primary",
+        focused_run_active=True,
+        deadline_at="2026-07-30T00:00:00Z",
+    )
+    write_state(deadline_focused)
+    with pytest.raises(ValueError, match="deadline exceeded"):
+        householder_state.finish_focused_run(TASK_ID, 0)
+    assert load_state()["state"] == "terminal"
+
+    deadline_review = make_state(
+        state="review",
+        active_batch="primary",
+        review_active=True,
+        review_fingerprint="fp-6",
+        deadline_at="2026-07-30T00:00:00Z",
+    )
+    write_state(deadline_review)
+    with pytest.raises(ValueError, match="deadline exceeded"):
+        householder_state.finish_review(TASK_ID, "ACCEPT", "PASS")
+    assert load_state()["state"] == "terminal"
+
+
+def test_fingerprint_change_during_review_invalidates_frozen_review(monkeypatch, tmp_path):
+    _, app = new_repo(tmp_path)
+    bind(monkeypatch, app)
+    patch_fingerprint(monkeypatch, "fp-7")
+    householder_state.initialize(TASK_ID)
+    householder_state.begin_edit(TASK_ID, "primary")
+    householder_state.begin_focused_run(TASK_ID)
+    state = householder_state.finish_focused_run(TASK_ID, 0)
+    assert state["state"] == "editing"
+    state = householder_state.begin_review(TASK_ID)
+    assert state["state"] == "review"
+    patch_fingerprint(monkeypatch, "fp-7b")
+    with pytest.raises(ValueError, match="staged fingerprint changed during review"):
+        householder_state.finish_review(TASK_ID, "ACCEPT", "PASS")
+    assert householder_state.can_write(TASK_ID)["allowed"] is True
+
+
 def test_status_reports_schema_task_state_and_counters(monkeypatch, tmp_path, capsys):
     _, app = new_repo(tmp_path)
     bind(monkeypatch, app)
@@ -249,4 +450,4 @@ def test_status_reports_schema_task_state_and_counters(monkeypatch, tmp_path, ca
     assert report["task_id"] == TASK_ID
     assert report["state"] == "idle"
     assert report["counters"]["focused_runs_allowed"] == 4
-    assert '"task_id": "HOUSEHOLDER-STATE-STORE-20260730"' in captured
+    assert '"task_id": "HOUSEHOLDER-STATE-TRANSITIONS-20260731"' in captured
