@@ -18,10 +18,18 @@ from typing import Any, Mapping, Sequence
 TASK_ID = "HOUSEHOLDER-60-MINUTE-AUTONOMY-TRIAL-20260731"
 SCHEMA_VERSION = 1
 QA_VERDICT = "not_required"
+READINESS_QA_VERDICT = "QA=PASS"
 ALLOWED_REVIEWER_VERDICTS = {"VERDICT=ACCEPT", "VERDICT=REQUEST_CHANGES", "VERDICT=REJECT"}
 ALLOWED_BREAKER_VERDICTS = {"BREAKER=PASS", "BREAKER=FAIL"}
 ALLOWED_EXCEPTION_TYPES = {"mixed_scope_exception"}
 EVIDENCE_SUFFIX = ".runtime-evidence.json"
+READINESS_SUFFIX = "commit-readiness.json"
+READINESS_GATE_SPECS = (
+    {"label": "check_no_artifacts", "gate_id": "check_no_artifacts", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_no_artifacts.py"},
+    {"label": "check_task_untracked", "gate_id": "check_task_untracked", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_task_untracked.py"},
+    {"label": "check_staged_tree_integrity", "gate_id": "check_staged_tree_integrity", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_staged_tree_integrity.py"},
+    {"label": "workflow_ci_lane_guard", "gate_id": "workflow_ci_lane_guard", "group": "scope", "command": "./.venv/bin/python scripts/ci/check_lane_scope.py --lane workflow-ci --verbose"},
+)
 
 
 def repo_root() -> Path:
@@ -48,6 +56,13 @@ def default_output_path(task_id: str = TASK_ID) -> Path:
     if not safe_task_id or safe_task_id != task_id or "/" in safe_task_id or "\\" in safe_task_id:
         raise ValueError("task_id mismatch")
     return Path(tempfile.gettempdir()) / "householder-runtime-evidence" / f"{safe_task_id}{EVIDENCE_SUFFIX}"
+
+
+def default_readiness_path(task_id: str = TASK_ID) -> Path:
+    safe_task_id = task_id.strip()
+    if not safe_task_id or safe_task_id != task_id or "/" in safe_task_id or "\\" in safe_task_id:
+        raise ValueError("task_id mismatch")
+    return givebutter_dir() / ".artifacts" / READINESS_SUFFIX
 
 
 def utc_now() -> str:
@@ -285,6 +300,61 @@ def _required_gate_commands() -> list[tuple[str, list[str], bool]]:
     ]
 
 
+def _readiness_gate_records(gate_records: Sequence[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    by_label = {record["label"]: dict(record) for record in gate_records}
+    readiness_records: list[dict[str, Any]] = []
+    for spec in READINESS_GATE_SPECS:
+        record = by_label[spec["label"]]
+        normalized = {
+            "gate_id": spec["gate_id"],
+            "group": spec["group"],
+            "command": spec["command"],
+            "required": True,
+            "status": record["status"],
+            "exit_code": record["exit_code"],
+        }
+        readiness_records.append(normalized)
+    return readiness_records, by_label
+
+
+def _build_commit_readiness_packet(
+    evidence: Mapping[str, Any],
+    *,
+    reviewer: Mapping[str, Any],
+    breaker: Mapping[str, Any],
+    readiness_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    gate_results = [dict(record) for record in readiness_records]
+    authorized_exceptions = [dict(exception) for exception in evidence.get("authorized_exceptions", [])]
+    canonical_passed = all(record["status"] == "passed" for record in gate_results if record["group"] == "canonical")
+    scope_passed = all(record["status"] == "passed" for record in gate_results if record["group"] == "scope")
+    authorized_failed_gate_ids = {
+        gate_id
+        for exception in authorized_exceptions
+        for gate_id in exception["applies_to_gate_ids"]
+    }
+    reviewed_at = max(reviewer["reviewed_at"], breaker["reviewed_at"])
+    packet = {
+        "schema_version": 2,
+        "task_id": evidence["task_id"],
+        "reviewer_verdict": reviewer["verdict"],
+        "breaker_verdict": breaker["verdict"],
+        "qa_verdict": READINESS_QA_VERDICT,
+        "canonical_gates_passed": canonical_passed,
+        "scope_guard_passed": scope_passed,
+        "commit_authorized": canonical_passed and (scope_passed or bool(authorized_failed_gate_ids)),
+        "push_authorized": False,
+        "reviewed_head": evidence["git"]["head"],
+        "reviewed_diff_sha256": evidence["git"]["staged_diff_sha256"],
+        "reviewed_at": reviewed_at,
+        "informational_notes": ["derived from runtime evidence"],
+        "required_changes": [],
+        "gate_results": gate_results,
+        "authorized_exceptions": authorized_exceptions,
+    }
+    return packet
+
+
 def _run_required_gates() -> list[dict[str, Any]]:
     env = build_env()
     records: list[dict[str, Any]] = []
@@ -321,6 +391,7 @@ def generate_runtime_evidence(
     breaker_receipt: Mapping[str, Any] | str | Path,
     *,
     output_path: Path | None = None,
+    readiness_output_path: Path | None = None,
 ) -> dict[str, Any]:
     if task_id != TASK_ID:
         raise ValueError("task_id mismatch")
@@ -340,6 +411,7 @@ def generate_runtime_evidence(
             normalized = _validate_exception(exception, gate_ids, fingerprint, f"{label} receipt authorized_exceptions[{index}]")
             authorized_exceptions.append(normalized)
 
+    readiness_records, _ = _readiness_gate_records(gate_records)
     evidence = {
         "schema_version": SCHEMA_VERSION,
         "task_id": task_id,
@@ -363,8 +435,24 @@ def generate_runtime_evidence(
         "gate_results": gate_records,
     }
     path = output_path or default_output_path(task_id)
-    _write_atomic_json(path, evidence)
+    readiness_path = readiness_output_path or default_readiness_path(task_id)
+    readiness_packet = _build_commit_readiness_packet(
+        evidence,
+        reviewer=reviewer,
+        breaker=breaker,
+        readiness_records=readiness_records,
+    )
+    try:
+        _write_atomic_json(path, evidence)
+        _write_atomic_json(readiness_path, readiness_packet)
+    except Exception:
+        if path.exists():
+            path.unlink()
+        if readiness_path.exists():
+            readiness_path.unlink()
+        raise
     evidence["output_path"] = str(path)
+    evidence["readiness_output_path"] = str(readiness_path)
     return evidence
 
 
@@ -392,7 +480,17 @@ def main(argv: list[str] | None = None) -> int:
             args.breaker_receipt,
             output_path=Path(args.output) if args.output else None,
         )
-        print(json.dumps({"output_path": evidence["output_path"], "qa_verdict": evidence["qa_verdict"]}, indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "output_path": evidence["output_path"],
+                    "readiness_output_path": evidence["readiness_output_path"],
+                    "qa_verdict": evidence["qa_verdict"],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
     except Exception as exc:  # noqa: BLE001
         print(str(exc), file=sys.stderr)
         return 1

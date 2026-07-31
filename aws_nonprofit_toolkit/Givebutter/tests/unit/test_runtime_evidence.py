@@ -11,6 +11,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts" / "ci"))
 
+import pre_commit_gate  # noqa: E402
 import runtime_evidence  # noqa: E402
 
 
@@ -118,23 +119,35 @@ def test_generate_runtime_evidence_writes_expected_record(monkeypatch, tmp_path)
         return result
 
     monkeypatch.setattr(runtime_evidence, "run_command", fake_run)
+    monkeypatch.setattr(pre_commit_gate, "run_workflow_ci_lane_guard", lambda: _result(returncode=0))
+    monkeypatch.setattr(pre_commit_gate, "list_staged_files", lambda: ["Givebutter/scripts/ci/runtime_evidence.py", "Givebutter/tests/unit/test_runtime_evidence.py"])
+    monkeypatch.setattr(pre_commit_gate, "get_current_head", lambda: head)
+    monkeypatch.setattr(pre_commit_gate, "staged_diff_sha256", lambda: fingerprint)
 
     output = tmp_path / "runtime-evidence.json"
+    readiness = tmp_path / "commit-readiness.json"
     evidence = runtime_evidence.generate_runtime_evidence(
         runtime_evidence.TASK_ID,
         reviewer,
         breaker,
         output_path=output,
+        readiness_output_path=readiness,
     )
 
     assert output.exists()
+    assert readiness.exists()
     written = json.loads(output.read_text(encoding="utf-8"))
+    packet = json.loads(readiness.read_text(encoding="utf-8"))
     assert written["qa_verdict"] == "not_required"
     assert written["ledger"]["state"] == "review_green"
     assert written["git"]["head"] == head
     assert written["git"]["staged_diff_sha256"] == fingerprint
     assert written["reviewer_receipt"]["verdict"] == "VERDICT=ACCEPT"
     assert written["breaker_receipt"]["verdict"] == "BREAKER=PASS"
+    assert packet["qa_verdict"] == "QA=PASS"
+    assert packet["reviewed_head"] == head
+    assert packet["reviewed_diff_sha256"] == fingerprint
+    assert pre_commit_gate.validate_readiness_packet(packet, {"HOUSEHOLDER_TASK_ID": runtime_evidence.TASK_ID}) == []
     assert commands[:5] == [
         (str(runtime_evidence.venv_python()), "scripts/ci/householder_state.py", "status", "--task-id", runtime_evidence.TASK_ID),
         ("git", "rev-parse", "HEAD"),
@@ -190,11 +203,28 @@ def test_atomic_write_cleans_up_partial_output(monkeypatch, tmp_path):
     reviewer, breaker = _receipts(fingerprint)
     mapping = _command_map(fingerprint)
     monkeypatch.setattr(runtime_evidence, "run_command", lambda argv, cwd=None, env=None, binary=False: mapping[tuple(argv)] if not binary else _result(stdout=FAKE_DIFF, stderr=b""))
-    monkeypatch.setattr(runtime_evidence.os, "replace", lambda src, dst: (_ for _ in ()).throw(OSError("replace failed")))
+    replace_calls: list[tuple[str, str]] = []
+    real_replace = runtime_evidence.os.replace
+
+    def flaky_replace(src, dst):
+        replace_calls.append((str(src), str(dst)))
+        if len(replace_calls) == 2:
+            raise OSError("replace failed")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(runtime_evidence.os, "replace", flaky_replace)
 
     output = tmp_path / "runtime-evidence.json"
+    readiness = tmp_path / "commit-readiness.json"
     with pytest.raises(OSError, match="replace failed"):
-        runtime_evidence.generate_runtime_evidence(runtime_evidence.TASK_ID, reviewer, breaker, output_path=output)
+        runtime_evidence.generate_runtime_evidence(
+            runtime_evidence.TASK_ID,
+            reviewer,
+            breaker,
+            output_path=output,
+            readiness_output_path=readiness,
+        )
 
     assert not output.exists()
+    assert not readiness.exists()
     assert not any(tmp_path.iterdir())
