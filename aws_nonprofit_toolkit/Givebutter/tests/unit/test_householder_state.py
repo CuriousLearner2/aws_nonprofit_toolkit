@@ -130,6 +130,27 @@ def test_initialize_succeeds_and_duplicate_fails(monkeypatch, tmp_path):
         householder_state.initialize(TASK_ID)
 
 
+def test_initialize_archives_stale_task_state_and_starts_fresh(monkeypatch, tmp_path):
+    _, app = new_repo(tmp_path)
+    bind(monkeypatch, app)
+    stale_task_id = "HOUSEHOLDER-LEGACY-20260731"
+    write_state(make_state(task_id=stale_task_id, state="review_green", acceptance_green=True, review_fingerprint="fp-legacy"))
+    new_task_id = "HOUSEHOLDER-LEDGER-SEQUENCING-FIX-20260731"
+
+    state = householder_state.initialize(new_task_id)
+    assert state["task_id"] == new_task_id
+    assert state["state"] == "idle"
+    archives = sorted((app / "Givebutter/.artifacts").glob("householder-task-state.*.archive.json"))
+    assert len(archives) == 1
+    archived = json.loads(archives[0].read_text(encoding="utf-8"))
+    assert archived["task_id"] == stale_task_id
+    assert archived["state"] == "review_green"
+    assert householder_state.can_write(new_task_id)["allowed"] is True
+    householder_state.begin_edit(new_task_id, "primary")
+    assert householder_state.can_run_focused(new_task_id)["allowed"] is True
+    assert householder_state.begin_focused_run(new_task_id)["state"] == "focused"
+
+
 def test_missing_state_and_malformed_json_fail(monkeypatch, tmp_path):
     _, app = new_repo(tmp_path)
     bind(monkeypatch, app)

@@ -635,7 +635,11 @@ def can_run_focused(task_id: str) -> dict[str, Any]:
 def initialize(task_id: str) -> dict[str, Any]:
     with _exclusive_lock():
         if state_path().exists():
-            raise ValueError("state already exists")
+            existing = _read_state(allow_terminal=True)
+            if existing["task_id"] == task_id:
+                raise ValueError("state already exists")
+            archive = archive_path()
+            archive.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return _write_state(_base_state(task_id))
 
 
