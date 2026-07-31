@@ -12,11 +12,16 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 TASK_ID = "MACHINE-ENFORCED-CAMPAIGN-STATE-20260730"
-AUTHORIZATION_PATH = Path("Givebutter/.claude/task-authorizations/MACHINE-ENFORCED-CAMPAIGN-STATE-20260730.json")
+AUTHORIZATION_DIR = Path("Givebutter/.claude/task-authorizations")
+AUTHORIZATION_PATH = AUTHORIZATION_DIR / f"{TASK_ID}.json"
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
-def auth_file() -> Path:
-    return repo_root() / AUTHORIZATION_PATH
+def authorization_path(task_id: str = TASK_ID) -> Path:
+    cleaned = task_id.strip()
+    if cleaned != task_id or not cleaned or "/" in cleaned or "\\" in cleaned: raise ValueError("authorization task ID mismatch")
+    return AUTHORIZATION_DIR / f"{cleaned}.json"
+def auth_file(task_id: str = TASK_ID) -> Path:
+    return repo_root() / authorization_path(task_id)
 def run_git(args: list[str], *, binary: bool = False) -> subprocess.CompletedProcess[Any]:
     return subprocess.run(["git", *args], cwd=repo_root(), capture_output=True, text=not binary, check=False)
 def freeze(value: Any) -> Any:
@@ -33,26 +38,74 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(8192), b""):
             digest.update(chunk)
     return digest.hexdigest()
+def git_blob_hash(spec: str) -> str:
+    result = run_git(["rev-parse", spec])
+    blob = result.stdout.strip()
+    if result.returncode != 0 or not blob:
+        raise ValueError(f"unable to resolve git blob: {spec}")
+    return blob
+def git_blob_bytes(spec: str) -> bytes:
+    result = run_git(["show", spec], binary=True)
+    if result.returncode != 0:
+        raise ValueError(f"unable to read git blob: {spec}")
+    return result.stdout
 def normalize(path: str) -> str:
-    cleaned = path.replace("\\", "/").removeprefix("./").strip()
-    prefix = f"{repo_root().name}/"
+    cleaned = path.replace("\\", "/").removeprefix("./").strip(); prefix = f"{repo_root().name}/"
     return cleaned[len(prefix):] if cleaned.startswith(prefix) else cleaned
 
-def load_authorization() -> MappingProxyType[str, Any]:
-    path = auth_file()
+def _head_auth_intro_commit(pathspec: str) -> str:
+    result = run_git(["log", "--diff-filter=A", "--format=%H", "--", pathspec])
+    if result.returncode != 0:
+        raise ValueError("authorization introduction commit not found")
+    commits = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not commits:
+        raise ValueError("authorization introduction commit not found")
+    return commits[0]
+
+def _authorization_facts(task_id: str) -> dict[str, Any]:
+    path = auth_file(task_id)
+    pathspec = str(authorization_path(task_id))
+    object_path = str(Path(repo_root().name) / authorization_path(task_id))
+    if not path.exists():
+        raise ValueError(f"authorization file missing: {path}")
+    head_tree = run_git(["ls-tree", "--full-name", "HEAD", "--", pathspec])
+    if head_tree.returncode != 0 or not head_tree.stdout.strip():
+        raise ValueError(f"authorization file must exist in HEAD: {path}")
+    tracked = run_git(["ls-files", "--error-unmatch", "--", pathspec])
+    if tracked.returncode != 0:
+        raise ValueError(f"authorization file must be tracked: {path}")
+    head_blob = git_blob_hash(f"HEAD:{object_path}")
+    try:
+        index_blob = git_blob_hash(f":0:{object_path}")
+    except ValueError as exc:
+        raise ValueError("authorization staged content mismatch") from exc
+    if index_blob != head_blob:
+        raise ValueError("authorization staged content mismatch")
+    head_bytes = git_blob_bytes(f"HEAD:{object_path}")
+    index_bytes = git_blob_bytes(f":0:{object_path}")
+    if index_bytes != head_bytes:
+        raise ValueError("authorization staged content mismatch")
+    worktree_bytes = path.read_bytes()
+    if worktree_bytes != head_bytes:
+        raise ValueError("authorization working tree content mismatch")
+    committed_sha256 = hashlib.sha256(head_bytes).hexdigest()
+    if sha256_file(path) != committed_sha256:
+        raise ValueError("authorization SHA-256 mismatch")
+    intro_commit = _head_auth_intro_commit(pathspec)
+    if run_git(["merge-base", "--is-ancestor", intro_commit, "HEAD"]).returncode != 0:
+        raise ValueError("authorization commit is not an ancestor of HEAD")
+    return {"path": path, "sha256": committed_sha256, "git_blob": head_blob, "introduction_commit": intro_commit}
+
+def load_authorization(task_id: str = TASK_ID) -> MappingProxyType[str, Any]:
+    path = auth_file(task_id)
     if not path.exists():
         raise ValueError(f"authorization file missing: {path}")
     auth = read_json(path)
     if not isinstance(auth, dict):
         raise ValueError("authorization must be a JSON object")
-    if auth.get("task_id") != TASK_ID or auth.get("campaign_id") != TASK_ID:
+    if auth.get("task_id") != task_id or auth.get("campaign_id") != task_id:
         raise ValueError("authorization task ID mismatch")
-    if sha256_file(path) != "46f614cc82df0e15afecd4d878abfdc99971c137eea3c3a99fa6f0b53013ed3c":
-        raise ValueError("authorization SHA-256 mismatch")
-    if run_git(["hash-object", str(path)]).stdout.strip() != "b0fb9a635df72d737127ba40501594b9ad3dafd9":
-        raise ValueError("authorization Git blob mismatch")
-    if run_git(["merge-base", "--is-ancestor", "faa6d57ae333b4c2f6d2ba6067d0d48e95c466d3", "HEAD"]).returncode != 0:
-        raise ValueError("authorization commit is not an ancestor of HEAD")
+    _authorization_facts(task_id)
     return freeze(auth)
 
 def _staged_entries() -> list[tuple[str, str, str | None]]:
@@ -98,14 +151,13 @@ def _category(path: str, auth: MappingProxyType[str, Any]) -> str | None:
 
 
 def collect_scope_report(task_id: str) -> dict[str, Any]:
-    auth = load_authorization()
-    if task_id != TASK_ID:
-        raise ValueError("task id mismatch")
+    auth = load_authorization(task_id)
+    facts = _authorization_facts(task_id)
     staged = _staged_entries()
     counts = _numstat()
     head = run_git(["rev-parse", "HEAD"]).stdout.strip()
     fingerprint = run_git(["diff", "--cached", "--binary", "--full-index", "--no-ext-diff", "HEAD"], binary=True).stdout
-    auth_path = normalize(str(AUTHORIZATION_PATH))
+    auth_path = normalize(str(authorization_path(task_id)))
     impl_files: list[str] = []
     test_files: list[str] = []
     impl_added = impl_deleted = test_added = test_deleted = 0
@@ -143,14 +195,14 @@ def collect_scope_report(task_id: str) -> dict[str, Any]:
         copies += status[0] == "C"
         deleted_files += status == "D"
     report = {
-        "task_id": TASK_ID,
+        "task_id": task_id,
         "head": head,
         "staged_diff_sha256": hashlib.sha256(fingerprint).hexdigest(),
         "authorization": {
             "task_id": auth["task_id"],
-            "sha256": sha256_file(auth_file()),
-            "git_blob": run_git(["hash-object", str(auth_file())]).stdout.strip(),
-            "ancestor_commit": "faa6d57ae333b4c2f6d2ba6067d0d48e95c466d3",
+            "sha256": facts["sha256"],
+            "git_blob": facts["git_blob"],
+            "ancestor_commit": facts["introduction_commit"],
         },
         "implementation_files": tuple(sorted(set(impl_files))),
         "test_files": tuple(sorted(set(test_files))),
