@@ -13,6 +13,8 @@ Read canonical `SKILL.md` and applicable policy modules.
 Make the smallest authorized change at the proven failing layer.
 Terminal state: `ready for reviewer`.
 
+The ledger CLI is the executable owner for task progression. Before any edit batch, confirm `householder_state.py can-write` allows the task and then call `begin-edit --batch <type>`. Before focused testing, call `can-run-focused` and `begin-focused-run`. After the focused run, call `finish-focused-run --exit-code <code>` and, if it failed, `classify-failure --type <type>`. Before review, call `begin-review`; after review, call `finish-review --reviewer <verdict> --breaker <verdict>`. Ledger refusal is terminal for the current task.
+
 ## Hard Boundaries
 
 - No raw-data mutation, CRM writeback, credentials, auth/RBAC, background jobs, bulk actions, new export formats, merges/deletes, household assignment, cross-import matching, or schema/migration changes without explicit authorization.
@@ -51,6 +53,7 @@ Implementation conduct:
 - edit only authorized files;
 - make the smallest change at the proven failing layer;
 - run only the declared focused proof;
+- do not rely on raw prose counters or derived summaries when the ledger state is available;
 - after a failed focused run, stop writing unless Orchestrator confirms ES-08 has authorized an applicable batch;
 - never relabel repeated debugging as cleanup or plumbing;
 - after consuming an ES-08 repair batch, run exactly its declared focused proof and return control on failure or envelope exhaustion;

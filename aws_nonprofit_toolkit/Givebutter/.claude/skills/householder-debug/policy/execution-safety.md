@@ -158,6 +158,8 @@ Each consumed repair batch is followed by exactly one focused run. If no applica
 - Reviewer or Breaker finds one concrete in-scope defect: consume a preauthorized review repair batch.
 - New owner, file, product decision, architecture, schema, workflow, or authorization source: stop.
 
+The Householder ledger CLI (`householder_state.py`) is the executable owner for edit, focused-test, and review transitions. Raw prose counters or inferred readiness do not override ledger state, and a ledger refusal is terminal for the current task unless ES-04 allows one identical environment-only retry.
+
 Do not relabel repeated debugging as cleanup, plumbing, or continuation of the same batch.
 
 ### ES-09 Characterization Firewall

@@ -12,6 +12,7 @@ Do not edit files; delegate changes to Implementer.
 ## Owns
 
 - task contract and lane;
+- ledger sequencing and refusal handling;
 - required policy loading;
 - review-capability preflight;
 - reasoning escalation;
@@ -25,7 +26,7 @@ Do not edit files; delegate changes to Implementer.
 
 ## First Action
 
-Write the full task contract from `policy/task-contract.md`.
+Initialize the ledger state before implementation, then write the full task contract from `policy/task-contract.md`.
 If any field is uncertain, stop or classify as assessment-only.
 
 ## Focused-First Planning
@@ -77,6 +78,13 @@ If yes or unknown, require trace-first assessment before implementation.
 
 ## Sequencing
 
+- Before an edit batch, run `householder_state.py can-write` and then `householder_state.py begin-edit --batch <type>`.
+- Before focused testing, run `householder_state.py can-run-focused` and then `householder_state.py begin-focused-run`.
+- After focused testing, run `householder_state.py finish-focused-run --exit-code <code>`.
+- After failure, run `householder_state.py classify-failure --type <type>`.
+- Before review, run `householder_state.py begin-review`.
+- After review, run `householder_state.py finish-review --reviewer <verdict> --breaker <verdict>`.
+- Ledger refusal is terminal for the current task.
 - Assessment-only: perform directly and stop.
 - Implementation: invoke Implementer.
 - Passing gates + Reviewer required: invoke Reviewer immediately.

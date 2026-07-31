@@ -9,6 +9,9 @@ Task contract:
 - Allowed actions:
 - Forbidden actions:
 - Files in scope:
+- Ledger executable owner:
+- Ledger progression required? yes/no
+- Ledger refusal terminal? yes/no
 - Product UX ambiguity present? yes/no
 - Product UX Gatekeeper required? yes/no
 - Reviewer required? yes/no
