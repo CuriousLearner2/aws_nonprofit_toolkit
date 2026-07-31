@@ -32,20 +32,24 @@ If any field is uncertain, stop or classify as assessment-only.
 
 Before invoking Implementer:
 
-- confirm the execution-context map;
-- classify the task as fast fix, engineering investigation, or architecture pilot;
-- define the deterministic defect proof and adjacent compatibility proof;
+- confirm execution context and classification;
+- define defect and compatibility proofs;
 - name the authoritative owner;
-- set product file, diff, attempt, and time/reassessment budgets;
-- define milestones and compatibility tripwires when applicable;
-- authorize automatic continuation only inside those bounds.
+- declare exact file, line, primary/repair-batch, focused-run, review-cycle, and elapsed-time budgets;
+- record stop conditions and terminal state.
 
-Do not send an ambiguous or cross-layer defect through the fast-fix lane.
-Reclassification or stop is an acceptable terminal result.
+Apply:
 
-At milestone checkpoints, continue automatically when gates and tripwires are green
-and scope is within budget. Stop when a bound is crossed, a product decision is
-required, or a second implementation approach would be needed.
+- `ES-01` Assessment Firewall
+- `ES-08` Edit-Batch and Repair-Batch Accounting
+- `ES-09` Characterization Firewall
+- `ES-10` Review Diff Freeze
+- `ES-11` Focused-First Execution
+- `ES-12` Compatibility Tripwires
+- `ES-13` Budget Enforcement
+- `ES-14` Recovery Envelope and Terminal Outcomes
+
+Classify each failure before continuing. Ask ES-08 whether an applicable declared batch remains; if so, consume the declared count and continue; otherwise stop. Invalidate stale evidence and rerun required roles as required by ES-10. Do not mix characterization with implementation.
 
 ## Durable Outcome Planning
 
@@ -78,8 +82,12 @@ If yes or unknown, require trace-first assessment before implementation.
 - Passing gates + Reviewer required: invoke Reviewer immediately.
 - Reviewer Accept + Breaker required: invoke Breaker immediately.
 - QA required: invoke QA in the declared mode.
-- Non-accept verdict: stop.
-- Eligible auto-commit: prepare readiness packet and commit.
+- Non-accept verdict: ask ES-08 whether an applicable declared batch remains; if not, stop.
+- Apply `ES-10` after Reviewer or Breaker starts.
+- Apply `ES-08` after any focused-run failure.
+- After an authorized diff change, invalidate prior evidence and role verdicts, refreeze, and rerun the required roles.
+- A second role rejection is terminal.
+- Eligible auto-commit: only from fully green acceptance against one frozen fingerprint.
 - Push only with explicit current authorization.
 
 Do not ask for permission already granted by the current contract.

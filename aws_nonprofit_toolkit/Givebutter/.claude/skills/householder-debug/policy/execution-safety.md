@@ -1,6 +1,34 @@
 # Execution Safety
 
-## Assessment-to-Implementation Firewall
+## Policy Precedence
+
+1. Current explicit human authorization
+2. Task-specific frozen authorization
+3. `policy/execution-safety.md`
+4. `policy/task-contract.md`
+5. Agent files
+6. Generated prompts, packets, and reports
+
+A lower-precedence source may narrow behavior but may not broaden authority or redefine a higher-precedence rule.
+
+## Rule Registry
+
+- `ES-01` Assessment-to-Implementation Firewall
+- `ES-02` Review-Capability Preflight
+- `ES-03` Reasoning Escalation
+- `ES-04` Environment-Only Recovery
+- `ES-05` Failed-Gate Handling
+- `ES-06` Interrupted or Background Processes
+- `ES-07` Restart and Resume
+- `ES-08` Edit-Batch, Repair-Batch, and Focused-Run Accounting
+- `ES-09` Characterization Firewall
+- `ES-10` Review Diff Freeze
+- `ES-11` Focused-First Execution
+- `ES-12` Compatibility Tripwires
+- `ES-13` Budget Enforcement
+- `ES-14` Recovery Envelope and Terminal Outcomes
+
+## ES-01 Assessment-to-Implementation Firewall
 
 Assessment-only work stops after root-cause or status reporting.
 
@@ -19,7 +47,7 @@ Forbidden:
 
 A proven cause is not implementation authorization.
 
-## Review-Capability Preflight
+## ES-02 Review-Capability Preflight
 
 Before implementation or auto-commit-capable work:
 
@@ -33,7 +61,7 @@ If unavailable, exact limitation:
 The presence of policy files does not prove agents are callable.
 Do not replace required Reviewer/Breaker with self-review without explicit human waiver.
 
-## Reasoning Escalation
+## ES-03 Reasoning Escalation
 
 Escalate when evidence is contradictory, cross-layer, production-sensitive, or unresolved after one focused attempt; when the same gate fails under different plausible causes; or when persistence, raw-data, audit, approval, export, security, concurrency, stale state, browser events, fallback, or mode-specific behavior remains ambiguous.
 
@@ -59,7 +87,7 @@ REASONING ESCALATION REQUIRED
 
 Do not edit production code while escalation is unresolved.
 
-## Environment-Only Recovery
+## ES-04 Environment-Only Recovery
 
 One identical retry is allowed only when the intended gate did not begin meaningful execution and the sole cause is proven to be wrong working directory, `PATH`, `python`, or `pytest`.
 
@@ -71,7 +99,7 @@ Requirements:
 
 Not allowed for assertion failures, verified-venv collection failures, missing dependencies, socket restrictions, timeouts, signals, hangs, schema/database/product/test defects, or ambiguous failures.
 
-## Failed Gates
+## ES-05 Failed-Gate Handling
 
 A declared gate passes only on exit code 0.
 
@@ -84,38 +112,67 @@ Failure includes:
 - unusable or truncated output.
 
 Default: stop immediately. Do not inspect, grep, rerun, split, diagnose, repair, invoke Reviewer/Breaker, commit, or push.
+Ordinary failures are referred to ES-08. If ES-08 provides no applicable batch, stop.
 
-### Failed-First Repair Lane
+ES-04 identical environment retry remains separate and consumes no repair batch.
 
-Enabled only by the exact task-contract phrase:
-
-```text
-Failed-First Repair Lane: enabled
-```
-
-One narrow attempt may be authorized only for a pre-classified low-risk issue in already-authorized files:
-
-- brittle test assertion;
-- wrong fixture expectation;
-- copy/case/punctuation mismatch;
-- missing stable marker in an authorized template;
-- test expecting the wrong seeded value;
-- presentational template mismatch.
-
-Stop without repair when backend route/service/repository logic, schema, raw data, export, audit, review/autosave/approval semantics, workflow state, new product decisions, extra files, or multiple affected pages/tests are implicated.
-
-After repair, rerun only the failed focused gate. If it fails again, stop.
-
-## Interrupted or Background Processes
+## ES-06 Interrupted or Background Processes
 
 If a gate or server cannot be confirmed stopped, stop. Do not continue with gates, review, commit, or push. Do not leave background processes running unless the human explicitly authorized an operational server task.
 
-## Restart and Resume
+## ES-07 Restart and Resume
 
 Do not infer authority from prior conversation, generated ZIPs, dirty files, local commits, or earlier recommendations.
 A current task contract is required before editing, testing, staging, committing, or pushing.
 
-## Focused-First Execution Contract
+## ES-08 Edit-Batch, Repair-Batch, and Focused-Run Accounting
+
+These rules are authoritative whenever a task contract allows implementation or repair work.
+
+### Definitions
+
+- A **primary edit batch** begins with the first authorized file modification and ends when its declared focused test command starts.
+- A **repair batch** is a separately named, preauthorized edit batch used after a classified failure.
+- A **focused run** is one declared focused test command executed against the immediately preceding edit batch.
+- Source, test, fixture, expectation, path, import, dependency, environment, and command edits all count as writes unless ES-04 permits an identical environment-only retry.
+
+### Bounded recovery envelope
+
+A failed focused run ends the current edit batch. Further writes are prohibited unless the task contract preauthorized an applicable named repair batch before the primary edit began.
+
+Supported named repair batches:
+
+- implementation repair;
+- test-harness repair;
+- review repair.
+
+The Orchestrator must classify the failure before consuming a repair batch. ES-05 supplies the gate classification; ES-08 owns the selection of the applicable named batch and whether another edit is permitted. A repair batch may address only the same authorized owner, files, behavior, and acceptance proof. It may not introduce a new product decision, architectural owner, file, schema, workflow, or authorization source.
+
+Each consumed repair batch is followed by exactly one focused run. If no applicable repair batch remains, stop.
+
+### Failure classification
+
+- Wrong cwd, interpreter, or executable path with the exact command otherwise unchanged: apply ES-04; no repair batch consumed.
+- Test fixture, mock, harness, or expectation defect: consume a preauthorized test-harness repair batch.
+- Defect in the authorized implementation: consume a preauthorized implementation repair batch.
+- Reviewer or Breaker finds one concrete in-scope defect: consume a preauthorized review repair batch.
+- New owner, file, product decision, architecture, schema, workflow, or authorization source: stop.
+
+Do not relabel repeated debugging as cleanup, plumbing, or continuation of the same batch.
+
+### ES-09 Characterization Firewall
+
+When Git, framework, tool, path, or runtime behavior is uncertain, run a separate assessment-only characterization task first. Characterization may use disposable temporary repositories or fixtures, but it must not edit tracked task files.
+
+### ES-10 Review Diff Freeze
+
+- Freeze and record the staged fingerprint before Reviewer or Breaker starts.
+- Any staged-diff change invalidates prior role verdicts and generated evidence.
+- Any authorized staged-diff change invalidates the prior fingerprint, role verdicts, and generated evidence.
+- When an authorized diff change occurs, refreeze the new staged fingerprint before rerunning the required roles.
+- Commit eligibility is reachable only after all required roles are green against the same frozen fingerprint.
+
+## ES-11 Focused-First Execution
 
 Focused-first changes execution efficiency, not the final acceptance standard.
 
@@ -194,25 +251,43 @@ Run broad gates only after focused proof is green and the diff is stable.
 
 Rerun only evidence materially invalidated by a later edit.
 
-### Attempts, Time, and Scope Budgets
+### ES-13 Budget Enforcement
 
-For a Fast fix:
+Every implementation task must declare exact cumulative limits for:
 
-- allow one primary implementation attempt;
-- allow one narrow correction;
-- stop and reclassify when focused proof is not green within roughly 15 minutes;
-- stop when ownership remains unclear, scope expands, an adjacent contract regresses,
-  product files exceed the task budget, or the product diff materially exceeds estimate.
+- authorized files;
+- implementation and test lines;
+- primary edit batches;
+- implementation repair batches;
+- test-harness repair batches;
+- review repair batches;
+- focused runs;
+- review cycles;
+- elapsed time.
 
-The 15-minute budget covers diagnosis, implementation, and focused proof.
-Full release acceptance has a separate time budget.
+Automatic continuation is allowed only while the task remains inside this recovery envelope.
 
-For an Architecture pilot:
+For a Fast fix, recommended defaults are:
 
-- declare milestones and mandatory compatibility tripwires;
-- advance automatically only when the current milestone and all tripwires are green;
-- stop after a second failed approach at any milestone;
-- stop when file, diff, schema, migration, consumer, or vertical-slice bounds are crossed.
+- primary edit batches: 1;
+- implementation repair batches: 1;
+- test-harness repair batches: 1;
+- review repair batches: 1;
+- review cycles: 2;
+- focused runs: enough for the declared primary and repair batches;
+- diagnosis, implementation, and focused proof: roughly 15 minutes before reassessment.
+
+For an Architecture pilot, declare milestone-specific recovery envelopes and cumulative budgets.
+
+Stop when:
+
+- an unauthorized file or owner is required;
+- cumulative file or line budgets are exceeded;
+- the same focused proof remains red after the applicable repair batches are consumed;
+- another implementation strategy is required;
+- the maximum review cycles are exhausted;
+- evidence cannot be tied to execution;
+- elapsed time reaches the declared ceiling.
 
 ### Autonomous Checkpoints
 
@@ -234,11 +309,12 @@ The checkpoint is for self-governance and auditability.
 Do not pause for human approval while milestone gates are green, tripwires pass,
 scope remains within budget, and no stop condition is triggered.
 
-Stop and request review only when a tripwire remains red after one narrow correction,
-scope or diff budget is exceeded, ownership is ambiguous, a product decision is
-required, or the task would broaden beyond the approved vertical slice.
+Stop and request review only when a tripwire remains red after the applicable
+preauthorized repair batch is exhausted, scope or diff budget is exceeded,
+ownership is ambiguous, a product decision is required, or the task would
+broadly exceed the approved vertical slice.
 
-### Compatibility Tripwires
+### ES-12 Compatibility Tripwires
 
 Every defect repair or architecture pilot must name:
 

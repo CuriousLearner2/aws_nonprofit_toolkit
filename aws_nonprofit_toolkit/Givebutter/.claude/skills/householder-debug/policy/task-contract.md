@@ -24,8 +24,8 @@ Task contract:
 - Diagnostic-failure classification authority:
 - Test-Harness Stabilization enabled? yes/no
 - Stabilization files and maximum iterations:
-- Failed-First Repair Lane enabled? yes/no
-- Failed-first repair budget:
+- Bounded recovery envelope enabled? yes/no
+- Named repair batches and focused proofs:
 - Durable-outcome contract required? yes/no
 - Upstream user action:
 - Required durable business outcome:
@@ -53,8 +53,25 @@ Task contract:
 - Product diff budget:
 - Milestones:
 - Compatibility tripwires:
-- Primary implementation attempts allowed:
-- Narrow corrections allowed:
+- Primary edit batches authorized:
+- Implementation repair batches authorized:
+- Test-harness repair batches authorized:
+- Review repair batches authorized:
+- Focused runs authorized:
+- Maximum review cycles:
+- Primary edit batches used:
+- Implementation repair batches used:
+- Test-harness repair batches used:
+- Review repair batches used:
+- Focused runs used:
+- Review cycles used:
+- Last focused run: not run / passed / failed
+- Failure classification:
+- Applicable repair batch remaining? yes/no
+- Writes currently permitted? yes/no
+- Characterization completed separately? yes/no/not required
+- Production freeze point:
+- Review diff fingerprint:
 - Automatic continuation within bounds? yes/no
 - Reassessment threshold:
 - Deferred nonessential improvements:
@@ -96,18 +113,19 @@ No edits or new commits. Push only when explicitly authorized.
 
 ## Focused-First Contract Rules
 
-The detailed execution rules live in `policy/execution-safety.md`.
-This contract declares the task-specific values.
+Execution semantics are owned by `policy/execution-safety.md`.
 
-- Classify the task before product edits.
-- Fast fixes require a deterministic defect proof, an adjacent compatibility proof,
-  a named authoritative owner, and explicit file/diff budgets.
-- Engineering investigations normally stop after diagnosis and a recommended
-  implementation task unless implementation is separately authorized.
-- Architecture pilots require milestone gates, mandatory compatibility tripwires,
-  a narrow vertical slice, and automatic stop bounds.
-- Automatic continuation is allowed only while the current milestone is green,
-  tripwires pass, scope remains within budget, and no stop condition is triggered.
-- The implementation/focused-proof budget is separate from final release acceptance.
-- Exceeding a budget requires reclassification or stop; it is not implicit authority
-  to widen scope.
+Required references:
+
+- `ES-01` Assessment Firewall
+- `ES-04` Environment-Only Recovery
+- `ES-05` Failed-Gate Handling
+- `ES-08` Edit-Batch, Repair-Batch, and Focused-Run Accounting
+- `ES-09` Characterization Firewall
+- `ES-10` Review Diff Freeze
+- `ES-11` Focused-First Execution
+- `ES-12` Compatibility Tripwires
+- `ES-13` Budget Enforcement
+- `ES-14` Recovery Envelope and Terminal Outcomes
+
+Task contracts declare exact files, cumulative budgets, named primary/repair batches, focused runs, review cycles, role requirements, and stop conditions. They may narrow these rules but may not broaden them. ES-08 defines the meaning of repair batches and focused runs; execution semantics remain owned by `policy/execution-safety.md`.

@@ -36,18 +36,25 @@ Assessment-only or root-cause-only authorization does not permit edits.
 
 ## Focused-First Execution
 
-Before editing, apply `policy/execution-safety.md` and the task contract's execution
-classification, defect proof, compatibility tripwires, authoritative owner, file/diff
-budgets, attempts, milestones, and stop conditions.
+Apply the task contract and these authoritative rules:
 
-Continue automatically while within bounds. Stop and return control to Orchestrator
-when a tripwire remains red after one narrow correction, scope or diff budget is
-exceeded, ownership becomes ambiguous, a product decision is required, or the task
-must be reclassified.
+- `ES-08` Edit-Batch, Repair-Batch, and Focused-Run Accounting
+- `ES-09` Characterization Firewall
+- `ES-10` Review Diff Freeze
+- `ES-11` Focused-First Execution
+- `ES-12` Compatibility Tripwires
+- `ES-13` Budget Enforcement
+- `ES-14` Recovery Envelope and Terminal Outcomes
 
-Do not use broad gates to discover whether an approach is viable. Iterate with the
-smallest focused proof until stable, then run only the broader evidence invalidated
-by the final edit.
+Implementation conduct:
+
+- edit only authorized files;
+- make the smallest change at the proven failing layer;
+- run only the declared focused proof;
+- after a failed focused run, stop writing unless Orchestrator confirms ES-08 has authorized an applicable batch;
+- never relabel repeated debugging as cleanup or plumbing;
+- after consuming an ES-08 repair batch, run exactly its declared focused proof and return control on failure or envelope exhaustion;
+- return control to Orchestrator on any terminal stop.
 
 ## Stateful P1
 
@@ -64,7 +71,7 @@ If the exact failing layer or manual runtime path is unproven, stop and return c
 
 Use project bootstrap and exact wrappers.
 On failure, follow `policy/execution-safety.md`.
-Do not broaden scope or use failed-first repair outside its narrow authorization.
+Do not broaden scope or use repair authority outside ES-08.
 
 ## Handoff
 
