@@ -32,6 +32,11 @@ from pathlib import Path
 
 
 PROJECT_ROOT_NAME = Path(__file__).resolve().parents[2].name
+HOUSEHOLDER_ARTIFACT_DIR = ".artifacts"
+HOUSEHOLDER_STATE_FILE = "householder-task-state.json"
+HOUSEHOLDER_STATE_LOCK = "householder-task-state.json.lock"
+HOUSEHOLDER_STATE_ARCHIVE_PREFIX = "householder-task-state."
+HOUSEHOLDER_STATE_ARCHIVE_SUFFIX = ".archive.json"
 
 
 def _strip_workspace_prefix(filepath):
@@ -111,7 +116,7 @@ def get_changed_files():
 
     try:
         result = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "status", "--porcelain", "--untracked-files=all"],
             capture_output=True,
             text=True,
             check=True
@@ -154,7 +159,7 @@ def get_changed_entries():
 
     try:
         result = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "status", "--porcelain", "--untracked-files=all"],
             capture_output=True,
             text=True,
             check=True
@@ -231,6 +236,17 @@ def classify_file(filepath):
         prefix = parts[:exports_index]
         if prefix in ([], ['Givebutter'], ['aws_nonprofit_toolkit', 'Givebutter']):
             return 'runtime_output'
+    if HOUSEHOLDER_ARTIFACT_DIR in parts:
+        artifact_index = parts.index(HOUSEHOLDER_ARTIFACT_DIR)
+        leaf = parts[artifact_index + 1:]
+        if len(leaf) == 1:
+            name = leaf[0]
+            if (
+                name == HOUSEHOLDER_STATE_FILE
+                or name == HOUSEHOLDER_STATE_LOCK
+                or (name.startswith(HOUSEHOLDER_STATE_ARCHIVE_PREFIX) and name.endswith(HOUSEHOLDER_STATE_ARCHIVE_SUFFIX))
+            ):
+                return 'runtime_output'
 
     # Other
     return 'other'

@@ -25,6 +25,11 @@ ALLOWED_RUNTIME_PATTERNS = (
     ".DS_Store",
     "exports_uat/",
 )
+HOUSEHOLDER_ARTIFACT_DIR = ".artifacts"
+HOUSEHOLDER_STATE_FILE = f"{HOUSEHOLDER_ARTIFACT_DIR}/householder-task-state.json"
+HOUSEHOLDER_STATE_LOCK = f"{HOUSEHOLDER_ARTIFACT_DIR}/householder-task-state.json.lock"
+HOUSEHOLDER_STATE_ARCHIVE_PREFIX = f"{HOUSEHOLDER_ARTIFACT_DIR}/householder-task-state."
+HOUSEHOLDER_STATE_ARCHIVE_SUFFIX = ".archive.json"
 
 
 def get_repo_root() -> Path:
@@ -71,7 +76,29 @@ def get_untracked_files() -> list[str]:
 
 
 def _matches_runtime_pattern(path: str) -> bool:
-    return path == ".DS_Store" or path.endswith("/.DS_Store") or path.startswith("exports_uat/")
+    return (
+        path == ".DS_Store"
+        or path.endswith("/.DS_Store")
+        or path.startswith("exports_uat/")
+        or _matches_householder_runtime_state(path)
+    )
+
+
+def _matches_householder_runtime_state(path: str) -> bool:
+    parts = [part for part in path.replace("\\", "/").split("/") if part]
+    try:
+        artifact_index = parts.index(HOUSEHOLDER_ARTIFACT_DIR)
+    except ValueError:
+        return False
+    leaf = parts[artifact_index + 1 :]
+    if len(leaf) != 1:
+        return False
+    name = leaf[0]
+    return (
+        name == HOUSEHOLDER_STATE_FILE.rsplit("/", 1)[-1]
+        or name == HOUSEHOLDER_STATE_LOCK.rsplit("/", 1)[-1]
+        or (name.startswith(HOUSEHOLDER_STATE_ARCHIVE_PREFIX.rsplit("/", 1)[-1]) and name.endswith(HOUSEHOLDER_STATE_ARCHIVE_SUFFIX))
+    )
 
 
 def classify_untracked_file(filepath: str) -> tuple[str, str]:

@@ -76,6 +76,14 @@ class TestFileClassification:
         """Known exports_uat runtime files are classified as runtime output."""
         assert check_lane_scope.classify_file('exports_uat/result.csv') == 'runtime_output'
         assert check_lane_scope.classify_file('Givebutter/exports_uat/nested/result.json') == 'runtime_output'
+        assert check_lane_scope.classify_file('Givebutter/.artifacts/householder-task-state.json') == 'runtime_output'
+        assert check_lane_scope.classify_file('Givebutter/.artifacts/householder-task-state.json.lock') == 'runtime_output'
+        assert (
+            check_lane_scope.classify_file(
+                'Givebutter/.artifacts/householder-task-state.20260731T123456000000Z.1234567890abcdef.archive.json'
+            )
+            == 'runtime_output'
+        )
         assert check_lane_scope.classify_file('Givebutter/export_uat/result.csv') == 'other'
 
 
@@ -201,6 +209,26 @@ class TestLaneRulesWorkflowCI:
         assert 'runtime_output' in categorized
         assert categorized['runtime_output'] == ['exports_uat/result.csv']
 
+    def test_workflow_ci_householder_runtime_state_allowed(self):
+        """Workflow-CI lane allows the exact Householder runtime state artifacts."""
+        is_clean, conflicts, categorized = check_lane_scope.check_lane_scope(
+            'workflow-ci',
+            [
+                'Givebutter/.artifacts/householder-task-state.json',
+                'Givebutter/.artifacts/householder-task-state.json.lock',
+                'Givebutter/.artifacts/householder-task-state.20260731T123456000000Z.1234567890abcdef.archive.json',
+            ],
+            verbose=True,
+        )
+        assert is_clean is True
+        assert len(conflicts) == 0
+        assert 'runtime_output' in categorized
+        assert categorized['runtime_output'] == [
+            '.artifacts/householder-task-state.json',
+            '.artifacts/householder-task-state.json.lock',
+            '.artifacts/householder-task-state.20260731T123456000000Z.1234567890abcdef.archive.json',
+        ]
+
     def test_workflow_ci_product_blocked(self):
         """Workflow-CI lane blocks product files."""
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['scripts/householder/repository.py'])
@@ -247,12 +275,23 @@ class TestLaneRulesWorkflowCI:
         assert any('other' in str(c) for c in conflicts)
         assert 'other' in categorized
 
+    def test_workflow_ci_tracked_householder_runtime_state_blocked(self):
+        """Tracked Householder runtime state remains blocked by lane scope."""
+        is_clean, conflicts, categorized = check_lane_scope.check_lane_scope(
+            'workflow-ci',
+            [(' M', 'Givebutter/.artifacts/householder-task-state.json')],
+        )
+        assert is_clean is False
+        assert any('other' in str(c) for c in conflicts)
+        assert 'other' in categorized
+
     @pytest.mark.parametrize(
         'filepath',
         [
             'Givebutter/exports/result.csv',
             'Givebutter/export_uat/result.csv',
             'Givebutter/misc/output.csv',
+            'Givebutter/.artifacts/householder-task-state.snapshot.json',
         ],
     )
     def test_workflow_ci_similar_names_still_blocked(self, filepath):
