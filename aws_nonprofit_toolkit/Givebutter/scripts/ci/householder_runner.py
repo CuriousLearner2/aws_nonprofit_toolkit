@@ -50,6 +50,17 @@ def _validate_task_id(task_id: str) -> str:
     return cleaned
 
 
+def _resolve_app_root(base: Path) -> Path:
+    candidates = []
+    for candidate in (base, base / "aws_nonprofit_toolkit"):
+        ledger_script = candidate / "Givebutter" / "scripts" / "ci" / "householder_state.py"
+        if ledger_script.exists():
+            candidates.append(candidate)
+    if len(candidates) != 1:
+        raise ValueError("unable to resolve unique app root")
+    return candidates[0]
+
+
 def run_git(args: list[str], *, cwd: Path | None = None, binary: bool = False) -> subprocess.CompletedProcess[Any]:
     return subprocess.run(
         ["git", *args],
@@ -111,12 +122,14 @@ def _is_clean_worktree(cwd: Path) -> bool:
 
 
 def _worktree_python(worktree: Path) -> Path:
-    candidate = worktree / "Givebutter" / "venv" / "bin" / "python"
+    app_root = _resolve_app_root(worktree)
+    candidate = app_root / "Givebutter" / "venv" / "bin" / "python"
     return candidate if candidate.exists() else Path(sys.executable)
 
 
 def _ledger_script(worktree: Path) -> Path:
-    return worktree / "Givebutter" / "scripts" / "ci" / "householder_state.py"
+    app_root = _resolve_app_root(worktree)
+    return app_root / "Givebutter" / "scripts" / "ci" / "householder_state.py"
 
 
 def run_householder_state(worktree: Path, args: list[str], *, json_output: bool = True) -> Any:
@@ -649,7 +662,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     focused_cmd = sub.add_parser("run-focused")
     focused_cmd.add_argument("--task-id", required=True)
-    focused_cmd.add_argument("command", nargs=argparse.REMAINDER)
+    focused_cmd.add_argument("focused_command", nargs=argparse.REMAINDER)
 
     start_review_cmd = sub.add_parser("start-review")
     start_review_cmd.add_argument("--task-id", required=True)
@@ -678,7 +691,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "start-edit":
             result = start_edit(args.task_id, args.batch)
         elif args.command == "run-focused":
-            result = run_focused(args.task_id, args.command)
+            result = run_focused(args.task_id, args.focused_command)
         elif args.command == "start-review":
             result = start_review(args.task_id)
         elif args.command == "finish-review":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import shutil
@@ -14,13 +15,43 @@ import householder_runner  # noqa: E402
 
 
 TASK_ID = "HOUSEHOLDER-WORKTREE-RUNNER-CORE-20260731"
+_GIT_ENV_STRIP = (
+    "GIT_INDEX_FILE",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
+
+
+def git_env() -> dict[str, str]:
+    env = os.environ.copy()
+    for key in _GIT_ENV_STRIP:
+        env.pop(key, None)
+    return env
 
 
 def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=check)
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=check, env=git_env())
 
 
-def make_repo(tmp_path: Path) -> tuple[Path, Path]:
+@pytest.fixture(autouse=True)
+def isolate_git_repo_selection_env(monkeypatch):
+    original_run = subprocess.run
+
+    def sanitized_run(*args, **kwargs):
+        env = dict(kwargs.get("env", os.environ.copy()))
+        for key in _GIT_ENV_STRIP:
+            env.pop(key, None)
+        kwargs["env"] = env
+        return original_run(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", sanitized_run)
+    yield
+
+
+def make_repo(tmp_path: Path, layout: str = "flat") -> tuple[Path, Path]:
     repo = tmp_path / "repo"
     origin = tmp_path / "origin.git"
     repo.mkdir(parents=True, exist_ok=True)
@@ -33,16 +64,22 @@ def make_repo(tmp_path: Path) -> tuple[Path, Path]:
     seed = repo / "seed.txt"
     seed.write_text("seed\n", encoding="utf-8")
     source_householder_state = Path(__file__).resolve().parent.parent.parent / "scripts" / "ci" / "householder_state.py"
-    target_householder_state = repo / "Givebutter/scripts/ci/householder_state.py"
+    if layout == "flat":
+        app_root = repo
+    elif layout == "nested":
+        app_root = repo / "aws_nonprofit_toolkit"
+    else:
+        raise ValueError("unknown layout")
+    target_householder_state = app_root / "Givebutter/scripts/ci/householder_state.py"
     target_householder_state.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_householder_state, target_householder_state)
     git(repo, "add", "seed.txt")
-    git(repo, "add", "Givebutter/scripts/ci/householder_state.py")
+    git(repo, "add", str(target_householder_state.relative_to(repo)))
     git(repo, "commit", "-m", "seed")
     git(repo, "remote", "add", "origin", str(origin))
     git(repo, "push", "-u", "origin", "main")
     git(repo, "fetch", "origin", "main")
-    return repo, origin
+    return repo, app_root
 
 
 def bind(monkeypatch, repo: Path) -> None:
@@ -61,9 +98,10 @@ def write_record(repo: Path, payload: dict[str, object], task_id: str = TASK_ID)
     record_path(repo, task_id).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def create_campaign(monkeypatch, repo: Path, parent: Path, task_id: str = TASK_ID) -> dict[str, object]:
-    monkeypatch.chdir(repo)
-    bind(monkeypatch, repo)
+def create_campaign(monkeypatch, repo: Path, parent: Path, task_id: str = TASK_ID, *, app_root: Path | None = None) -> dict[str, object]:
+    app_root = app_root or repo
+    monkeypatch.chdir(app_root)
+    bind(monkeypatch, app_root)
     return householder_runner.create(task_id, parent)
 
 
@@ -83,6 +121,24 @@ def test_create_uses_dedicated_branch_and_worktree(monkeypatch, tmp_path):
     assert git(worktree, "branch", "--show-current").stdout.strip() == branch
     assert read_record(repo)["base_sha"] == git(repo, "rev-parse", "HEAD").stdout.strip()
     assert (worktree / "Givebutter/.artifacts/householder-task-state.json").exists()
+
+
+def test_create_resolves_nested_actual_layout(monkeypatch, tmp_path):
+    repo, app_root = make_repo(tmp_path, layout="nested")
+    parent = tmp_path / "external-worktrees"
+
+    report = create_campaign(monkeypatch, repo, parent, app_root=app_root)
+
+    branch = f"codex/{TASK_ID}"
+    worktree = parent / TASK_ID
+    assert report["task_id"] == TASK_ID
+    assert report["branch"] == branch
+    assert Path(report["worktree_path"]) == worktree
+    assert worktree.exists()
+    assert git(app_root, "branch", "--show-current").stdout.strip() == "main"
+    assert git(worktree, "branch", "--show-current").stdout.strip() == branch
+    assert read_record(app_root)["base_sha"] == git(app_root, "rev-parse", "HEAD").stdout.strip()
+    assert (worktree / "aws_nonprofit_toolkit/Givebutter/.artifacts/householder-task-state.json").exists()
 
 
 def test_create_rejects_dirty_main(monkeypatch, tmp_path):
@@ -171,6 +227,50 @@ def test_create_rejects_unignored_in_repo_parent(monkeypatch, tmp_path):
         householder_runner.create(TASK_ID, repo / ".codex-worktrees")
 
 
+def test_temp_repo_git_commands_ignore_hostile_inherited_index(monkeypatch, tmp_path):
+    monkeypatch.setenv("GIT_INDEX_FILE", ".git/index")
+    repo, _ = make_repo(tmp_path)
+    parent = tmp_path / "external-worktrees"
+
+    report = create_campaign(monkeypatch, repo, parent)
+
+    worktree = parent / TASK_ID
+    assert report["worktree_path"] == str(worktree)
+    assert worktree.exists()
+    assert git(repo, "status", "--short", "--untracked-files=no").stdout.strip() == ""
+    assert git(worktree, "status", "--short", "--untracked-files=no").stdout.strip() == ""
+
+
+def test_resolve_app_root_is_unique_and_fail_closed(monkeypatch, tmp_path):
+    repo, app_root = make_repo(tmp_path)
+    bind(monkeypatch, app_root)
+
+    assert householder_runner._resolve_app_root(repo) == repo
+
+    nested_repo = tmp_path / "nested-repo"
+    nested_repo.mkdir()
+    (nested_repo / "aws_nonprofit_toolkit/Givebutter/scripts/ci").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        Path(__file__).resolve().parent.parent.parent / "scripts" / "ci" / "householder_state.py",
+        nested_repo / "aws_nonprofit_toolkit/Givebutter/scripts/ci/householder_state.py",
+    )
+    assert householder_runner._resolve_app_root(nested_repo) == nested_repo / "aws_nonprofit_toolkit"
+
+    ambiguous = tmp_path / "ambiguous"
+    (ambiguous / "Givebutter/scripts/ci").mkdir(parents=True, exist_ok=True)
+    (ambiguous / "aws_nonprofit_toolkit/Givebutter/scripts/ci").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        Path(__file__).resolve().parent.parent.parent / "scripts" / "ci" / "householder_state.py",
+        ambiguous / "Givebutter/scripts/ci/householder_state.py",
+    )
+    shutil.copy2(
+        Path(__file__).resolve().parent.parent.parent / "scripts" / "ci" / "householder_state.py",
+        ambiguous / "aws_nonprofit_toolkit/Givebutter/scripts/ci/householder_state.py",
+    )
+    with pytest.raises(ValueError, match="unique app root"):
+        householder_runner._resolve_app_root(ambiguous)
+
+
 def test_status_fails_outside_recorded_worktree(monkeypatch, tmp_path):
     repo, _ = make_repo(tmp_path)
     parent = tmp_path / "external-worktrees"
@@ -247,6 +347,40 @@ def test_run_focused_authorizes_before_transition(monkeypatch, tmp_path):
     assert [call[1] for call in calls] == ["status", "can-run-focused"]
     assert calls[0][0] == worktree
     assert calls[1][0] == worktree
+
+
+def test_run_focused_cli_reaches_runner_and_preserves_arguments(monkeypatch, tmp_path, capsys):
+    repo, _ = make_repo(tmp_path)
+    bind(monkeypatch, repo)
+    monkeypatch.chdir(repo)
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_run_focused(task_id, command):
+        calls.append((task_id, list(command)))
+        return {"task_id": task_id, "command": list(command)}
+
+    monkeypatch.setattr(householder_runner, "run_focused", fake_run_focused)
+
+    exit_code = householder_runner.main([
+        "run-focused",
+        "--task-id",
+        TASK_ID,
+        "--",
+        sys.executable,
+        "-c",
+        "print('cli smoke')",
+    ])
+
+    assert exit_code == 0
+    assert calls == [
+        (
+            TASK_ID,
+            ["--", sys.executable, "-c", "print('cli smoke')"],
+        )
+    ]
+    out = capsys.readouterr().out
+    assert '"command": [' in out
+    assert "print('cli smoke')" in out
 
 
 def test_run_focused_records_real_success_and_failure_exit_codes(monkeypatch, tmp_path):
