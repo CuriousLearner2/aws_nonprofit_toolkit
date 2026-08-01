@@ -98,6 +98,11 @@ def write_record(repo: Path, payload: dict[str, object], task_id: str = TASK_ID)
     record_path(repo, task_id).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def write_contract(path: Path, payload: dict[str, object]) -> Path:
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def create_campaign(monkeypatch, repo: Path, parent: Path, task_id: str = TASK_ID, *, app_root: Path | None = None) -> dict[str, object]:
     app_root = app_root or repo
     monkeypatch.chdir(app_root)
@@ -557,3 +562,99 @@ def test_valid_campaign_reaches_completed_focused_run(monkeypatch, tmp_path):
     result = householder_runner.run_focused(TASK_ID, [sys.executable, "-c", "import sys; sys.exit(0)"])
     assert result["exit_code"] == 0
     assert result["ledger_after"]["state"] == "editing"
+
+
+def test_campaign_initialize_cli_delegates(monkeypatch, tmp_path, capsys):
+    repo, _ = make_repo(tmp_path)
+    bind(monkeypatch, repo)
+    monkeypatch.chdir(repo)
+    contract_file = tmp_path / "contract.json"
+    write_contract(
+        contract_file,
+        {
+            "schema_version": 1,
+            "task_id": TASK_ID,
+            "campaign_type": "workflow",
+            "workflow_id": "workflow-01",
+            "strategy_id": "strategy-01",
+            "work_items": [
+                {
+                    "id": "item-0",
+                    "type": "inspect-work-item",
+                    "description": "inspect the initial work item",
+                    "acceptance_criteria": ["item inspected"],
+                    "focused_test_commands": [["python", "-c", "print('inspect')"]],
+                    "allowed_action_types": ["inspect-work-item", "start-edit"],
+                }
+            ],
+            "authorized_files": [
+                "Givebutter/scripts/ci/householder_runner.py",
+                "Givebutter/tests/unit/test_householder_runner.py",
+            ],
+            "implementation_changed_lines_max": 350,
+            "test_changed_lines_max": 450,
+            "tracked_files_max": 2,
+            "focused_runs_max": 4,
+            "implementation_repairs_max": 1,
+            "test_harness_repairs_max": 1,
+            "review_repairs_max": 1,
+        },
+    )
+    calls: list[tuple[str, str]] = []
+
+    def fake_initialize(task_id, path):
+        calls.append((task_id, str(path)))
+        return {"task_id": task_id, "status": "initialized"}
+
+    monkeypatch.setattr(householder_runner.householder_campaign, "campaign_initialize", fake_initialize)
+
+    exit_code = householder_runner.main([
+        "campaign-initialize",
+        "--task-id",
+        TASK_ID,
+        "--contract-file",
+        str(contract_file),
+    ])
+
+    assert exit_code == 0
+    assert calls == [(TASK_ID, str(contract_file))]
+    assert '"status": "initialized"' in capsys.readouterr().out
+
+
+def test_campaign_status_cli_delegates(monkeypatch, tmp_path, capsys):
+    repo, _ = make_repo(tmp_path)
+    bind(monkeypatch, repo)
+    monkeypatch.chdir(repo)
+    calls: list[str] = []
+
+    def fake_status(task_id):
+        calls.append(task_id)
+        return {"task_id": task_id, "status": "ready"}
+
+    monkeypatch.setattr(householder_runner.householder_campaign, "campaign_status", fake_status)
+
+    exit_code = householder_runner.main([
+        "campaign-status",
+        "--task-id",
+        TASK_ID,
+    ])
+
+    assert exit_code == 0
+    assert calls == [TASK_ID]
+    assert '"status": "ready"' in capsys.readouterr().out
+
+
+def test_existing_cli_handlers_remain_available():
+    for name in [
+        "create",
+        "status",
+        "start_edit",
+        "run_focused",
+        "start_review",
+        "finish_review",
+        "authorize_delivery",
+        "cleanup",
+    ]:
+        assert hasattr(householder_runner, name)
+    assert hasattr(householder_runner, "campaign_initialize")
+    assert hasattr(householder_runner, "campaign_status")

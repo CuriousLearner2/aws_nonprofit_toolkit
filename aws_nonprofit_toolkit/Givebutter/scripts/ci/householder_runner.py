@@ -16,6 +16,11 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+try:
+    from . import householder_campaign
+except ImportError:  # pragma: no cover - direct script execution fallback
+    import householder_campaign
+
 
 SCHEMA_VERSION = 1
 TASK_BRANCH_PREFIX = "codex/"
@@ -645,6 +650,14 @@ def run_focused(task_id: str, command: list[str]) -> dict[str, Any]:
         }
 
 
+def campaign_initialize(task_id: str, contract_file: Path | str) -> dict[str, Any]:
+    return householder_campaign.campaign_initialize(task_id, contract_file)
+
+
+def campaign_status(task_id: str) -> dict[str, Any]:
+    return householder_campaign.campaign_status(task_id)
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="householder_runner.py")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -678,6 +691,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     cleanup_cmd = sub.add_parser("cleanup")
     cleanup_cmd.add_argument("--task-id", required=True)
 
+    campaign_init_cmd = sub.add_parser("campaign-initialize")
+    campaign_init_cmd.add_argument("--task-id", required=True)
+    campaign_init_cmd.add_argument("--contract-file", required=True)
+
+    campaign_status_cmd = sub.add_parser("campaign-status")
+    campaign_status_cmd.add_argument("--task-id", required=True)
+
     return parser.parse_args(argv)
 
 
@@ -700,6 +720,10 @@ def main(argv: list[str] | None = None) -> int:
             result = authorize_delivery(args.task_id)
         elif args.command == "cleanup":
             result = cleanup(args.task_id)
+        elif args.command == "campaign-initialize":
+            result = campaign_initialize(args.task_id, Path(args.contract_file))
+        elif args.command == "campaign-status":
+            result = campaign_status(args.task_id)
         else:  # pragma: no cover
             raise ValueError("unknown command")
         print(json.dumps(result, indent=2, sort_keys=True))
