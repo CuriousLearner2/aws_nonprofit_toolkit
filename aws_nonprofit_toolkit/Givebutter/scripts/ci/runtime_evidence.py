@@ -15,13 +15,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-TASK_ID = "HOUSEHOLDER-60-MINUTE-AUTONOMY-TRIAL-20260731"
+TASK_ID_ENV = "HOUSEHOLDER_TASK_ID"
 SCHEMA_VERSION = 1
 QA_VERDICT = "not_required"
 READINESS_QA_VERDICT = "QA=PASS"
 ALLOWED_REVIEWER_VERDICTS = {"VERDICT=ACCEPT", "VERDICT=REQUEST_CHANGES", "VERDICT=REJECT"}
 ALLOWED_BREAKER_VERDICTS = {"BREAKER=PASS", "BREAKER=FAIL"}
 ALLOWED_EXCEPTION_TYPES = {"mixed_scope_exception"}
+MANUAL_REVIEWER_CRITERIA = "ACCEPT"
+MANUAL_BREAKER_CRITERIA = "PASS"
+MANUAL_REVIEWER_PROVENANCE = "manual reviewer criteria"
+MANUAL_BREAKER_PROVENANCE = "manual breaker criteria"
 EVIDENCE_SUFFIX = ".runtime-evidence.json"
 READINESS_SUFFIX = "commit-readiness.json"
 READINESS_GATE_SPECS = (
@@ -51,17 +55,33 @@ def build_env() -> dict[str, str]:
     return env
 
 
-def default_output_path(task_id: str = TASK_ID) -> Path:
+def _validate_task_id(task_id: str) -> str:
     safe_task_id = task_id.strip()
     if not safe_task_id or safe_task_id != task_id or "/" in safe_task_id or "\\" in safe_task_id:
         raise ValueError("task_id mismatch")
+    return safe_task_id
+
+
+def _resolve_task_id(cli_task_id: str | None, env: Mapping[str, str]) -> str:
+    env_task_id = env.get(TASK_ID_ENV)
+    if env_task_id is not None and not env_task_id.strip():
+        env_task_id = None
+    if cli_task_id is None and env_task_id is None:
+        raise ValueError("task_id required")
+    if cli_task_id is not None and env_task_id is not None and cli_task_id != env_task_id:
+        raise ValueError("task_id mismatch")
+    resolved = cli_task_id if cli_task_id is not None else env_task_id
+    if resolved is None:
+        raise ValueError("task_id required")
+    return _validate_task_id(resolved)
+
+
+def default_output_path(task_id: str) -> Path:
+    safe_task_id = _validate_task_id(task_id)
     return Path(tempfile.gettempdir()) / "householder-runtime-evidence" / f"{safe_task_id}{EVIDENCE_SUFFIX}"
 
 
-def default_readiness_path(task_id: str = TASK_ID) -> Path:
-    safe_task_id = task_id.strip()
-    if not safe_task_id or safe_task_id != task_id or "/" in safe_task_id or "\\" in safe_task_id:
-        raise ValueError("task_id mismatch")
+def default_readiness_path() -> Path:
     return givebutter_dir() / ".artifacts" / READINESS_SUFFIX
 
 
@@ -247,6 +267,38 @@ def _validate_exception(exception: Mapping[str, Any], gate_ids: set[str], finger
     return normalized
 
 
+def _manual_receipt(
+    *,
+    role: str,
+    task_id: str,
+    head: str,
+    fingerprint: str,
+    criteria: str,
+) -> dict[str, Any]:
+    if role == "Reviewer":
+        expected_criteria = MANUAL_REVIEWER_CRITERIA
+        verdict = "VERDICT=ACCEPT"
+        provenance = MANUAL_REVIEWER_PROVENANCE
+    elif role == "Breaker":
+        expected_criteria = MANUAL_BREAKER_CRITERIA
+        verdict = "BREAKER=PASS"
+        provenance = MANUAL_BREAKER_PROVENANCE
+    else:  # pragma: no cover - defensive programming
+        raise ValueError("unknown manual review role")
+    if criteria != expected_criteria:
+        raise ValueError(f"manual {role.lower()} criteria must be {expected_criteria}")
+    return {
+        "task_id": task_id,
+        "verdict": verdict,
+        "reviewed_head": head,
+        "reviewed_diff_sha256": fingerprint,
+        "reviewed_at": utc_now(),
+        "authorized_exceptions": [],
+        "provenance": provenance,
+        "criteria": criteria,
+    }
+
+
 def _validate_receipt(
     receipt: Mapping[str, Any] | str | Path,
     *,
@@ -270,6 +322,16 @@ def _validate_receipt(
             raise ValueError("Reviewer receipt verdict must be VERDICT=ACCEPT, VERDICT=REQUEST_CHANGES, or VERDICT=REJECT")
     elif verdict not in ALLOWED_BREAKER_VERDICTS:
         raise ValueError("Breaker receipt verdict must be BREAKER=PASS or BREAKER=FAIL")
+    provenance = payload.get("provenance")
+    if provenance is not None:
+        expected_provenance = MANUAL_REVIEWER_PROVENANCE if role == "Reviewer" else MANUAL_BREAKER_PROVENANCE
+        if provenance != expected_provenance:
+            raise ValueError(f"{role} receipt provenance must be {expected_provenance}")
+    criteria = payload.get("criteria")
+    if criteria is not None:
+        expected_criteria = MANUAL_REVIEWER_CRITERIA if role == "Reviewer" else MANUAL_BREAKER_CRITERIA
+        if criteria != expected_criteria:
+            raise ValueError(f"{role} receipt criteria must be {expected_criteria}")
 
     raw_exceptions = payload.get("authorized_exceptions", [])
     if raw_exceptions in (None, ""):
@@ -286,6 +348,10 @@ def _validate_receipt(
         "reviewed_at": payload["reviewed_at"],
         "authorized_exceptions": raw_exceptions,
     }
+    if provenance is not None:
+        normalized["provenance"] = provenance
+    if criteria is not None:
+        normalized["criteria"] = criteria
     return normalized
 
 
@@ -387,21 +453,58 @@ def _write_atomic_json(path: Path, payload: dict[str, Any]) -> Path:
 
 def generate_runtime_evidence(
     task_id: str,
-    reviewer_receipt: Mapping[str, Any] | str | Path,
-    breaker_receipt: Mapping[str, Any] | str | Path,
+    reviewer_receipt: Mapping[str, Any] | str | Path | None = None,
+    breaker_receipt: Mapping[str, Any] | str | Path | None = None,
     *,
+    manual_reviewer_criteria: str | None = None,
+    manual_breaker_criteria: str | None = None,
     output_path: Path | None = None,
     readiness_output_path: Path | None = None,
 ) -> dict[str, Any]:
-    if task_id != TASK_ID:
-        raise ValueError("task_id mismatch")
+    task_id = _validate_task_id(task_id)
 
     ledger = _ledger_status(task_id)
     head = current_head()
     fingerprint = current_staged_fingerprint()
     ledger = _validate_ledger_snapshot(ledger, task_id, fingerprint)
-    reviewer = _validate_receipt(reviewer_receipt, role="Reviewer", task_id=task_id, head=head, fingerprint=fingerprint)
-    breaker = _validate_receipt(breaker_receipt, role="Breaker", task_id=task_id, head=head, fingerprint=fingerprint)
+    manual_mode_requested = manual_reviewer_criteria is not None or manual_breaker_criteria is not None
+    external_mode_requested = reviewer_receipt is not None or breaker_receipt is not None
+    if manual_mode_requested and external_mode_requested:
+        raise ValueError("manual and external review modes are mutually exclusive")
+    if manual_mode_requested:
+        if manual_reviewer_criteria is None or manual_breaker_criteria is None:
+            raise ValueError("manual reviewer and breaker criteria are required together")
+        reviewer = _validate_receipt(
+            _manual_receipt(
+                role="Reviewer",
+                task_id=task_id,
+                head=head,
+                fingerprint=fingerprint,
+                criteria=manual_reviewer_criteria,
+            ),
+            role="Reviewer",
+            task_id=task_id,
+            head=head,
+            fingerprint=fingerprint,
+        )
+        breaker = _validate_receipt(
+            _manual_receipt(
+                role="Breaker",
+                task_id=task_id,
+                head=head,
+                fingerprint=fingerprint,
+                criteria=manual_breaker_criteria,
+            ),
+            role="Breaker",
+            task_id=task_id,
+            head=head,
+            fingerprint=fingerprint,
+        )
+    else:
+        if reviewer_receipt is None or breaker_receipt is None:
+            raise ValueError("reviewer and breaker receipts are required together")
+        reviewer = _validate_receipt(reviewer_receipt, role="Reviewer", task_id=task_id, head=head, fingerprint=fingerprint)
+        breaker = _validate_receipt(breaker_receipt, role="Breaker", task_id=task_id, head=head, fingerprint=fingerprint)
 
     gate_records = _run_required_gates()
     gate_ids = {record["label"] for record in gate_records}
@@ -435,7 +538,7 @@ def generate_runtime_evidence(
         "gate_results": gate_records,
     }
     path = output_path or default_output_path(task_id)
-    readiness_path = readiness_output_path or default_readiness_path(task_id)
+    readiness_path = readiness_output_path or default_readiness_path()
     readiness_packet = _build_commit_readiness_packet(
         evidence,
         reviewer=reviewer,
@@ -461,9 +564,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     sub = parser.add_subparsers(dest="command", required=True)
 
     generate = sub.add_parser("generate")
-    generate.add_argument("--task-id", required=True)
-    generate.add_argument("--reviewer-receipt", required=True)
-    generate.add_argument("--breaker-receipt", required=True)
+    generate.add_argument("--task-id", default=None)
+    generate.add_argument("--reviewer-receipt", default=None)
+    generate.add_argument("--breaker-receipt", default=None)
+    generate.add_argument("--manual-reviewer-criteria", default=None)
+    generate.add_argument("--manual-breaker-criteria", default=None)
     generate.add_argument("--output", default=None)
 
     return parser.parse_args(argv)
@@ -474,10 +579,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command != "generate":  # pragma: no cover
             raise ValueError("unknown command")
+        task_id = _resolve_task_id(args.task_id, os.environ)
         evidence = generate_runtime_evidence(
-            args.task_id,
+            task_id,
             args.reviewer_receipt,
             args.breaker_receipt,
+            manual_reviewer_criteria=args.manual_reviewer_criteria,
+            manual_breaker_criteria=args.manual_breaker_criteria,
             output_path=Path(args.output) if args.output else None,
         )
         print(
