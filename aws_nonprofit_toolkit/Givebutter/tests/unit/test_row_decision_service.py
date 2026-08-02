@@ -18,6 +18,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from scripts.householder.database_models import Base, ImportBatch, RawImportRow, ReviewDecision
+from scripts.householder.row_decision_policy import (
+    normalize_row_decision_notes,
+    normalize_interaction_sequence,
+)
 from scripts.householder.row_decision_service import (
     record_row_decision,
     get_row_decision,
@@ -73,6 +77,23 @@ def temp_db():
 
 class TestRecordRowDecision:
     """Test recording row-level status decisions."""
+
+    def test_normalize_row_decision_notes_trims_blank_values(self):
+        """Row decision policy trims and nulls blank notes."""
+        assert normalize_row_decision_notes(None) is None
+        assert normalize_row_decision_notes('   ') is None
+        assert normalize_row_decision_notes('  Check address  ') == 'Check address'
+
+    def test_normalize_interaction_sequence_parses_and_validates(self):
+        """Row decision policy parses valid ordering metadata and rejects invalid values."""
+        assert normalize_interaction_sequence(None) is None
+        assert normalize_interaction_sequence('2') == 2
+
+        with pytest.raises(ValueError, match='interaction_sequence'):
+            normalize_interaction_sequence(0)
+
+        with pytest.raises(ValueError, match='interaction_sequence'):
+            normalize_interaction_sequence('nope')
 
     def test_record_accept_as_is_decision(self, temp_db):
         """Test recording 'accept_as_is' decision."""

@@ -19,35 +19,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from .database_models import ReviewDecision, ImportBatch, RawImportRow, AuditLogRecord
+from .row_decision_policy import (
+    normalize_row_decision_notes,
+    normalize_interaction_sequence,
+)
 
 
 _ROW_DECISION_LOCKS = {}
 _ROW_DECISION_LOCKS_MUTEX = threading.Lock()
-
-
-def _normalize_row_decision_notes(notes: Optional[str]) -> Optional[str]:
-    if notes is None:
-        return None
-
-    normalized = notes.strip()
-    return normalized or None
-
-
-def _normalize_interaction_sequence(interaction_sequence: Optional[Any]) -> Optional[int]:
-    if interaction_sequence is None:
-        return None
-
-    try:
-        normalized = int(interaction_sequence)
-    except (TypeError, ValueError):
-        raise ValueError("Row decision requires a valid interaction_sequence")
-
-    if normalized < 1:
-        raise ValueError("Row decision requires interaction_sequence >= 1")
-
-    return normalized
-
-
 def _row_decision_lock_key(batch_id: str, raw_import_row_id: int) -> str:
     return f"{batch_id}:{raw_import_row_id}"
 
@@ -88,7 +67,7 @@ def _extract_row_status_decision_state(review_decision):
 
     return (
         decision_type,
-        _normalize_row_decision_notes(reviewed_values.get('notes')),
+        normalize_row_decision_notes(reviewed_values.get('notes')),
         interaction_sequence,
     )
 
@@ -149,7 +128,7 @@ def record_row_decision(
     if decision == 'needs_follow_up' and not (notes and notes.strip()):
         raise ValueError("Notes are required when 'Needs follow-up' is selected")
 
-    normalized_sequence = _normalize_interaction_sequence(interaction_sequence)
+    normalized_sequence = normalize_interaction_sequence(interaction_sequence)
     use_sequence_guard = normalized_sequence is not None
 
     lock = _get_row_decision_lock(batch_id, raw_import_row_id) if use_sequence_guard else None
@@ -177,7 +156,7 @@ def record_row_decision(
                 f"Raw import row {raw_import_row_id} does not belong to batch '{batch_id}'"
             )
 
-        normalized_notes = _normalize_row_decision_notes(notes)
+        normalized_notes = normalize_row_decision_notes(notes)
         latest_row_decision = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
         latest_decision_type, latest_notes, latest_sequence = _extract_row_status_decision_state(latest_row_decision)
 
