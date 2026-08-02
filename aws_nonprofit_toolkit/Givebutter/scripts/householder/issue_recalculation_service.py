@@ -23,6 +23,10 @@ from .date_validation_service import validate_review_date
 from .phone_validation_service import is_valid_phone
 from .issue_identity import normalize_validation_issue_field
 from .issue_reconciliation import reconcile_missing_address_issues
+from .recalculation_input_policy import (
+    prepare_recalculation_input,
+    value_for_validation_field,
+)
 import os
 
 # Top 30 recognized email domains - strict validation applied to these
@@ -66,21 +70,6 @@ COMMON_TYPO_DOMAINS = {
     'hotmial.com': 'hotmail.com',  # letter swap
     'hotmal.com': 'hotmail.com',   # missing i
 }
-
-
-def _validation_issue_value_for_field(values: Dict[str, Any], field: Any) -> Any:
-    canonical_field = normalize_validation_issue_field(field)
-    if canonical_field:
-        blank_match = None
-        for key, value in values.items():
-            if normalize_validation_issue_field(key) == canonical_field:
-                if value is not None and str(value).strip():
-                    return value
-                if blank_match is None:
-                    blank_match = value
-        if blank_match is not None:
-            return blank_match
-    return values.get(field)
 
 
 def recalculate_row_issues(
@@ -131,9 +120,10 @@ def recalculate_row_issues(
 
         # Get effective values (raw + corrections)
         # If proposed_values provided, merge them in (for validation of unsaved corrections)
-        effective_values = get_effective_values(batch_id, raw_import_row_id, database_url)
-        if proposed_values:
-            effective_values.update(proposed_values)
+        effective_values = prepare_recalculation_input(
+            get_effective_values(batch_id, raw_import_row_id, database_url),
+            proposed_values,
+        )
 
         # Get raw data for comparison
         raw_data = raw_row.raw_csv_data or {}
@@ -166,8 +156,8 @@ def recalculate_row_issues(
 
             # Get the corrected value for this field (if any)
             if normalized_field == 'address':
-                effective_value = _validation_issue_value_for_field(effective_values, issue_field)
-                raw_value = _validation_issue_value_for_field(raw_data, issue_field)
+                effective_value = value_for_validation_field(effective_values, issue_field)
+                raw_value = value_for_validation_field(raw_data, issue_field)
             else:
                 effective_value = effective_values.get(normalized_field)
                 raw_value = raw_data.get(normalized_field)
@@ -249,9 +239,9 @@ def recalculate_row_issues(
         # authoritative address source (raw row or contact snapshot).
         # The reconciliation boundary below deduplicates this against any
         # existing persisted missing-address issue.
-        address_issue = _validate_address(_validation_issue_value_for_field(effective_values, 'address'))
+        address_issue = _validate_address(value_for_validation_field(effective_values, 'address'))
         has_authoritative_address = (
-            _validation_issue_value_for_field(raw_data, 'address') is not None
+            value_for_validation_field(raw_data, 'address') is not None
             or any(
                 getattr(contact, attribute, None) is not None
                 for attribute in ('address_line1', 'address_line2', 'city', 'state', 'postal_code')
