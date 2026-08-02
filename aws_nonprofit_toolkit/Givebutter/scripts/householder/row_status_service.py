@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import (
     ImportBatch, RawImportRow, ReviewItem, ReviewDecision, ReviewItemSubject
 )
+from .row_status_policy import derive_row_status as _derive_row_status
 import os
 
 
@@ -59,25 +60,7 @@ def derive_row_status(
     else:
         current_issues = issues
 
-    # Determine status based on issue types
-    has_blocking = False
-    has_warning = False
-
-    for issue in current_issues:
-        severity = issue.get('severity', 'warning')
-        if severity == 'error':
-            has_blocking = True
-        else:
-            has_warning = True
-
-    # Priority: Blocking > Overridden > Warning > No issues
-    # First determine status from issues
-    if has_blocking:
-        base_status = "Blocking"
-    elif has_warning:
-        base_status = "Warning"
-    else:
-        base_status = "No issues"
+    base_status = _derive_row_status(current_issues)
 
     # Then check approval override state (may override to "Overridden")
     try:

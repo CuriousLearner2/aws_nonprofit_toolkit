@@ -14,6 +14,7 @@ import os
 from .repository_provider import get_import_repository
 from .issue_recalculation_service import recalculate_row_issues, _validate_effective_values
 from .row_status_service import derive_row_status
+from .row_status_policy import derive_row_status as _derive_row_status
 
 
 def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
@@ -110,23 +111,9 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     # Shouldn't reach here, but be safe
                     record['issues'] = []
 
-                # Set row_status based on whether there are blocking or warning issues.
+                # Set row_status by delegating to the canonical row-status policy.
                 if not record.get('row_status'):
-                    has_blocking = any(
-                        issue.get('severity') == 'error'
-                        for issue in record.get('issues', [])
-                    )
-                    has_warning = any(
-                        issue.get('severity') != 'error'
-                        for issue in record.get('issues', [])
-                    )
-
-                    if has_blocking:
-                        record['row_status'] = 'Blocking'
-                    elif has_warning:
-                        record['row_status'] = 'Warning'
-                    else:
-                        record['row_status'] = 'No issues'
+                    record['row_status'] = _derive_row_status(record.get('issues', []))
         else:
             # No issue in this record
             record['row_status'] = 'No issues'
