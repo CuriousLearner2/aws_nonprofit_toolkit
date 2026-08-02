@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import (
     ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewItemSubject
 )
-from .autosave_service import get_effective_values
+from .effective_value_resolution import get_effective_values
 from .amount_validation_service import validate_review_amount
 from .email_validation_service import validate_review_email
 from .date_validation_service import validate_review_date

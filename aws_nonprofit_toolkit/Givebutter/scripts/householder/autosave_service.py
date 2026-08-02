@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
+from .effective_value_resolution import get_effective_values as _get_effective_values
 
 
 def autosave_row_corrections(
@@ -142,51 +143,7 @@ def get_effective_values(
     Raises:
         ValueError: If batch or row not found
     """
-    from .database_models import (
-        RawImportRow, ReviewDecision, get_session, create_db_engine
-    )
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    import os
-
-    if database_url is None:
-        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
-
-    engine = create_engine(database_url, echo=False)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
-
-    try:
-        # Get raw row
-        raw_row = session.query(RawImportRow).filter_by(
-            id=raw_import_row_id
-        ).first()
-        if not raw_row:
-            raise ValueError(f"Raw import row {raw_import_row_id} not found")
-
-        # Start with raw values
-        effective_values = dict(raw_row.raw_csv_data) if raw_row.raw_csv_data else {}
-
-        # Accumulate corrections from ALL ReviewDecisions for this row
-        # Each autosave creates a new decision with reviewed_values for one or more fields
-        # We need to merge them all in chronological order (later decisions override earlier)
-        decisions = session.query(ReviewDecision).filter_by(
-            batch_id=batch_id,
-            raw_import_row_id=raw_import_row_id
-        ).order_by(
-            ReviewDecision.created_at.asc(),  # Earliest first
-            ReviewDecision.id.asc()
-        ).all()
-
-        # Merge corrections: iterate in chronological order, later overrides earlier
-        for decision in decisions:
-            if decision.reviewed_values:
-                effective_values.update(decision.reviewed_values)
-
-        return effective_values
-
-    finally:
-        session.close()
+    return _get_effective_values(batch_id, raw_import_row_id, database_url)
 
 
 def validate_corrected_values(
