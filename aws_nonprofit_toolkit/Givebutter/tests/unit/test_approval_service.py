@@ -24,6 +24,7 @@ from scripts.householder.approval_service import (
     check_batch_remaining_issues,
     get_batch_approval_status,
 )
+from scripts.householder.approval_override_policy import canonical_override_field
 from scripts.householder.row_decision_service import (
     record_row_decision,
 )
@@ -76,6 +77,34 @@ def temp_db():
 
 class TestApproveBatch:
     """Test batch approval workflow."""
+
+    def test_canonical_override_field_keeps_single_field(self):
+        """Approval override canonicalization preserves one normalized field."""
+        issues = [
+            {'field': ' Email ', 'reason': 'Invalid format'},
+            {'field': 'email', 'reason': 'Missing domain'},
+        ]
+
+        assert canonical_override_field(issues) == 'email'
+
+    def test_canonical_override_field_ignores_empty_fields(self):
+        """Blank field values do not create a misleading canonical field."""
+        issues = [
+            {'field': '', 'reason': 'Ignored blank'},
+            {'field': None, 'reason': 'Ignored null'},
+            {'field': '  ', 'reason': 'Ignored whitespace'},
+        ]
+
+        assert canonical_override_field(issues) is None
+
+    def test_canonical_override_field_returns_none_for_multiple_fields(self):
+        """Approval override canonicalization fails closed for multi-field issues."""
+        issues = [
+            {'field': 'email', 'reason': 'Invalid format'},
+            {'field': 'phone', 'reason': 'Invalid format'},
+        ]
+
+        assert canonical_override_field(issues) is None
 
     def test_approve_batch_simple(self, temp_db):
         """Test simple batch approval without overrides."""

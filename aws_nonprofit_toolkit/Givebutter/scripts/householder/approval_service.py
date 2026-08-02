@@ -16,34 +16,8 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import (
     ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject, AuditLogRecord
 )
+from .approval_override_policy import canonical_override_field
 import os
-
-
-def _canonical_override_field(issues: Optional[List[Dict[str, Any]]]) -> Optional[str]:
-    """
-    Derive a stable field name for an override entry when the approval payload
-    clearly targets a single field.
-
-    Returns None for ambiguous or empty issue lists so we fail closed on
-    multi-field approvals instead of inventing a misleading canonical field.
-    """
-    if not issues:
-        return None
-
-    fields = []
-    for issue in issues:
-        field = issue.get('field')
-        if not field:
-            continue
-
-        normalized_field = str(field).strip().lower()
-        if normalized_field and normalized_field not in fields:
-            fields.append(normalized_field)
-
-    if len(fields) == 1:
-        return fields[0]
-
-    return None
 
 
 def approve_batch(
@@ -149,7 +123,7 @@ def approve_batch(
                     'row_index': row_index,
                     'issues': issues  # List of {field, reason} dicts
                 }
-                canonical_field = _canonical_override_field(issues)
+                canonical_field = canonical_override_field(issues)
                 if canonical_field:
                     override_entry['field'] = canonical_field
                 overrides.append(override_entry)
