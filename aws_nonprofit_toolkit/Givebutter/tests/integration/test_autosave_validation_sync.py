@@ -24,6 +24,7 @@ from scripts.householder.database_models import (
     RawImportRow,
     create_db_engine,
 )
+from scripts.householder.editable_field_validation import validate_editable_field_values
 from sqlalchemy.orm import sessionmaker
 
 
@@ -126,6 +127,46 @@ def flask_client_with_batch_database_mode(temp_db, monkeypatch):
 
 class TestAutosaveValidationSync:
     """Test autosave validation synchronization."""
+
+    @pytest.mark.parametrize(
+        "fixture_name, corrected_values, expected_field",
+        [
+            ("flask_client_with_batch", {"name": ""}, "name"),
+            ("flask_client_with_batch", {"address": "   "}, "address"),
+            ("flask_client_with_batch_database_mode", {"name": 0}, "name"),
+            ("flask_client_with_batch_database_mode", {"address": None}, "address"),
+        ],
+    )
+    def test_autosave_name_and_address_policy_parity_across_repository_modes(
+        self,
+        request,
+        fixture_name,
+        corrected_values,
+        expected_field,
+    ):
+        """Editable-field policy should block invalid name/address in both repository modes."""
+        client, database_url, engine, Session, rows = request.getfixturevalue(fixture_name)
+        raw_id = rows[0]
+
+        policy_valid, policy_errors = validate_editable_field_values(corrected_values)
+        assert policy_valid is False
+        assert policy_errors is not None
+        assert expected_field in policy_errors
+
+        response = client.post(
+            '/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': raw_id,
+                'corrected_values': corrected_values,
+            },
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data['success'] is False
+        assert data['row_status'] == 'Blocking'
+        assert expected_field in data.get('validation_errors', {})
+        assert expected_field in [issue.get('field') for issue in data.get('issues', [])]
 
     @pytest.mark.parametrize(
         "fixture_name, corrected_values, expected_field",

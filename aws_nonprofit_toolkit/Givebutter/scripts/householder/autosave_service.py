@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
+from .editable_field_validation import validate_editable_field_values as _validate_editable_field_values
 from .effective_value_resolution import get_effective_values as _get_effective_values
 
 
@@ -163,51 +164,7 @@ def validate_corrected_values(
         - If valid: (True, None)
         - If invalid: (False, {'field': 'error message', ...})
     """
-    from .phone_validation_service import validate_review_phone
-    from .date_validation_service import validate_review_date
-    from .amount_validation_service import validate_review_amount
-    from .email_validation_service import validate_review_email
-
-    errors = {}
-
-    for field, value in corrected_values.items():
-        # Amount must be validated even if 0 (falsy) or empty string
-        if field == 'amount':
-            amount_result = validate_review_amount(value, allow_blank=False)
-            if not amount_result.valid:
-                errors['amount'] = amount_result.blocking_error or 'Invalid amount format'
-            continue
-
-        if field == 'date':
-            date_result = validate_review_date(value, allow_blank=True)
-            if not date_result.valid:
-                errors['date'] = date_result.blocking_error or 'Invalid date format'
-            continue
-
-        if field == 'email':
-            email_result = validate_review_email(value, allow_blank=False)
-            if not email_result.valid:
-                errors['email'] = email_result.blocking_error or 'Invalid email format'
-            continue
-
-        # For other fields, skip if empty/falsy (might be clearing a field)
-        if not value or not isinstance(value, str):
-            continue
-
-        value_str = value.strip()
-        if not value_str:
-            continue
-
-        # Validate phone field
-        if field == 'phone':
-            phone_result = validate_review_phone(value_str, allow_blank=False, default_region='US')
-            if not phone_result.valid:
-                errors['phone'] = phone_result.blocking_error or 'Invalid phone format'
-
-    if errors:
-        return False, errors
-    else:
-        return True, None
+    return _validate_editable_field_values(corrected_values)
 
 
 def build_fixture_autosave_response(
