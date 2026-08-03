@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import phonenumbers
 
+from .phone_type_policy import phone_type_name
+
 
 DEFAULT_PHONE_REGION = "US"
 PHONE_REQUIRED_ERROR = "Phone number is empty"
@@ -27,26 +29,6 @@ class PhoneValidationResult:
     country_code: Optional[int] = None
     region: Optional[str] = None
     number_type: Optional[str] = None
-
-
-def _phone_type_name(parsed: phonenumbers.PhoneNumber) -> str:
-    """Return a stable product-facing number type label."""
-    number_type = phonenumbers.number_type(parsed)
-    type_map = {
-        phonenumbers.PhoneNumberType.FIXED_LINE: "FIXED_LINE",
-        phonenumbers.PhoneNumberType.MOBILE: "MOBILE",
-        phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE: "FIXED_LINE_OR_MOBILE",
-        phonenumbers.PhoneNumberType.TOLL_FREE: "TOLL_FREE",
-        phonenumbers.PhoneNumberType.PREMIUM_RATE: "PREMIUM_RATE",
-        phonenumbers.PhoneNumberType.SHARED_COST: "SHARED_COST",
-        phonenumbers.PhoneNumberType.VOIP: "VOIP",
-        phonenumbers.PhoneNumberType.PERSONAL_NUMBER: "PERSONAL_NUMBER",
-        phonenumbers.PhoneNumberType.PAGER: "PAGER",
-        phonenumbers.PhoneNumberType.UAN: "UAN",
-        phonenumbers.PhoneNumberType.VOICEMAIL: "VOICEMAIL",
-        phonenumbers.PhoneNumberType.UNKNOWN: "UNKNOWN",
-    }
-    return type_map.get(number_type, "UNKNOWN")
 
 
 def validate_review_phone(
@@ -99,7 +81,7 @@ def validate_review_phone(
         international=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL),
         country_code=parsed.country_code,
         region=phonenumbers.region_code_for_number(parsed),
-        number_type=_phone_type_name(parsed),
+        number_type=phone_type_name(parsed),
     )
 
 
