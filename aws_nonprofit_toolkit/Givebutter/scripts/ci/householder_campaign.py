@@ -30,7 +30,7 @@ def _utcnow() -> str:
 def _validate_task_id(task_id: str) -> str:
     cleaned = task_id.strip()
     if cleaned != task_id or not cleaned or "/" in cleaned or "\\" in cleaned:
-        raise ValueError("task_id must be a non-empty string without path separators")
+        raise CampaignError("INVALID_CAMPAIGN_ID", "campaign-id must be a non-empty string without path separators")
     return cleaned
 
 
@@ -316,12 +316,118 @@ def campaign_status(task_id: str) -> dict[str, Any]:
 LEDGER_ROOT = Path("/private/tmp/householder-campaigns")
 CAMPAIGN_STATES = {"READY", "ACTIVE", "VALIDATING", "COMMITTED", "FAILED", "QUARANTINED", "STOPPED"}
 CAMPAIGN_TERMINAL = {"COMMITTED", "FAILED", "QUARANTINED", "STOPPED"}
+SUITE_REGISTRY = {
+    "wrapper-unit": ["python3", "-m", "pytest", "-q", "tests/unit/test_householder_campaign.py"],
+}
 
-
+class CampaignError(ValueError):
+    def __init__(self, code: str, message: str): self.code = code; super().__init__(f"{code}: {message}")
+def _fail(code: str, message: str) -> CampaignError:
+    return CampaignError(code, message)
 def _ledger_file(campaign_id: str) -> Path:
     return LEDGER_ROOT / _validate_task_id(campaign_id) / "state.json"
+def _events_file(campaign_id: str) -> Path: return _ledger_file(campaign_id).with_name("events.jsonl")
+def _operation_id(value: Any) -> str:
+    if not isinstance(value, str) or not value or value.strip() != value:
+        raise _fail("INVALID_OPERATION_ID", "operation-id must be a non-empty string")
+    return value
+def _canonical_path(value: str | Path, code: str = "PATH_OUTSIDE_ROOT") -> Path:
+    raw = str(value)
+    if ".." in Path(raw).parts: raise _fail(code, "path traversal is not allowed")
+    return Path(os.path.realpath(raw))
+def _under(path: Path, root: Path, escape_code: str = "PATH_OUTSIDE_ROOT") -> bool:
+    try: return os.path.commonpath((str(path), str(root))) == str(root)
+    except ValueError: raise _fail(escape_code, "path is outside approved root")
+def _suite_ids(value: Any) -> list[str]:
+    ids = ["wrapper-unit"] if value is None else value
+    if not isinstance(ids, list) or not ids or any(item not in SUITE_REGISTRY for item in ids): raise _fail("SUITE_NOT_ALLOWED", "unknown suite-id")
+    return list(dict.fromkeys(ids))
+def _operation_payload(command: str, payload: dict[str, Any]) -> str:
+    return _json_sha256({"command": command, "payload": payload})
+def _retry_result(record: dict[str, Any], operation_id: str, command: str, payload: dict[str, Any]) -> Any | None:
+    digest = _operation_payload(command, payload)
+    for operation in record.get("operations", []):
+        if operation.get("operation_id") != operation_id:
+            continue
+        if operation.get("command") != command or operation.get("payload_sha256") != digest:
+            raise _fail("OPERATION_CONFLICT", "operation-id was already used with different input")
+        return operation["result"]
+    return None
+def _result_view(record: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in record.items() if key != "operations"}
+def _record_operation(record: dict[str, Any], operation_id: str, command: str, payload: dict[str, Any], result: dict[str, Any]) -> None:
+    record.setdefault("operations", []).append({"operation_id": operation_id, "command": command, "payload_sha256": _operation_payload(command, payload), "result": result})
+def _suite_for(record: dict[str, Any], suite_id: str | None) -> dict[str, Any]:
+    selected = suite_id or record["suites"][0]["id"]
+    for suite in record["suites"]:
+        if suite["id"] == selected:
+            return suite
+    raise _fail("SUITE_NOT_ALLOWED", "suite-id is not initialized")
 
 
+def _finish_contract(path: str) -> dict[str, Any]:
+    try: payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc: raise _fail("CONTRACT_NOT_INITIALIZED", "contract unreadable") from exc
+    if not isinstance(payload, dict): raise _fail("CONTRACT_NOT_INITIALIZED", "contract malformed")
+    return payload
+
+
+def _finish_changes(record: dict[str, Any], contract: dict[str, Any]) -> list[dict[str, Any]]:
+    repo = Path(record["worktree_path"]); authorized = set(_check_authorized(Path(record["contracts"][record["current_index"]]["path"]), repo)); status = subprocess.run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=repo, capture_output=True, text=True, check=False, shell=False)
+    if status.returncode: raise _fail("GIT_PRECONDITION", "unable to inspect changed paths")
+    raw = status.stdout
+    entries = []
+    for line in raw.splitlines():
+        if not line: continue
+        code, path = line[:2], line[3:].strip().strip('"')
+        if "R" in code or "C" in code or "->" in path: raise _fail("RENAME_REJECTED", "renames and copies are not allowed")
+        if path not in authorized: raise _fail("UNAUTHORIZED_CHANGE", "changed path is outside contract")
+        target = repo / path
+        if target.is_symlink(): raise _fail("SYMLINK_ESCAPE", "changed symlink is not allowed")
+        if "160000" in _ledger_git(repo, "ls-files", "--stage", "--", path): raise _fail("SUBMODULE_REJECTED", "submodules are not allowed")
+        if code == "??":
+            if b"\0" in target.read_bytes(): raise _fail("BINARY_CHANGE", "binary files are not allowed")
+        else:
+            stats = _ledger_git(repo, "diff", "--numstat", "--no-ext-diff", "--", path).split("\t")
+            if stats and stats[0] == "-": raise _fail("BINARY_CHANGE", "binary files are not allowed")
+        entries.append({"path": path, "status": code})
+    return entries
+
+
+def _finish_patch(repo: Path, paths: list[str]) -> bytes:
+    patch = subprocess.run(["git", "diff", "--binary", "--no-ext-diff", "--", *paths], cwd=repo, capture_output=True, check=False).stdout
+    for path in paths:
+        if _ledger_git(repo, "status", "--porcelain=v1", "--", path).startswith("??"):
+            patch += subprocess.run(["git", "diff", "--binary", "--no-index", "/dev/null", str(repo / path)], cwd=repo, capture_output=True, check=False).stdout
+    return patch
+
+
+def campaign_ledger_finish_edit(campaign_id: str, contract_index: int, operation_id: str) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id); payload = {"contract_index": contract_index}
+    with _ledger_lock(campaign_id):
+        record = _ledger_load(campaign_id); retry = _retry_result(record, operation_id, "finish-edit", payload)
+        if retry is not None: return retry
+        _ledger_validate(record, allow_dirty=True)
+        pending = record.get("pending_action"); admission = record.get("edit_admission")
+        if not pending or pending.get("kind") != "IMPLEMENT" or contract_index != record["current_index"] or not admission or admission.get("contract_index") != contract_index:
+            raise _fail("EDIT_NOT_ADMITTED", "edit validation requires matching admission")
+        if record.get("edit_validation") and record["edit_validation"].get("contract_index") == contract_index:
+            raise _fail("EDIT_ALREADY_VALIDATED", "contract edit already validated")
+        repo = Path(record["worktree_path"]); contract = _finish_contract(record["contracts"][contract_index]["path"]); changed = _finish_changes(record, contract); paths = [item["path"] for item in changed]
+        gate = subprocess.run(["python3", str(Path(record["worktree_path"]) / "scripts/ci/architecture_slice_gate.py"), "--contract", record["contracts"][contract_index]["path"], "--contract-sha", record["contracts"][contract_index]["sha256"]], cwd=record["worktree_path"], capture_output=True, text=True, check=False, shell=False)
+        try: gate_result = json.loads(gate.stdout)
+        except json.JSONDecodeError as exc: raise _fail("GATE_FAILED", "architecture gate returned invalid evidence") from exc
+        if gate.returncode or not gate_result.get("pass"): raise _fail("EDIT_VALIDATION_FAILED", "architecture gate failed")
+        suite_results = []
+        for suite in record["suites"]:
+            run = subprocess.run(suite["argv"], cwd=record["worktree_path"], capture_output=True, text=True, check=False, shell=False)
+            suite_results.append({"suite_id": suite["id"], "argv": suite["argv"], "cwd": record["worktree_path"], "exit_code": run.returncode, "passed": run.returncode == 0})
+            if run.returncode: raise _fail("SUITE_FAILED", "persisted suite failed")
+        check = subprocess.run(["git", "diff", "--check"], cwd=record["worktree_path"], capture_output=True, text=True, check=False, shell=False)
+        if check.returncode: raise _fail("DIFF_CHECK_FAILED", "git diff --check failed")
+        patch = _finish_patch(Path(record["worktree_path"]), paths); totals = {"production": gate_result.get("production_totals", {}), "test": gate_result.get("test_totals", {})}
+        output = {"contract_index": contract_index, "changed_files": gate_result.get("files", changed), "diff_totals": totals, "gate_result": gate_result, "suite_results": suite_results, "diff_check": {"passed": True}, "patch_sha": hashlib.sha256(patch).hexdigest(), "gate_pass": True, "tests_pass": True, "commit_sha": _ledger_git(repo, "rev-parse", "HEAD"), "suite_id": record["suites"][0]["id"], "admission_operation_id": admission["operation_id"]}
+        record["edit_validation"] = {"contract_index": contract_index, "operation_id": operation_id, "result": output}; _record_operation(record, operation_id, "finish-edit", payload, output); _append_event(campaign_id, record, operation_id, "EDIT_VALIDATED", payload); return output
 @contextmanager
 def _ledger_lock(campaign_id: str):
     file = _ledger_file(campaign_id)
@@ -338,171 +444,296 @@ def _ledger_lock(campaign_id: str):
 
 
 def _ledger_git(repo: Path, *args: str) -> str:
-    result = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False)
+    if any(os.environ.get(name) for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE")):
+        raise _fail("GIT_DIR_MISMATCH", "alternate Git directory is not allowed")
+    result = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False, shell=False)
     if result.returncode:
-        raise ValueError(f"git {' '.join(args)} failed")
+        raise _fail("GIT_PRECONDITION", f"git {' '.join(args)} failed")
     return result.stdout.strip()
 
 
-def _ledger_identity(repo: Path) -> tuple[str, bool, str]:
-    return (
-        _ledger_git(repo, "rev-parse", "HEAD"),
-        bool(_ledger_git(repo, "status", "--porcelain", "--untracked-files=all")),
-        _ledger_git(repo, "hash-object", str(repo / "scripts/ci/architecture_slice_gate.py")),
-    )
+def _ledger_identity(repo: Path) -> dict[str, Any]:
+    worktree = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
+    common_dir = _canonical_path(_ledger_git(repo, "rev-parse", "--git-common-dir"))
+    git_dir = _canonical_path(_ledger_git(repo, "rev-parse", "--git-dir"))
+    return {"head": _ledger_git(worktree, "rev-parse", "HEAD"), "dirty": bool(_ledger_git(worktree, "status", "--porcelain", "--untracked-files=all")), "gate": _ledger_git(worktree, "hash-object", str(worktree / "scripts/ci/architecture_slice_gate.py")), "worktree_path": str(worktree), "git_common_dir": str(common_dir), "git_dir": str(git_dir)}
 
 
-def _ledger_contract(path: str, expected: str) -> dict[str, str]:
-    file = Path(path).resolve()
+def _ledger_contract(path: str, expected: str, contract_root: Path | None = None) -> dict[str, str]:
+    file = _canonical_path(path, "CONTRACT_NOT_INITIALIZED")
+    if contract_root is not None and not _under(file, _canonical_path(contract_root), "SYMLINK_ESCAPE"):
+        raise _fail("SYMLINK_ESCAPE", "contract path leaves approved root")
     try:
         payload = json.loads(file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError("contract unreadable") from exc
+        raise _fail("CONTRACT_UNAVAILABLE", "contract unreadable") from exc
     if _json_sha256(payload) != expected:
-        raise ValueError("contract digest mismatch")
+        raise _fail("CONTRACT_MUTATED", "contract digest mismatch")
     return {"path": str(file), "sha256": expected}
 
 
-def _ledger_load(campaign_id: str) -> dict[str, Any]:
+def _check_authorized(contract_path: Path, worktree: Path) -> None:
     try:
-        record = json.loads(_ledger_file(campaign_id).read_text(encoding="utf-8"))
+        payload = json.loads(contract_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError("ledger missing or malformed") from exc
+        raise _fail("CONTRACT_NOT_INITIALIZED", "contract unreadable") from exc
+    raw_files = payload.get("authorized_files", []) if isinstance(payload, dict) else []
+    if not isinstance(raw_files, list): raise _fail("CONTRACT_NOT_INITIALIZED", "authorized files malformed")
+    for raw in raw_files:
+        if not isinstance(raw, str) or Path(raw).is_absolute() or ".." in Path(raw).parts: raise _fail("PATH_OUTSIDE_ROOT", "authorized file is not contained")
+        resolved = _canonical_path(worktree / raw)
+        if not _under(resolved, worktree, "SYMLINK_ESCAPE"): raise _fail("SYMLINK_ESCAPE", "authorized file leaves worktree")
+    return raw_files
+
+
+def _ledger_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
     if not isinstance(record, dict) or record.get("campaign_id") != campaign_id:
-        raise ValueError("ledger malformed")
+        raise _fail("EVENT_LOG_CORRUPT", "replayed state malformed")
+    if not isinstance(record.setdefault("operations", []), list):
+        raise _fail("EVENT_LOG_CORRUPT", "replayed operations malformed")
+    if any(field not in record for field in ("repo_path", "worktree_path", "git_common_dir", "git_dir", "contract_root", "suites")):
+        raise _fail("EVENT_LOG_CORRUPT", "replayed containment fields missing")
+    if not isinstance(record["suites"], list) or not record["suites"] or any(not isinstance(s, dict) or s.get("id") not in SUITE_REGISTRY or s.get("argv") != SUITE_REGISTRY[s["id"]] for s in record["suites"]):
+        raise _fail("SUITE_NOT_ALLOWED", "persisted suite is not allowed")
     if record.get("state") not in CAMPAIGN_STATES or not record.get("contracts"):
-        raise ValueError("ledger malformed")
+        raise _fail("EVENT_LOG_CORRUPT", "replayed state malformed")
     if not isinstance(record.get("current_index"), int) or not 0 <= record["current_index"] <= len(record["contracts"]):
-        raise ValueError("ledger malformed")
+        raise _fail("EVENT_LOG_CORRUPT", "replayed state malformed")
     pending = record.get("pending_action")
     if pending is not None:
         if not isinstance(pending, dict) or pending.get("contract_index") != record["current_index"]:
-            raise ValueError("ledger malformed")
+            raise _fail("EVENT_LOG_CORRUPT", "replayed pending action malformed")
         expected_kind = "IMPLEMENT" if record["state"] == "ACTIVE" else "VALIDATE"
         if record["state"] not in {"ACTIVE", "VALIDATING"} or pending.get("kind") != expected_kind:
-            raise ValueError("ledger malformed")
-    if record["state"] == "READY" and record["current_index"] != 0:
-        raise ValueError("ledger malformed")
-    if record["state"] == "COMMITTED" and record["current_index"] != len(record["contracts"]):
-        raise ValueError("ledger malformed")
+            raise _fail("EVENT_LOG_CORRUPT", "replayed pending action malformed")
+    if record["state"] == "READY" and record["current_index"] != 0 or record["state"] == "COMMITTED" and record["current_index"] != len(record["contracts"]):
+        raise _fail("EVENT_LOG_CORRUPT", "replayed state malformed")
     if _json_sha256(record["contracts"]) != record.get("contract_queue_sha256"):
-        raise ValueError("contract queue digest mismatch")
+        raise _fail("EVENT_LOG_CORRUPT", "contract queue digest mismatch")
     return record
 
 
-def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None) -> tuple[str, str]:
-    repo = Path(record["repo_path"]).resolve()
-    head, dirty, gate = _ledger_identity(repo)
-    if dirty:
-        raise ValueError("worktree dirty")
-    if gate != record["gate_blob_sha"]:
-        raise ValueError("gate blob mismatch")
+def _event_state(record: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in record.items() if k not in {"checkpoint_sequence", "checkpoint_hash"}}
+def _read_event_tail(campaign_id: str) -> tuple[dict[str, Any], int, str]:
+    path = _events_file(campaign_id)
+    try: raw = path.read_bytes(); lines = raw.decode("utf-8").splitlines(); (_ for _ in ()).throw(_fail("EVENT_LOG_CORRUPT", "event log is truncated")) if not raw.endswith(b"\n") else None
+    except (OSError, UnicodeDecodeError) as exc:
+        code = "LEDGER_UNAVAILABLE" if not _ledger_file(campaign_id).exists() else "EVENT_LOG_CORRUPT"; raise _fail(code, "event log missing or unreadable") from exc
+    if not lines: raise _fail("EVENT_LOG_CORRUPT", "event log is empty")
+    previous = ""; state = None
+    for expected, line in enumerate(lines, 1):
+        try: event = json.loads(line)
+        except json.JSONDecodeError as exc: raise _fail("EVENT_LOG_CORRUPT", "event log is malformed") from exc
+        if not isinstance(event, dict) or event.get("sequence") != expected or event.get("previous_event_hash") != previous:
+            raise _fail("EVENT_LOG_CORRUPT", "event sequence or link is invalid")
+        digest = event.get("event_hash"); unsigned = {k: v for k, v in event.items() if k != "event_hash"}
+        if not isinstance(digest, str) or _json_sha256(unsigned) != digest or not isinstance(event.get("state"), dict):
+            raise _fail("EVENT_LOG_CORRUPT", "event hash or state is invalid")
+        state, previous = event["state"], digest
+    return _ledger_shape(state, campaign_id), len(lines), previous
+def _write_checkpoint(campaign_id: str, record: dict[str, Any], sequence: int, event_hash: str) -> None:
+    payload = {**_event_state(record), "checkpoint_sequence": sequence, "checkpoint_hash": event_hash}; _write_atomic_json(_ledger_file(campaign_id), payload)
+def _append_event(campaign_id: str, record: dict[str, Any], operation_id: str, command: str, payload: dict[str, Any]) -> None:
+    _, sequence, previous = _read_event_tail(campaign_id) if _events_file(campaign_id).exists() else ({}, 0, "")
+    unsigned = {"sequence": sequence + 1, "timestamp": _utcnow(), "operation_id": operation_id, "command": command, "payload_sha256": _operation_payload(command, payload), "previous_event_hash": previous, "state": _event_state(record)}
+    event = {**unsigned, "event_hash": _json_sha256(unsigned)}; path = _events_file(campaign_id); path.parent.mkdir(parents=True, exist_ok=True); existed = path.exists()
+    try:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n"); handle.flush(); os.fsync(handle.fileno())
+    except OSError as exc:
+        path.unlink() if not existed and path.exists() else None; raise _fail("EVENT_APPEND_FAILED", "event append failed") from exc
+    _write_checkpoint(campaign_id, record, sequence + 1, event["event_hash"])
+def _ledger_load(campaign_id: str) -> dict[str, Any]:
+    record, sequence, event_hash = _read_event_tail(campaign_id)
+    try:
+        cached = json.loads(_ledger_file(campaign_id).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        _write_checkpoint(campaign_id, record, sequence, event_hash); return record
+    if not isinstance(cached, dict) or cached.get("checkpoint_sequence") != sequence or cached.get("checkpoint_hash") != event_hash: raise _fail("EVENT_LOG_CORRUPT", "event log does not match checkpoint")
+    if _event_state(cached) != record: raise _fail("CHECKPOINT_MISMATCH", "state checkpoint does not match event log")
+    return record
+
+
+def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None, allow_dirty: bool = False) -> tuple[str, str]:
+    worktree = _canonical_path(record["worktree_path"])
+    repo = _canonical_path(record["repo_path"])
+    if repo != worktree:
+        raise _fail("WORKTREE_MISMATCH", "repo and worktree identity differ")
+    identity = _ledger_identity(worktree)
+    if identity["worktree_path"] != record["worktree_path"]:
+        raise _fail("WORKTREE_MISMATCH", "worktree identity differs")
+    if identity["git_common_dir"] != record["git_common_dir"] or identity["git_dir"] != record["git_dir"]:
+        raise _fail("GIT_DIR_MISMATCH", "Git directory identity differs")
+    if identity["dirty"] and not allow_dirty:
+        raise _fail("DIRTY_WORKTREE", "worktree dirty")
+    if identity["gate"] != record["gate_blob_sha"]:
+        raise _fail("GATE_MUTATED", "gate blob mismatch")
+    contract_root = _canonical_path(record["contract_root"])
     for item in record["contracts"]:
-        _ledger_contract(item["path"], item["sha256"])
-    if head != record["current_head"] and head != expected_commit:
-        raise ValueError("stale HEAD")
-    return head, gate
+        _ledger_contract(item["path"], item["sha256"], contract_root)
+        _check_authorized(Path(item["path"]), worktree)
+    if identity["head"] != record["current_head"] and identity["head"] != expected_commit:
+        raise _fail("STALE_HEAD", "stale HEAD")
+    return identity["head"], identity["gate"]
 
 
-def campaign_ledger_init(campaign_id: str, repo: str | Path, gate_blob_sha: str, contracts: list[dict[str, str]]) -> dict[str, Any]:
+def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, gate_blob_sha: str, contracts: list[dict[str, str]], suite_ids: list[str] | None = None) -> dict[str, Any]:
     campaign_id = _validate_task_id(campaign_id)
-    repo = Path(repo).resolve()
+    operation_id = _operation_id(operation_id)
+    repo = _canonical_path(repo)
     if not contracts:
-        raise ValueError("contract queue must not be empty")
+        raise _fail("INVALID_CONTRACT_QUEUE", "contract queue must not be empty")
+    suites = _suite_ids(suite_ids)
+    raw_contracts = [_canonical_path(item["path"], "PATH_OUTSIDE_ROOT") for item in contracts]
+    try:
+        contract_root = _canonical_path(os.path.commonpath([str(Path(item["path"]).absolute().parent) for item in contracts]))
+    except ValueError:
+        raise _fail("PATH_OUTSIDE_ROOT", "contract paths have no common root")
+    requested_queue = [{"path": str(path), "sha256": item["sha256"]} for path, item in zip(raw_contracts, contracts)]
+    payload = {"repo": str(repo), "gate_blob_sha": gate_blob_sha, "contracts": requested_queue, "suite_ids": suites}
     with _ledger_lock(campaign_id):
         file = _ledger_file(campaign_id)
-        if file.exists():
-            raise ValueError("campaign already initialized")
-        head, dirty, gate = _ledger_identity(repo)
-        if dirty:
-            raise ValueError("worktree dirty")
-        if gate != gate_blob_sha:
-            raise ValueError("gate blob mismatch")
-        queue = [_ledger_contract(item["path"], item["sha256"]) for item in contracts]
+        if file.exists() or _events_file(campaign_id).exists():
+            record = _ledger_load(campaign_id)
+            retry = _retry_result(record, operation_id, "init", payload)
+            if retry is not None:
+                return retry
+            raise _fail("INIT_CONFLICT", "campaign already initialized")
+        identity = _ledger_identity(repo)
+        if identity["dirty"]:
+            raise _fail("DIRTY_WORKTREE", "worktree dirty")
+        if identity["gate"] != gate_blob_sha:
+            raise _fail("GATE_MUTATED", "gate blob mismatch")
+        queue = []
+        for path, item in zip(raw_contracts, contracts):
+            queue.append(_ledger_contract(str(path), item["sha256"], contract_root))
+            _check_authorized(path, Path(identity["worktree_path"]))
         record = {
             "schema_version": 1, "campaign_id": campaign_id, "repo_path": str(repo),
-            "starting_head": head, "current_head": head, "gate_blob_sha": gate_blob_sha,
+            "worktree_path": identity["worktree_path"], "git_common_dir": identity["git_common_dir"], "git_dir": identity["git_dir"],
+            "contract_root": str(contract_root), "starting_head": identity["head"], "current_head": identity["head"], "gate_blob_sha": gate_blob_sha,
             "contracts": queue, "contract_queue_sha256": _json_sha256(queue),
             "start_time": _utcnow(), "state": "READY", "current_index": 0,
-            "pending_action": None, "results": [], "stop_reason": None,
+            "pending_action": None, "edit_admission": None, "edit_validation": None, "results": [], "stop_reason": None, "operations": [],
+            "suites": [{"id": suite, "argv": list(SUITE_REGISTRY[suite])} for suite in suites],
         }
-        _write_atomic_json(file, record)
-        return record
+        result = _result_view(record)
+        _record_operation(record, operation_id, "init", payload, result)
+        _append_event(campaign_id, record, operation_id, "init", payload)
+        return result
 
 
 def campaign_ledger_status(campaign_id: str) -> dict[str, Any]:
     with _ledger_lock(campaign_id):
         record = _ledger_load(campaign_id)
-        _ledger_validate(record)
+        _ledger_validate(record, allow_dirty=bool(record.get("edit_validation")))
         return record
 
 
 def campaign_ledger_next(campaign_id: str) -> dict[str, Any]:
     with _ledger_lock(campaign_id):
         record = _ledger_load(campaign_id)
-        _ledger_validate(record)
+        _ledger_validate(record, allow_dirty=bool(record.get("edit_validation")))
         if record["state"] in CAMPAIGN_TERMINAL:
             return {"action": "STOP", "state": record["state"]}
         if record["pending_action"] is not None:
-            raise ValueError("repeated next transition")
+            raise _fail("ILLEGAL_TRANSITION", "repeated next transition")
         item = record["contracts"][record["current_index"]]
         kind = "IMPLEMENT" if record["state"] == "READY" else "VALIDATE"
         record["state"] = "ACTIVE" if kind == "IMPLEMENT" else "VALIDATING"
         record["pending_action"] = {"kind": kind, "contract_index": record["current_index"], "contract": item}
-        _write_atomic_json(_ledger_file(campaign_id), record)
+        _append_event(campaign_id, record, f"next-{record['current_index']}-{kind}", "next", {"contract_index": record["current_index"], "kind": kind})
         return record["pending_action"]
 
 
-def campaign_ledger_record_result(campaign_id: str, result: dict[str, Any]) -> dict[str, Any]:
+def campaign_ledger_start_edit(campaign_id: str, contract_index: int, operation_id: str) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id); payload = {"contract_index": contract_index}
+    with _ledger_lock(campaign_id):
+        record = _ledger_load(campaign_id); retry = _retry_result(record, operation_id, "start-edit", payload)
+        if retry is not None: return retry
+        _ledger_validate(record)
+        pending = record.get("pending_action")
+        if record["state"] != "ACTIVE" or not pending or pending.get("kind") != "IMPLEMENT" or contract_index != record["current_index"]:
+            raise _fail("ILLEGAL_TRANSITION", "edit admission is not pending")
+        admission = record.get("edit_admission")
+        if admission and admission.get("contract_index") == contract_index:
+            raise _fail("EDIT_ALREADY_STARTED", "contract edit already admitted")
+        item = record["contracts"][contract_index]; authorized = _check_authorized(Path(item["path"]), Path(record["worktree_path"]))
+        output = {"worktree_path": record["worktree_path"], "contract_index": contract_index, "contract_digest": item["sha256"], "authorized_files": authorized, "suite_ids": [suite["id"] for suite in record["suites"]], "admission_operation_id": operation_id}
+        record["edit_admission"] = {"contract_index": contract_index, "operation_id": operation_id}
+        _record_operation(record, operation_id, "start-edit", payload, output)
+        _append_event(campaign_id, record, operation_id, "EDIT_STARTED", payload)
+        return output
+
+
+def campaign_ledger_record_result(campaign_id: str, operation_id: str, result: dict[str, Any], *, execute_suite: bool = False) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id)
+    if not isinstance(result, dict):
+        raise _fail("INVALID_RESULT", "result must be an object")
     with _ledger_lock(campaign_id):
         record = _ledger_load(campaign_id)
-        commit = result.get("commit_sha")
-        _ledger_validate(record, commit if isinstance(commit, str) else None)
+        if set(result) != {"contract_index"}: raise _fail("FABRICATED_RESULT_REJECTED", "caller result evidence is not accepted")
+        payload = {"contract_index": result.get("contract_index")}
+        retry = _retry_result(record, operation_id, "record-result", payload)
+        if retry is not None:
+            return retry
+        _ledger_validate(record, allow_dirty=bool(record.get("edit_validation")))
         pending = record.get("pending_action")
-        allowed = {"contract_index", "gate_pass", "tests_pass", "patch_sha", "commit_sha"}
-        if not pending or result.get("contract_index") != pending["contract_index"] or set(result) != allowed:
-            raise ValueError("no matching pending action")
-        if not isinstance(result["gate_pass"], bool) or not isinstance(result["tests_pass"], bool):
-            raise ValueError("gate_pass and tests_pass must be boolean")
-        if not all(isinstance(result[key], str) and result[key] for key in ("patch_sha", "commit_sha")):
-            raise ValueError("patch_sha and commit_sha required")
+        if pending and pending.get("kind") == "IMPLEMENT" and (not record.get("edit_admission") or record["edit_admission"].get("contract_index") != pending["contract_index"]):
+            raise _fail("EDIT_NOT_ADMITTED", "implementation result requires start-edit")
+        validation = record.get("edit_validation")
+        if not pending or not validation or validation.get("contract_index") != pending["contract_index"]:
+            raise _fail("EDIT_NOT_VALIDATED", "record-result requires finish-edit evidence")
+        normalized_result = dict(validation["result"])
+        normalized_result["contract_index"] = pending["contract_index"]
+        if not pending or normalized_result.get("contract_index") != pending["contract_index"]:
+            raise _fail("ILLEGAL_TRANSITION", "no matching pending action")
         repo = Path(record["repo_path"]).resolve()
-        if result["commit_sha"] != _ledger_git(repo, "rev-parse", "HEAD"):
-            raise ValueError("commit SHA does not match HEAD")
-        record["results"].append({"action": pending["kind"], **result})
+        record["results"].append({"action": pending["kind"], **normalized_result})
         record["pending_action"] = None
-        record["current_head"] = result["commit_sha"]
-        if not result["gate_pass"] or not result["tests_pass"]:
+        if pending["kind"] == "IMPLEMENT": record["edit_admission"] = None
+        record["current_head"] = normalized_result["commit_sha"]
+        if not normalized_result["gate_pass"] or not normalized_result["tests_pass"]:
             record["state"], record["stop_reason"] = "FAILED", "gate or tests failed"
         elif pending["kind"] == "IMPLEMENT":
             record["state"] = "VALIDATING"
         else:
             record["current_index"] += 1
             record["state"] = "COMMITTED" if record["current_index"] == len(record["contracts"]) else "ACTIVE"
-        _write_atomic_json(_ledger_file(campaign_id), record)
-        return record
+        output = _result_view(record)
+        _record_operation(record, operation_id, "record-result", normalized_result, output)
+        _append_event(campaign_id, record, operation_id, "record-result", normalized_result)
+        return output
 
 
-def _campaign_terminal(campaign_id: str, state: str, reason: str) -> dict[str, Any]:
+def _campaign_terminal(campaign_id: str, operation_id: str, state: str, command: str, reason: str) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id)
     if not reason or not reason.strip():
-        raise ValueError("reason required")
+        raise _fail("INVALID_REASON", "reason required")
+    payload = {"reason": reason}
     with _ledger_lock(campaign_id):
         record = _ledger_load(campaign_id)
-        _ledger_validate(record)
+        retry = _retry_result(record, operation_id, command, payload)
+        if retry is not None:
+            return retry
+        _ledger_validate(record, allow_dirty=bool(record.get("edit_validation")))
         if record["state"] in CAMPAIGN_TERMINAL:
-            raise ValueError("terminal transition repeated")
+            raise _fail("ILLEGAL_TRANSITION", "terminal transition repeated")
         record["state"], record["stop_reason"] = state, reason
         record["pending_action"] = None
-        _write_atomic_json(_ledger_file(campaign_id), record)
-        return record
+        output = _result_view(record)
+        _record_operation(record, operation_id, command, payload, output)
+        _append_event(campaign_id, record, operation_id, command, payload)
+        return output
 
 
-def campaign_ledger_quarantine(campaign_id: str, reason: str) -> dict[str, Any]:
-    return _campaign_terminal(campaign_id, "QUARANTINED", reason)
+def campaign_ledger_quarantine(campaign_id: str, operation_id: str, reason: str) -> dict[str, Any]:
+    return _campaign_terminal(campaign_id, operation_id, "QUARANTINED", "quarantine", reason)
 
 
-def campaign_ledger_stop(campaign_id: str, reason: str) -> dict[str, Any]:
-    return _campaign_terminal(campaign_id, "STOPPED", reason)
+def campaign_ledger_stop(campaign_id: str, operation_id: str, reason: str) -> dict[str, Any]:
+    return _campaign_terminal(campaign_id, operation_id, "STOPPED", "stop", reason)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -510,35 +741,52 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Stateful external campaign ledger")
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init")
-    init.add_argument("campaign_id"); init.add_argument("repo"); init.add_argument("gate_blob_sha")
+    init.add_argument("campaign_id"); init.add_argument("operation_id"); init.add_argument("repo"); init.add_argument("gate_blob_sha")
     init.add_argument("contract", nargs="+", help="contract.json=sha256")
+    init.add_argument("--suite-id", action="append", dest="suite_ids")
     for name in ("status", "next"):
-        commands.add_parser(name).add_argument("campaign_id")
+        command = commands.add_parser(name); command.add_argument("campaign_id"); command.add_argument("--repo"); command.add_argument("--worktree"); command.add_argument("--contract", dest="contract_override"); command.add_argument("--suite-id")
+    edit = commands.add_parser("start-edit"); edit.add_argument("campaign_id"); edit.add_argument("contract_index", type=int); edit.add_argument("operation_id")
+    finish = commands.add_parser("finish-edit"); finish.add_argument("campaign_id"); finish.add_argument("contract_index", type=int); finish.add_argument("operation_id")
     result = commands.add_parser("record-result")
-    result.add_argument("campaign_id"); result.add_argument("contract_index", type=int)
-    result.add_argument("gate_pass", type=lambda value: value.lower() == "true")
-    result.add_argument("tests_pass", type=lambda value: value.lower() == "true")
-    result.add_argument("patch_sha"); result.add_argument("commit_sha")
+    result.add_argument("campaign_id"); result.add_argument("operation_id"); result.add_argument("contract_index", type=int)
+    result.add_argument("gate_pass", nargs="?", type=lambda value: value.lower() == "true")
+    result.add_argument("tests_pass", nargs="?"); result.add_argument("patch_sha", nargs="?"); result.add_argument("commit_sha", nargs="?")
+    result.add_argument("--suite-id", default=None); result.add_argument("--command", dest="arbitrary_command", default=None); result.add_argument("--repo"); result.add_argument("--worktree"); result.add_argument("--contract", dest="contract_override")
     for name in ("quarantine", "stop"):
-        command = commands.add_parser(name); command.add_argument("campaign_id"); command.add_argument("reason")
+        command = commands.add_parser(name); command.add_argument("campaign_id"); command.add_argument("operation_id"); command.add_argument("reason"); command.add_argument("--repo"); command.add_argument("--worktree"); command.add_argument("--contract", dest="contract_override"); command.add_argument("--suite-id")
     args = parser.parse_args(argv)
     try:
+        if args.command != "init" and any(getattr(args, name, None) for name in ("repo", "worktree")):
+            raise _fail("WORKTREE_MISMATCH", "caller path override is not allowed")
+        if getattr(args, "contract_override", None):
+            raise _fail("CONTRACT_NOT_INITIALIZED", "caller contract override is not allowed")
+        if args.command != "record-result" and getattr(args, "suite_id", None):
+            raise _fail("SUITE_NOT_ALLOWED", "caller suite override is not allowed")
         if args.command == "init":
             queue = [dict(zip(("path", "sha256"), item.rsplit("=", 1))) for item in args.contract]
-            value = campaign_ledger_init(args.campaign_id, args.repo, args.gate_blob_sha, queue)
+            value = campaign_ledger_init(args.campaign_id, args.operation_id, args.repo, args.gate_blob_sha, queue, args.suite_ids)
         elif args.command == "status": value = campaign_ledger_status(args.campaign_id)
         elif args.command == "next": value = campaign_ledger_next(args.campaign_id)
+        elif args.command == "start-edit": value = campaign_ledger_start_edit(args.campaign_id, args.contract_index, args.operation_id)
+        elif args.command == "finish-edit": value = campaign_ledger_finish_edit(args.campaign_id, args.contract_index, args.operation_id)
         elif args.command == "record-result":
-            value = campaign_ledger_record_result(args.campaign_id, {
-                "contract_index": args.contract_index, "gate_pass": args.gate_pass,
-                "tests_pass": args.tests_pass, "patch_sha": args.patch_sha, "commit_sha": args.commit_sha,
-            })
-        elif args.command == "quarantine": value = campaign_ledger_quarantine(args.campaign_id, args.reason)
-        else: value = campaign_ledger_stop(args.campaign_id, args.reason)
+            if args.arbitrary_command is not None:
+                raise _fail("ARBITRARY_COMMAND_REJECTED", "arbitrary command input is not allowed")
+            if any(value is not None for value in (args.gate_pass, args.tests_pass, args.patch_sha, args.commit_sha, args.suite_id)):
+                raise _fail("FABRICATED_RESULT_REJECTED", "caller result evidence is not accepted")
+            result_payload = {"contract_index": args.contract_index}
+            value = campaign_ledger_record_result(args.campaign_id, args.operation_id, result_payload, execute_suite=True)
+        elif args.command == "quarantine": value = campaign_ledger_quarantine(args.campaign_id, args.operation_id, args.reason)
+        else: value = campaign_ledger_stop(args.campaign_id, args.operation_id, args.reason)
         print(json.dumps(value, sort_keys=True, separators=(",", ":")))
         return 0
-    except (OSError, ValueError) as exc:
+    except CampaignError as exc:
         parser.error(str(exc))
+    except OSError as exc:
+        parser.error(f"IO_ERROR: {exc}")
+    except ValueError as exc:
+        parser.error(f"PRECONDITION_FAILED: {exc}")
         return 2
 
 
