@@ -24,7 +24,35 @@ STATE_PREFIX = "householder-campaign"
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    return _discover_repo_root()
+
+
+def _discover_repo_root(script_file: Path | None = None) -> Path:
+    """Discover the Git root from the wrapper's own checkout location."""
+    source = Path(script_file) if script_file is not None else Path(__file__)
+    try:
+        resolved_file = source.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("REPOSITORY_ROOT_DISCOVERY_FAILED: wrapper path is unavailable") from exc
+    if source != resolved_file:
+        raise ValueError("REPOSITORY_ROOT_DISCOVERY_FAILED: wrapper path is symlinked")
+    anchor = resolved_file.parent
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=anchor,
+        capture_output=True,
+        text=True,
+        check=False,
+        shell=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        raise ValueError("REPOSITORY_ROOT_DISCOVERY_FAILED: wrapper is outside a Git checkout")
+    try:
+        root = Path(result.stdout.strip()).resolve(strict=True)
+        resolved_file.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise ValueError("REPOSITORY_ROOT_DISCOVERY_FAILED: discovered root conflicts with wrapper checkout") from exc
+    return root
 
 
 def _now_utc() -> datetime:

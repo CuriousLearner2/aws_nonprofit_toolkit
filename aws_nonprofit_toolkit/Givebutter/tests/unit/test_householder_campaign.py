@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -94,6 +95,49 @@ def admit(campaign_id="campaign-01", index=0, operation_id="edit-1"):
 
 def fails(call, match=None):
     with pytest.raises(ValueError, match=match): call()
+
+
+def make_layout(tmp_path, nested):
+    root = tmp_path / ("root" if nested else "Givebutter")
+    worktree = root / "Givebutter" if nested else root
+    (worktree / "scripts/ci").mkdir(parents=True)
+    (worktree / "scripts/ci/architecture_slice_gate.py").write_text("gate\n")
+    git(worktree, "init", "-q"); git(worktree, "config", "user.email", "test@example.com"); git(worktree, "config", "user.name", "Test User")
+    git(worktree, "add", "."); git(worktree, "commit", "-qm", "seed")
+    wrapper = worktree / "scripts/ci/householder_campaign.py"
+    shutil.copy2(Path(campaign.__file__), wrapper)
+    return root, worktree, wrapper
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_repo_root_discovers_flat_and_nested_git_roots(tmp_path, nested):
+    root, worktree, wrapper = make_layout(tmp_path, nested)
+    assert campaign._discover_repo_root(wrapper) == Path(git(worktree, "rev-parse", "--show-toplevel"))
+    identity = campaign._ledger_identity(worktree)
+    assert identity["worktree_path"] == str(worktree.resolve())
+    assert identity["git_common_dir"] == str(Path(git(worktree, "rev-parse", "--git-common-dir")).resolve())
+    assert not list(tmp_path.glob("**/householder-campaign.*.json"))
+
+
+def test_repo_root_discovery_fails_outside_git_and_for_symlink(tmp_path):
+    outside = tmp_path / "outside" / "scripts/ci"
+    outside.mkdir(parents=True)
+    script = outside / "householder_campaign.py"
+    script.write_text("wrapper\n")
+    fails(lambda: campaign._discover_repo_root(script), "REPOSITORY_ROOT_DISCOVERY_FAILED")
+
+    _, worktree, wrapper = make_layout(tmp_path / "valid", False)
+    link = worktree / "scripts/ci/linked_campaign.py"
+    link.symlink_to(wrapper)
+    fails(lambda: campaign._discover_repo_root(link), "REPOSITORY_ROOT_DISCOVERY_FAILED")
+
+
+def test_persisted_worktree_identity_mismatch_fails_closed(repo, contract):
+    initialize(repo, contract)
+    record = campaign._ledger_load("campaign-01")
+    record["worktree_path"] = str(repo.parent / "substituted")
+    with pytest.raises(ValueError, match="WORKTREE_MISMATCH"):
+        campaign._ledger_validate(record)
 
 
 def test_happy_path_restart_and_deterministic_next(repo, contract, monkeypatch):
