@@ -36,8 +36,8 @@ from .database_models import (
     ReviewItemSubject,
     AuditLogRecord,
 )
+from .ingestion_plan_policy import plan_ingestion
 from .ingestion_value_policy import extract_digits_from_phone, parse_amount, split_name
-from .ingestion_audit_policy import build_ingestion_audit_details
 
 logger = logging.getLogger(__name__)
 
@@ -399,6 +399,7 @@ def ingest_processed_csv(
     # ========================================================================
     header_mapping = build_header_mapping_for_ingestion(df.columns.tolist())
     logger.info(f"Built header mapping: {header_mapping}")
+    plan = plan_ingestion(batch_id=batch_id, original_filename=original_filename, uploader=uploader, imported_at=imported_at, header_mapping=header_mapping, rows=[row.to_dict() for _, row in df.iterrows()])
 
     # ========================================================================
     # 4. Prepare database session and transaction
@@ -425,191 +426,44 @@ def ingest_processed_csv(
         # ====================================================================
         # 6. Process each row
         # ====================================================================
-        raw_row_ids = []  # Track RawImportRow IDs for linking
         import_contact_ids = []  # Track ImportContact IDs for subject linking
-        validation_items_created = 0
-        normalization_items_created = 0
-        pass_count = 0
-        warning_count = 0
-        fail_count = 0
+        validation_items_created = plan.validation_items_created
+        normalization_items_created = plan.normalization_items_created
+        pass_count = plan.pass_count
+        warning_count = plan.warning_count
+        fail_count = plan.fail_count
 
-        for row_index, (idx, row) in enumerate(df.iterrows()):
-            # Convert row to dict for storage
-            row_dict = row.to_dict()
-
-            # Get validation tier (ensure it's a string)
-            validation_tier = str(row.get("Validation_Tier", "FAIL")).strip()
-            if validation_tier == "PASS":
-                pass_count += 1
-            elif validation_tier == "WARNING":
-                warning_count += 1
-            else:
-                fail_count += 1
+        for row_plan in plan.rows:
 
             # ================================================================
             # 6a. Create RawImportRow (immutable)
             # ================================================================
             raw_row = RawImportRow(
-                batch_id=batch_id,
-                row_index=row_index,
-                raw_csv_data=row_dict,
+                batch_id=plan.batch_id,
+                row_index=row_plan.row_index,
+                raw_csv_data=dict(row_plan.raw_csv_data),
             )
             session.add(raw_row)
             session.flush()
-            raw_row_ids.append(raw_row.id)
 
             # ================================================================
             # 6b. Create ImportContact (denormalized snapshot)
             # ================================================================
-            # Extract and split name
-            name_col = header_mapping.get("name")
-            name = row.get(name_col) if name_col else None
-            first_name, last_name = split_name(name) if name else (None, None)
-
-            # Extract email
-            email_col = header_mapping.get("email")
-            email = row.get(email_col) if email_col else None
-
-            # Extract phone (digits only)
-            phone_col = header_mapping.get("phone")
-            phone = row.get(phone_col) if phone_col else None
-            if phone:
-                phone = extract_digits_from_phone(phone)
-                if not phone:  # If extraction resulted in empty string
-                    phone = None
-
-            # Extract address components
-            address_1_col = header_mapping.get("address_1")
-            address_1 = row.get(address_1_col) if address_1_col else None
-
-            address_2_col = header_mapping.get("address_2")
-            address_2 = row.get(address_2_col) if address_2_col else None
-
-            city_col = header_mapping.get("city")
-            city = row.get(city_col) if city_col else None
-
-            state_col = header_mapping.get("state")
-            state = row.get(state_col) if state_col else None
-
-            zip_col = header_mapping.get("zip")
-            postal_code = row.get(zip_col) if zip_col else None
-
-            # Extract and parse amount
-            amount_col = header_mapping.get("amount")
-            amount_str = row.get(amount_col) if amount_col else None
-            amount = parse_amount(amount_str) if amount_str else None
-
-            # Create ImportContact
-            contact = ImportContact(
-                batch_id=batch_id,
-                raw_import_row_id=raw_row.id,
-                first_name=first_name,
-                last_name=last_name,
-                email=email,
-                phone=phone,
-                address_line1=address_1,
-                address_line2=address_2,
-                city=city,
-                state=state,
-                postal_code=postal_code,
-                amount=amount,
-            )
+            contact = ImportContact(batch_id=plan.batch_id, raw_import_row_id=raw_row.id, **dict(row_plan.contact_values))
             session.add(contact)
             session.flush()
             import_contact_ids.append(contact.id)
 
-            # ================================================================
-            # 6c. Create validation ReviewItems (if Validation_Tier != PASS)
-            # ================================================================
-            if validation_tier != "PASS":
-                issues_str = str(row.get("Issues", "")).strip()
-                if issues_str and issues_str.lower() != "none":
-                    # Split on semicolon
-                    issues = [issue.strip() for issue in issues_str.split(";") if issue.strip()]
-
-                    for issue_text in issues:
-                        # Try to parse field name (before first colon if it exists)
-                        if ":" in issue_text:
-                            field_name = issue_text.split(":")[0].strip()
-                            issue_description = issue_text
-                        else:
-                            field_name = "unknown"
-                            issue_description = issue_text
-
-                        # Get suggestion from Suggested_Modifications if available
-                        suggestions_str = str(row.get("Suggested_Modifications", "")).strip()
-                        suggestion = None
-                        if suggestions_str and suggestions_str.lower() != "none":
-                            # For simplicity, use first suggestion (could be more sophisticated)
-                            suggestions = [s.strip() for s in suggestions_str.split(";") if s.strip()]
-                            if suggestions:
-                                suggestion = suggestions[0]
-
-                        # Create validation ReviewItem
-                        validation_item = ReviewItem(
-                            batch_id=batch_id,
-                            item_type="validation",
-                            status="pending",
-                            confidence=1.0,
-                            payload_json={
-                                "field": field_name,
-                                "issue": issue_description,
-                                "suggestion": suggestion,
-                                "validation_tier": validation_tier,
-                            },
-                        )
-                        session.add(validation_item)
-                        session.flush()
-
-                        # Create ReviewItemSubject (link to contact)
-                        subject = ReviewItemSubject(
-                            review_item_id=validation_item.id,
-                            subject_type="import_contact_snapshot",
-                            subject_id=contact.id,
-                            role="primary",
-                        )
-                        session.add(subject)
-
-                        validation_items_created += 1
-
-            # ================================================================
-            # 6d. Create normalization ReviewItems (conservative rule)
-            # ================================================================
-            # Only for PASS rows with non-empty suggestions
-            if validation_tier == "PASS":
-                suggestions_str = str(row.get("Suggested_Modifications", "")).strip()
-                # Filter out empty strings and known "empty" values (none, nan, <NA>, etc.)
-                if suggestions_str and suggestions_str.lower() not in ("none", "nan", "<na>", ""):
-                    suggestions = [s.strip() for s in suggestions_str.split(";") if s.strip()]
-
-                    for suggestion_text in suggestions:
-                        # Create normalization ReviewItem
-                        normalization_item = ReviewItem(
-                            batch_id=batch_id,
-                            item_type="normalization",
-                            status="pending",
-                            confidence=0.85,
-                            payload_json={
-                                "field": "unknown",  # Simplified; could be enhanced
-                                "raw_value": None,
-                                "normalized_value": suggestion_text,
-                                "basis": "processor suggestion",
-                                "confidence": 0.85,
-                            },
-                        )
-                        session.add(normalization_item)
-                        session.flush()
-
-                        # Create ReviewItemSubject
-                        subject = ReviewItemSubject(
-                            review_item_id=normalization_item.id,
-                            subject_type="import_contact_snapshot",
-                            subject_id=contact.id,
-                            role="primary",
-                        )
-                        session.add(subject)
-
-                        normalization_items_created += 1
+            for item_payload in row_plan.validation_items:
+                validation_item = ReviewItem(batch_id=plan.batch_id, item_type="validation", status="pending", confidence=1.0, payload_json=dict(item_payload))
+                session.add(validation_item)
+                session.flush()
+                session.add(ReviewItemSubject(review_item_id=validation_item.id, subject_type="import_contact_snapshot", subject_id=contact.id, role="primary"))
+            for item_payload in row_plan.normalization_items:
+                normalization_item = ReviewItem(batch_id=plan.batch_id, item_type="normalization", status="pending", confidence=0.85, payload_json=dict(item_payload))
+                session.add(normalization_item)
+                session.flush()
+                session.add(ReviewItemSubject(review_item_id=normalization_item.id, subject_type="import_contact_snapshot", subject_id=contact.id, role="primary"))
 
         session.flush()
 
@@ -621,15 +475,7 @@ def ingest_processed_csv(
             action_type="batch_imported",
             action_timestamp=datetime.now(timezone.utc),
             actor=uploader,
-            details=build_ingestion_audit_details(
-                filename=original_filename,
-                record_count=len(df),
-                pass_count=pass_count,
-                warning_count=warning_count,
-                fail_count=fail_count,
-                validation_items=validation_items_created,
-                normalization_items=normalization_items_created,
-            ),
+            details=dict(plan.audit_details),
         )
         session.add(audit_record)
         session.flush()
