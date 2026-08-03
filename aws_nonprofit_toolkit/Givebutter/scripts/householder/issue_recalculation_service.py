@@ -27,6 +27,7 @@ from .recalculation_input_policy import (
     prepare_recalculation_input,
     value_for_validation_field,
 )
+from .issue_evaluation_policy import evaluate_effective_values, validate_address
 import os
 
 # Top 30 recognized email domains - strict validation applied to these
@@ -225,7 +226,7 @@ def recalculate_row_issues(
         # do not already exist as ReviewItems. This must run for raw-only rows
         # as well as reviewed rows so the validation, approval, and export paths
         # agree on the same canonical field rules.
-        new_validation_issues = _validate_effective_values(effective_values)
+        new_validation_issues = evaluate_effective_values(effective_values)
         new_address_issues = []
         for new_issue in new_validation_issues:
             new_issue_field = str(new_issue.get('field')).strip().lower() if new_issue.get('field') else ''
@@ -239,7 +240,7 @@ def recalculate_row_issues(
         # authoritative address source (raw row or contact snapshot).
         # The reconciliation boundary below deduplicates this against any
         # existing persisted missing-address issue.
-        address_issue = _validate_address(value_for_validation_field(effective_values, 'address'))
+        address_issue = validate_address(value_for_validation_field(effective_values, 'address'))
         has_authoritative_address = (
             value_for_validation_field(raw_data, 'address') is not None
             or any(
