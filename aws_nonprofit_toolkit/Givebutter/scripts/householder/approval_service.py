@@ -17,6 +17,7 @@ from .database_models import (
     ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject, AuditLogRecord
 )
 from .approval_override_policy import canonical_override_field
+from .approval_remaining_issues_policy import project_remaining_issues
 import os
 
 
@@ -275,52 +276,27 @@ def check_batch_remaining_issues(
         # Get all raw rows in batch
         rows = session.query(RawImportRow).filter_by(batch_id=batch_id).all()
 
-        remaining_issues_by_row = []
+        issues_by_row = {}
+        status_by_row = {}
         for row in rows:
-            issues = recalculate_row_issues(
+            issues_by_row[row.id] = recalculate_row_issues(
                 batch_id=batch_id,
                 raw_import_row_id=row.id,
                 database_url=database_url
             )
-            blocking_issues = [
-                issue for issue in issues
-                if issue.get('severity', 'warning') == 'error'
-            ]
-            row_status = derive_row_status(
+            status_by_row[row.id] = derive_row_status(
                 batch_id=batch_id,
                 raw_import_row_id=row.id,
                 database_url=database_url
             )
 
-            # Include row only if it has blocking validation issues.
-            # Warning-only rows may remain non-blocking during approval.
-            if blocking_issues:
-                remaining_issues_by_row.append({
-                    'raw_import_row_id': row.id,
-                    'row_index': row.row_index,
-                    'issues': blocking_issues,
-                    'row_status': row_status
-                })
-            # Or include if it has a pending follow-up decision
-            elif row.id in follow_up_rows:
-                remaining_issues_by_row.append({
-                    'raw_import_row_id': row.id,
-                    'row_index': row.row_index,
-                    'issues': [{'field': 'row_decision', 'reason': 'Marked as Needs follow-up'}],
-                    'row_status': row_status,
-                    'decision_warning': 'needs_follow_up'
-                })
-            # Or include if it has a pending defer decision
-            elif row.id in defer_rows:
-                remaining_issues_by_row.append({
-                    'raw_import_row_id': row.id,
-                    'row_index': row.row_index,
-                    'issues': [{'field': 'row_decision', 'reason': 'Deferred for later review'}],
-                    'row_status': row_status,
-                    'decision_warning': 'defer'
-                })
-
-        return remaining_issues_by_row
+        return project_remaining_issues(
+            rows=rows,
+            issues_by_row=issues_by_row,
+            status_by_row=status_by_row,
+            follow_up_rows=follow_up_rows,
+            defer_rows=defer_rows,
+        )
 
     finally:
         session.close()
