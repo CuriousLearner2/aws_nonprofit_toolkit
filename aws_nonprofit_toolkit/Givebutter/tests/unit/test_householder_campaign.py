@@ -311,6 +311,37 @@ def test_remediation_parity_suites_have_fixed_wrapper_owned_argv():
         ]
 
 
+def test_gate_projection_is_stable_when_authorized_new_file_becomes_tracked(repo):
+    baseline = git(repo, "rev-parse", "HEAD")
+    item = {
+        "task_id": "projection-stability",
+        "seam_id": "projection-stability",
+        "typed_contract": {
+            "baseline_head": baseline,
+            "gate_sha": git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"),
+            "allowed_files": ["scripts/householder/new_policy.py"],
+            "max_production_lines": 10,
+            "max_test_lines": 0,
+            "suite_ids": ["wrapper-unit"],
+            "invariants": ["preserve behavior"],
+            "completed_seams": [],
+            "completed_seam_files": {},
+            "protected_files": [],
+        },
+    }
+    suites = [{"id": "wrapper-unit", "argv": list(campaign.SUITE_REGISTRY["wrapper-unit"])}]
+
+    before = campaign._gate_projection(item, repo, suites)
+    (repo / "scripts/householder/new_policy.py").parent.mkdir(parents=True, exist_ok=True)
+    (repo / "scripts/householder/new_policy.py").write_text("POLICY = 'new'\n")
+    git(repo, "add", "scripts/householder/new_policy.py")
+    git(repo, "commit", "-qm", "track authorized new file")
+    after = campaign._gate_projection(item, repo, suites)
+
+    assert before == after
+    assert before["allowed_new_production_files"] == ["scripts/householder/new_policy.py"]
+
+
 def test_suite_registry_rejects_unknown_and_caller_argv():
     with pytest.raises(campaign.CampaignError, match="SUITE_NOT_ALLOWED"):
         campaign._suite_ids(["validation-unit", "tests/unit/test_ingestion_service.py"])

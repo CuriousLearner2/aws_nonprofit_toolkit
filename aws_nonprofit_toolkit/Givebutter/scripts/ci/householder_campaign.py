@@ -809,7 +809,8 @@ def _gate_projection(item: dict[str, Any], repo: Path, suites: list[dict[str, An
     allowed = list(typed["allowed_files"])
     new_production = []
     for path in allowed:
-        result = subprocess.run(["git", "ls-files", "--error-unmatch", "--", path], cwd=repo, capture_output=True, text=True, check=False, shell=False)
+        baseline_path = f"{typed['baseline_head']}:{path}"
+        result = subprocess.run(["git", "cat-file", "-e", baseline_path], cwd=repo, capture_output=True, text=True, check=False, shell=False)
         if result.returncode and path.startswith("scripts/") and not path.startswith("tests/"):
             new_production.append(path)
     return {
