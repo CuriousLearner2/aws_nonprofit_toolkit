@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Tuple
 import phonenumbers
 
 from .phone_type_policy import phone_type_name
+from .phone_format_policy import format_type_for
 
 
 DEFAULT_PHONE_REGION = "US"
@@ -134,13 +135,6 @@ def format_phone(
 
     try:
         parsed = phonenumbers.parse(result.normalized_value or str(phone_number).strip(), country)
-        format_map = {
-            "E164": phonenumbers.PhoneNumberFormat.E164,
-            "INTERNATIONAL": phonenumbers.PhoneNumberFormat.INTERNATIONAL,
-            "NATIONAL": phonenumbers.PhoneNumberFormat.NATIONAL,
-            "RFC3966": phonenumbers.PhoneNumberFormat.RFC3966,
-        }
-        fmt = format_map.get(format_type, phonenumbers.PhoneNumberFormat.E164)
-        return phonenumbers.format_number(parsed, fmt)
+        return phonenumbers.format_number(parsed, format_type_for(format_type))
     except Exception:
         return None
