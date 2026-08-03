@@ -9,13 +9,13 @@ Does NOT mutate source data or call external systems.
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Optional, Mapping, Any
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from .database_models import AuditLogRecord
+from .export_path_policy import validate_path_safety as _validate_path_safety
 
 logger = logging.getLogger(__name__)
 
@@ -51,39 +51,6 @@ class ExportDownloadInfo:
     generated_at: datetime
     row_count: int
     warning_count: int
-
-
-def _validate_path_safety(file_path: str, export_dir: str) -> bool:
-    """
-    Validate that file_path is safe and within export_dir.
-
-    Checks:
-    - Resolves symlinks and .. sequences
-    - Verifies file is within export directory
-    - Verifies file exists and is a regular file
-
-    Returns:
-        True if path is safe, False otherwise
-    """
-    try:
-        export_path = Path(export_dir).resolve()
-        file_path_resolved = Path(file_path).resolve()
-
-        # Check if file is within export directory
-        file_path_resolved.relative_to(export_path)
-
-        # Check file exists and is a file
-        if not file_path_resolved.exists():
-            return False
-
-        if not file_path_resolved.is_file():
-            return False
-
-        return True
-    except (ValueError, OSError):
-        # ValueError: file_path not relative to export_path
-        # OSError: path resolution error
-        return False
 
 
 def get_export_download_info(
