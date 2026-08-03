@@ -24,9 +24,11 @@ LAUNCH_ROOT = Path(os.environ.get("HOUSEHOLDER_LAUNCH_ROOT", "/private/tmp/house
 LOCK_ROOT = Path(os.environ.get("HOUSEHOLDER_SCOPE_LOCK_ROOT", "/private/tmp/householder-scope-locks"))
 STATE_ROOT = Path(os.environ.get("HOUSEHOLDER_LAUNCH_STATE_ROOT", "/private/tmp/householder-launch-state"))
 PYTHON311 = os.environ.get("HOUSEHOLDER_PYTHON311", "python3.11")
+PYTHON311_VENV = os.environ.get("HOUSEHOLDER_PYTHON311_VENV", "")
+EXPECTED_ENVIRONMENT_FINGERPRINT = os.environ.get("HOUSEHOLDER_ENVIRONMENT_FINGERPRINT", "")
 REMOTE_URL = os.environ.get("HOUSEHOLDER_GITHUB_REMOTE", "")
 MARKERS = ("scripts/ci/householder_campaign.py", "scripts/ci/architecture_slice_gate.py", "scripts/householder/autosave_service.py", "tests/integration/test_autosave_validation.py")
-ERRORS = {"BASELINE_UNAVAILABLE", "BASELINE_MISMATCH", "MIRROR_UNAVAILABLE", "CHECKOUT_COLLISION", "PROJECT_ROOT_UNAVAILABLE", "PROJECT_ROOT_AMBIGUOUS", "ENVIRONMENT_MISMATCH", "SUITE_PREFLIGHT_FAILED", "SCOPE_OVERLAP", "SCOPE_LOCK_STALE_UNSAFE", "CONTRACT_INVALID", "WRAPPER_INITIALIZATION_FAILED", "LAUNCH_STATE_CONFLICT", "PARTIAL_CLEANUP_FAILED", "LAUNCHER_STAGE_OVERRIDE_REJECTED"}
+ERRORS = {"BASELINE_UNAVAILABLE", "BASELINE_MISMATCH", "MIRROR_UNAVAILABLE", "CHECKOUT_COLLISION", "PROJECT_ROOT_UNAVAILABLE", "PROJECT_ROOT_AMBIGUOUS", "ENVIRONMENT_MISMATCH", "SUITE_PREFLIGHT_FAILED", "SUITE_PATH_INVALID", "SCOPE_OVERLAP", "SCOPE_LOCK_STALE_UNSAFE", "CONTRACT_INVALID", "WRAPPER_INITIALIZATION_FAILED", "LAUNCH_STATE_CONFLICT", "PARTIAL_CLEANUP_FAILED", "LAUNCHER_STAGE_OVERRIDE_REJECTED"}
 
 
 class LaunchError(Exception):
@@ -115,17 +117,71 @@ def discover_project_root(git_root: Path) -> Path:
     return valid[0]
 
 
+def _declared_packages(project: Path) -> list[str]:
+    packages: list[str] = []
+    for path in (project / "requirements.txt", project / "requirements-test.txt"):
+        if not path.is_file():
+            raise LaunchError("ENVIRONMENT_MISMATCH", f"declared requirements file is missing: {path.name}")
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line and not line.startswith("#"):
+                packages.append(line.split("==", 1)[0].split("[", 1)[0].strip())
+    return list(dict.fromkeys(packages))
+
+
+def _environment_executable() -> tuple[Path, bool]:
+    if PYTHON311_VENV:
+        root = Path(PYTHON311_VENV).expanduser()
+        candidate = root / "bin" / "python3.11"
+        if not candidate.is_file():
+            candidate = root / "bin" / "python"
+        if not candidate.is_file() or not (root / "pyvenv.cfg").is_file():
+            raise LaunchError("ENVIRONMENT_MISMATCH", "configured Python 3.11 venv is incomplete")
+        if root.resolve() != root:
+            raise LaunchError("ENVIRONMENT_MISMATCH", "configured Python 3.11 venv is symlinked")
+        return candidate, True
+    candidate = Path(PYTHON311) if Path(PYTHON311).is_absolute() else Path(shutil.which(PYTHON311) or "")
+    if not candidate.is_file():
+        raise LaunchError("ENVIRONMENT_MISMATCH", "approved Python 3.11 executable is unavailable")
+    return candidate, False
+
+
 def _environment(project: Path) -> dict[str, Any]:
-    executable = Path(PYTHON311) if Path(PYTHON311).is_absolute() else Path(shutil.which(PYTHON311) or "")
-    if not executable.is_file(): raise LaunchError("ENVIRONMENT_MISMATCH", "approved Python 3.11 executable is unavailable")
+    executable, is_venv = _environment_executable()
     probe = subprocess.run([str(executable), "-c", "import platform,sys; print(sys.executable); print(*sys.version_info[:3]); print(platform.platform()); print(platform.machine())"], text=True, capture_output=True, check=False)
     lines = probe.stdout.splitlines()
-    if probe.returncode or len(lines) != 4 or lines[1].split()[:2] != ["3", "11"]: raise LaunchError("ENVIRONMENT_MISMATCH", "approved executable is not Python 3.11")
+    if probe.returncode or len(lines) != 4 or lines[1].split()[:2] != ["3", "11"]:
+        raise LaunchError("ENVIRONMENT_MISMATCH", "approved executable is not Python 3.11", {"stdout": probe.stdout, "stderr": probe.stderr})
     requirements = [project / "requirements.txt", project / "requirements-test.txt"]
-    if any(not p.is_file() for p in requirements): raise LaunchError("ENVIRONMENT_MISMATCH", "declared requirements are missing")
+    declared = _declared_packages(project)
+    package_probe = "import importlib.metadata,json; names=json.loads(__import__('sys').argv[1]); out={}; missing=[]\nfor name in names:\n key=name.lower().replace('_','-')\n try: out[key]=importlib.metadata.version(name)\n except importlib.metadata.PackageNotFoundError:\n  try: out[key]=importlib.metadata.version(key)\n  except importlib.metadata.PackageNotFoundError: missing.append(name)\nprint(json.dumps({'versions':out,'missing':missing},sort_keys=True))"
+    package_run = subprocess.run([str(executable), "-c", package_probe, json.dumps(declared)], text=True, capture_output=True, check=False)
+    if package_run.returncode:
+        raise LaunchError("ENVIRONMENT_MISMATCH", "package probe failed", {"stdout": package_run.stdout, "stderr": package_run.stderr})
+    try:
+        package_result = json.loads(package_run.stdout)
+    except json.JSONDecodeError as exc:
+        raise LaunchError("ENVIRONMENT_MISMATCH", "package probe returned invalid JSON", {"stdout": package_run.stdout, "stderr": package_run.stderr}) from exc
+    packages = package_result.get("versions", {})
+    missing = package_result.get("missing", [])
+    if missing:
+        raise LaunchError("ENVIRONMENT_MISMATCH", "declared packages are unavailable", {"missing_packages": missing, "python_executable": lines[0]})
+    import_names = [name.lower().replace("-", "_") for name in declared]
+    import_probe = "import importlib.util,json; names=json.loads(__import__('sys').argv[1]); print(json.dumps([name for name in names if importlib.util.find_spec(name) is None]))"
+    import_run = subprocess.run([str(executable), "-c", import_probe, json.dumps(import_names)], text=True, capture_output=True, check=False)
+    if import_run.returncode:
+        raise LaunchError("ENVIRONMENT_MISMATCH", "import probe failed", {"stdout": import_run.stdout, "stderr": import_run.stderr})
+    missing_imports = json.loads(import_run.stdout or "[]")
+    if missing_imports:
+        raise LaunchError("ENVIRONMENT_MISMATCH", "declared imports are unavailable", {"missing_imports": missing_imports, "python_executable": lines[0]})
     freeze = subprocess.run([str(executable), "-m", "pip", "freeze"], text=True, capture_output=True, check=False)
-    if freeze.returncode: raise LaunchError("ENVIRONMENT_MISMATCH", "pip freeze failed")
-    return {"python_executable": lines[0], "python_version": lines[1], "requirements_sha256": {p.name: _sha(p.read_bytes()) for p in requirements}, "freeze_sha256": _sha(freeze.stdout.encode()), "platform": lines[2], "architecture": lines[3]}
+    if freeze.returncode:
+        raise LaunchError("ENVIRONMENT_MISMATCH", "pip freeze failed", {"stdout": freeze.stdout, "stderr": freeze.stderr})
+    fingerprint_payload = {"python_version": lines[1], "python_executable": lines[0], "requirements_sha256": {p.name: _sha(p.read_bytes()) for p in requirements}, "freeze_sha256": _sha(freeze.stdout.encode()), "installed_packages": packages, "imported_modules": import_names, "platform": lines[2], "architecture": lines[3], "venv": is_venv}
+    fingerprint = _sha(json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode())
+    if not is_venv and EXPECTED_ENVIRONMENT_FINGERPRINT != fingerprint:
+        raise LaunchError("ENVIRONMENT_MISMATCH", "bare interpreter does not match expected environment fingerprint", {"fingerprint": fingerprint})
+    return {**fingerprint_payload, "fingerprint": fingerprint}
 
 
 def _wrapper(project: Path):
@@ -138,17 +194,29 @@ def _wrapper(project: Path):
     return module
 
 
-def _preflight(project: Path, suite_ids: list[str], executable: str, deadline: float) -> list[dict[str, Any]]:
+def _suite_records(project: Path, suite_ids: list[str], executable: str, environment: dict[str, Any]) -> list[dict[str, Any]]:
     registry = getattr(_wrapper(project), "SUITE_REGISTRY", {})
-    results = []
+    records = []
     for suite_id in suite_ids:
         argv = registry.get(suite_id)
         if not isinstance(argv, list) or len(argv) < 2 or any(not isinstance(a, str) for a in argv): raise LaunchError("SUITE_PREFLIGHT_FAILED", f"suite is not in fixed registry: {suite_id}")
         command = [executable, *argv[1:]]
+        referenced = [arg for arg in argv[1:] if arg.startswith("tests/") or arg.startswith("scripts/")]
+        missing = [arg for arg in referenced if not (project / arg).is_file()]
+        if missing:
+            raise LaunchError("SUITE_PATH_INVALID", f"fixed suite paths are missing: {suite_id}", {"missing_paths": missing})
+        records.append({"suite_id": suite_id, "argv": command, "cwd_role": "project_root", "cwd": str(project), "interpreter": executable, "environment_fingerprint": environment["fingerprint"]})
+    return records
+
+
+def _preflight(project: Path, suite_ids: list[str], executable: str, environment: dict[str, Any], deadline: float) -> list[dict[str, Any]]:
+    results = []
+    for record in _suite_records(project, suite_ids, executable, environment):
+        command = record["argv"]
         try: run = subprocess.run(command, cwd=project, text=True, capture_output=True, check=False, timeout=max(1, int(deadline - time.time())))
-        except (OSError, subprocess.TimeoutExpired) as exc: raise LaunchError("SUITE_PREFLIGHT_FAILED", f"suite did not complete: {suite_id}") from exc
-        entry = {"suite_id": suite_id, "argv": command, "cwd": str(project), "exit_code": run.returncode, "passed": run.returncode == 0}; results.append(entry)
-        if run.returncode: raise LaunchError("SUITE_PREFLIGHT_FAILED", f"suite failed: {suite_id}", {"suite_results": results})
+        except (OSError, subprocess.TimeoutExpired) as exc: raise LaunchError("SUITE_PREFLIGHT_FAILED", f"suite did not complete: {record['suite_id']}") from exc
+        entry = {**record, "exit_code": run.returncode, "passed": run.returncode == 0, "stdout": run.stdout, "stderr": run.stderr}; results.append(entry)
+        if run.returncode: raise LaunchError("SUITE_PREFLIGHT_FAILED", f"suite failed: {record['suite_id']}", {"suite_results": results})
     return results
 
 
@@ -245,7 +313,7 @@ def launch(payload: dict[str, Any] | Path, *, operation_id: str | None = None) -
     try:
         if needs_clone: _clone(checkout, payload["baseline"])
         project = discover_project_root(checkout); identity = {"git_root": str(Path(_git_out(project, "rev-parse", "--show-toplevel"))), "project_root": str(project), "worktree": str(project), "git_common_dir": _git_out(project, "rev-parse", "--git-common-dir"), "git_dir": _git_out(project, "rev-parse", "--git-dir")}
-        environment = _environment(project); suites = _preflight(project, payload["suite_ids"], environment["python_executable"], time.time() + payload["time_limit_seconds"])
+        environment = _environment(project); suites = _preflight(project, payload["suite_ids"], environment["python_executable"], environment, time.time() + payload["time_limit_seconds"])
         with scope_lock(payload["campaign_id"], payload["mode"], project, payload["authorized_production_paths"] + payload["authorized_test_paths"], operation_id) as locks:
             wrapper = _wrapper(project)
             if payload["mode"] == "discovery": wrapper_state = wrapper.campaign_discovery_start(payload["campaign_id"], operation_id)
@@ -256,7 +324,7 @@ def launch(payload: dict[str, Any] | Path, *, operation_id: str | None = None) -
                     wrapper_state = wrapper.campaign_parent_next(payload["campaign_id"], operation_id + "-start-stage")
                 else:
                     wrapper.campaign_ledger_next(payload["campaign_id"]); wrapper_state = wrapper.campaign_ledger_start_edit(payload["campaign_id"], 0, operation_id + "-start-edit")
-            output = {"status": "ready", "error_code": None, "baseline": resolution, "checkout": str(checkout), "git_root": identity["git_root"], "project_root": identity["project_root"], "environment_fingerprint": environment, "suite_results": suites, "acquired_locks": locks, "ledger_path": str(wrapper._ledger_file(payload["campaign_id"])), "wrapper_state": wrapper_state}
+            output = {"status": "ready", "error_code": None, "baseline": resolution, "checkout": str(checkout), "git_root": identity["git_root"], "project_root": identity["project_root"], "environment_fingerprint": environment, "suite_results": suites, "typed_suite_records": suites, "acquired_locks": locks, "ledger_path": str(wrapper._ledger_file(payload["campaign_id"])), "wrapper_state": wrapper_state}
             _atomic(state_path, {"input_sha256": digest, "operation_id": operation_id, "status": "ready", "output": output}); return output
     except LaunchError:
         try: shutil.rmtree(checkout); state_path.unlink(missing_ok=True)
@@ -268,8 +336,43 @@ def launch(payload: dict[str, Any] | Path, *, operation_id: str | None = None) -
         raise LaunchError("WRAPPER_INITIALIZATION_FAILED", "launcher failed") from exc
 
 
+def _bounded(value: Any, limit: int = 20000) -> Any:
+    if isinstance(value, str) and len(value) > limit:
+        return value[:limit] + "\n...[truncated]"
+    if isinstance(value, list):
+        return [_bounded(item, limit) for item in value]
+    if isinstance(value, dict):
+        return {key: _bounded(item, limit) for key, item in value.items()}
+    return value
+
+
+def doctor(payload: dict[str, Any] | Path) -> dict[str, Any]:
+    payload = load_input(payload) if isinstance(payload, Path) else _normalise_input(payload)
+    checkout: Path | None = None
+    try:
+        resolution = _resolve_baseline(payload["baseline"])
+        LAUNCH_ROOT.mkdir(parents=True, exist_ok=True)
+        checkout = Path(tempfile.mkdtemp(prefix=f"doctor-{payload['campaign_id']}-", dir=LAUNCH_ROOT))
+        shutil.rmtree(checkout)
+        _clone(checkout, payload["baseline"])
+        project = discover_project_root(checkout)
+        environment = _environment(project)
+        suites = _preflight(project, payload["suite_ids"], environment["python_executable"], environment, time.time() + payload["time_limit_seconds"])
+        return _bounded({"status": "READY", "error_code": None, "baseline": resolution, "git_root": str(Path(_git_out(project, "rev-parse", "--show-toplevel"))), "project_root": str(project), "environment_fingerprint": environment, "suite_records": suites})
+    except LaunchError as exc:
+        return _bounded({"status": "ERROR", "error_code": exc.code, "message": str(exc), **exc.details})
+    except Exception as exc:
+        return _bounded({"status": "ERROR", "error_code": "WRAPPER_INITIALIZATION_FAILED", "message": str(exc)})
+    finally:
+        if checkout is not None:
+            shutil.rmtree(checkout, ignore_errors=True)
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Deterministic Householder campaign launcher"); parser.add_argument("launch", choices=["launch"]); parser.add_argument("--input", required=True, type=Path); args = parser.parse_args(argv)
+    parser = argparse.ArgumentParser(description="Deterministic Householder campaign launcher"); parser.add_argument("command", choices=["launch", "doctor"]); parser.add_argument("--input", required=True, type=Path); args = parser.parse_args(argv)
+    if args.command == "doctor":
+        output = doctor(args.input)
+        print(json.dumps(output, sort_keys=True)); return 0 if output["status"] == "READY" else 1
     try: output = launch(args.input)
     except LaunchError as exc: output = {"status": "failed", "error_code": exc.code, "message": str(exc), **exc.details}
     except Exception as exc: output = {"status": "failed", "error_code": "WRAPPER_INITIALIZATION_FAILED", "message": str(exc)}
