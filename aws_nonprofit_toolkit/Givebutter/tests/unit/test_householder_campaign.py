@@ -294,6 +294,29 @@ def test_export_suite_and_gate_projection_are_wrapper_owned_and_restart_stable(r
         loaded._ledger_validate(tampered)
 
 
+def test_remediation_parity_suites_have_fixed_wrapper_owned_argv():
+    expected = {
+        "validation-unit": "tests/unit/test_validation_service.py",
+        "ingestion-unit": "tests/unit/test_ingestion_service.py",
+        "issue-recalculation-integration": "tests/integration/test_validation_review_workflows.py",
+        "autosave-integration": "tests/integration/test_autosave_validation.py",
+    }
+    for suite_id, test_path in expected.items():
+        assert campaign.SUITE_REGISTRY[suite_id] == [
+            campaign.sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            test_path,
+        ]
+
+
+def test_suite_registry_rejects_unknown_and_caller_argv():
+    with pytest.raises(campaign.CampaignError, match="SUITE_NOT_ALLOWED"):
+        campaign._suite_ids(["validation-unit", "tests/unit/test_ingestion_service.py"])
+    assert campaign._suite_ids(["validation-unit"]) == ["validation-unit"]
+
+
 def _edit_contract(repo, contract, allowed, production_limit=10):
     payload = json.loads(Path(contract["path"]).read_text())
     payload["typed_contract"]["allowed_files"] = allowed
