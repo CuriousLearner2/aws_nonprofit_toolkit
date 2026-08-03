@@ -10,6 +10,7 @@ from datetime import datetime
 
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
+from .decision_policy import create_decision_writer, latest_decision_status, validate_decision_value
 
 
 def record_validation_decision(
@@ -48,11 +49,7 @@ def record_validation_decision(
         DatabaseError: If write transaction fails
     """
     # Validate decision value
-    valid_decisions = {'accept_issue', 'dismiss_issue', 'defer'}
-    if decision not in valid_decisions:
-        raise ValueError(
-            f"Invalid decision '{decision}'. Must be one of: {', '.join(sorted(valid_decisions))}"
-        )
+    validate_decision_value(decision, {'accept_issue', 'dismiss_issue', 'defer'})
 
     # Get write repository (database only; fixture mode must not accept writes)
     write_repo = _get_validation_decision_writer(config)
@@ -82,21 +79,12 @@ def _get_validation_decision_writer(config: Optional[Mapping[str, Any]]):
         ValueError: If database configuration is missing
     """
     from .database_write_repository import DatabaseValidationDecisionWriter
-    import os
-
-    # Determine database URL
-    if config:
-        database_url = config.get('GIVEBUTTER_DATABASE_URL')
-    else:
-        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
-
-    if not database_url:
-        raise ValueError(
-            "Validation decision recording requires database configuration. "
-            "Set GIVEBUTTER_DATABASE_URL environment variable or pass config."
-        )
-
-    return DatabaseValidationDecisionWriter(database_url=database_url)
+    try:
+        return create_decision_writer(config, DatabaseValidationDecisionWriter)
+    except ValueError as exc:
+        if str(exc).startswith("Decision recording"):
+            raise ValueError(str(exc).replace("Decision recording", "Validation decision recording", 1)) from exc
+        raise
 
 
 def get_effective_status(review_item_id: int, database_url: str = 'sqlite:///./givebutter.db') -> str:
@@ -110,30 +98,6 @@ def get_effective_status(review_item_id: int, database_url: str = 'sqlite:///./g
     Returns:
         Effective status: 'pending', 'accepted', 'dismissed', or 'deferred'
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from .database_models import ReviewDecision
-
-    engine = create_engine(database_url, echo=False)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
-
-    try:
-        latest = (
-            session.query(ReviewDecision)
-            .filter_by(review_item_id=review_item_id)
-            .order_by(ReviewDecision.created_at.desc())
-            .first()
-        )
-
-        if not latest:
-            return 'pending'
-
-        status_map = {
-            'accept_issue': 'accepted',
-            'dismiss_issue': 'dismissed',
-            'defer': 'deferred',
-        }
-        return status_map.get(latest.decision, 'pending')
-    finally:
-        session.close()
+    return latest_decision_status(review_item_id, database_url, {
+        'accept_issue': 'accepted', 'dismiss_issue': 'dismissed', 'defer': 'deferred'
+    })

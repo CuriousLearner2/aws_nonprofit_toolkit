@@ -10,6 +10,7 @@ from datetime import datetime
 
 from .write_repository_contracts import DuplicateDecisionResult
 from .repository_provider import get_import_repository
+from .decision_policy import create_decision_writer, latest_decision_status, validate_decision_value
 
 
 def record_duplicate_decision(
@@ -45,11 +46,7 @@ def record_duplicate_decision(
         DatabaseError: If write transaction fails
     """
     # Validate decision value
-    valid_decisions = {'same_person', 'different_people', 'defer'}
-    if decision not in valid_decisions:
-        raise ValueError(
-            f"Invalid decision '{decision}'. Must be one of: {', '.join(sorted(valid_decisions))}"
-        )
+    validate_decision_value(decision, {'same_person', 'different_people', 'defer'})
 
     # Validate notes required when conflicting evidence exists
     _validate_notes_if_conflicting_evidence(review_item_id, notes, config)
@@ -149,21 +146,12 @@ def _get_duplicate_decision_writer(config: Optional[Mapping[str, Any]]):
         ValueError: If database configuration is missing
     """
     from .database_write_repository import DatabaseDuplicateDecisionWriter
-    import os
-
-    # Determine database URL
-    if config:
-        database_url = config.get('GIVEBUTTER_DATABASE_URL')
-    else:
-        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
-
-    if not database_url:
-        raise ValueError(
-            "Duplicate decision recording requires database configuration. "
-            "Set GIVEBUTTER_DATABASE_URL environment variable or pass config."
-        )
-
-    return DatabaseDuplicateDecisionWriter(database_url=database_url)
+    try:
+        return create_decision_writer(config, DatabaseDuplicateDecisionWriter)
+    except ValueError as exc:
+        if str(exc).startswith("Decision recording"):
+            raise ValueError(str(exc).replace("Decision recording", "Duplicate decision recording", 1)) from exc
+        raise
 
 
 def get_effective_status(review_item_id: int, database_url: str = 'sqlite:///./givebutter.db') -> str:
@@ -177,30 +165,6 @@ def get_effective_status(review_item_id: int, database_url: str = 'sqlite:///./g
     Returns:
         Effective status: 'pending', 'same_person', 'different_people', or 'deferred'
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from .database_models import ReviewDecision
-
-    engine = create_engine(database_url, echo=False)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
-
-    try:
-        latest = (
-            session.query(ReviewDecision)
-            .filter_by(review_item_id=review_item_id)
-            .order_by(ReviewDecision.created_at.desc())
-            .first()
-        )
-
-        if not latest:
-            return 'pending'
-
-        status_map = {
-            'same_person': 'same_person',
-            'different_people': 'different_people',
-            'defer': 'deferred',
-        }
-        return status_map.get(latest.decision, 'pending')
-    finally:
-        session.close()
+    return latest_decision_status(review_item_id, database_url, {
+        'same_person': 'same_person', 'different_people': 'different_people', 'defer': 'deferred'
+    })
