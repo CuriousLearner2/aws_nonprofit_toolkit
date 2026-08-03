@@ -250,6 +250,41 @@ def test_export_suite_and_gate_projection_are_wrapper_owned_and_restart_stable(r
         loaded._ledger_validate(tampered)
 
 
+def _edit_contract(repo, contract, allowed, production_limit=10):
+    payload = json.loads(Path(contract["path"]).read_text())
+    payload["typed_contract"]["allowed_files"] = allowed
+    payload["typed_contract"]["max_production_lines"] = production_limit
+    path = Path(contract["path"]).with_name("edit-" + Path(contract["path"]).name)
+    path.write_text(json.dumps(payload) + "\n")
+    return {"path": str(path), "sha256": campaign._json_sha256(payload)}
+
+
+def test_checkpoint_allows_only_contained_admitted_dirty_edits_and_is_restart_safe(repo, contract, monkeypatch):
+    edit_contract = _edit_contract(repo, contract, ["seed.txt"])
+    initialize(repo, edit_contract)
+    campaign.campaign_ledger_next("campaign-01"); campaign.campaign_ledger_start_edit("campaign-01", 0, "edit-1")
+    (repo / "seed.txt").write_text("changed\n")
+    events = Path(campaign.LEDGER_ROOT) / "campaign-01/events.jsonl"
+    first = campaign.campaign_ledger_checkpoint("campaign-01", "checkpoint-1")
+    before = events.read_bytes()
+    assert campaign.campaign_ledger_checkpoint("campaign-01", "checkpoint-1") == first
+    assert events.read_bytes() == before
+    loaded = importlib.reload(campaign); monkeypatch.setattr(loaded, "LEDGER_ROOT", Path(repo).parent / "campaigns")
+    assert loaded.campaign_ledger_checkpoint("campaign-01", "checkpoint-1") == first
+
+
+def test_dirty_edit_checkpoint_rejects_unauthorized_and_over_ceiling_without_state_change(repo, contract):
+    edit_contract = _edit_contract(repo, contract, ["seed.txt"], production_limit=1)
+    initialize(repo, edit_contract); campaign.campaign_ledger_next("campaign-01"); campaign.campaign_ledger_start_edit("campaign-01", 0, "edit-1")
+    state = Path(campaign.LEDGER_ROOT) / "campaign-01/state.json"; events = state.with_name("events.jsonl")
+    (repo / "unauthorized.txt").write_text("bad\n"); before_state, before_events = state.read_bytes(), events.read_bytes()
+    fails(lambda: campaign.campaign_ledger_checkpoint("campaign-01", "checkpoint-bad"), "UNAUTHORIZED_CHANGE")
+    assert state.read_bytes() == before_state and events.read_bytes() == before_events
+    (repo / "unauthorized.txt").unlink(); (repo / "seed.txt").write_text("one\ntwo\n")
+    fails(lambda: campaign.campaign_ledger_checkpoint("campaign-01", "checkpoint-big"), "CEILING_EXCEEDED")
+    assert state.read_bytes() == before_state and events.read_bytes() == before_events
+
+
 def test_checkpoint_is_idempotent_persistent_and_stale_only_after_twelve_minutes(repo, contract, monkeypatch):
     initialize(repo, contract)
     fixed = campaign.datetime(2026, 1, 1, tzinfo=campaign.timezone.utc)

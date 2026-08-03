@@ -520,6 +520,40 @@ def _finish_changes(record: dict[str, Any], contract: dict[str, Any]) -> list[di
     return entries
 
 
+def _edit_diff_totals(record: dict[str, Any], changed: list[dict[str, Any]]) -> dict[str, int]:
+    repo = Path(record["worktree_path"])
+    totals = {"production": 0, "test": 0}
+    for item in changed:
+        path = item["path"]
+        target = repo / path
+        if item["status"] == "??":
+            additions = target.read_bytes().count(b"\n")
+            deletions = 0
+        else:
+            stats = _ledger_git(repo, "diff", "--numstat", "--no-ext-diff", "--", path).split("\t")
+            if len(stats) < 2 or stats[0] == "-" or stats[1] == "-":
+                raise _fail("BINARY_CHANGE", "binary files are not allowed")
+            additions, deletions = int(stats[0]), int(stats[1])
+        bucket = "test" if path.startswith("tests/") else "production"
+        totals[bucket] += additions + deletions
+    return totals
+
+
+def _validate_admitted_edit_checkpoint(record: dict[str, Any]) -> None:
+    pending = record.get("pending_action")
+    admission = record.get("edit_admission")
+    if record.get("state") != "ACTIVE" or not pending or pending.get("kind") != "IMPLEMENT":
+        raise _fail("EDIT_NOT_ADMITTED", "checkpoint requires an active admitted edit")
+    if admission is None or admission.get("contract_index") != record.get("current_index"):
+        raise _fail("EDIT_NOT_ADMITTED", "checkpoint admission does not match current contract")
+    contract = _finish_contract(record["contracts"][record["current_index"]]["path"])
+    changed = _finish_changes(record, contract)
+    totals = _edit_diff_totals(record, changed)
+    typed = record["contracts"][record["current_index"]]["typed_contract"]
+    if totals["production"] > typed["max_production_lines"] or totals["test"] > typed["max_test_lines"]:
+        raise _fail("CEILING_EXCEEDED", "admitted edit exceeds contract ceiling")
+
+
 def _finish_patch(repo: Path, paths: list[str]) -> bytes:
     patch = subprocess.run(["git", "diff", "--binary", "--no-ext-diff", "--", *paths], cwd=repo, capture_output=True, check=False).stdout
     for path in paths:
@@ -849,7 +883,10 @@ def campaign_ledger_checkpoint(campaign_id: str, operation_id: str) -> dict[str,
         retry = _retry_result(record, operation_id, "checkpoint", payload)
         if retry is not None:
             return retry
-        _ledger_validate(record, allow_dirty=bool(record.get("edit_validation")), allow_stale=True)
+        admitted_edit = bool(record.get("edit_admission") and record.get("pending_action", {}).get("kind") == "IMPLEMENT")
+        _ledger_validate(record, allow_dirty=admitted_edit, allow_stale=True)
+        if admitted_edit:
+            _validate_admitted_edit_checkpoint(record)
         timestamp = _utcnow()
         record["last_checkpoint_at"] = timestamp
         output = {"campaign_id": campaign_id, "checkpoint_at": timestamp, "state": record["state"]}
