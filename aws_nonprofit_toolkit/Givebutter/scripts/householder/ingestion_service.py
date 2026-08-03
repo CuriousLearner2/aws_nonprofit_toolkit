@@ -36,6 +36,7 @@ from .database_models import (
     ReviewItemSubject,
     AuditLogRecord,
 )
+from .ingestion_value_policy import extract_digits_from_phone, parse_amount, split_name
 
 logger = logging.getLogger(__name__)
 
@@ -136,104 +137,6 @@ def generate_batch_id(csv_file_contents: bytes, imported_at: Optional[datetime] 
     batch_id = f"IMP-{timestamp_str[:8]}-{timestamp_str[8:]}-{file_hash}{unique_suffix}"
 
     return batch_id
-
-
-def split_name(name: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Split full name into first and last name.
-
-    Algorithm:
-    - Empty or whitespace: (None, None)
-    - Single token: (token, None)
-    - Two+ tokens: (first_token, remaining_joined_with_space)
-
-    Examples:
-    - "John Smith" → ("John", "Smith")
-    - "John Michael Smith" → ("John", "Michael Smith")
-    - "John Smith Jr." → ("John", "Smith Jr.")
-    - "Prince" → ("Prince", None)
-    - "" → (None, None)
-
-    Args:
-        name: Full name string
-
-    Returns:
-        Tuple of (first_name, last_name)
-    """
-    if not name:
-        return (None, None)
-
-    name = name.strip()
-    if not name:
-        return (None, None)
-
-    parts = name.split()
-    if len(parts) == 1:
-        return (parts[0], None)
-
-    first_name = parts[0]
-    last_name = " ".join(parts[1:])
-    return (first_name, last_name)
-
-
-def extract_digits_from_phone(phone: str) -> str:
-    """
-    Extract digits only from phone number.
-
-    Examples:
-    - "(555) 123-4567" → "5551234567"
-    - "555.123.4567" → "5551234567"
-    - "" → ""
-
-    Args:
-        phone: Phone number string
-
-    Returns:
-        Digits only
-    """
-    if not phone:
-        return ""
-
-    phone = str(phone).strip()
-    if not phone:
-        return ""
-
-    digits = "".join(c for c in phone if c.isdigit())
-    return digits
-
-
-def parse_amount(amount_str: str) -> Optional[float]:
-    """
-    Parse amount string to float.
-
-    Handles currency symbols and commas.
-
-    Examples:
-    - "100.00" → 100.0
-    - "$100.00" → 100.0
-    - "1,000" → 1000.0
-    - "invalid" → None
-    - "" → None
-
-    Args:
-        amount_str: Amount string
-
-    Returns:
-        Float or None if unparseable
-    """
-    if not amount_str:
-        return None
-
-    amount_str = str(amount_str).strip()
-    if not amount_str:
-        return None
-
-    try:
-        # Remove currency symbols and commas
-        cleaned = amount_str.replace("$", "").replace(",", "").strip()
-        return float(cleaned)
-    except ValueError:
-        return None
 
 
 def get_db_session(database_url: str) -> Session:
