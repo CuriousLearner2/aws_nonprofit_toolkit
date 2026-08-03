@@ -421,6 +421,36 @@ class TestIngestionIntegration:
         assert result.audit_action_type == "batch_imported"
         assert isinstance(result.audit_timestamp, datetime)
 
+    def test_commit_failure_rolls_back_batch_rows_and_audit(self, tmp_path):
+        """A failed commit leaves no partially persisted ingestion or audit record."""
+        from unittest.mock import patch
+
+        from scripts.householder.database_models import AuditLogRecord, ImportBatch, init_db
+        from scripts.householder.ingestion_service import get_db_session
+
+        csv_file = tmp_path / "commit_failure.csv"
+        csv_file.write_text(
+            "Name,Email,Amount,Date,Validation_Tier,Issues,Suggested_Modifications\n"
+            "John Smith,john@gmail.com,100.00,2026-06-12,PASS,None,"
+        )
+        db_path = tmp_path / "commit_failure.db"
+        db_url = f"sqlite:///{db_path}"
+        init_db(db_url)
+
+        session = get_db_session(db_url)
+        with patch.object(session, "commit", side_effect=RuntimeError("commit unavailable")):
+            with patch("scripts.householder.ingestion_service.get_db_session", return_value=session):
+                with pytest.raises(IngestionDatabaseError, match="commit unavailable"):
+                    ingest_processed_csv(str(csv_file), "original.csv", db_url)
+
+        session.close()
+        verification_session = get_db_session(db_url)
+        try:
+            assert verification_session.query(ImportBatch).count() == 0
+            assert verification_session.query(AuditLogRecord).count() == 0
+        finally:
+            verification_session.close()
+
     def test_ingestion_result_is_frozen(self, tmp_path):
         """IngestionResult is immutable (frozen dataclass)."""
         from scripts.householder.database_models import init_db
