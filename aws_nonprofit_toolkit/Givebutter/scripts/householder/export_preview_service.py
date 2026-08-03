@@ -24,54 +24,7 @@ from .date_validation_service import validate_review_date
 from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .service_contracts import ExportRow, ExportPreviewResult
-
-
-def _get_validation_issue_type(payload):
-    """
-    Get issue type from validation payload, supporting both real and legacy formats.
-
-    Real ingestion creates payloads with 'issue' field.
-    Tests/legacy payloads use 'issue_type' field.
-    This function normalizes the lookup to support both.
-
-    Args:
-        payload: Validation review item payload (dict or None)
-
-    Returns:
-        Issue type string or 'unknown' if field not found
-    """
-    if not payload:
-        return 'unknown'
-
-    # Real ingestion format
-    if 'issue' in payload:
-        return payload.get('issue')
-
-    # Legacy/test format
-    return payload.get('issue_type', 'unknown')
-
-
-def _get_validation_issue_field(payload, issue_type=None):
-    """
-    Resolve the affected field for a validation payload.
-
-    Real payloads usually provide an explicit `field`. When they do not, infer
-    the field from the issue type so that reviewer decisions can still suppress
-    the corresponding blocker for the same row.
-    """
-    if not payload:
-        return None
-
-    field = payload.get('field')
-    if field:
-        return str(field).strip().lower()
-
-    issue_type_lower = str(issue_type or '').lower()
-    for candidate in ('date', 'amount', 'email', 'phone'):
-        if candidate in issue_type_lower:
-            return candidate
-
-    return None
+from .export_preview_policy import validation_issue_field, validation_issue_type
 
 
 def _batch_row_is_approved_with_overrides(batch, raw_import_row_id):
@@ -455,11 +408,11 @@ def build_export_preview(
                 payload = val_item.payload_json or {}
                 if isinstance(payload, str):
                     payload = json.loads(payload)
-                issue_type = _get_validation_issue_type(payload)
+                issue_type = validation_issue_type(payload)
                 issue_field = payload.get('field')
                 issue_reason = payload.get('reason')
                 issue_severity = str(payload.get('severity', 'warning')).lower()
-                resolved_issue_field = _get_validation_issue_field(payload, issue_type)
+                resolved_issue_field = validation_issue_field(payload, issue_type)
 
                 if val_decision:
                     if resolved_issue_field:
