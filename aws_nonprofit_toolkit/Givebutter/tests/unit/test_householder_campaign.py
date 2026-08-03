@@ -382,6 +382,7 @@ def test_remediation_parity_suites_have_fixed_wrapper_owned_argv():
     expected = {
         "validation-unit": "tests/unit/test_validation_service.py",
         "ingestion-unit": "tests/unit/test_ingestion_service.py",
+        "ingestion-database-integration": "tests/integration/test_ingestion_service_database.py",
         "issue-recalculation-integration": "tests/integration/test_validation_review_workflows.py",
         "autosave-integration": "tests/integration/test_autosave_validation.py",
     }
@@ -430,6 +431,16 @@ def test_suite_registry_rejects_unknown_and_caller_argv():
     with pytest.raises(campaign.CampaignError, match="SUITE_NOT_ALLOWED"):
         campaign._suite_ids(["validation-unit", "tests/unit/test_ingestion_service.py"])
     assert campaign._suite_ids(["validation-unit"]) == ["validation-unit"]
+
+
+def test_ingestion_database_suite_has_fixed_wrapper_owned_argv():
+    assert campaign.SUITE_REGISTRY["ingestion-database-integration"] == [
+        campaign.sys.executable,
+        "-m",
+        "pytest",
+        "-q",
+        "tests/integration/test_ingestion_service_database.py",
+    ]
 
 
 def _edit_contract(repo, contract, allowed, production_limit=10):

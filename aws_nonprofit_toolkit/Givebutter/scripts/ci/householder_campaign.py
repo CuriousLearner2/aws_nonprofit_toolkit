@@ -359,6 +359,7 @@ SUITE_REGISTRY = {
     "export-preview-unit": [sys.executable, "-m", "pytest", "-q", "tests/unit/test_export_preview_service.py"],
     "validation-unit": [sys.executable, "-m", "pytest", "-q", "tests/unit/test_validation_service.py"],
     "ingestion-unit": [sys.executable, "-m", "pytest", "-q", "tests/unit/test_ingestion_service.py"],
+    "ingestion-database-integration": [sys.executable, "-m", "pytest", "-q", "tests/integration/test_ingestion_service_database.py"],
     "issue-recalculation-integration": [sys.executable, "-m", "pytest", "-q", "tests/integration/test_validation_review_workflows.py"],
     "autosave-integration": [sys.executable, "-m", "pytest", "-q", "tests/integration/test_autosave_validation.py"],
 }
