@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import posixpath
 import subprocess
 import tempfile
 from contextlib import contextmanager
@@ -334,7 +335,26 @@ TYPED_CONTRACT_FIELDS = {
     "max_test_lines",
     "suite_ids",
     "invariants",
+    "completed_seams",
+    "completed_seam_files",
+    "protected_files",
 }
+
+
+def _normalized_relative_paths(items: Any, field: str) -> list[str]:
+    if type(items) is not list:
+        raise _fail("CONTRACT_MALFORMED", f"{field} must be a JSON array")
+    normalized: list[str] = []
+    for item in items:
+        if type(item) is not str or not item or item.strip() != item or "\\" in item:
+            raise _fail("CONTRACT_MALFORMED", f"{field} entries must be relative paths")
+        value = posixpath.normpath(item)
+        if value in ("", ".") or value.startswith("../") or value == ".." or value.startswith("/"):
+            raise _fail("CONTRACT_MALFORMED", f"{field} entries must be relative paths")
+        normalized.append(value)
+    if len(normalized) != len(set(normalized)):
+        raise _fail("CONTRACT_MALFORMED", f"{field} entries must be unique")
+    return normalized
 
 
 def _strict_typed_dict(value: Any) -> dict[str, Any]:
@@ -352,7 +372,7 @@ def _strict_typed_dict(value: Any) -> dict[str, Any]:
         item = value[field]
         if type(item) is not int or item < 0 or item > 1_000_000:
             raise _fail("CONTRACT_MALFORMED", f"{field} must be a bounded non-negative integer")
-    for field in ("allowed_files", "suite_ids", "invariants"):
+    for field in ("suite_ids", "invariants"):
         items = value[field]
         if type(items) is not list or (field == "suite_ids" and not items):
             raise _fail("CONTRACT_MALFORMED", f"{field} must be a JSON array")
@@ -360,7 +380,20 @@ def _strict_typed_dict(value: Any) -> dict[str, Any]:
             raise _fail("CONTRACT_MALFORMED", f"{field} entries must be trimmed strings")
         if len(items) != len(set(items)):
             raise _fail("CONTRACT_MALFORMED", f"{field} entries must be unique")
-    return {field: value[field] for field in sorted(TYPED_CONTRACT_FIELDS)}
+    normalized = dict(value)
+    normalized["allowed_files"] = _normalized_relative_paths(value["allowed_files"], "allowed_files")
+    normalized["protected_files"] = _normalized_relative_paths(value["protected_files"], "protected_files")
+    seams = value["completed_seams"]
+    if type(seams) is not list or any(type(item) is not str or not item or item.strip() != item for item in seams):
+        raise _fail("CONTRACT_MALFORMED", "completed_seams entries must be trimmed strings")
+    if len(seams) != len(set(seams)):
+        raise _fail("CONTRACT_MALFORMED", "completed_seams entries must be unique")
+    seam_files = value["completed_seam_files"]
+    if type(seam_files) is not dict or any(type(key) is not str or not key or key.strip() != key for key in seam_files):
+        raise _fail("CONTRACT_MALFORMED", "completed_seam_files must map seam IDs to arrays")
+    normalized["completed_seams"] = list(seams)
+    normalized["completed_seam_files"] = {key: _normalized_relative_paths(files, f"completed_seam_files[{key}]") for key, files in seam_files.items()}
+    return {field: normalized[field] for field in sorted(TYPED_CONTRACT_FIELDS)}
 
 
 def _strict_contract(payload: Any, *, baseline_head: str | None = None, gate_sha: str | None = None, suite_ids: list[str] | None = None) -> dict[str, Any]:
@@ -369,7 +402,7 @@ def _strict_contract(payload: Any, *, baseline_head: str | None = None, gate_sha
         raise _fail("CONTRACT_MALFORMED", "contract must be an object")
     typed = payload.get("typed_contract")
     strict_fields = TYPED_CONTRACT_FIELDS
-    if typed is not None and set(payload) != {"typed_contract"}:
+    if typed is not None and set(payload) - {"typed_contract", "seam", "task_id"}:
         raise _fail("CONTRACT_MALFORMED", "typed contract envelope has unknown fields")
     if typed is None and strict_fields.intersection(payload):
         if set(payload) != strict_fields:
@@ -384,8 +417,15 @@ def _strict_contract(payload: Any, *, baseline_head: str | None = None, gate_sha
             "max_test_lines": payload.get("max_test_lines", payload.get("test_changed_lines_max", 0)),
             "suite_ids": payload.get("suite_ids", suite_ids or ["wrapper-unit"]),
             "invariants": payload.get("invariants", []),
+            "completed_seams": payload.get("completed_seams"),
+            "completed_seam_files": payload.get("completed_seam_files"),
+            "protected_files": payload.get("protected_files"),
         }
     normalized = _strict_typed_dict(typed)
+    if baseline_head is not None and normalized["baseline_head"] != baseline_head:
+        raise _fail("BASELINE_MISMATCH", "contract baseline does not match repository HEAD")
+    if gate_sha is not None and normalized["gate_sha"] != gate_sha:
+        raise _fail("GATE_MUTATED", "contract gate digest does not match campaign gate")
     if any(item not in SUITE_REGISTRY for item in normalized["suite_ids"]):
         raise _fail("SUITE_NOT_ALLOWED", "typed contract contains an unknown suite")
     return normalized
@@ -542,6 +582,26 @@ def _ledger_identity(repo: Path) -> dict[str, Any]:
     return {"head": _ledger_git(worktree, "rev-parse", "HEAD"), "dirty": bool(_ledger_git(worktree, "status", "--porcelain", "--untracked-files=all")), "gate": _ledger_git(worktree, "hash-object", str(worktree / "scripts/ci/architecture_slice_gate.py")), "worktree_path": str(worktree), "git_common_dir": str(common_dir), "git_dir": str(git_dir)}
 
 
+def _contract_seam_id(payload: dict[str, Any]) -> str | None:
+    seam = payload.get("seam")
+    if seam is None:
+        return None
+    if type(seam) is not str or not seam or seam.strip() != seam:
+        raise _fail("CONTRACT_MALFORMED", "seam must be a trimmed string")
+    return seam
+
+
+def _enforce_seam_boundaries(typed: dict[str, Any], seam_id: str | None) -> None:
+    allowed = set(typed["allowed_files"])
+    if allowed.intersection(typed["protected_files"]):
+        raise _fail("PROTECTED_FILE", "allowed files overlap protected files")
+    completed_files = {path for files in typed["completed_seam_files"].values() for path in files}
+    if allowed.intersection(completed_files):
+        raise _fail("COMPLETED_SEAM_OVERLAP", "allowed files overlap a completed seam")
+    if seam_id is not None and seam_id in typed["completed_seams"]:
+        raise _fail("COMPLETED_SEAM_OVERLAP", "contract seam is already completed")
+
+
 def _ledger_contract(path: str, expected: str, contract_root: Path | None = None, *, baseline_head: str | None = None, gate_sha: str | None = None, suite_ids: list[str] | None = None, typed_sha: str | None = None) -> dict[str, Any]:
     file = _canonical_path(path, "CONTRACT_NOT_INITIALIZED")
     if contract_root is not None and not _under(file, _canonical_path(contract_root), "SYMLINK_ESCAPE"):
@@ -555,10 +615,11 @@ def _ledger_contract(path: str, expected: str, contract_root: Path | None = None
     if _json_sha256(payload) != expected:
         raise _fail("CONTRACT_MUTATED", "contract digest mismatch")
     typed = _strict_contract(payload, baseline_head=baseline_head, gate_sha=gate_sha, suite_ids=suite_ids)
+    _enforce_seam_boundaries(typed, _contract_seam_id(payload))
     digest = _json_sha256(typed)
     if typed_sha is not None and digest != typed_sha:
         raise _fail("CONTRACT_MUTATED", "normalized contract digest mismatch")
-    return {"path": str(file), "sha256": expected, "typed_contract": typed, "typed_contract_sha256": digest}
+    return {"path": str(file), "sha256": expected, "typed_contract": typed, "typed_contract_sha256": digest, "seam_id": _contract_seam_id(payload)}
 
 
 def _check_authorized(contract_path: Path, worktree: Path) -> None:

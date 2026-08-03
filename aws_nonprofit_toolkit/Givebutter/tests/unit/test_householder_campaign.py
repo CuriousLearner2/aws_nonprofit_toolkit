@@ -30,16 +30,44 @@ def repo(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def contract(tmp_path):
+def contract(repo, tmp_path):
     path = tmp_path / "contract.json"; path.write_text(json.dumps({
+        "seam": "new-seam",
         "typed_contract": {
-            "baseline_head": "test-baseline",
-            "gate_sha": "test-gate",
+            "baseline_head": git(repo, "rev-parse", "HEAD"),
+            "gate_sha": git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"),
             "allowed_files": [],
             "max_production_lines": 10,
             "max_test_lines": 10,
             "suite_ids": ["wrapper-unit"],
             "invariants": ["behavior-preserved"],
+            "completed_seams": [
+                "decision-policy", "ingestion-value-policy", "phone-type-policy",
+                "issue-contract-policy", "export-download-path-policy", "phone-format-policy",
+                "approval-remaining-issues-policy", "export-csv-policy", "export-filename-policy",
+                "recalculation-input-policy", "row-status-policy", "approval-override-policy",
+                "row-decision-policy",
+            ],
+            "completed_seam_files": {
+                "decision-policy": ["scripts/householder/decision_policy.py"],
+                "ingestion-value-policy": ["scripts/householder/ingestion_value_policy.py"],
+                "phone-type-policy": ["scripts/householder/phone_type_policy.py"],
+                "issue-contract-policy": ["scripts/householder/issue_contract_policy.py"],
+                "export-download-path-policy": ["scripts/householder/export_path_policy.py"],
+                "phone-format-policy": ["scripts/householder/phone_format_policy.py"],
+                "approval-remaining-issues-policy": ["scripts/householder/approval_remaining_issues_policy.py"],
+                "export-csv-policy": ["scripts/householder/export_csv_policy.py"],
+                "export-filename-policy": ["scripts/householder/export_filename_policy.py"],
+                "recalculation-input-policy": ["scripts/householder/recalculation_input_policy.py"],
+                "row-status-policy": ["scripts/householder/row_status_policy.py"],
+                "approval-override-policy": ["scripts/householder/approval_override_policy.py"],
+                "row-decision-policy": ["scripts/householder/row_decision_policy.py"],
+            },
+            "protected_files": [
+                "scripts/ci/campaign_state.py", "scripts/ci/check_lane_scope.py",
+                "scripts/ci/check_task_untracked.py", "scripts/ci/pre_commit_gate.py",
+                "tests/unit/test_campaign_state.py",
+            ],
         },
     }) + "\n")
     return {"path": str(path), "sha256": campaign._json_sha256(json.loads(path.read_text()))}
@@ -86,12 +114,14 @@ def test_absent_dirty_and_stale_commands_fail_closed(repo, contract):
 
 
 def test_contract_gate_and_ledger_mutations_fail_closed(repo, contract, tmp_path):
-    initialize(repo, contract); Path(contract["path"]).write_text('{"task":"mutated"}\n')
+    original_contract = Path(contract["path"]).read_text(); initialize(repo, contract); Path(contract["path"]).write_text('{"task":"mutated"}\n')
     fails(lambda: campaign.campaign_ledger_status("campaign-01"), "CONTRACT_MUTATED")
-    other = tmp_path / "other.json"; other.write_text('{"task":"other"}\n')
+    other = tmp_path / "other.json"; other.write_text(original_contract)
     campaign.LEDGER_ROOT = tmp_path / "other-campaigns"; fresh = {"path": str(other), "sha256": campaign._json_sha256(json.loads(other.read_text()))}
     initialize(repo, fresh, "campaign-02"); (repo / "scripts/ci/architecture_slice_gate.py").write_text("mutated\n"); git(repo, "add", "."); git(repo, "commit", "-qm", "gate mutation")
-    fails(lambda: campaign.campaign_ledger_status("campaign-02"), "GATE_MUTATED"); initialize(repo, fresh, "campaign-03"); path = Path(campaign.LEDGER_ROOT) / "campaign-03/state.json"; payload = json.loads(path.read_text()); payload["state"] = "COMMITTED"; path.write_text(json.dumps(payload)); fails(lambda: campaign.campaign_ledger_next("campaign-03"), "CHECKPOINT_MISMATCH")
+    fails(lambda: campaign.campaign_ledger_status("campaign-02"), "GATE_MUTATED")
+    fresh_payload = json.loads(other.read_text()); fresh_payload["typed_contract"]["baseline_head"] = git(repo, "rev-parse", "HEAD"); fresh_payload["typed_contract"]["gate_sha"] = git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"); other.write_text(json.dumps(fresh_payload) + "\n"); fresh["sha256"] = campaign._json_sha256(fresh_payload)
+    initialize(repo, fresh, "campaign-03"); path = Path(campaign.LEDGER_ROOT) / "campaign-03/state.json"; payload = json.loads(path.read_text()); payload["state"] = "COMMITTED"; path.write_text(json.dumps(payload)); fails(lambda: campaign.campaign_ledger_next("campaign-03"), "CHECKPOINT_MISMATCH")
 
 
 def test_legacy_path_prompt_state_and_repeated_transitions_are_rejected(repo, contract):
@@ -134,6 +164,9 @@ def test_typed_contract_rejects_unknown_missing_malformed_and_duplicate_fields(t
         "max_test_lines": 10,
         "suite_ids": ["wrapper-unit"],
         "invariants": ["preserve"],
+        "completed_seams": ["done-seam"],
+        "completed_seam_files": {"done-seam": ["scripts/householder/done.py"]},
+        "protected_files": ["scripts/ci/campaign_state.py"],
     }
     assert campaign._strict_contract(valid) == valid
     assert campaign._strict_contract({"typed_contract": valid}) == valid
@@ -151,6 +184,51 @@ def test_typed_contract_rejects_unknown_missing_malformed_and_duplicate_fields(t
     duplicate.write_text('{"typed_contract": {"baseline_head":"HEAD", "baseline_head":"OTHER"}}')
     with pytest.raises(campaign.CampaignError, match="duplicate contract field"):
         campaign._read_json(duplicate)
+
+
+@pytest.mark.parametrize("protected", [
+    "scripts/ci/campaign_state.py",
+    "scripts/ci/check_lane_scope.py",
+    "scripts/ci/check_task_untracked.py",
+    "scripts/ci/pre_commit_gate.py",
+    "tests/unit/test_campaign_state.py",
+])
+def test_each_protected_file_is_rejected_before_event_append(repo, contract, protected):
+    payload = json.loads(Path(contract["path"]).read_text())
+    payload["typed_contract"]["allowed_files"] = [protected]
+    path = Path(contract["path"]); path.write_text(json.dumps(payload) + "\n")
+    item = {"path": str(path), "sha256": campaign._json_sha256(payload)}
+    with pytest.raises(campaign.CampaignError, match="PROTECTED_FILE"):
+        campaign.campaign_ledger_init("protected-" + protected.split("/")[-1], "init-protected", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+    root = Path(campaign.LEDGER_ROOT) / ("protected-" + protected.split("/")[-1])
+    assert not (root / "state.json").exists() and not (root / "events.jsonl").exists()
+
+
+def test_completed_seam_id_and_file_overlap_are_rejected(repo, contract):
+    payload = json.loads(Path(contract["path"]).read_text())
+    payload["seam"] = "decision-policy"
+    path = Path(contract["path"]); path.write_text(json.dumps(payload) + "\n")
+    item = {"path": str(path), "sha256": campaign._json_sha256(payload)}
+    with pytest.raises(campaign.CampaignError, match="COMPLETED_SEAM_OVERLAP"):
+        campaign.campaign_ledger_init("completed-id", "init-completed-id", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+
+    payload["seam"] = "new-seam"
+    payload["typed_contract"]["allowed_files"] = ["scripts/householder/decision_policy.py"]
+    path.write_text(json.dumps(payload) + "\n")
+    item["sha256"] = campaign._json_sha256(payload)
+    with pytest.raises(campaign.CampaignError, match="COMPLETED_SEAM_OVERLAP"):
+        campaign.campaign_ledger_init("completed-file", "init-completed-file", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+
+
+def test_baseline_mismatch_is_rejected_before_event_append(repo, contract):
+    payload = json.loads(Path(contract["path"]).read_text())
+    payload["typed_contract"]["baseline_head"] = "0" * 40
+    path = Path(contract["path"]); path.write_text(json.dumps(payload) + "\n")
+    item = {"path": str(path), "sha256": campaign._json_sha256(payload)}
+    with pytest.raises(campaign.CampaignError, match="BASELINE_MISMATCH"):
+        campaign.campaign_ledger_init("baseline-mismatch", "init-baseline-mismatch", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+    root = Path(campaign.LEDGER_ROOT) / "baseline-mismatch"
+    assert not (root / "state.json").exists() and not (root / "events.jsonl").exists()
 
 
 def test_checkpoint_is_idempotent_persistent_and_stale_only_after_twelve_minutes(repo, contract, monkeypatch):
