@@ -14,7 +14,6 @@ Design principles:
 - Deferred features: no household generation, no cross-import duplicates
 """
 
-import csv
 import hashlib
 import logging
 import uuid
@@ -24,20 +23,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-
-from .database_models import (
-    Base,
-    ImportBatch,
-    RawImportRow,
-    ImportContact,
-    ReviewItem,
-    ReviewItemSubject,
-    AuditLogRecord,
-)
 from .ingestion_plan_policy import plan_ingestion
 from .ingestion_value_policy import extract_digits_from_phone, parse_amount, split_name
+from .repository_provider import get_ingestion_session, get_ingestion_writer, find_ingestion_batch_by_filename
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +128,7 @@ def generate_batch_id(csv_file_contents: bytes, imported_at: Optional[datetime] 
     return batch_id
 
 
-def get_db_session(database_url: str) -> Session:
+def get_db_session(database_url: str):
     """
     Create a new database session.
 
@@ -154,9 +142,7 @@ def get_db_session(database_url: str) -> Session:
         IngestionDatabaseError: If connection fails
     """
     try:
-        engine = create_engine(database_url, echo=False)
-        SessionLocal = sessionmaker(bind=engine)
-        return SessionLocal()
+        return get_ingestion_session(database_url)
     except Exception as e:
         raise IngestionDatabaseError(f"Failed to connect to database: {str(e)}")
 
@@ -182,21 +168,7 @@ def find_batch_by_filename(
         IngestionDatabaseError: If database query fails
     """
     try:
-        session = get_db_session(database_url)
-        try:
-            batches = session.query(ImportBatch).filter_by(filename=filename).all()
-
-            if len(batches) == 1:
-                return batches[0].id
-            if len(batches) > 1:
-                logger.warning(
-                    "Ambiguous legacy filename lookup for %s returned %d batches",
-                    filename,
-                    len(batches),
-                )
-            return None
-        finally:
-            session.close()
+        return find_ingestion_batch_by_filename(filename, database_url)
     except IngestionDatabaseError:
         raise
     except Exception as e:
@@ -404,91 +376,13 @@ def ingest_processed_csv(
     # ========================================================================
     # 4. Prepare database session and transaction
     # ========================================================================
-    session = None
     try:
-        session = get_db_session(database_url)
-
-        # ====================================================================
-        # 5. Create ImportBatch record
-        # ====================================================================
-        batch = ImportBatch(
-            id=batch_id,
-            filename=original_filename,
-            upload_timestamp=imported_at,
-            uploader=uploader,
-            status="pending",
-            raw_row_count=len(df),
-        )
-        session.add(batch)
-        session.flush()  # Ensure batch is inserted before foreign keys reference it
-        logger.info(f"Created ImportBatch: {batch_id}")
-
-        # ====================================================================
-        # 6. Process each row
-        # ====================================================================
-        import_contact_ids = []  # Track ImportContact IDs for subject linking
-        validation_items_created = plan.validation_items_created
-        normalization_items_created = plan.normalization_items_created
-        pass_count = plan.pass_count
-        warning_count = plan.warning_count
-        fail_count = plan.fail_count
-
-        for row_plan in plan.rows:
-
-            # ================================================================
-            # 6a. Create RawImportRow (immutable)
-            # ================================================================
-            raw_row = RawImportRow(
-                batch_id=plan.batch_id,
-                row_index=row_plan.row_index,
-                raw_csv_data=dict(row_plan.raw_csv_data),
-            )
-            session.add(raw_row)
-            session.flush()
-
-            # ================================================================
-            # 6b. Create ImportContact (denormalized snapshot)
-            # ================================================================
-            contact = ImportContact(batch_id=plan.batch_id, raw_import_row_id=raw_row.id, **dict(row_plan.contact_values))
-            session.add(contact)
-            session.flush()
-            import_contact_ids.append(contact.id)
-
-            for item_payload in row_plan.validation_items:
-                validation_item = ReviewItem(batch_id=plan.batch_id, item_type="validation", status="pending", confidence=1.0, payload_json=dict(item_payload))
-                session.add(validation_item)
-                session.flush()
-                session.add(ReviewItemSubject(review_item_id=validation_item.id, subject_type="import_contact_snapshot", subject_id=contact.id, role="primary"))
-            for item_payload in row_plan.normalization_items:
-                normalization_item = ReviewItem(batch_id=plan.batch_id, item_type="normalization", status="pending", confidence=0.85, payload_json=dict(item_payload))
-                session.add(normalization_item)
-                session.flush()
-                session.add(ReviewItemSubject(review_item_id=normalization_item.id, subject_type="import_contact_snapshot", subject_id=contact.id, role="primary"))
-
-        session.flush()
-
-        # ====================================================================
-        # 7. Create AuditLogRecord
-        # ====================================================================
-        audit_record = AuditLogRecord(
-            batch_id=batch_id,
-            action_type="batch_imported",
-            action_timestamp=datetime.now(timezone.utc),
-            actor=uploader,
-            details=dict(plan.audit_details),
-        )
-        session.add(audit_record)
-        session.flush()
-
-        # ====================================================================
-        # 8. Commit transaction
-        # ====================================================================
-        session.commit()
+        write_result = get_ingestion_writer(database_url, session_factory=get_db_session).persist_ingestion_plan(plan)
         logger.info(
             f"Ingestion committed: batch={batch_id}, "
             f"rows={len(df)}, "
-            f"validation_items={validation_items_created}, "
-            f"normalization_items={normalization_items_created}"
+            f"validation_items={plan.validation_items_created}, "
+            f"normalization_items={plan.normalization_items_created}"
         )
 
         # ====================================================================
@@ -498,33 +392,26 @@ def ingest_processed_csv(
             batch_id=batch_id,
             filename=original_filename,
             raw_row_count=len(df),
-            contacts_created=len(import_contact_ids),
-            validation_items_created=validation_items_created,
-            normalization_items_created=normalization_items_created,
+            contacts_created=len(plan.rows),
+            validation_items_created=plan.validation_items_created,
+            normalization_items_created=plan.normalization_items_created,
             duplicate_items_created=0,  # Deferred to later step
             household_items_created=0,  # Deferred to Phase 2
-            audit_log_id=audit_record.id,
+            audit_log_id=write_result.audit_log_id,
             audit_action_type="batch_imported",
-            audit_timestamp=audit_record.action_timestamp,
+            audit_timestamp=write_result.audit_timestamp,
             status="success",
             uploader=uploader,
-            pass_count=pass_count,
-            warning_count=warning_count,
-            fail_count=fail_count,
+            pass_count=plan.pass_count,
+            warning_count=plan.warning_count,
+            fail_count=plan.fail_count,
         )
 
         logger.info(f"Ingestion result: {result}")
         return result
 
     except (IngestionValidationError, IngestionIOError, BatchIDCollisionError):
-        if session:
-            session.rollback()
         raise
     except Exception as e:
-        if session:
-            session.rollback()
         logger.error(f"Unexpected error during ingestion: {str(e)}", exc_info=True)
         raise IngestionDatabaseError(f"Ingestion failed: {str(e)}")
-    finally:
-        if session:
-            session.close()
