@@ -32,6 +32,7 @@ def repo(tmp_path, monkeypatch):
 @pytest.fixture
 def contract(repo, tmp_path):
     path = tmp_path / "contract.json"; path.write_text(json.dumps({
+        "task_id": "test-campaign-contract",
         "seam": "new-seam",
         "typed_contract": {
             "baseline_head": git(repo, "rev-parse", "HEAD"),
@@ -229,6 +230,24 @@ def test_baseline_mismatch_is_rejected_before_event_append(repo, contract):
         campaign.campaign_ledger_init("baseline-mismatch", "init-baseline-mismatch", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
     root = Path(campaign.LEDGER_ROOT) / "baseline-mismatch"
     assert not (root / "state.json").exists() and not (root / "events.jsonl").exists()
+
+
+def test_export_suite_and_gate_projection_are_wrapper_owned_and_restart_stable(repo, contract):
+    assert campaign.SUITE_REGISTRY["export-preview-unit"][-1] == "tests/unit/test_export_preview_service.py"
+    initialize(repo, contract)
+    record = campaign.campaign_ledger_status("campaign-01")
+    item = record["contracts"][0]
+    assert item["gate_projection"]["authorized_files"] == []
+    assert item["gate_projection_sha256"] == campaign._json_sha256(item["gate_projection"])
+    loaded = importlib.reload(campaign)
+    loaded.LEDGER_ROOT = Path(repo).parent / "campaigns"
+    restarted = loaded.campaign_ledger_status("campaign-01")
+    assert restarted["contracts"][0]["gate_projection"] == item["gate_projection"]
+    tampered = dict(restarted)
+    tampered["contracts"] = [dict(restarted["contracts"][0])]
+    tampered["contracts"][0]["gate_projection"] = dict(item["gate_projection"], seam="tampered")
+    with pytest.raises(loaded.CampaignError, match="CONTRACT_MUTATED"):
+        loaded._ledger_validate(tampered)
 
 
 def test_checkpoint_is_idempotent_persistent_and_stale_only_after_twelve_minutes(repo, contract, monkeypatch):

@@ -7,8 +7,10 @@ import hashlib
 import json
 import os
 import posixpath
-import subprocess
+import shlex
 import tempfile
+import subprocess
+import sys
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
@@ -324,6 +326,7 @@ CAMPAIGN_STATES = {"READY", "ACTIVE", "VALIDATING", "COMMITTED", "FAILED", "QUAR
 CAMPAIGN_TERMINAL = {"COMMITTED", "FAILED", "QUARANTINED", "STOPPED"}
 SUITE_REGISTRY = {
     "wrapper-unit": ["python3", "-m", "pytest", "-q", "tests/unit/test_householder_campaign.py"],
+    "export-preview-unit": [sys.executable, "-m", "pytest", "-q", "tests/unit/test_export_preview_service.py"],
 }
 
 
@@ -537,7 +540,15 @@ def campaign_ledger_finish_edit(campaign_id: str, contract_index: int, operation
         if record.get("edit_validation") and record["edit_validation"].get("contract_index") == contract_index:
             raise _fail("EDIT_ALREADY_VALIDATED", "contract edit already validated")
         repo = Path(record["worktree_path"]); contract = _finish_contract(record["contracts"][contract_index]["path"]); changed = _finish_changes(record, contract); paths = [item["path"] for item in changed]
-        gate = subprocess.run(["python3", str(Path(record["worktree_path"]) / "scripts/ci/architecture_slice_gate.py"), "--contract", record["contracts"][contract_index]["path"], "--contract-sha", record["contracts"][contract_index]["sha256"]], cwd=record["worktree_path"], capture_output=True, text=True, check=False, shell=False)
+        queued = record["contracts"][contract_index]
+        projection_fd, projection_name = tempfile.mkstemp(prefix="householder-gate-", suffix=".json", dir=str(_ledger_file(campaign_id).parent))
+        os.close(projection_fd)
+        projection_file = Path(projection_name)
+        projection_file.write_text(json.dumps(queued["gate_projection"], sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+        try:
+            gate = subprocess.run(["python3", str(repo / "scripts/ci/architecture_slice_gate.py"), "--contract", str(projection_file), "--contract-sha", queued["gate_projection_sha256"]], cwd=repo, capture_output=True, text=True, check=False, shell=False)
+        finally:
+            projection_file.unlink(missing_ok=True)
         try: gate_result = json.loads(gate.stdout)
         except json.JSONDecodeError as exc: raise _fail("GATE_FAILED", "architecture gate returned invalid evidence") from exc
         if gate.returncode or not gate_result.get("pass"): raise _fail("EDIT_VALIDATION_FAILED", "architecture gate failed")
@@ -591,6 +602,13 @@ def _contract_seam_id(payload: dict[str, Any]) -> str | None:
     return seam
 
 
+def _contract_task_id(payload: dict[str, Any]) -> str:
+    task_id = payload.get("task_id")
+    if type(task_id) is not str or not task_id or task_id.strip() != task_id:
+        raise _fail("CONTRACT_MALFORMED", "task_id must be a trimmed string")
+    return task_id
+
+
 def _enforce_seam_boundaries(typed: dict[str, Any], seam_id: str | None) -> None:
     allowed = set(typed["allowed_files"])
     if allowed.intersection(typed["protected_files"]):
@@ -619,7 +637,32 @@ def _ledger_contract(path: str, expected: str, contract_root: Path | None = None
     digest = _json_sha256(typed)
     if typed_sha is not None and digest != typed_sha:
         raise _fail("CONTRACT_MUTATED", "normalized contract digest mismatch")
-    return {"path": str(file), "sha256": expected, "typed_contract": typed, "typed_contract_sha256": digest, "seam_id": _contract_seam_id(payload)}
+    return {"path": str(file), "sha256": expected, "typed_contract": typed, "typed_contract_sha256": digest, "seam_id": _contract_seam_id(payload), "task_id": _contract_task_id(payload)}
+
+
+def _gate_projection(item: dict[str, Any], repo: Path, suites: list[dict[str, Any]]) -> dict[str, Any]:
+    typed = item["typed_contract"]
+    allowed = list(typed["allowed_files"])
+    new_production = []
+    for path in allowed:
+        result = subprocess.run(["git", "ls-files", "--error-unmatch", "--", path], cwd=repo, capture_output=True, text=True, check=False, shell=False)
+        if result.returncode and path.startswith("scripts/") and not path.startswith("tests/"):
+            new_production.append(path)
+    return {
+        "schema_version": 1,
+        "task_id": item["task_id"],
+        "baseline_ref": typed["baseline_head"],
+        "seam": item["seam_id"],
+        "authorized_files": allowed,
+        "allowed_new_production_files": new_production,
+        "production_changed_lines_max": typed["max_production_lines"],
+        "test_changed_lines_max": typed["max_test_lines"],
+        "forbidden_files": [],
+        "forbidden_imports": [],
+        "forbidden_symbols": [],
+        "required_test_commands": [" ".join(shlex.quote(arg) for arg in suite["argv"]) for suite in suites],
+        "gate_blob_sha": typed["gate_sha"],
+    }
 
 
 def _check_authorized(contract_path: Path, worktree: Path) -> None:
@@ -627,7 +670,10 @@ def _check_authorized(contract_path: Path, worktree: Path) -> None:
         payload = _read_json(contract_path)
     except (OSError, json.JSONDecodeError) as exc:
         raise _fail("CONTRACT_NOT_INITIALIZED", "contract unreadable") from exc
-    raw_files = payload.get("authorized_files", payload.get("allowed_files", [])) if isinstance(payload, dict) else []
+    if isinstance(payload, dict) and isinstance(payload.get("typed_contract"), dict):
+        raw_files = payload["typed_contract"].get("allowed_files", [])
+    else:
+        raw_files = payload.get("authorized_files", payload.get("allowed_files", [])) if isinstance(payload, dict) else []
     if not isinstance(raw_files, list): raise _fail("CONTRACT_NOT_INITIALIZED", "authorized files malformed")
     for raw in raw_files:
         if not isinstance(raw, str) or Path(raw).is_absolute() or ".." in Path(raw).parts: raise _fail("PATH_OUTSIDE_ROOT", "authorized file is not contained")
@@ -733,6 +779,9 @@ def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None,
         current = _ledger_contract(item["path"], item["sha256"], contract_root, baseline_head=record["starting_head"], gate_sha=record["gate_blob_sha"], suite_ids=[suite["id"] for suite in record["suites"]], typed_sha=item.get("typed_contract_sha256"))
         if current["typed_contract"] != item.get("typed_contract"):
             raise _fail("CONTRACT_MUTATED", "normalized contract changed")
+        projection = _gate_projection(current, worktree, record["suites"])
+        if projection != item.get("gate_projection") or _json_sha256(projection) != item.get("gate_projection_sha256"):
+            raise _fail("CONTRACT_MUTATED", "generated gate projection changed")
         _check_authorized(Path(item["path"]), worktree)
     if identity["head"] != record["current_head"] and identity["head"] != expected_commit:
         raise _fail("STALE_HEAD", "stale HEAD")
@@ -768,9 +817,14 @@ def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, 
             raise _fail("DIRTY_WORKTREE", "worktree dirty")
         if identity["gate"] != gate_blob_sha:
             raise _fail("GATE_MUTATED", "gate blob mismatch")
+        suite_records = [{"id": suite, "argv": list(SUITE_REGISTRY[suite])} for suite in suites]
         queue = []
         for path, item in zip(raw_contracts, contracts):
-            queue.append(_ledger_contract(str(path), item["sha256"], contract_root, baseline_head=identity["head"], gate_sha=gate_blob_sha, suite_ids=suites))
+            queued = _ledger_contract(str(path), item["sha256"], contract_root, baseline_head=identity["head"], gate_sha=gate_blob_sha, suite_ids=suites)
+            projection = _gate_projection(queued, Path(identity["worktree_path"]), suite_records)
+            queued["gate_projection"] = projection
+            queued["gate_projection_sha256"] = _json_sha256(projection)
+            queue.append(queued)
             _check_authorized(path, Path(identity["worktree_path"]))
         record = {
             "schema_version": 1, "campaign_id": campaign_id, "repo_path": str(repo),
@@ -779,7 +833,7 @@ def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, 
             "contracts": queue, "contract_queue_sha256": _json_sha256(queue),
             "start_time": _utcnow(), "last_checkpoint_at": _utcnow(), "state": "READY", "current_index": 0,
             "pending_action": None, "edit_admission": None, "edit_validation": None, "results": [], "stop_reason": None, "operations": [],
-            "suites": [{"id": suite, "argv": list(SUITE_REGISTRY[suite])} for suite in suites],
+            "suites": suite_records,
         }
         result = _result_view(record)
         _record_operation(record, operation_id, "init", payload, result)
