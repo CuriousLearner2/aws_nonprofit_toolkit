@@ -350,6 +350,8 @@ def campaign_status(task_id: str) -> dict[str, Any]:
 
 # External stateful ledger surface. Legacy repo-local state APIs are disabled.
 LEDGER_ROOT = Path("/private/tmp/householder-campaigns")
+DISCOVERY_RUN_ROOT = Path("/private/tmp/householder-discoveries")
+DISCOVERY_DEADLINE = timedelta(minutes=30)
 CAMPAIGN_STATES = {"READY", "ACTIVE", "VALIDATING", "COMMITTED", "FAILED", "QUARANTINED", "STOPPED"}
 CAMPAIGN_TERMINAL = {"COMMITTED", "FAILED", "QUARANTINED", "STOPPED"}
 SUITE_REGISTRY = {
@@ -504,6 +506,102 @@ def _suite_for(record: dict[str, Any], suite_id: str | None) -> dict[str, Any]:
         if suite["id"] == selected:
             return suite
     raise _fail("SUITE_NOT_ALLOWED", "suite-id is not initialized")
+
+
+DISCOVERY_TOP_LEVEL_FIELDS = {"schema_version", "discovery_id", "findings"}
+DISCOVERY_FINDING_FIELDS = {
+    "finding_id", "title", "files", "symbols", "observed_evidence", "risk",
+    "confidence", "remediation_boundary", "required_tests", "estimated_size",
+    "dependencies", "disposition",
+}
+DISCOVERY_DISPOSITIONS = {"proven", "needs-evidence", "test-blocked", "human-decision"}
+DISCOVERY_SIZES = {"small", "medium", "large"}
+
+
+def _discovery_string(value: Any, field: str) -> str:
+    if type(value) is not str or not value or value.strip() != value:
+        raise _fail("DISCOVERY_RESULT_INVALID", f"{field} must be a trimmed string")
+    return value
+
+
+def _validate_discovery_findings(payload: Any, record: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict) or set(payload) != DISCOVERY_TOP_LEVEL_FIELDS:
+        raise _fail("DISCOVERY_RESULT_INVALID", "findings envelope has missing or unknown fields")
+    if payload["schema_version"] != 1 or payload["discovery_id"] != record["discovery_id"]:
+        raise _fail("DISCOVERY_RESULT_INVALID", "findings identity or schema is invalid")
+    if type(payload["findings"]) is not list:
+        raise _fail("DISCOVERY_RESULT_INVALID", "findings must be an array")
+    repo = Path(record["worktree_path"])
+    normalized_findings: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for raw in payload["findings"]:
+        if not isinstance(raw, dict) or set(raw) != DISCOVERY_FINDING_FIELDS:
+            raise _fail("DISCOVERY_RESULT_INVALID", "finding has missing or unknown fields")
+        finding_id = _discovery_string(raw["finding_id"], "finding_id")
+        if finding_id in seen_ids:
+            raise _fail("DISCOVERY_RESULT_INVALID", "finding IDs must be unique")
+        seen_ids.add(finding_id)
+        try:
+            files = _normalized_relative_paths(raw["files"], "finding files")
+        except CampaignError as exc:
+            raise _fail("DISCOVERY_RESULT_INVALID", "finding files are not normalized") from exc
+        for relative in files:
+            candidate = repo / relative
+            resolved = _canonical_path(candidate, "PATH_OUTSIDE_ROOT")
+            if candidate.is_symlink():
+                raise _fail("SYMLINK_ESCAPE", "finding evidence path is a symlink")
+            if not _under(resolved, repo, "PATH_OUTSIDE_ROOT"):
+                raise _fail("PATH_OUTSIDE_ROOT", "finding evidence path leaves the worktree")
+            if not resolved.is_file():
+                raise _fail("DISCOVERY_RESULT_INVALID", "finding evidence file does not exist")
+        for field in ("symbols", "required_tests", "dependencies"):
+            values = raw[field]
+            if type(values) is not list or any(type(value) is not str or not value or value.strip() != value for value in values):
+                raise _fail("DISCOVERY_RESULT_INVALID", f"{field} must be an array of strings")
+        size = _discovery_string(raw["estimated_size"], "estimated_size")
+        disposition = _discovery_string(raw["disposition"], "disposition")
+        if size not in DISCOVERY_SIZES or disposition not in DISCOVERY_DISPOSITIONS:
+            raise _fail("DISCOVERY_RESULT_INVALID", "finding enum is invalid")
+        normalized_findings.append({
+            "finding_id": finding_id,
+            "title": _discovery_string(raw["title"], "title"),
+            "files": files,
+            "symbols": list(raw["symbols"]),
+            "observed_evidence": _discovery_string(raw["observed_evidence"], "observed_evidence"),
+            "risk": _discovery_string(raw["risk"], "risk"),
+            "confidence": _discovery_string(raw["confidence"], "confidence"),
+            "remediation_boundary": _discovery_string(raw["remediation_boundary"], "remediation_boundary"),
+            "required_tests": list(raw["required_tests"]),
+            "estimated_size": size,
+            "dependencies": list(raw["dependencies"]),
+            "disposition": disposition,
+        })
+    return {"schema_version": 1, "discovery_id": record["discovery_id"], "findings": normalized_findings}
+
+
+def _discovery_findings_file(path: str | Path, record: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    source = _canonical_path(path, "PATH_OUTSIDE_ROOT")
+    repo = Path(record["worktree_path"])
+    if _under(source, repo, "PATH_OUTSIDE_ROOT"):
+        raise _fail("PATH_OUTSIDE_ROOT", "findings must be outside the worktree")
+    if Path(path).is_symlink():
+        raise _fail("SYMLINK_ESCAPE", "findings file must not be a symlink")
+    try:
+        payload = _read_json(source)
+    except (OSError, json.JSONDecodeError, CampaignError) as exc:
+        raise _fail("DISCOVERY_RESULT_INVALID", "findings file is unreadable or malformed") from exc
+    normalized = _validate_discovery_findings(payload, record)
+    return normalized, _json_sha256(normalized)
+
+
+def _discovery_findings_path(discovery_id: str) -> Path:
+    return DISCOVERY_RUN_ROOT / _validate_task_id(discovery_id) / "findings.json"
+
+
+def _store_discovery_findings(discovery_id: str, payload: dict[str, Any]) -> Path:
+    path = _discovery_findings_path(discovery_id)
+    _write_atomic_json(path, payload)
+    return path
 
 
 def _json_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -745,6 +843,8 @@ def _check_authorized(contract_path: Path, worktree: Path) -> None:
 
 
 def _ledger_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
+    if isinstance(record, dict) and record.get("mode") == "DISCOVERY":
+        raise _fail("READ_ONLY_VIOLATION", "discovery state cannot drive campaign edits")
     if not isinstance(record, dict) or record.get("campaign_id") != campaign_id:
         raise _fail("EVENT_LOG_CORRUPT", "replayed state malformed")
     if not isinstance(record.setdefault("operations", []), list):
@@ -775,6 +875,26 @@ def _ledger_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
     return record
 
 
+def _discovery_shape(record: dict[str, Any], discovery_id: str) -> dict[str, Any]:
+    if not isinstance(record, dict) or record.get("mode") != "DISCOVERY" or record.get("discovery_id") != discovery_id:
+        raise _fail("EVENT_LOG_CORRUPT", "replayed discovery state malformed")
+    required = {
+        "schema_version", "mode", "discovery_id", "repo_path", "worktree_path", "git_common_dir", "git_dir",
+        "starting_head", "starting_dirty", "starting_worktree_snapshot", "gate_blob_sha", "start_time",
+        "deadline_at", "last_checkpoint_at", "state", "findings_path", "findings_sha256", "operations",
+    }
+    if set(record) < required or record["schema_version"] != 1 or record["state"] not in {"DISCOVERY_ACTIVE", "DISCOVERY_FINISHED"}:
+        raise _fail("EVENT_LOG_CORRUPT", "replayed discovery state malformed")
+    if not isinstance(record["starting_worktree_snapshot"], dict) or not isinstance(record["operations"], list):
+        raise _fail("EVENT_LOG_CORRUPT", "replayed discovery state malformed")
+    for field in ("last_checkpoint_at", "deadline_at"):
+        try:
+            datetime.fromisoformat(str(record[field]).replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise _fail("EVENT_LOG_CORRUPT", "discovery timestamp is invalid") from exc
+    return record
+
+
 def _campaign_stale(record: dict[str, Any]) -> bool:
     checkpoint = datetime.fromisoformat(str(record["last_checkpoint_at"]).replace("Z", "+00:00"))
     return _now_utc() - checkpoint > timedelta(minutes=12)
@@ -782,7 +902,7 @@ def _campaign_stale(record: dict[str, Any]) -> bool:
 
 def _event_state(record: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in record.items() if k not in {"checkpoint_sequence", "checkpoint_hash"}}
-def _read_event_tail(campaign_id: str) -> tuple[dict[str, Any], int, str]:
+def _read_event_tail(campaign_id: str, shape: Any = _ledger_shape) -> tuple[dict[str, Any], int, str]:
     path = _events_file(campaign_id)
     try: raw = path.read_bytes(); lines = raw.decode("utf-8").splitlines(); (_ for _ in ()).throw(_fail("EVENT_LOG_CORRUPT", "event log is truncated")) if not raw.endswith(b"\n") else None
     except (OSError, UnicodeDecodeError) as exc:
@@ -798,11 +918,11 @@ def _read_event_tail(campaign_id: str) -> tuple[dict[str, Any], int, str]:
         if not isinstance(digest, str) or _json_sha256(unsigned) != digest or not isinstance(event.get("state"), dict):
             raise _fail("EVENT_LOG_CORRUPT", "event hash or state is invalid")
         state, previous = event["state"], digest
-    return _ledger_shape(state, campaign_id), len(lines), previous
+    return shape(state, campaign_id), len(lines), previous
 def _write_checkpoint(campaign_id: str, record: dict[str, Any], sequence: int, event_hash: str) -> None:
     payload = {**_event_state(record), "checkpoint_sequence": sequence, "checkpoint_hash": event_hash}; _write_atomic_json(_ledger_file(campaign_id), payload)
-def _append_event(campaign_id: str, record: dict[str, Any], operation_id: str, command: str, payload: dict[str, Any]) -> None:
-    _, sequence, previous = _read_event_tail(campaign_id) if _events_file(campaign_id).exists() else ({}, 0, "")
+def _append_event(campaign_id: str, record: dict[str, Any], operation_id: str, command: str, payload: dict[str, Any], shape: Any = _ledger_shape) -> None:
+    _, sequence, previous = _read_event_tail(campaign_id, shape) if _events_file(campaign_id).exists() else ({}, 0, "")
     unsigned = {"sequence": sequence + 1, "timestamp": _utcnow(), "operation_id": operation_id, "command": command, "payload_sha256": _operation_payload(command, payload), "previous_event_hash": previous, "state": _event_state(record)}
     event = {**unsigned, "event_hash": _json_sha256(unsigned)}; path = _events_file(campaign_id); path.parent.mkdir(parents=True, exist_ok=True); existed = path.exists()
     try:
@@ -819,6 +939,25 @@ def _ledger_load(campaign_id: str) -> dict[str, Any]:
         _write_checkpoint(campaign_id, record, sequence, event_hash); return record
     if not isinstance(cached, dict) or cached.get("checkpoint_sequence") != sequence or cached.get("checkpoint_hash") != event_hash: raise _fail("EVENT_LOG_CORRUPT", "event log does not match checkpoint")
     if _event_state(cached) != record: raise _fail("CHECKPOINT_MISMATCH", "state checkpoint does not match event log")
+    return record
+
+
+def _discovery_load(discovery_id: str) -> dict[str, Any]:
+    try:
+        record, sequence, event_hash = _read_event_tail(discovery_id, _discovery_shape)
+    except CampaignError as exc:
+        if exc.code == "LEDGER_UNAVAILABLE":
+            raise _fail("DISCOVERY_NOT_STARTED", "discovery ledger is not initialized") from exc
+        raise
+    try:
+        cached = json.loads(_ledger_file(discovery_id).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        _write_checkpoint(discovery_id, record, sequence, event_hash)
+        return record
+    if not isinstance(cached, dict) or cached.get("checkpoint_sequence") != sequence or cached.get("checkpoint_hash") != event_hash:
+        raise _fail("CHECKPOINT_MISMATCH", "discovery checkpoint does not match event log")
+    if _event_state(cached) != record:
+        raise _fail("CHECKPOINT_MISMATCH", "discovery checkpoint does not match event log")
     return record
 
 
@@ -850,6 +989,148 @@ def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None,
     if not allow_stale and _campaign_stale(record):
         raise _fail("CAMPAIGN_STALE", "checkpoint is older than 12 minutes")
     return identity["head"], identity["gate"]
+
+
+def _worktree_snapshot(repo: Path) -> dict[str, dict[str, Any]]:
+    raw = subprocess.run(
+        ["git", "ls-files", "-co", "--exclude-standard", "-z"],
+        cwd=repo, capture_output=True, check=False, shell=False,
+    )
+    if raw.returncode:
+        raise _fail("GIT_PRECONDITION", "unable to snapshot worktree")
+    snapshot: dict[str, dict[str, Any]] = {}
+    for encoded in raw.stdout.split(b"\0"):
+        if not encoded:
+            continue
+        relative = encoded.decode("utf-8")
+        path = repo / relative
+        try:
+            stat = path.lstat()
+            if path.is_symlink():
+                value = {"kind": "symlink", "sha256": _json_sha256(os.readlink(path))}
+            elif path.is_file():
+                value = {"kind": "file", "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "mode": stat.st_mode & 0o7777}
+            else:
+                value = {"kind": "other", "mode": stat.st_mode & 0o7777}
+        except OSError as exc:
+            raise _fail("READ_ONLY_VIOLATION", "unable to snapshot worktree") from exc
+        snapshot[relative] = value
+    return snapshot
+
+
+def _discovery_validate(record: dict[str, Any]) -> None:
+    worktree = _canonical_path(record["worktree_path"])
+    repo = _canonical_path(record["repo_path"])
+    if worktree != repo:
+        raise _fail("WORKTREE_MISMATCH", "discovery repo and worktree differ")
+    identity = _ledger_identity(worktree)
+    if identity["worktree_path"] != record["worktree_path"]:
+        raise _fail("WORKTREE_MISMATCH", "discovery worktree identity differs")
+    if identity["git_common_dir"] != record["git_common_dir"] or identity["git_dir"] != record["git_dir"]:
+        raise _fail("GIT_DIR_MISMATCH", "discovery Git identity differs")
+    if identity["head"] != record["starting_head"]:
+        raise _fail("DISCOVERY_HEAD_CHANGED", "discovery HEAD changed")
+    if identity["gate"] != record["gate_blob_sha"]:
+        raise _fail("DISCOVERY_WORKTREE_CHANGED", "discovery gate changed")
+    if _worktree_snapshot(worktree) != record["starting_worktree_snapshot"]:
+        raise _fail("DISCOVERY_WORKTREE_CHANGED", "discovery worktree changed")
+    checkpoint = datetime.fromisoformat(str(record["last_checkpoint_at"]).replace("Z", "+00:00"))
+    deadline = datetime.fromisoformat(str(record["deadline_at"]).replace("Z", "+00:00"))
+    if _now_utc() - checkpoint > timedelta(minutes=12) or _now_utc() > deadline:
+        raise _fail("DISCOVERY_STALE", "discovery heartbeat or deadline expired")
+
+
+def _discovery_result(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "discovery_id": record["discovery_id"],
+        "state": record["state"],
+        "worktree_path": record["worktree_path"],
+        "git_common_dir": record["git_common_dir"],
+        "starting_head": record["starting_head"],
+        "starting_dirty": record["starting_dirty"],
+        "deadline_at": record["deadline_at"],
+        "last_checkpoint_at": record["last_checkpoint_at"],
+        "findings_path": record.get("findings_path"),
+        "findings_sha256": record.get("findings_sha256"),
+    }
+
+
+def campaign_discovery_start(discovery_id: str, operation_id: str) -> dict[str, Any]:
+    discovery_id = _validate_task_id(discovery_id)
+    operation_id = _operation_id(operation_id)
+    payload: dict[str, Any] = {}
+    with _ledger_lock(discovery_id):
+        if _ledger_file(discovery_id).exists() or _events_file(discovery_id).exists():
+            record = _discovery_load(discovery_id)
+            retry = _retry_result(record, operation_id, "start-discovery", payload)
+            if retry is not None:
+                return retry
+            raise _fail("DISCOVERY_ALREADY_STARTED", "discovery already exists")
+        root = repo_root()
+        identity = _ledger_identity(root)
+        now = _now_utc()
+        record = {
+            "schema_version": 1, "mode": "DISCOVERY", "discovery_id": discovery_id,
+            "repo_path": identity["worktree_path"], "worktree_path": identity["worktree_path"],
+            "git_common_dir": identity["git_common_dir"], "git_dir": identity["git_dir"],
+            "starting_head": identity["head"], "starting_dirty": identity["dirty"],
+            "starting_worktree_snapshot": _worktree_snapshot(root), "gate_blob_sha": identity["gate"],
+            "start_time": now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "deadline_at": (now + DISCOVERY_DEADLINE).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "last_checkpoint_at": now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "state": "DISCOVERY_ACTIVE", "findings_path": None, "findings_sha256": None, "operations": [],
+        }
+        output = _discovery_result(record)
+        _record_operation(record, operation_id, "start-discovery", payload, output)
+        _append_event(discovery_id, record, operation_id, "DISCOVERY_STARTED", payload, _discovery_shape)
+        return output
+
+
+def _discovery_submit(discovery_id: str, operation_id: str, command: str, findings_file: str, finish: bool) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id)
+    with _ledger_lock(discovery_id):
+        record = _discovery_load(discovery_id)
+        if record["state"] == "DISCOVERY_FINISHED":
+            payload = {"findings_sha256": record["findings_sha256"]}
+            retry = _retry_result(record, operation_id, command, payload)
+            if retry is not None:
+                return retry
+            raise _fail("DISCOVERY_ALREADY_STARTED", "discovery is already finished")
+        if record["state"] != "DISCOVERY_ACTIVE":
+            raise _fail("DISCOVERY_NOT_STARTED", "discovery is not active")
+        normalized, findings_sha = _discovery_findings_file(findings_file, record)
+        payload = {"findings_sha256": findings_sha}
+        retry = _retry_result(record, operation_id, command, payload)
+        if retry is not None:
+            return retry
+        _discovery_validate(record)
+        target = _discovery_findings_path(discovery_id)
+        previous = target.read_bytes() if target.exists() else None
+        _store_discovery_findings(discovery_id, normalized)
+        record["findings_path"] = str(target)
+        record["findings_sha256"] = findings_sha
+        record["last_checkpoint_at"] = _utcnow()
+        if finish:
+            record["state"] = "DISCOVERY_FINISHED"
+        output = {**_discovery_result(record), "findings_count": len(normalized["findings"])}
+        _record_operation(record, operation_id, command, payload, output)
+        try:
+            _append_event(discovery_id, record, operation_id, "DISCOVERY_FINISHED" if finish else "DISCOVERY_CHECKPOINT", payload, _discovery_shape)
+        except Exception:
+            if previous is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(previous)
+            raise
+        return output
+
+
+def campaign_discovery_checkpoint(discovery_id: str, operation_id: str, findings_file: str) -> dict[str, Any]:
+    return _discovery_submit(discovery_id, operation_id, "discovery-checkpoint", findings_file, False)
+
+
+def campaign_discovery_finish(discovery_id: str, operation_id: str, findings_file: str) -> dict[str, Any]:
+    return _discovery_submit(discovery_id, operation_id, "finish-discovery", findings_file, True)
 
 
 def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, gate_blob_sha: str, contracts: list[dict[str, str]], suite_ids: list[str] | None = None) -> dict[str, Any]:
@@ -1046,6 +1327,9 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("status", "next"):
         command = commands.add_parser(name); command.add_argument("campaign_id"); command.add_argument("--repo"); command.add_argument("--worktree"); command.add_argument("--contract", dest="contract_override"); command.add_argument("--suite-id")
     checkpoint = commands.add_parser("checkpoint"); checkpoint.add_argument("campaign_id"); checkpoint.add_argument("operation_id")
+    discovery_start = commands.add_parser("start-discovery"); discovery_start.add_argument("discovery_id"); discovery_start.add_argument("operation_id")
+    discovery_checkpoint = commands.add_parser("discovery-checkpoint"); discovery_checkpoint.add_argument("discovery_id"); discovery_checkpoint.add_argument("operation_id"); discovery_checkpoint.add_argument("findings_file")
+    discovery_finish = commands.add_parser("finish-discovery"); discovery_finish.add_argument("discovery_id"); discovery_finish.add_argument("operation_id"); discovery_finish.add_argument("findings_file")
     edit = commands.add_parser("start-edit"); edit.add_argument("campaign_id"); edit.add_argument("contract_index", type=int); edit.add_argument("operation_id")
     finish = commands.add_parser("finish-edit"); finish.add_argument("campaign_id"); finish.add_argument("contract_index", type=int); finish.add_argument("operation_id")
     result = commands.add_parser("record-result")
@@ -1063,7 +1347,10 @@ def main(argv: list[str] | None = None) -> int:
             raise _fail("CONTRACT_NOT_INITIALIZED", "caller contract override is not allowed")
         if args.command != "record-result" and getattr(args, "suite_id", None):
             raise _fail("SUITE_NOT_ALLOWED", "caller suite override is not allowed")
-        if args.command == "init":
+        if args.command == "start-discovery": value = campaign_discovery_start(args.discovery_id, args.operation_id)
+        elif args.command == "discovery-checkpoint": value = campaign_discovery_checkpoint(args.discovery_id, args.operation_id, args.findings_file)
+        elif args.command == "finish-discovery": value = campaign_discovery_finish(args.discovery_id, args.operation_id, args.findings_file)
+        elif args.command == "init":
             queue = [dict(zip(("path", "sha256"), item.rsplit("=", 1))) for item in args.contract]
             value = campaign_ledger_init(args.campaign_id, args.operation_id, args.repo, args.gate_blob_sha, queue, args.suite_ids)
         elif args.command == "status": value = campaign_ledger_status(args.campaign_id)

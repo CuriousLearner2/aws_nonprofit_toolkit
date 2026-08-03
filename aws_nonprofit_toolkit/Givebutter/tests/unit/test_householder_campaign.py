@@ -347,3 +347,120 @@ def test_checkpoint_is_idempotent_persistent_and_stale_only_after_twelve_minutes
     fails(lambda: loaded.campaign_ledger_status("campaign-01"), "CAMPAIGN_STALE")
     refreshed = loaded.campaign_ledger_checkpoint("campaign-01", "checkpoint-2")
     assert refreshed["checkpoint_at"].startswith("2026-01-01T00:12:01")
+
+
+def discovery_findings(discovery_id="discovery-01", files=None):
+    return {
+        "schema_version": 1,
+        "discovery_id": discovery_id,
+        "findings": [{
+            "finding_id": "finding-01",
+            "title": "Mixed policy",
+            "files": files or ["seed.txt"],
+            "symbols": ["seed behavior"],
+            "observed_evidence": "Focused inspection found one mixed responsibility.",
+            "risk": "Policy drift.",
+            "confidence": "high",
+            "remediation_boundary": "Pure service-layer extraction only.",
+            "required_tests": ["tests/unit/test_householder_campaign.py"],
+            "estimated_size": "small",
+            "dependencies": [],
+            "disposition": "proven",
+        }],
+    }
+
+
+def start_discovery(repo, tmp_path, monkeypatch, discovery_id="discovery-01"):
+    monkeypatch.setattr(campaign, "repo_root", lambda: repo)
+    monkeypatch.setattr(campaign, "DISCOVERY_RUN_ROOT", tmp_path / "discoveries")
+    result = campaign.campaign_discovery_start(discovery_id, "start-" + discovery_id)
+    findings = tmp_path / (discovery_id + "-findings.json")
+    findings.write_text(json.dumps(discovery_findings(discovery_id)) + "\n")
+    return result, findings
+
+
+def test_discovery_happy_path_restart_and_exact_retries(repo, tmp_path, monkeypatch):
+    started, findings = start_discovery(repo, tmp_path, monkeypatch)
+    assert started["starting_head"] == git(repo, "rev-parse", "HEAD")
+    checkpoint = campaign.campaign_discovery_checkpoint("discovery-01", "checkpoint-1", str(findings))
+    events = Path(campaign.LEDGER_ROOT) / "discovery-01/events.jsonl"
+    ledger_root = campaign.LEDGER_ROOT
+    before = events.read_bytes()
+    assert campaign.campaign_discovery_checkpoint("discovery-01", "checkpoint-1", str(findings)) == checkpoint
+    assert events.read_bytes() == before
+    loaded = importlib.reload(campaign)
+    loaded.LEDGER_ROOT = ledger_root
+    loaded.DISCOVERY_RUN_ROOT = tmp_path / "discoveries"
+    loaded.repo_root = lambda: repo
+    assert loaded._discovery_load("discovery-01")["state"] == "DISCOVERY_ACTIVE"
+    finished = loaded.campaign_discovery_finish("discovery-01", "finish-1", str(findings))
+    assert finished["state"] == "DISCOVERY_FINISHED"
+    assert len(events.read_text().splitlines()) == 3
+    assert loaded.campaign_discovery_finish("discovery-01", "finish-1", str(findings)) == finished
+    assert json.loads(events.read_text().splitlines()[-1])["command"] == "DISCOVERY_FINISHED"
+
+
+def test_discovery_conflict_and_strict_findings_fail_without_event(repo, tmp_path, monkeypatch):
+    _, findings = start_discovery(repo, tmp_path, monkeypatch)
+    campaign.campaign_discovery_checkpoint("discovery-01", "checkpoint-1", str(findings))
+    events = Path(campaign.LEDGER_ROOT) / "discovery-01/events.jsonl"
+    before = events.read_bytes()
+    changed = json.loads(findings.read_text()); changed["findings"][0]["risk"] = "changed"
+    findings.write_text(json.dumps(changed) + "\n")
+    fails(lambda: campaign.campaign_discovery_checkpoint("discovery-01", "checkpoint-1", str(findings)), "OPERATION_CONFLICT")
+    assert events.read_bytes() == before
+    for text in (
+        '{"schema_version":1,"discovery_id":"discovery-01","findings":[],"extra":true}',
+        '{"schema_version":1,"discovery_id":"discovery-01","findings":[{"finding_id":"x","finding_id":"y"}]}',
+    ):
+        findings.write_text(text)
+        fails(lambda: campaign.campaign_discovery_checkpoint("discovery-01", "checkpoint-bad", str(findings)), "DISCOVERY_RESULT_INVALID")
+    assert events.read_bytes() == before
+
+
+@pytest.mark.parametrize("mutation,expected", [
+    ("tracked", "DISCOVERY_WORKTREE_CHANGED"),
+    ("untracked", "DISCOVERY_WORKTREE_CHANGED"),
+    ("head", "DISCOVERY_HEAD_CHANGED"),
+])
+def test_discovery_rejects_repository_mutation(repo, tmp_path, monkeypatch, mutation, expected):
+    _, findings = start_discovery(repo, tmp_path, monkeypatch, "discovery-" + mutation)
+    if mutation == "tracked":
+        (repo / "seed.txt").write_text("changed\n")
+    elif mutation == "untracked":
+        (repo / "new.txt").write_text("new\n")
+    else:
+        (repo / "head.txt").write_text("head\n"); git(repo, "add", "head.txt"); git(repo, "commit", "-qm", "head change")
+    events = Path(campaign.LEDGER_ROOT) / ("discovery-" + mutation + "/events.jsonl")
+    before = events.read_bytes()
+    fails(lambda: campaign.campaign_discovery_checkpoint("discovery-" + mutation, "checkpoint-1", str(findings)), expected)
+    assert events.read_bytes() == before
+
+
+def test_discovery_rejects_symlink_evidence_and_preserves_preexisting_dirty_state(repo, tmp_path, monkeypatch):
+    outside = tmp_path / "outside.txt"; outside.write_text("outside\n")
+    link = repo / "evidence-link"; link.symlink_to(outside)
+    _, findings = start_discovery(repo, tmp_path, monkeypatch, "discovery-symlink")
+    payload = discovery_findings("discovery-symlink", ["evidence-link"]); findings.write_text(json.dumps(payload) + "\n")
+    events = Path(campaign.LEDGER_ROOT) / "discovery-symlink/events.jsonl"; before = events.read_bytes()
+    fails(lambda: campaign.campaign_discovery_finish("discovery-symlink", "finish-1", str(findings)), "SYMLINK_ESCAPE")
+    assert events.read_bytes() == before and link.is_symlink() and link.resolve() == outside
+
+
+def test_discovery_stale_and_edit_admission_are_rejected(repo, tmp_path, monkeypatch):
+    fixed = campaign.datetime(2026, 1, 1, tzinfo=campaign.timezone.utc)
+    monkeypatch.setattr(campaign, "_now_utc", lambda: fixed)
+    _, findings = start_discovery(repo, tmp_path, monkeypatch, "discovery-stale")
+    campaign.campaign_discovery_checkpoint("discovery-stale", "checkpoint-before-stale", str(findings))
+    monkeypatch.setattr(campaign, "_now_utc", lambda: fixed + campaign.timedelta(minutes=12, seconds=1))
+    fails(lambda: campaign.campaign_discovery_checkpoint("discovery-stale", "checkpoint-1", str(findings)), "DISCOVERY_STALE")
+    fails(lambda: campaign.campaign_ledger_start_edit("discovery-stale", 0, "edit-1"), "READ_ONLY_VIOLATION")
+
+
+def test_discovery_commands_fail_closed_before_start(repo, tmp_path, monkeypatch):
+    monkeypatch.setattr(campaign, "repo_root", lambda: repo)
+    monkeypatch.setattr(campaign, "DISCOVERY_RUN_ROOT", tmp_path / "discoveries")
+    findings = tmp_path / "findings.json"
+    findings.write_text(json.dumps(discovery_findings("missing-discovery")) + "\n")
+    fails(lambda: campaign.campaign_discovery_checkpoint("missing-discovery", "checkpoint-1", str(findings)), "DISCOVERY_NOT_STARTED")
+    fails(lambda: campaign.campaign_discovery_finish("missing-discovery", "finish-1", str(findings)), "DISCOVERY_NOT_STARTED")
