@@ -31,7 +31,17 @@ def repo(tmp_path, monkeypatch):
 
 @pytest.fixture
 def contract(tmp_path):
-    path = tmp_path / "contract.json"; path.write_text('{"task":"contained"}\n')
+    path = tmp_path / "contract.json"; path.write_text(json.dumps({
+        "typed_contract": {
+            "baseline_head": "test-baseline",
+            "gate_sha": "test-gate",
+            "allowed_files": [],
+            "max_production_lines": 10,
+            "max_test_lines": 10,
+            "suite_ids": ["wrapper-unit"],
+            "invariants": ["behavior-preserved"],
+        },
+    }) + "\n")
     return {"path": str(path), "sha256": campaign._json_sha256(json.loads(path.read_text()))}
 
 
@@ -113,3 +123,51 @@ def test_event_append_failure_leaves_no_checkpoint(repo, contract, monkeypatch):
     fails(lambda: initialize(repo, contract, "campaign-04"), "EVENT_APPEND_FAILED")
     root = Path(campaign.LEDGER_ROOT) / "campaign-04"
     assert not (root / "state.json").exists() and not (root / "events.jsonl").exists()
+
+
+def test_typed_contract_rejects_unknown_missing_malformed_and_duplicate_fields(tmp_path):
+    valid = {
+        "baseline_head": "HEAD",
+        "gate_sha": "gate",
+        "allowed_files": ["scripts/ci/householder_campaign.py"],
+        "max_production_lines": 10,
+        "max_test_lines": 10,
+        "suite_ids": ["wrapper-unit"],
+        "invariants": ["preserve"],
+    }
+    assert campaign._strict_contract(valid) == valid
+    assert campaign._strict_contract({"typed_contract": valid}) == valid
+    for invalid in (
+        {**valid, "unexpected": True},
+        {key: value for key, value in valid.items() if key != "gate_sha"},
+        {**valid, "max_test_lines": "10"},
+        {**valid, "suite_ids": ["not-allowed"]},
+        {"typed_contract": valid, "unexpected": True},
+    ):
+        fails(lambda invalid=invalid: campaign._strict_contract({"typed_contract": invalid}), "CONTRACT_MALFORMED|SUITE_NOT_ALLOWED")
+    reordered = {key: valid[key] for key in reversed(list(valid))}
+    assert campaign._json_sha256(campaign._strict_contract(valid)) == campaign._json_sha256(campaign._strict_contract(reordered))
+    duplicate = tmp_path / "duplicate.json"
+    duplicate.write_text('{"typed_contract": {"baseline_head":"HEAD", "baseline_head":"OTHER"}}')
+    with pytest.raises(campaign.CampaignError, match="duplicate contract field"):
+        campaign._read_json(duplicate)
+
+
+def test_checkpoint_is_idempotent_persistent_and_stale_only_after_twelve_minutes(repo, contract, monkeypatch):
+    initialize(repo, contract)
+    fixed = campaign.datetime(2026, 1, 1, tzinfo=campaign.timezone.utc)
+    monkeypatch.setattr(campaign, "_now_utc", lambda: fixed)
+    first = campaign.campaign_ledger_checkpoint("campaign-01", "checkpoint-1")
+    events = Path(campaign.LEDGER_ROOT) / "campaign-01/events.jsonl"
+    before = events.read_bytes()
+    assert campaign.campaign_ledger_checkpoint("campaign-01", "checkpoint-1") == first
+    assert events.read_bytes() == before
+    loaded = importlib.reload(campaign)
+    monkeypatch.setattr(loaded, "LEDGER_ROOT", Path(repo).parent / "campaigns")
+    assert loaded.campaign_ledger_checkpoint("campaign-01", "checkpoint-1") == first
+    monkeypatch.setattr(loaded, "_now_utc", lambda: fixed + loaded.timedelta(minutes=11, seconds=59))
+    loaded.campaign_ledger_status("campaign-01")
+    monkeypatch.setattr(loaded, "_now_utc", lambda: fixed + loaded.timedelta(minutes=12, seconds=1))
+    fails(lambda: loaded.campaign_ledger_status("campaign-01"), "CAMPAIGN_STALE")
+    refreshed = loaded.campaign_ledger_checkpoint("campaign-01", "checkpoint-2")
+    assert refreshed["checkpoint_at"].startswith("2026-01-01T00:12:01")

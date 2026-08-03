@@ -9,9 +9,10 @@ import os
 import subprocess
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
+
 
 
 SCHEMA_VERSION = 1
@@ -23,8 +24,12 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return _now_utc().isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _validate_task_id(task_id: str) -> str:
@@ -320,6 +325,71 @@ SUITE_REGISTRY = {
     "wrapper-unit": ["python3", "-m", "pytest", "-q", "tests/unit/test_householder_campaign.py"],
 }
 
+
+TYPED_CONTRACT_FIELDS = {
+    "baseline_head",
+    "gate_sha",
+    "allowed_files",
+    "max_production_lines",
+    "max_test_lines",
+    "suite_ids",
+    "invariants",
+}
+
+
+def _strict_typed_dict(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise _fail("CONTRACT_MALFORMED", "typed contract must be an object")
+    unknown = set(value) - TYPED_CONTRACT_FIELDS
+    missing = TYPED_CONTRACT_FIELDS - set(value)
+    if unknown or missing:
+        raise _fail("CONTRACT_MALFORMED", "typed contract has missing or unknown fields")
+    for field in ("baseline_head", "gate_sha"):
+        item = value[field]
+        if type(item) is not str or not item or item.strip() != item:
+            raise _fail("CONTRACT_MALFORMED", f"{field} must be a trimmed string")
+    for field in ("max_production_lines", "max_test_lines"):
+        item = value[field]
+        if type(item) is not int or item < 0 or item > 1_000_000:
+            raise _fail("CONTRACT_MALFORMED", f"{field} must be a bounded non-negative integer")
+    for field in ("allowed_files", "suite_ids", "invariants"):
+        items = value[field]
+        if type(items) is not list or (field == "suite_ids" and not items):
+            raise _fail("CONTRACT_MALFORMED", f"{field} must be a JSON array")
+        if any(type(item) is not str or not item or item.strip() != item for item in items):
+            raise _fail("CONTRACT_MALFORMED", f"{field} entries must be trimmed strings")
+        if len(items) != len(set(items)):
+            raise _fail("CONTRACT_MALFORMED", f"{field} entries must be unique")
+    return {field: value[field] for field in sorted(TYPED_CONTRACT_FIELDS)}
+
+
+def _strict_contract(payload: Any, *, baseline_head: str | None = None, gate_sha: str | None = None, suite_ids: list[str] | None = None) -> dict[str, Any]:
+    """Validate the exact typed metadata while preserving gate contract fields."""
+    if not isinstance(payload, dict):
+        raise _fail("CONTRACT_MALFORMED", "contract must be an object")
+    typed = payload.get("typed_contract")
+    strict_fields = TYPED_CONTRACT_FIELDS
+    if typed is not None and set(payload) != {"typed_contract"}:
+        raise _fail("CONTRACT_MALFORMED", "typed contract envelope has unknown fields")
+    if typed is None and strict_fields.intersection(payload):
+        if set(payload) != strict_fields:
+            raise _fail("CONTRACT_MALFORMED", "strict contract has missing or unknown fields")
+        typed = payload
+    if typed is None:
+        typed = {
+            "baseline_head": payload.get("baseline_head", payload.get("baseline_ref", baseline_head or "legacy")),
+            "gate_sha": payload.get("gate_sha", payload.get("gate_blob_sha", gate_sha or "legacy")),
+            "allowed_files": payload.get("allowed_files", payload.get("authorized_files", [])),
+            "max_production_lines": payload.get("max_production_lines", payload.get("production_changed_lines_max", 0)),
+            "max_test_lines": payload.get("max_test_lines", payload.get("test_changed_lines_max", 0)),
+            "suite_ids": payload.get("suite_ids", suite_ids or ["wrapper-unit"]),
+            "invariants": payload.get("invariants", []),
+        }
+    normalized = _strict_typed_dict(typed)
+    if any(item not in SUITE_REGISTRY for item in normalized["suite_ids"]):
+        raise _fail("SUITE_NOT_ALLOWED", "typed contract contains an unknown suite")
+    return normalized
+
 class CampaignError(ValueError):
     def __init__(self, code: str, message: str): self.code = code; super().__init__(f"{code}: {message}")
 def _fail(code: str, message: str) -> CampaignError:
@@ -365,8 +435,21 @@ def _suite_for(record: dict[str, Any], suite_id: str | None) -> dict[str, Any]:
     raise _fail("SUITE_NOT_ALLOWED", "suite-id is not initialized")
 
 
+def _json_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _fail("CONTRACT_MALFORMED", f"duplicate contract field: {key}")
+        result[key] = value
+    return result
+
+
+def _read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_json_object_pairs)
+
+
 def _finish_contract(path: str) -> dict[str, Any]:
-    try: payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    try: payload = _read_json(Path(path))
     except (OSError, json.JSONDecodeError) as exc: raise _fail("CONTRACT_NOT_INITIALIZED", "contract unreadable") from exc
     if not isinstance(payload, dict): raise _fail("CONTRACT_NOT_INITIALIZED", "contract malformed")
     return payload
@@ -459,25 +542,31 @@ def _ledger_identity(repo: Path) -> dict[str, Any]:
     return {"head": _ledger_git(worktree, "rev-parse", "HEAD"), "dirty": bool(_ledger_git(worktree, "status", "--porcelain", "--untracked-files=all")), "gate": _ledger_git(worktree, "hash-object", str(worktree / "scripts/ci/architecture_slice_gate.py")), "worktree_path": str(worktree), "git_common_dir": str(common_dir), "git_dir": str(git_dir)}
 
 
-def _ledger_contract(path: str, expected: str, contract_root: Path | None = None) -> dict[str, str]:
+def _ledger_contract(path: str, expected: str, contract_root: Path | None = None, *, baseline_head: str | None = None, gate_sha: str | None = None, suite_ids: list[str] | None = None, typed_sha: str | None = None) -> dict[str, Any]:
     file = _canonical_path(path, "CONTRACT_NOT_INITIALIZED")
     if contract_root is not None and not _under(file, _canonical_path(contract_root), "SYMLINK_ESCAPE"):
         raise _fail("SYMLINK_ESCAPE", "contract path leaves approved root")
     try:
-        payload = json.loads(file.read_text(encoding="utf-8"))
+        payload = _read_json(file)
+    except CampaignError:
+        raise
     except (OSError, json.JSONDecodeError) as exc:
         raise _fail("CONTRACT_UNAVAILABLE", "contract unreadable") from exc
     if _json_sha256(payload) != expected:
         raise _fail("CONTRACT_MUTATED", "contract digest mismatch")
-    return {"path": str(file), "sha256": expected}
+    typed = _strict_contract(payload, baseline_head=baseline_head, gate_sha=gate_sha, suite_ids=suite_ids)
+    digest = _json_sha256(typed)
+    if typed_sha is not None and digest != typed_sha:
+        raise _fail("CONTRACT_MUTATED", "normalized contract digest mismatch")
+    return {"path": str(file), "sha256": expected, "typed_contract": typed, "typed_contract_sha256": digest}
 
 
 def _check_authorized(contract_path: Path, worktree: Path) -> None:
     try:
-        payload = json.loads(contract_path.read_text(encoding="utf-8"))
+        payload = _read_json(contract_path)
     except (OSError, json.JSONDecodeError) as exc:
         raise _fail("CONTRACT_NOT_INITIALIZED", "contract unreadable") from exc
-    raw_files = payload.get("authorized_files", []) if isinstance(payload, dict) else []
+    raw_files = payload.get("authorized_files", payload.get("allowed_files", [])) if isinstance(payload, dict) else []
     if not isinstance(raw_files, list): raise _fail("CONTRACT_NOT_INITIALIZED", "authorized files malformed")
     for raw in raw_files:
         if not isinstance(raw, str) or Path(raw).is_absolute() or ".." in Path(raw).parts: raise _fail("PATH_OUTSIDE_ROOT", "authorized file is not contained")
@@ -491,7 +580,7 @@ def _ledger_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
         raise _fail("EVENT_LOG_CORRUPT", "replayed state malformed")
     if not isinstance(record.setdefault("operations", []), list):
         raise _fail("EVENT_LOG_CORRUPT", "replayed operations malformed")
-    if any(field not in record for field in ("repo_path", "worktree_path", "git_common_dir", "git_dir", "contract_root", "suites")):
+    if any(field not in record for field in ("repo_path", "worktree_path", "git_common_dir", "git_dir", "contract_root", "suites", "last_checkpoint_at")):
         raise _fail("EVENT_LOG_CORRUPT", "replayed containment fields missing")
     if not isinstance(record["suites"], list) or not record["suites"] or any(not isinstance(s, dict) or s.get("id") not in SUITE_REGISTRY or s.get("argv") != SUITE_REGISTRY[s["id"]] for s in record["suites"]):
         raise _fail("SUITE_NOT_ALLOWED", "persisted suite is not allowed")
@@ -510,7 +599,16 @@ def _ledger_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
         raise _fail("EVENT_LOG_CORRUPT", "replayed state malformed")
     if _json_sha256(record["contracts"]) != record.get("contract_queue_sha256"):
         raise _fail("EVENT_LOG_CORRUPT", "contract queue digest mismatch")
+    try:
+        datetime.fromisoformat(str(record["last_checkpoint_at"]).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise _fail("EVENT_LOG_CORRUPT", "checkpoint timestamp is invalid") from exc
     return record
+
+
+def _campaign_stale(record: dict[str, Any]) -> bool:
+    checkpoint = datetime.fromisoformat(str(record["last_checkpoint_at"]).replace("Z", "+00:00"))
+    return _now_utc() - checkpoint > timedelta(minutes=12)
 
 
 def _event_state(record: dict[str, Any]) -> dict[str, Any]:
@@ -555,7 +653,7 @@ def _ledger_load(campaign_id: str) -> dict[str, Any]:
     return record
 
 
-def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None, allow_dirty: bool = False) -> tuple[str, str]:
+def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None, allow_dirty: bool = False, allow_stale: bool = False) -> tuple[str, str]:
     worktree = _canonical_path(record["worktree_path"])
     repo = _canonical_path(record["repo_path"])
     if repo != worktree:
@@ -571,10 +669,14 @@ def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None,
         raise _fail("GATE_MUTATED", "gate blob mismatch")
     contract_root = _canonical_path(record["contract_root"])
     for item in record["contracts"]:
-        _ledger_contract(item["path"], item["sha256"], contract_root)
+        current = _ledger_contract(item["path"], item["sha256"], contract_root, baseline_head=record["starting_head"], gate_sha=record["gate_blob_sha"], suite_ids=[suite["id"] for suite in record["suites"]], typed_sha=item.get("typed_contract_sha256"))
+        if current["typed_contract"] != item.get("typed_contract"):
+            raise _fail("CONTRACT_MUTATED", "normalized contract changed")
         _check_authorized(Path(item["path"]), worktree)
     if identity["head"] != record["current_head"] and identity["head"] != expected_commit:
         raise _fail("STALE_HEAD", "stale HEAD")
+    if not allow_stale and _campaign_stale(record):
+        raise _fail("CAMPAIGN_STALE", "checkpoint is older than 12 minutes")
     return identity["head"], identity["gate"]
 
 
@@ -607,14 +709,14 @@ def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, 
             raise _fail("GATE_MUTATED", "gate blob mismatch")
         queue = []
         for path, item in zip(raw_contracts, contracts):
-            queue.append(_ledger_contract(str(path), item["sha256"], contract_root))
+            queue.append(_ledger_contract(str(path), item["sha256"], contract_root, baseline_head=identity["head"], gate_sha=gate_blob_sha, suite_ids=suites))
             _check_authorized(path, Path(identity["worktree_path"]))
         record = {
             "schema_version": 1, "campaign_id": campaign_id, "repo_path": str(repo),
             "worktree_path": identity["worktree_path"], "git_common_dir": identity["git_common_dir"], "git_dir": identity["git_dir"],
             "contract_root": str(contract_root), "starting_head": identity["head"], "current_head": identity["head"], "gate_blob_sha": gate_blob_sha,
             "contracts": queue, "contract_queue_sha256": _json_sha256(queue),
-            "start_time": _utcnow(), "state": "READY", "current_index": 0,
+            "start_time": _utcnow(), "last_checkpoint_at": _utcnow(), "state": "READY", "current_index": 0,
             "pending_action": None, "edit_admission": None, "edit_validation": None, "results": [], "stop_reason": None, "operations": [],
             "suites": [{"id": suite, "argv": list(SUITE_REGISTRY[suite])} for suite in suites],
         }
@@ -622,6 +724,23 @@ def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, 
         _record_operation(record, operation_id, "init", payload, result)
         _append_event(campaign_id, record, operation_id, "init", payload)
         return result
+
+
+def campaign_ledger_checkpoint(campaign_id: str, operation_id: str) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id)
+    payload: dict[str, Any] = {}
+    with _ledger_lock(campaign_id):
+        record = _ledger_load(campaign_id)
+        retry = _retry_result(record, operation_id, "checkpoint", payload)
+        if retry is not None:
+            return retry
+        _ledger_validate(record, allow_dirty=bool(record.get("edit_validation")), allow_stale=True)
+        timestamp = _utcnow()
+        record["last_checkpoint_at"] = timestamp
+        output = {"campaign_id": campaign_id, "checkpoint_at": timestamp, "state": record["state"]}
+        _record_operation(record, operation_id, "checkpoint", payload, output)
+        _append_event(campaign_id, record, operation_id, "CHECKPOINT", payload)
+        return output
 
 
 def campaign_ledger_status(campaign_id: str) -> dict[str, Any]:
@@ -746,6 +865,7 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("--suite-id", action="append", dest="suite_ids")
     for name in ("status", "next"):
         command = commands.add_parser(name); command.add_argument("campaign_id"); command.add_argument("--repo"); command.add_argument("--worktree"); command.add_argument("--contract", dest="contract_override"); command.add_argument("--suite-id")
+    checkpoint = commands.add_parser("checkpoint"); checkpoint.add_argument("campaign_id"); checkpoint.add_argument("operation_id")
     edit = commands.add_parser("start-edit"); edit.add_argument("campaign_id"); edit.add_argument("contract_index", type=int); edit.add_argument("operation_id")
     finish = commands.add_parser("finish-edit"); finish.add_argument("campaign_id"); finish.add_argument("contract_index", type=int); finish.add_argument("operation_id")
     result = commands.add_parser("record-result")
@@ -768,6 +888,7 @@ def main(argv: list[str] | None = None) -> int:
             value = campaign_ledger_init(args.campaign_id, args.operation_id, args.repo, args.gate_blob_sha, queue, args.suite_ids)
         elif args.command == "status": value = campaign_ledger_status(args.campaign_id)
         elif args.command == "next": value = campaign_ledger_next(args.campaign_id)
+        elif args.command == "checkpoint": value = campaign_ledger_checkpoint(args.campaign_id, args.operation_id)
         elif args.command == "start-edit": value = campaign_ledger_start_edit(args.campaign_id, args.contract_index, args.operation_id)
         elif args.command == "finish-edit": value = campaign_ledger_finish_edit(args.campaign_id, args.contract_index, args.operation_id)
         elif args.command == "record-result":

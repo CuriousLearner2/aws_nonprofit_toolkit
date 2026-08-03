@@ -25,6 +25,25 @@ Define and prove:
 Do not accept UI text, HTTP success, queue-row creation, or isolated component tests as sufficient proof.
 Do not use filename, label, timestamp, list position, or newest-first ordering as authoritative identity.
 
+## Campaign wrapper standing policy
+
+- Use only wrapper-issued actions; edit only the admitted worktree and files.
+- Never alter campaign state, push, or merge.
+- Checkpoint every 10 minutes.
+- Stop immediately on wrapper rejection or `STOP`.
+
+Task prompt template:
+
+```text
+Goal: <goal>
+Campaign: <id>
+Worktree: <path>
+Contract: <path>
+Contract SHA: <sha>
+
+Use only wrapper-issued actions. Checkpoint every 10 minutes. Stop on rejection or STOP.
+```
+
 ## Review Capability
 
 Policy files existing on disk do not prove Reviewer/Breaker can be invoked.
