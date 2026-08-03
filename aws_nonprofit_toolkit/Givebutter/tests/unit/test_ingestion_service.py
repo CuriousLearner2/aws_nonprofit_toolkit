@@ -523,3 +523,78 @@ class TestIngestionIntegration:
 
         assert result.status == "success"
         assert result.contacts_created == 1
+
+    def test_characterization_mixed_rows_aliases_normalization_and_order(self, tmp_path):
+        """Mixed tiers preserve current aliases, normalized values, order, and counters."""
+        from scripts.householder.database_models import (
+            ImportContact,
+            ReviewItem,
+            init_db,
+        )
+
+        csv_file = tmp_path / "mixed.csv"
+        csv_file.write_text(
+            "Full Name,Email Address,Phone Number,Donation Amount,Donation Date,Validation_Tier,Issues,Suggested_Modifications\n"
+            "Ada Lovelace,(ada@example.com), (415) 555-1212,$12.50,2026-06-12,PASS,None,Email: ada@example.com; Name: Ada Lovelace\n"
+            "Grace Hopper,,415-555-3434,20.00,2026-06-13,WARNING,Email: missing,Verify email\n"
+            "Alan Turing,alan@example.com,,bad,2026-06-14,FAIL,Email: typo; Amount: invalid,\n"
+        )
+        db_url = f"sqlite:///{tmp_path / 'mixed.db'}"
+        init_db(db_url)
+
+        result = ingest_processed_csv(str(csv_file), "mixed.csv", db_url, uploader="tester")
+
+        assert result.raw_row_count == 3
+        assert (result.pass_count, result.warning_count, result.fail_count) == (1, 1, 1)
+        assert result.validation_items_created == 3
+        assert result.normalization_items_created == 2
+
+        session = __import__("scripts.householder.ingestion_service", fromlist=["get_db_session"]).get_db_session(db_url)
+        try:
+            contacts = session.query(ImportContact).order_by(ImportContact.id).all()
+            assert [(c.first_name, c.last_name, c.phone, c.amount) for c in contacts] == [
+                ("Ada", "Lovelace", "4155551212", 12.5),
+                ("Grace", "Hopper", "4155553434", 20.0),
+                ("Alan", "Turing", None, None),
+            ]
+            items = session.query(ReviewItem).order_by(ReviewItem.id).all()
+            assert [item.item_type for item in items] == ["normalization", "normalization", "validation", "validation", "validation"]
+            assert [item.payload_json["normalized_value"] for item in items[:2]] == ["Email: ada@example.com", "Name: Ada Lovelace"]
+            assert [item.payload_json["issue"] for item in items[2:]] == ["Email: missing", "Email: typo", "Amount: invalid"]
+        finally:
+            session.close()
+
+    def test_characterization_commit_failure_rolls_back_every_ingestion_table(self, tmp_path):
+        """Commit failure leaves no batch, row, contact, item, subject, or audit rows."""
+        from unittest.mock import patch
+        from scripts.householder.database_models import (
+            AuditLogRecord,
+            ImportBatch,
+            ImportContact,
+            RawImportRow,
+            ReviewItem,
+            ReviewItemSubject,
+            init_db,
+        )
+        from scripts.householder.ingestion_service import get_db_session
+
+        csv_file = tmp_path / "rollback-all.csv"
+        csv_file.write_text(
+            "Name,Email,Amount,Date,Validation_Tier,Issues,Suggested_Modifications\n"
+            "Rollback User,,bad,2026-06-12,FAIL,Email: missing; Amount: invalid,Verify email\n"
+        )
+        db_url = f"sqlite:///{tmp_path / 'rollback-all.db'}"
+        init_db(db_url)
+        session = get_db_session(db_url)
+        with patch.object(session, "commit", side_effect=RuntimeError("commit unavailable")):
+            with patch("scripts.householder.ingestion_service.get_db_session", return_value=session):
+                with pytest.raises(IngestionDatabaseError, match="commit unavailable"):
+                    ingest_processed_csv(str(csv_file), "rollback-all.csv", db_url)
+        session.close()
+
+        verification = get_db_session(db_url)
+        try:
+            for model in (ImportBatch, RawImportRow, ImportContact, ReviewItem, ReviewItemSubject, AuditLogRecord):
+                assert verification.query(model).count() == 0
+        finally:
+            verification.close()
