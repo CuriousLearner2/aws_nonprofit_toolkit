@@ -37,6 +37,7 @@ from .database_models import (
     AuditLogRecord,
 )
 from .ingestion_value_policy import extract_digits_from_phone, parse_amount, split_name
+from .ingestion_audit_policy import build_ingestion_audit_details
 
 logger = logging.getLogger(__name__)
 
@@ -620,22 +621,15 @@ def ingest_processed_csv(
             action_type="batch_imported",
             action_timestamp=datetime.now(timezone.utc),
             actor=uploader,
-            details={
-                "source": "givebutter_export",
-                "filename": original_filename,
-                "record_count": len(df),
-                "validation_summary": {
-                    "PASS": pass_count,
-                    "WARNING": warning_count,
-                    "FAIL": fail_count,
-                },
-                "items_created": {
-                    "validation": validation_items_created,
-                    "normalization": normalization_items_created,
-                    "duplicate": 0,
-                    "household": 0,
-                },
-            },
+            details=build_ingestion_audit_details(
+                filename=original_filename,
+                record_count=len(df),
+                pass_count=pass_count,
+                warning_count=warning_count,
+                fail_count=fail_count,
+                validation_items=validation_items_created,
+                normalization_items=normalization_items_created,
+            ),
         )
         session.add(audit_record)
         session.flush()
