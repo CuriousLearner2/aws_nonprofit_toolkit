@@ -20,6 +20,8 @@ from .database_models import AuditLogRecord
 from .export_preview_service import build_export_preview
 from .export_csv_policy import encode_csv_field as _encode_csv_field
 from .export_csv_policy import generate_csv_content as _generate_csv_content
+from .export_filename_policy import sanitize_filename as _sanitize_filename
+from .export_filename_policy import generate_safe_filename as _generate_safe_filename
 
 logger = logging.getLogger(__name__)
 
@@ -99,24 +101,6 @@ class ExportFileResult:
             "audit_log_id": self.audit_log_id,
             "generated_at": self.generated_at.isoformat(),
         }
-
-
-def _sanitize_filename(filename: str) -> str:
-    """Prevent directory traversal and invalid characters."""
-    # Remove path separators
-    filename = filename.replace('/', '').replace('\\', '')
-    # Remove leading dots
-    filename = filename.lstrip('.')
-    # Limit to alphanumeric, hyphen, underscore, dot
-    filename = ''.join(c for c in filename if c.isalnum() or c in '-_.')
-    return filename
-
-
-def _generate_safe_filename(import_id: str, timestamp: datetime) -> str:
-    """Generate safe export filename with collision avoidance."""
-    sanitized_id = _sanitize_filename(import_id)
-    ts = timestamp.strftime('%Y%m%d_%H%M%S')
-    return f"{sanitized_id}_export_{ts}.csv"
 
 
 def _ensure_output_dir(output_dir: str) -> None:
