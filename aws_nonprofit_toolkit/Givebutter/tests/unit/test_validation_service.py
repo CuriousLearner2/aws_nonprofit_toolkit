@@ -417,11 +417,8 @@ class TestValidationServiceFixtureFallbackValidation:
                 "scripts.householder.validation_service.recalculate_row_issues",
                 side_effect=RuntimeError("recalculation unavailable"),
             ):
-                result = get_validation_review("IMP-TEST-RECALC-FAILURE")
-
-        row = result["validation_issues"][0]
-        assert [issue["field"] for issue in row["issues"]] == ["email"]
-        assert row["row_status"] == "Blocking"
+                with pytest.raises(RuntimeError, match="recalculation unavailable"):
+                    get_validation_review("IMP-TEST-RECALC-FAILURE")
 
     def test_fixture_fallback_catches_negative_amount(self):
         """Test that negative amount is caught even when fixture issue_type is None."""

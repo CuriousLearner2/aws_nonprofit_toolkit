@@ -15,6 +15,7 @@ from .repository_provider import get_import_repository
 from .issue_recalculation_service import recalculate_row_issues, _validate_effective_values
 from .row_status_service import derive_row_status
 from .row_status_policy import derive_row_status as _derive_row_status
+from .validation_failure_policy import is_expected_validation_failure
 
 
 def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
@@ -75,7 +76,9 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     for issue in all_issues
                 ]
                 record['row_status'] = row_status
-            except (ValueError, Exception):
+            except Exception as error:
+                if not is_expected_validation_failure(error):
+                    raise
                 # Fall back to fixture-provided data if batch/row not in database
                 # (e.g., when using fixture repository with synthetic row IDs)
                 # First check if fixture has an issue_type
