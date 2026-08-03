@@ -685,11 +685,51 @@ def _validate_admitted_edit_checkpoint(record: dict[str, Any]) -> None:
 
 
 def _finish_patch(repo: Path, paths: list[str]) -> bytes:
-    patch = subprocess.run(["git", "diff", "--binary", "--no-ext-diff", "--", *paths], cwd=repo, capture_output=True, check=False).stdout
-    for path in paths:
-        if _ledger_git(repo, "status", "--porcelain=v1", "--", path).startswith("??"):
-            patch += subprocess.run(["git", "diff", "--binary", "--no-index", "/dev/null", str(repo / path)], cwd=repo, capture_output=True, check=False).stdout
+    patch = b""
+    for path in sorted(paths):
+        status = _ledger_git(repo, "status", "--porcelain=v1", "--", path)
+        if status.startswith("??"):
+            patch += subprocess.run(["git", "diff", "--binary", "--no-index", "/dev/null", path], cwd=repo, capture_output=True, check=False).stdout
+        else:
+            patch += subprocess.run(["git", "diff", "--binary", "--no-ext-diff", "--", path], cwd=repo, capture_output=True, check=False).stdout
     return patch
+
+
+def _validate_validated_commit(record: dict[str, Any]) -> str:
+    validation = record.get("edit_validation")
+    if not validation or not isinstance(validation.get("result"), dict):
+        raise _fail("EDIT_NOT_VALIDATED", "validated commit requires finish-edit evidence")
+    result = validation["result"]
+    expected_parent = result.get("expected_parent_head")
+    validated_patch_sha = result.get("patch_sha")
+    if not isinstance(expected_parent, str) or not isinstance(validated_patch_sha, str):
+        raise _fail("VALIDATED_COMMIT_REJECTED", "validated commit evidence is incomplete")
+    repo = Path(record["worktree_path"])
+    head = _ledger_git(repo, "rev-parse", "HEAD")
+    parents = _ledger_git(repo, "rev-list", "--parents", "-n", "1", head).split()
+    if len(parents) != 2 or parents[1] != expected_parent:
+        raise _fail("VALIDATED_COMMIT_REJECTED", "HEAD is not the expected single-parent validated commit")
+    status = _ledger_git(repo, "status", "--porcelain=v1", "--untracked-files=all")
+    if status:
+        raise _fail("VALIDATED_COMMIT_REJECTED", "post-commit worktree is dirty")
+    changed = result.get("changed_files")
+    if not isinstance(changed, list) or any(not isinstance(item, dict) or not isinstance(item.get("path"), str) for item in changed):
+        raise _fail("VALIDATED_COMMIT_REJECTED", "validated changed-file evidence is malformed")
+    validated_paths = {item["path"] for item in changed}
+    name_status = _ledger_git(repo, "diff", "--name-status", "--no-ext-diff", expected_parent, head).splitlines()
+    if any(not line or line[0] not in {"A", "M", "D"} or len(line.split("\t")) != 2 for line in name_status):
+        raise _fail("VALIDATED_COMMIT_REJECTED", "commit contains a rename, copy, or merge-style change")
+    committed_paths = {line.split("\t", 1)[1] for line in name_status}
+    if committed_paths != validated_paths:
+        raise _fail("VALIDATED_COMMIT_REJECTED", "commit paths differ from validated paths")
+    patch = subprocess.run(
+        ["git", "diff", "--binary", "--no-ext-diff", expected_parent, head, "--", *sorted(validated_paths)],
+        cwd=repo, capture_output=True, check=False,
+    ).stdout
+    if hashlib.sha256(patch).hexdigest() != validated_patch_sha:
+        raise _fail("VALIDATED_COMMIT_REJECTED", "commit content differs from validated patch")
+    _ledger_validate(record, expected_commit=head, allow_dirty=False)
+    return head
 
 
 def campaign_ledger_finish_edit(campaign_id: str, contract_index: int, operation_id: str) -> dict[str, Any]:
@@ -724,7 +764,8 @@ def campaign_ledger_finish_edit(campaign_id: str, contract_index: int, operation
         check = subprocess.run(["git", "diff", "--check"], cwd=record["worktree_path"], capture_output=True, text=True, check=False, shell=False)
         if check.returncode: raise _fail("DIFF_CHECK_FAILED", "git diff --check failed")
         patch = _finish_patch(Path(record["worktree_path"]), paths); totals = {"production": gate_result.get("production_totals", {}), "test": gate_result.get("test_totals", {})}
-        output = {"contract_index": contract_index, "changed_files": gate_result.get("files", changed), "diff_totals": totals, "gate_result": gate_result, "suite_results": suite_results, "diff_check": {"passed": True}, "patch_sha": hashlib.sha256(patch).hexdigest(), "gate_pass": True, "tests_pass": True, "commit_sha": _ledger_git(repo, "rev-parse", "HEAD"), "suite_id": record["suites"][0]["id"], "admission_operation_id": admission["operation_id"]}
+        expected_parent_head = _ledger_git(repo, "rev-parse", "HEAD")
+        output = {"contract_index": contract_index, "changed_files": gate_result.get("files", changed), "diff_totals": totals, "gate_result": gate_result, "suite_results": suite_results, "diff_check": {"passed": True}, "patch_sha": hashlib.sha256(patch).hexdigest(), "gate_pass": True, "tests_pass": True, "commit_sha": expected_parent_head, "expected_parent_head": expected_parent_head, "suite_id": record["suites"][0]["id"], "admission_operation_id": admission["operation_id"]}
         record["edit_validation"] = {"contract_index": contract_index, "operation_id": operation_id, "result": output}; _record_operation(record, operation_id, "finish-edit", payload, output); _append_event(campaign_id, record, operation_id, "EDIT_VALIDATED", payload); return output
 @contextmanager
 def _ledger_lock(campaign_id: str):
@@ -1263,13 +1304,22 @@ def campaign_ledger_record_result(campaign_id: str, operation_id: str, result: d
         retry = _retry_result(record, operation_id, "record-result", payload)
         if retry is not None:
             return retry
-        _ledger_validate(record, allow_dirty=bool(record.get("edit_validation")))
         pending = record.get("pending_action")
         if pending and pending.get("kind") == "IMPLEMENT" and (not record.get("edit_admission") or record["edit_admission"].get("contract_index") != pending["contract_index"]):
             raise _fail("EDIT_NOT_ADMITTED", "implementation result requires start-edit")
         validation = record.get("edit_validation")
         if not pending or not validation or validation.get("contract_index") != pending["contract_index"]:
             raise _fail("EDIT_NOT_VALIDATED", "record-result requires finish-edit evidence")
+        committed_head = None
+        if pending["kind"] == "IMPLEMENT":
+            expected_parent = validation.get("result", {}).get("expected_parent_head")
+            current_head = _ledger_git(Path(record["worktree_path"]), "rev-parse", "HEAD")
+            if expected_parent and current_head != expected_parent:
+                committed_head = _validate_validated_commit(record)
+            else:
+                _ledger_validate(record, allow_dirty=True)
+        else:
+            _ledger_validate(record, allow_dirty=bool(record.get("edit_validation")))
         normalized_result = dict(validation["result"])
         normalized_result["contract_index"] = pending["contract_index"]
         if not pending or normalized_result.get("contract_index") != pending["contract_index"]:
@@ -1278,16 +1328,16 @@ def campaign_ledger_record_result(campaign_id: str, operation_id: str, result: d
         record["results"].append({"action": pending["kind"], **normalized_result})
         record["pending_action"] = None
         if pending["kind"] == "IMPLEMENT": record["edit_admission"] = None
-        record["current_head"] = normalized_result["commit_sha"]
+        record["current_head"] = committed_head or normalized_result["commit_sha"]
         if not normalized_result["gate_pass"] or not normalized_result["tests_pass"]:
             record["state"], record["stop_reason"] = "FAILED", "gate or tests failed"
-        elif pending["kind"] == "IMPLEMENT":
+        elif pending["kind"] == "IMPLEMENT" and committed_head is None:
             record["state"] = "VALIDATING"
         else:
             record["current_index"] += 1
             record["state"] = "COMMITTED" if record["current_index"] == len(record["contracts"]) else "ACTIVE"
         output = _result_view(record)
-        _record_operation(record, operation_id, "record-result", normalized_result, output)
+        _record_operation(record, operation_id, "record-result", payload, output)
         _append_event(campaign_id, record, operation_id, "record-result", normalized_result)
         return output
 

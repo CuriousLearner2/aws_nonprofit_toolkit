@@ -24,7 +24,9 @@ def repo(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     root.mkdir(); git(root, "init", "-q")
     git(root, "config", "user.email", "test@example.com"); git(root, "config", "user.name", "Test User")
-    (root / "scripts/ci").mkdir(parents=True); (root / "scripts/ci/architecture_slice_gate.py").write_text("gate\n")
+    (root / "scripts/ci").mkdir(parents=True)
+    shutil.copy2(Path(campaign.__file__).with_name("architecture_slice_gate.py"), root / "scripts/ci/architecture_slice_gate.py")
+    (root / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n")
     (root / "seed.txt").write_text("seed\n"); git(root, "add", "."); git(root, "commit", "-qm", "seed")
     monkeypatch.setattr(campaign, "LEDGER_ROOT", tmp_path / "campaigns")
     return root
@@ -93,6 +95,29 @@ def admit(campaign_id="campaign-01", index=0, operation_id="edit-1"):
     return campaign.campaign_ledger_start_edit(campaign_id, index, operation_id)
 
 
+def validated_edit(repo, contract, monkeypatch, campaign_id):
+    item = _edit_contract(repo, contract, [
+        "scripts/householder/new_policy.py",
+        "tests/unit/test_householder_campaign.py",
+    ])
+    initialize(repo, item, campaign_id)
+    campaign.campaign_ledger_next(campaign_id)
+    campaign.campaign_ledger_start_edit(campaign_id, 0, "edit-" + campaign_id)
+    path = repo / "scripts/householder/new_policy.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("POLICY = 'validated'\n")
+    test_path = repo / "tests/unit/test_householder_campaign.py"
+    test_path.parent.mkdir(parents=True, exist_ok=True)
+    test_path.write_text("def test_fixture_suite():\n    assert True\n")
+    return campaign.campaign_ledger_finish_edit(campaign_id, 0, "finish-" + campaign_id)
+
+
+def commit_validated_file(repo):
+    git(repo, "add", "scripts/householder/new_policy.py", "tests/unit/test_householder_campaign.py")
+    git(repo, "commit", "-qm", "validated implementation")
+    return git(repo, "rev-parse", "HEAD")
+
+
 def fails(call, match=None):
     with pytest.raises(ValueError, match=match): call()
 
@@ -146,6 +171,65 @@ def test_happy_path_restart_and_deterministic_next(repo, contract, monkeypatch):
     fails(lambda: campaign.campaign_ledger_record_result("campaign-01", "result-1", {"contract_index": 0}), "EDIT_NOT_VALIDATED")
     before = campaign.campaign_ledger_status("campaign-01"); loaded = importlib.reload(campaign)
     monkeypatch.setattr(loaded, "LEDGER_ROOT", Path(repo).parent / "campaigns"); assert loaded.campaign_ledger_status("campaign-01") == before
+
+
+def test_validated_single_commit_closes_and_exact_retry_is_noop(repo, contract, monkeypatch):
+    validation = validated_edit(repo, contract, monkeypatch, "commit-close")
+    parent = validation["expected_parent_head"]
+    commit = commit_validated_file(repo)
+    closed = campaign.campaign_ledger_record_result("commit-close", "close-1", {"contract_index": 0})
+    assert closed["state"] == "COMMITTED"
+    assert closed["current_head"] == commit
+    assert validation["expected_parent_head"] == parent
+    events = Path(campaign._events_file("commit-close"))
+    before_retry = events.read_bytes()
+    assert campaign.campaign_ledger_record_result("commit-close", "close-1", {"contract_index": 0}) == closed
+    assert events.read_bytes() == before_retry
+    assert git(repo, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+
+def test_validated_commit_closure_survives_restart(repo, contract, monkeypatch):
+    validated_edit(repo, contract, monkeypatch, "commit-restart")
+    commit_validated_file(repo)
+    loaded = importlib.reload(campaign)
+    loaded.LEDGER_ROOT = Path(repo).parent / "campaigns"
+    closed = loaded.campaign_ledger_record_result("commit-restart", "close-1", {"contract_index": 0})
+    assert closed["state"] == "COMMITTED"
+
+
+def test_validated_commit_rejects_unrelated_or_extra_commit(repo, contract, monkeypatch):
+    validated_edit(repo, contract, monkeypatch, "commit-extra")
+    (repo / "unrelated.txt").write_text("outside validated patch\n")
+    git(repo, "add", "unrelated.txt")
+    git(repo, "commit", "-qm", "unrelated change")
+    fails(lambda: campaign.campaign_ledger_record_result("commit-extra", "close-1", {"contract_index": 0}), "VALIDATED_COMMIT_REJECTED")
+
+
+def test_validated_commit_rejects_amended_content(repo, contract, monkeypatch):
+    validated_edit(repo, contract, monkeypatch, "commit-amended")
+    (repo / "scripts/householder/new_policy.py").write_text("POLICY = 'amended'\n")
+    git(repo, "add", "scripts/householder/new_policy.py")
+    git(repo, "commit", "-qm", "amended implementation")
+    fails(lambda: campaign.campaign_ledger_record_result("commit-amended", "close-1", {"contract_index": 0}), "VALIDATED_COMMIT_REJECTED")
+
+
+def test_validated_commit_rejects_multiple_commit_advancement(repo, contract, monkeypatch):
+    validated_edit(repo, contract, monkeypatch, "commit-multiple")
+    commit_validated_file(repo)
+    git(repo, "commit", "--allow-empty", "-qm", "second advancement")
+    fails(lambda: campaign.campaign_ledger_record_result("commit-multiple", "close-1", {"contract_index": 0}), "VALIDATED_COMMIT_REJECTED")
+
+
+def test_prevalidation_head_change_still_fails_stale_head(repo, contract, monkeypatch):
+    monkeypatch.setitem(campaign.SUITE_REGISTRY, "wrapper-unit", ["python3", "-c", "pass"])
+    item = _edit_contract(repo, contract, ["scripts/householder/new_policy.py"])
+    initialize(repo, item, "commit-prevalidation-stale")
+    campaign.campaign_ledger_next("commit-prevalidation-stale")
+    campaign.campaign_ledger_start_edit("commit-prevalidation-stale", 0, "edit-stale")
+    (repo / "unrelated.txt").write_text("head changed before validation\n")
+    git(repo, "add", "unrelated.txt")
+    git(repo, "commit", "-qm", "prevalidation head change")
+    fails(lambda: campaign.campaign_ledger_finish_edit("commit-prevalidation-stale", 0, "finish-stale"), "STALE_HEAD")
 
 
 def test_absent_dirty_and_stale_commands_fail_closed(repo, contract):
