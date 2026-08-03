@@ -384,6 +384,45 @@ class TestValidationServiceProviderWiring:
 class TestValidationServiceFixtureFallbackValidation:
     """Test fixture-mode fallback validation when issue_type is None."""
 
+    def test_unexpected_recalculation_failure_uses_fixture_fallback(self):
+        """A recalculation failure preserves the observable fixture fallback."""
+        from unittest.mock import MagicMock, patch
+
+        test_row = ValidationRow(
+            id="TXN-RECALC-FAILURE",
+            raw_import_row_id=993,
+            date="2026-05-20",
+            name="Fallback After Failure",
+            email="not-an-email",
+            phone="(212) 555-1234",
+            amount="$250.00",
+            address="123 Test St, Springfield, IL 62701",
+            issue_type=None,
+            issue_description=None,
+        )
+        test_vm = ValidationPageViewModel(
+            batch_id="IMP-TEST-RECALC-FAILURE",
+            filename="test_recalc_failure.csv",
+            progress=50,
+            validation_rows=(test_row,),
+            validation_issues_count=1,
+            total_records=1,
+        )
+
+        with patch("scripts.householder.validation_service.get_import_repository") as get_repo:
+            repository = MagicMock()
+            repository.get_validation.return_value = test_vm
+            get_repo.return_value = repository
+            with patch(
+                "scripts.householder.validation_service.recalculate_row_issues",
+                side_effect=RuntimeError("recalculation unavailable"),
+            ):
+                result = get_validation_review("IMP-TEST-RECALC-FAILURE")
+
+        row = result["validation_issues"][0]
+        assert [issue["field"] for issue in row["issues"]] == ["email"]
+        assert row["row_status"] == "Blocking"
+
     def test_fixture_fallback_catches_negative_amount(self):
         """Test that negative amount is caught even when fixture issue_type is None."""
         from scripts.householder.service_contracts import ValidationRow, ValidationPageViewModel
