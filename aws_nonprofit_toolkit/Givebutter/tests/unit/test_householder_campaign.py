@@ -26,6 +26,11 @@ def repo(tmp_path, monkeypatch):
     git(root, "config", "user.email", "test@example.com"); git(root, "config", "user.name", "Test User")
     (root / "scripts/ci").mkdir(parents=True)
     shutil.copy2(Path(campaign.__file__).with_name("architecture_slice_gate.py"), root / "scripts/ci/architecture_slice_gate.py")
+    shutil.copy2(Path(campaign.__file__), root / "scripts/ci/householder_campaign.py")
+    (root / "scripts/householder").mkdir(parents=True)
+    (root / "scripts/householder/autosave_service.py").write_text("# marker\n")
+    (root / "tests/integration").mkdir(parents=True)
+    (root / "tests/integration/test_autosave_validation.py").write_text("def test_marker():\n    assert True\n")
     (root / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n")
     (root / "seed.txt").write_text("seed\n"); git(root, "add", "."); git(root, "commit", "-qm", "seed")
     monkeypatch.setattr(campaign, "LEDGER_ROOT", tmp_path / "campaigns")
@@ -127,6 +132,11 @@ def make_layout(tmp_path, nested):
     worktree = root / "Givebutter" if nested else root
     (worktree / "scripts/ci").mkdir(parents=True)
     (worktree / "scripts/ci/architecture_slice_gate.py").write_text("gate\n")
+    (worktree / "scripts/ci/householder_campaign.py").write_text("wrapper\n")
+    (worktree / "scripts/householder").mkdir(parents=True)
+    (worktree / "scripts/householder/autosave_service.py").write_text("service\n")
+    (worktree / "tests/integration").mkdir(parents=True)
+    (worktree / "tests/integration/test_autosave_validation.py").write_text("def test_marker():\n    assert True\n")
     git(worktree, "init", "-q"); git(worktree, "config", "user.email", "test@example.com"); git(worktree, "config", "user.name", "Test User")
     git(worktree, "add", "."); git(worktree, "commit", "-qm", "seed")
     wrapper = worktree / "scripts/ci/householder_campaign.py"
@@ -138,10 +148,43 @@ def make_layout(tmp_path, nested):
 def test_repo_root_discovers_flat_and_nested_git_roots(tmp_path, nested):
     root, worktree, wrapper = make_layout(tmp_path, nested)
     assert campaign._discover_repo_root(wrapper) == Path(git(worktree, "rev-parse", "--show-toplevel"))
+    assert campaign._discover_project_root(Path(git(worktree, "rev-parse", "--show-toplevel"))) == worktree.resolve()
     identity = campaign._ledger_identity(worktree)
     assert identity["worktree_path"] == str(worktree.resolve())
-    assert identity["git_common_dir"] == str(Path(git(worktree, "rev-parse", "--git-common-dir")).resolve())
+    assert identity["project_root_path"] == str(worktree.resolve())
+    assert identity["git_root_path"] == str(Path(git(worktree, "rev-parse", "--show-toplevel")).resolve())
+    common_dir = Path(git(worktree, "rev-parse", "--git-common-dir"))
+    expected_common_dir = (worktree / common_dir).resolve() if not common_dir.is_absolute() else common_dir.resolve()
+    assert identity["git_common_dir"] == str(expected_common_dir)
     assert not list(tmp_path.glob("**/householder-campaign.*.json"))
+
+
+def test_project_root_discovery_rejects_wrong_nested_path(tmp_path):
+    root = tmp_path / "checkout"; root.mkdir()
+    (root / "aws_nonprofit_toolkit/GivebutterWrong/scripts/ci").mkdir(parents=True)
+    (root / "aws_nonprofit_toolkit/GivebutterWrong/scripts/ci/householder_campaign.py").write_text("wrapper\n")
+    with pytest.raises(ValueError, match="PROJECT_ROOT_DISCOVERY_FAILED"):
+        campaign._discover_project_root(root)
+
+
+def test_project_root_discovery_rejects_duplicate_candidates(tmp_path):
+    root, worktree, _ = make_layout(tmp_path, False)
+    nested = root / "aws_nonprofit_toolkit/Givebutter"
+    for marker in campaign.PROJECT_MARKERS:
+        target = nested / marker
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("marker\n")
+    with pytest.raises(ValueError, match="PROJECT_ROOT_DISCOVERY_FAILED"):
+        campaign._discover_project_root(root)
+
+
+def test_project_root_discovery_rejects_symlink_candidate(tmp_path):
+    root, worktree, _ = make_layout(tmp_path, False)
+    nested_parent = root / "aws_nonprofit_toolkit"
+    nested_parent.mkdir()
+    (nested_parent / "Givebutter").symlink_to(worktree, target_is_directory=True)
+    with pytest.raises(ValueError, match="PROJECT_ROOT_DISCOVERY_FAILED"):
+        campaign._discover_project_root(root)
 
 
 def test_repo_root_discovery_fails_outside_git_and_for_symlink(tmp_path):
@@ -161,6 +204,14 @@ def test_persisted_worktree_identity_mismatch_fails_closed(repo, contract):
     initialize(repo, contract)
     record = campaign._ledger_load("campaign-01")
     record["worktree_path"] = str(repo.parent / "substituted")
+    with pytest.raises(ValueError, match="WORKTREE_MISMATCH"):
+        campaign._ledger_validate(record)
+
+
+def test_persisted_project_root_identity_mismatch_fails_closed(repo, contract):
+    initialize(repo, contract)
+    record = campaign._ledger_load("campaign-01")
+    record["project_root_path"] = str(repo.parent / "substituted")
     with pytest.raises(ValueError, match="WORKTREE_MISMATCH"):
         campaign._ledger_validate(record)
 

@@ -21,6 +21,12 @@ from typing import Any
 SCHEMA_VERSION = 1
 STATE_DIR = Path("Givebutter/.artifacts")
 STATE_PREFIX = "householder-campaign"
+PROJECT_MARKERS = (
+    "scripts/ci/householder_campaign.py",
+    "scripts/ci/architecture_slice_gate.py",
+    "scripts/householder/autosave_service.py",
+    "tests/integration/test_autosave_validation.py",
+)
 
 
 def repo_root() -> Path:
@@ -53,6 +59,32 @@ def _discover_repo_root(script_file: Path | None = None) -> Path:
     except (OSError, ValueError) as exc:
         raise ValueError("REPOSITORY_ROOT_DISCOVERY_FAILED: discovered root conflicts with wrapper checkout") from exc
     return root
+
+
+def _discover_project_root(git_root: Path) -> Path:
+    """Find the sole canonical Householder project beneath a Git root."""
+    git_root = Path(git_root).resolve(strict=True)
+    candidates = [git_root, git_root / "aws_nonprofit_toolkit" / "Givebutter"]
+    valid: list[Path] = []
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved != candidate or not resolved.is_dir():
+            raise ValueError("PROJECT_ROOT_DISCOVERY_FAILED: project root is symlinked")
+        if not all((resolved / marker).is_file() for marker in PROJECT_MARKERS):
+            continue
+        if not _under(resolved, git_root, "PROJECT_ROOT_DISCOVERY_FAILED"):
+            raise ValueError("PROJECT_ROOT_DISCOVERY_FAILED: project root escapes Git root")
+        valid.append(resolved)
+    if len(valid) != 1:
+        raise ValueError("PROJECT_ROOT_DISCOVERY_FAILED: expected exactly one Householder project root")
+    return valid[0]
+
+
+def project_root() -> Path:
+    return _discover_project_root(repo_root())
 
 
 def _now_utc() -> datetime:
@@ -483,6 +515,12 @@ def _canonical_path(value: str | Path, code: str = "PATH_OUTSIDE_ROOT") -> Path:
     raw = str(value)
     if ".." in Path(raw).parts: raise _fail(code, "path traversal is not allowed")
     return Path(os.path.realpath(raw))
+
+
+def _canonical_git_path(value: str, cwd: Path) -> Path:
+    """Canonicalize a Git-produced path, including relative common-dir output."""
+    path = Path(value)
+    return Path(os.path.realpath(path if path.is_absolute() else cwd / path))
 def _under(path: Path, root: Path, escape_code: str = "PATH_OUTSIDE_ROOT") -> bool:
     try: return os.path.commonpath((str(path), str(root))) == str(root)
     except ValueError: raise _fail(escape_code, "path is outside approved root")
@@ -793,10 +831,20 @@ def _ledger_git(repo: Path, *args: str) -> str:
 
 
 def _ledger_identity(repo: Path) -> dict[str, Any]:
-    worktree = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
-    common_dir = _canonical_path(_ledger_git(repo, "rev-parse", "--git-common-dir"))
-    git_dir = _canonical_path(_ledger_git(repo, "rev-parse", "--git-dir"))
-    return {"head": _ledger_git(worktree, "rev-parse", "HEAD"), "dirty": bool(_ledger_git(worktree, "status", "--porcelain", "--untracked-files=all")), "gate": _ledger_git(worktree, "hash-object", str(worktree / "scripts/ci/architecture_slice_gate.py")), "worktree_path": str(worktree), "git_common_dir": str(common_dir), "git_dir": str(git_dir)}
+    git_root = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
+    project = _discover_project_root(git_root)
+    common_dir = _canonical_git_path(_ledger_git(project, "rev-parse", "--git-common-dir"), project)
+    git_dir = _canonical_git_path(_ledger_git(project, "rev-parse", "--git-dir"), project)
+    return {
+        "head": _ledger_git(git_root, "rev-parse", "HEAD"),
+        "dirty": bool(_ledger_git(git_root, "status", "--porcelain", "--untracked-files=all")),
+        "gate": _ledger_git(project, "hash-object", str(project / "scripts/ci/architecture_slice_gate.py")),
+        "worktree_path": str(project),
+        "project_root_path": str(project),
+        "git_root_path": str(git_root),
+        "git_common_dir": str(common_dir),
+        "git_dir": str(git_dir),
+    }
 
 
 def _contract_seam_id(payload: dict[str, Any]) -> str | None:
@@ -848,7 +896,10 @@ def _ledger_contract(path: str, expected: str, contract_root: Path | None = None
 
 def _gate_projection(item: dict[str, Any], repo: Path, suites: list[dict[str, Any]]) -> dict[str, Any]:
     typed = item["typed_contract"]
-    allowed = list(typed["allowed_files"])
+    git_root = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
+    project = _canonical_path(repo)
+    prefix = project.relative_to(git_root).as_posix()
+    allowed = [path if not prefix or prefix == "." else f"{prefix}/{path}" for path in typed["allowed_files"]]
     new_production = []
     for path in allowed:
         baseline_path = f"{typed['baseline_head']}:{path}"
@@ -896,7 +947,7 @@ def _ledger_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
         raise _fail("EVENT_LOG_CORRUPT", "replayed state malformed")
     if not isinstance(record.setdefault("operations", []), list):
         raise _fail("EVENT_LOG_CORRUPT", "replayed operations malformed")
-    if any(field not in record for field in ("repo_path", "worktree_path", "git_common_dir", "git_dir", "contract_root", "suites", "last_checkpoint_at")):
+    if any(field not in record for field in ("repo_path", "worktree_path", "project_root_path", "git_root_path", "git_common_dir", "git_dir", "contract_root", "suites", "last_checkpoint_at")):
         raise _fail("EVENT_LOG_CORRUPT", "replayed containment fields missing")
     if not isinstance(record["suites"], list) or not record["suites"] or any(not isinstance(s, dict) or s.get("id") not in SUITE_REGISTRY or s.get("argv") != SUITE_REGISTRY[s["id"]] for s in record["suites"]):
         raise _fail("SUITE_NOT_ALLOWED", "persisted suite is not allowed")
@@ -926,7 +977,7 @@ def _discovery_shape(record: dict[str, Any], discovery_id: str) -> dict[str, Any
     if not isinstance(record, dict) or record.get("mode") != "DISCOVERY" or record.get("discovery_id") != discovery_id:
         raise _fail("EVENT_LOG_CORRUPT", "replayed discovery state malformed")
     required = {
-        "schema_version", "mode", "discovery_id", "repo_path", "worktree_path", "git_common_dir", "git_dir",
+        "schema_version", "mode", "discovery_id", "repo_path", "worktree_path", "project_root_path", "git_root_path", "git_common_dir", "git_dir",
         "starting_head", "starting_dirty", "starting_worktree_snapshot", "gate_blob_sha", "start_time",
         "deadline_at", "last_checkpoint_at", "state", "findings_path", "findings_sha256", "operations",
     }
@@ -1012,10 +1063,12 @@ def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None,
     worktree = _canonical_path(record["worktree_path"])
     repo = _canonical_path(record["repo_path"])
     if repo != worktree:
-        raise _fail("WORKTREE_MISMATCH", "repo and worktree identity differ")
+        raise _fail("WORKTREE_MISMATCH", "repo and project identity differ")
     identity = _ledger_identity(worktree)
-    if identity["worktree_path"] != record["worktree_path"]:
+    if identity["worktree_path"] != record["worktree_path"] or identity["project_root_path"] != record["project_root_path"]:
         raise _fail("WORKTREE_MISMATCH", "worktree identity differs")
+    if identity["git_root_path"] != record["git_root_path"]:
+        raise _fail("WORKTREE_MISMATCH", "Git root identity differs")
     if identity["git_common_dir"] != record["git_common_dir"] or identity["git_dir"] != record["git_dir"]:
         raise _fail("GIT_DIR_MISMATCH", "Git directory identity differs")
     if identity["dirty"] and not allow_dirty:
@@ -1073,6 +1126,8 @@ def _discovery_validate(record: dict[str, Any]) -> None:
     identity = _ledger_identity(worktree)
     if identity["worktree_path"] != record["worktree_path"]:
         raise _fail("WORKTREE_MISMATCH", "discovery worktree identity differs")
+    if identity["project_root_path"] != record["project_root_path"] or identity["git_root_path"] != record["git_root_path"]:
+        raise _fail("WORKTREE_MISMATCH", "discovery project identity differs")
     if identity["git_common_dir"] != record["git_common_dir"] or identity["git_dir"] != record["git_dir"]:
         raise _fail("GIT_DIR_MISMATCH", "discovery Git identity differs")
     if identity["head"] != record["starting_head"]:
@@ -1092,6 +1147,8 @@ def _discovery_result(record: dict[str, Any]) -> dict[str, Any]:
         "discovery_id": record["discovery_id"],
         "state": record["state"],
         "worktree_path": record["worktree_path"],
+        "project_root_path": record["project_root_path"],
+        "git_root_path": record["git_root_path"],
         "git_common_dir": record["git_common_dir"],
         "starting_head": record["starting_head"],
         "starting_dirty": record["starting_dirty"],
@@ -1113,12 +1170,13 @@ def campaign_discovery_start(discovery_id: str, operation_id: str) -> dict[str, 
             if retry is not None:
                 return retry
             raise _fail("DISCOVERY_ALREADY_STARTED", "discovery already exists")
-        root = repo_root()
+        root = project_root()
         identity = _ledger_identity(root)
         now = _now_utc()
         record = {
             "schema_version": 1, "mode": "DISCOVERY", "discovery_id": discovery_id,
             "repo_path": identity["worktree_path"], "worktree_path": identity["worktree_path"],
+            "project_root_path": identity["project_root_path"], "git_root_path": identity["git_root_path"],
             "git_common_dir": identity["git_common_dir"], "git_dir": identity["git_dir"],
             "starting_head": identity["head"], "starting_dirty": identity["dirty"],
             "starting_worktree_snapshot": _worktree_snapshot(root), "gate_blob_sha": identity["gate"],
@@ -1203,6 +1261,8 @@ def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, 
                 return retry
             raise _fail("INIT_CONFLICT", "campaign already initialized")
         identity = _ledger_identity(repo)
+        if str(repo) != identity["project_root_path"]:
+            raise _fail("PROJECT_ROOT_MISMATCH", "repo is not the canonical Householder project root")
         if identity["dirty"]:
             raise _fail("DIRTY_WORKTREE", "worktree dirty")
         if identity["gate"] != gate_blob_sha:
@@ -1218,7 +1278,8 @@ def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, 
             _check_authorized(path, Path(identity["worktree_path"]))
         record = {
             "schema_version": 1, "campaign_id": campaign_id, "repo_path": str(repo),
-            "worktree_path": identity["worktree_path"], "git_common_dir": identity["git_common_dir"], "git_dir": identity["git_dir"],
+            "worktree_path": identity["worktree_path"], "project_root_path": identity["project_root_path"], "git_root_path": identity["git_root_path"],
+            "git_common_dir": identity["git_common_dir"], "git_dir": identity["git_dir"],
             "contract_root": str(contract_root), "starting_head": identity["head"], "current_head": identity["head"], "gate_blob_sha": gate_blob_sha,
             "contracts": queue, "contract_queue_sha256": _json_sha256(queue),
             "start_time": _utcnow(), "last_checkpoint_at": _utcnow(), "state": "READY", "current_index": 0,
