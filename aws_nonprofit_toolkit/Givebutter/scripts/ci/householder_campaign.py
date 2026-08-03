@@ -19,6 +19,9 @@ from typing import Any
 
 
 SCHEMA_VERSION = 1
+PARENT_SCHEMA_VERSION = 2
+PARENT_STAGES = ("STRUCTURE", "INTEGRATION", "CLEANUP")
+PARENT_TERMINAL_STATES = {"VALIDATED", "COMMITTED"}
 STATE_DIR = Path("Givebutter/.artifacts")
 STATE_PREFIX = "householder-campaign"
 PROJECT_MARKERS = (
@@ -410,6 +413,21 @@ TYPED_CONTRACT_FIELDS = {
     "protected_files",
 }
 
+PARENT_CONTRACT_FIELDS = {
+    "id", "authorized_files", "stages",
+}
+PARENT_STAGE_FIELDS = {
+    "id", "ordinal", "allowed_files", "suite_ids", "max_production_lines",
+    "max_test_lines", "required_evidence",
+}
+PARENT_ERROR_CODES = {
+    "PARENT_CONTRACT_MALFORMED", "PARENT_SCOPE_CONFLICT", "PARENT_SEAM_COMPLETED",
+    "STAGE_NOT_FOUND", "STAGE_ORDER_VIOLATION", "STAGE_FILE_OUTSIDE_PARENT",
+    "STAGE_ALREADY_COMPLETE", "STAGE_EVIDENCE_INCOMPLETE",
+    "STAGE_RETRY_MISMATCH", "LAUNCHER_STAGE_OVERRIDE_REJECTED",
+}
+PARENT_EVIDENCE_FIELDS = {"gate_pass", "tests_pass", "diff_check_pass", "scope_pass", "ceiling_pass"}
+
 
 def _normalized_relative_paths(items: Any, field: str) -> list[str]:
     if type(items) is not list:
@@ -491,7 +509,14 @@ def _strict_contract(payload: Any, *, baseline_head: str | None = None, gate_sha
             "completed_seam_files": payload.get("completed_seam_files"),
             "protected_files": payload.get("protected_files"),
         }
-    normalized = _strict_typed_dict(typed)
+    parent = typed.get("parent_seam") if isinstance(typed, dict) else None
+    if parent is not None:
+        base = dict(typed)
+        base.pop("parent_seam", None)
+        normalized = _strict_typed_dict(base)
+        normalized["parent_seam"] = _strict_parent_contract(parent, normalized)
+    else:
+        normalized = _strict_typed_dict(typed)
     if baseline_head is not None and normalized["baseline_head"] != baseline_head:
         raise _fail("BASELINE_MISMATCH", "contract baseline does not match repository HEAD")
     if gate_sha is not None and normalized["gate_sha"] != gate_sha:
@@ -499,6 +524,50 @@ def _strict_contract(payload: Any, *, baseline_head: str | None = None, gate_sha
     if any(item not in SUITE_REGISTRY for item in normalized["suite_ids"]):
         raise _fail("SUITE_NOT_ALLOWED", "typed contract contains an unknown suite")
     return normalized
+
+
+def _strict_parent_contract(value: Any, base: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != PARENT_CONTRACT_FIELDS:
+        raise _fail("PARENT_CONTRACT_MALFORMED", "parent contract has missing or unknown fields")
+    parent_id = value["id"]
+    if type(parent_id) is not str or not parent_id or parent_id.strip() != parent_id:
+        raise _fail("PARENT_CONTRACT_MALFORMED", "parent id must be a trimmed string")
+    authorized = _normalized_relative_paths(value["authorized_files"], "parent authorized_files")
+    if authorized != base["allowed_files"]:
+        raise _fail("PARENT_CONTRACT_MALFORMED", "parent authorized_files must equal the complete envelope")
+    stages = value["stages"]
+    if type(stages) is not list or not stages:
+        raise _fail("PARENT_CONTRACT_MALFORMED", "parent stages must be a non-empty array")
+    normalized_stages: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for expected, raw in enumerate(stages):
+        if not isinstance(raw, dict) or set(raw) != PARENT_STAGE_FIELDS:
+            raise _fail("PARENT_CONTRACT_MALFORMED", "stage has missing or unknown fields")
+        stage_id = raw["id"]
+        if type(stage_id) is not str or not stage_id or stage_id.strip() != stage_id or stage_id in seen_ids:
+            raise _fail("PARENT_CONTRACT_MALFORMED", "stage IDs must be unique trimmed strings")
+        if raw["ordinal"] != expected:
+            raise _fail("PARENT_CONTRACT_MALFORMED", "stage ordinals must be contiguous")
+        allowed = _normalized_relative_paths(raw["allowed_files"], f"stage {stage_id} allowed_files")
+        if not set(allowed).issubset(authorized):
+            raise _fail("STAGE_FILE_OUTSIDE_PARENT", "stage files must be inside the parent envelope")
+        suite_ids = _suite_ids(raw["suite_ids"])
+        evidence = raw["required_evidence"]
+        if type(evidence) is not list or not evidence or any(type(item) is not str or not item or item.strip() != item for item in evidence):
+            raise _fail("PARENT_CONTRACT_MALFORMED", "required_evidence must be a non-empty string array")
+        if len(evidence) != len(set(evidence)):
+            raise _fail("PARENT_CONTRACT_MALFORMED", "required_evidence entries must be unique")
+        if not set(evidence).issubset(PARENT_EVIDENCE_FIELDS):
+            raise _fail("PARENT_CONTRACT_MALFORMED", "required_evidence contains an unsupported field")
+        normalized_stages.append({
+            "id": stage_id, "ordinal": expected, "allowed_files": allowed,
+            "suite_ids": suite_ids,
+            "max_production_lines": _require_int(raw["max_production_lines"], "stage production ceiling"),
+            "max_test_lines": _require_int(raw["max_test_lines"], "stage test ceiling"),
+            "required_evidence": list(evidence),
+        })
+        seen_ids.add(stage_id)
+    return {"id": parent_id, "authorized_files": authorized, "stages": normalized_stages}
 
 class CampaignError(ValueError):
     def __init__(self, code: str, message: str): self.code = code; super().__init__(f"{code}: {message}")
@@ -674,7 +743,7 @@ def _finish_changes(record: dict[str, Any], contract: dict[str, Any]) -> list[di
     entries = []
     for line in raw.splitlines():
         if not line: continue
-        code, path = line[:2], line[3:].strip().strip('"')
+        code, path = line[:2], _project_relative_path(repo, line[3:].strip().strip('"'))
         if "R" in code or "C" in code or "->" in path: raise _fail("RENAME_REJECTED", "renames and copies are not allowed")
         if path not in authorized: raise _fail("UNAUTHORIZED_CHANGE", "changed path is outside contract")
         target = repo / path
@@ -758,11 +827,13 @@ def _validate_validated_commit(record: dict[str, Any]) -> str:
     name_status = _ledger_git(repo, "diff", "--name-status", "--no-ext-diff", expected_parent, head).splitlines()
     if any(not line or line[0] not in {"A", "M", "D"} or len(line.split("\t")) != 2 for line in name_status):
         raise _fail("VALIDATED_COMMIT_REJECTED", "commit contains a rename, copy, or merge-style change")
-    committed_paths = {line.split("\t", 1)[1] for line in name_status}
-    if committed_paths != validated_paths:
+    committed_paths_raw = {line.split("\t", 1)[1] for line in name_status}
+    committed_paths_project = {_project_relative_path(repo, path) for path in committed_paths_raw}
+    if validated_paths != committed_paths_raw and validated_paths != committed_paths_project:
         raise _fail("VALIDATED_COMMIT_REJECTED", "commit paths differ from validated paths")
+    diff_paths = committed_paths_project
     patch = subprocess.run(
-        ["git", "diff", "--binary", "--no-ext-diff", expected_parent, head, "--", *sorted(validated_paths)],
+        ["git", "diff", "--binary", "--no-ext-diff", expected_parent, head, "--", *sorted(diff_paths)],
         cwd=repo, capture_output=True, check=False,
     ).stdout
     if hashlib.sha256(patch).hexdigest() != validated_patch_sha:
@@ -830,6 +901,19 @@ def _ledger_git(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+def _project_relative_path(repo: Path, path: str) -> str:
+    """Normalize Git's repository-root status paths to project-root paths."""
+    git_root = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
+    project = _canonical_path(repo)
+    prefix = project.relative_to(git_root).as_posix()
+    if prefix in ("", "."):
+        return path
+    if path == prefix:
+        return ""
+    marker = prefix + "/"
+    return path[len(marker):] if path.startswith(marker) else path
+
+
 def _ledger_identity(repo: Path) -> dict[str, Any]:
     git_root = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
     project = _discover_project_root(git_root)
@@ -872,6 +956,23 @@ def _enforce_seam_boundaries(typed: dict[str, Any], seam_id: str | None) -> None
         raise _fail("COMPLETED_SEAM_OVERLAP", "allowed files overlap a completed seam")
     if seam_id is not None and seam_id in typed["completed_seams"]:
         raise _fail("COMPLETED_SEAM_OVERLAP", "contract seam is already completed")
+
+
+def _reject_parent_scope_overlap(campaign_id: str, files: set[str]) -> None:
+    if not LEDGER_ROOT.exists():
+        return
+    for state_path in LEDGER_ROOT.glob("*/state.json"):
+        try:
+            record = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise _fail("PARENT_SCOPE_CONFLICT", "active parent scope is unreadable") from exc
+        if record.get("campaign_id") == campaign_id or record.get("mode") != "PARENT":
+            continue
+        if record.get("state") in {"COMMITTED", "FAILED"}:
+            continue
+        other = set(record.get("parent_files", []))
+        if files.intersection(other):
+            raise _fail("PARENT_SCOPE_CONFLICT", "authorized files overlap an active parent seam")
 
 
 def _ledger_contract(path: str, expected: str, contract_root: Path | None = None, *, baseline_head: str | None = None, gate_sha: str | None = None, suite_ids: list[str] | None = None, typed_sha: str | None = None) -> dict[str, Any]:
@@ -941,6 +1042,8 @@ def _check_authorized(contract_path: Path, worktree: Path) -> None:
 
 
 def _ledger_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
+    if isinstance(record, dict) and record.get("mode") == "PARENT":
+        return _parent_shape(record, campaign_id)
     if isinstance(record, dict) and record.get("mode") == "DISCOVERY":
         raise _fail("READ_ONLY_VIOLATION", "discovery state cannot drive campaign edits")
     if not isinstance(record, dict) or record.get("campaign_id") != campaign_id:
@@ -970,6 +1073,44 @@ def _ledger_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
         datetime.fromisoformat(str(record["last_checkpoint_at"]).replace("Z", "+00:00"))
     except ValueError as exc:
         raise _fail("EVENT_LOG_CORRUPT", "checkpoint timestamp is invalid") from exc
+    return record
+
+
+def _parent_shape(record: dict[str, Any], campaign_id: str) -> dict[str, Any]:
+    required = {
+        "schema_version", "mode", "campaign_id", "repo_path", "worktree_path", "project_root_path",
+        "git_root_path", "git_common_dir", "git_dir", "contract_root", "suites", "last_checkpoint_at",
+        "contracts", "contract_queue_sha256", "gate_blob_sha", "starting_head", "current_head",
+        "parent_seam", "parent_files", "current_stage_index", "active_stage", "completed_stages",
+        "results", "operations", "state",
+    }
+    if not isinstance(record, dict) or set(record) < required or record.get("campaign_id") != campaign_id:
+        raise _fail("EVENT_LOG_CORRUPT", "replayed parent state malformed")
+    if record["schema_version"] != PARENT_SCHEMA_VERSION or record["mode"] != "PARENT":
+        raise _fail("EVENT_LOG_CORRUPT", "replayed parent schema is invalid")
+    allowed_states = {"ADMITTED", *PARENT_STAGES, "VALIDATED", "COMMITTED", "FAILED"}
+    if record.get("state") not in allowed_states:
+        raise _fail("EVENT_LOG_CORRUPT", "replayed parent state is invalid")
+    stages = record["parent_seam"].get("stages") if isinstance(record.get("parent_seam"), dict) else None
+    if not isinstance(stages, list) or not stages or record["parent_files"] != record["parent_seam"].get("authorized_files"):
+        raise _fail("EVENT_LOG_CORRUPT", "replayed parent ownership is invalid")
+    if not isinstance(record["current_stage_index"], int) or not -1 <= record["current_stage_index"] < len(stages):
+        raise _fail("EVENT_LOG_CORRUPT", "replayed parent stage index is invalid")
+    completed_limit = 0 if record["current_stage_index"] < 0 else record["current_stage_index"] + (1 if record["state"] in {"VALIDATED", "COMMITTED"} else 0)
+    if not isinstance(record["completed_stages"], list) or record["completed_stages"] != [stage["id"] for stage in stages[:completed_limit]]:
+        raise _fail("EVENT_LOG_CORRUPT", "replayed parent stage completion is invalid")
+    if record["state"] == "ADMITTED" and record["current_stage_index"] != -1:
+        raise _fail("EVENT_LOG_CORRUPT", "admitted parent has advanced stages")
+    if record["state"] in PARENT_STAGES:
+        expected = PARENT_STAGES.index(record["state"])
+        if record["current_stage_index"] != expected or not isinstance(record.get("active_stage"), dict):
+            raise _fail("EVENT_LOG_CORRUPT", "active parent stage is invalid")
+    if record["state"] == "VALIDATED" and record["current_stage_index"] != len(stages) - 1:
+        raise _fail("EVENT_LOG_CORRUPT", "validated parent has incomplete stages")
+    if record["state"] == "COMMITTED" and not record.get("protected_files"):
+        raise _fail("EVENT_LOG_CORRUPT", "committed parent has no protected files")
+    if _json_sha256(record["contracts"]) != record.get("contract_queue_sha256"):
+        raise _fail("EVENT_LOG_CORRUPT", "parent contract digest mismatch")
     return record
 
 
@@ -1038,6 +1179,207 @@ def _ledger_load(campaign_id: str) -> dict[str, Any]:
     if not isinstance(cached, dict) or cached.get("checkpoint_sequence") != sequence or cached.get("checkpoint_hash") != event_hash: raise _fail("EVENT_LOG_CORRUPT", "event log does not match checkpoint")
     if _event_state(cached) != record: raise _fail("CHECKPOINT_MISMATCH", "state checkpoint does not match event log")
     return record
+
+
+def _parent_record(campaign_id: str) -> dict[str, Any]:
+    record = _ledger_load(campaign_id)
+    if record.get("mode") != "PARENT":
+        raise _fail("PARENT_CONTRACT_MALFORMED", "campaign is not a parent seam")
+    return record
+
+
+def _parent_retry(record: dict[str, Any], operation_id: str, command: str, payload: dict[str, Any]) -> Any | None:
+    try:
+        return _retry_result(record, operation_id, command, payload)
+    except CampaignError as exc:
+        if exc.code == "OPERATION_CONFLICT":
+            raise _fail("STAGE_RETRY_MISMATCH", "parent stage retry payload differs") from exc
+        raise
+
+
+def is_parent_contract(contract_path: str | Path) -> bool:
+    payload = _read_json(Path(contract_path))
+    typed = payload.get("typed_contract", payload) if isinstance(payload, dict) else {}
+    return isinstance(typed, dict) and isinstance(typed.get("parent_seam"), dict)
+
+
+def campaign_parent_status(campaign_id: str) -> dict[str, Any]:
+    with _ledger_lock(campaign_id):
+        record = _parent_record(campaign_id)
+        _parent_validate(record, allow_dirty=record["state"] in PARENT_STAGES or record["state"] == "VALIDATED")
+        return _result_view(record)
+
+
+def _parent_validate(record: dict[str, Any], *, allow_dirty: bool = False, expected_commit: str | None = None) -> None:
+    _ledger_validate(record, expected_commit=expected_commit, allow_dirty=allow_dirty)
+    parent = record["parent_seam"]
+    if record["parent_files"] != parent["authorized_files"]:
+        raise _fail("EVENT_LOG_CORRUPT", "parent ownership envelope changed")
+    if record["state"] == "COMMITTED" and set(record.get("protected_files", [])) != set(record["parent_files"]):
+        raise _fail("EVENT_LOG_CORRUPT", "committed parent protection is incomplete")
+
+
+def _parent_stage(record: dict[str, Any]) -> dict[str, Any]:
+    index = record.get("current_stage_index", -1)
+    stages = record["parent_seam"]["stages"]
+    if index < 0 or index >= len(stages):
+        raise _fail("STAGE_NOT_FOUND", "no active parent stage")
+    stage = stages[index]
+    if record.get("active_stage", {}).get("id") != stage["id"]:
+        raise _fail("STAGE_ORDER_VIOLATION", "active stage does not match ordered contract")
+    return stage
+
+
+def _parent_changed_files(record: dict[str, Any], stage: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    repo = Path(record["worktree_path"])
+    status = subprocess.run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=repo, capture_output=True, text=True, check=False, shell=False)
+    if status.returncode:
+        raise _fail("GIT_PRECONDITION", "unable to inspect parent stage changes")
+    completed = set(record.get("completed_files", []))
+    permitted = completed | set(stage["allowed_files"])
+    changed: list[dict[str, Any]] = []
+    totals = {"production": 0, "test": 0}
+    for line in status.stdout.splitlines():
+        if not line:
+            continue
+        code, path = line[:2], _project_relative_path(repo, line[3:].strip().strip('"'))
+        if "R" in code or "C" in code or "->" in path:
+            raise _fail("RENAME_REJECTED", "renames and copies are not allowed")
+        if path not in permitted:
+            raise _fail("STAGE_FILE_OUTSIDE_PARENT", "changed file is outside the current stage ownership")
+        target = repo / path
+        if target.is_symlink():
+            raise _fail("SYMLINK_ESCAPE", "changed symlink is not allowed")
+        if code == "??":
+            additions, deletions = target.read_bytes().count(b"\n"), 0
+        else:
+            stats = _ledger_git(repo, "diff", "--numstat", "--no-ext-diff", "--", path).split("\t")
+            if len(stats) < 2 or stats[0] == "-" or stats[1] == "-":
+                raise _fail("BINARY_CHANGE", "binary files are not allowed")
+            additions, deletions = int(stats[0]), int(stats[1])
+        bucket = "test" if path.startswith("tests/") else "production"
+        totals[bucket] += additions + deletions
+        changed.append({"path": path, "status": code})
+    if totals["production"] > stage["max_production_lines"] or totals["test"] > stage["max_test_lines"]:
+        raise _fail("CEILING_EXCEEDED", "parent stage exceeds its declared ceiling")
+    return changed, totals
+
+
+def _parent_projection(record: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
+    item = record["contracts"][0]
+    projection = dict(item["gate_projection"])
+    projection["seam"] = record["parent_seam"]["id"]
+    projection["authorized_files"] = list(record["parent_files"])
+    projection["required_test_commands"] = [
+        " ".join(shlex.quote(arg) for arg in suite["argv"]) for suite in record["suites"]
+    ]
+    projection["production_changed_lines_max"] = max(stage["max_production_lines"] for stage in record["parent_seam"]["stages"])
+    projection["test_changed_lines_max"] = max(stage["max_test_lines"] for stage in record["parent_seam"]["stages"])
+    fd, name = tempfile.mkstemp(prefix="householder-parent-gate-", suffix=".json", dir=str(_ledger_file(record["campaign_id"]).parent))
+    os.close(fd)
+    path = Path(name)
+    path.write_text(json.dumps(projection, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    return path, projection
+
+
+def campaign_parent_next(campaign_id: str, operation_id: str) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id)
+    with _ledger_lock(campaign_id):
+        record = _parent_record(campaign_id)
+        payload: dict[str, Any] = {}
+        retry = _parent_retry(record, operation_id, "parent-next", payload)
+        if retry is not None:
+            return retry
+        _parent_validate(record, allow_dirty=False)
+        if record["state"] != "ADMITTED":
+            raise _fail("STAGE_ORDER_VIOLATION", "parent stage must begin at ADMITTED")
+        stage = record["parent_seam"]["stages"][0]
+        record["state"] = PARENT_STAGES[0]
+        record["current_stage_index"] = 0
+        record["active_stage"] = stage
+        output = {"state": record["state"], "stage": stage}
+        _record_operation(record, operation_id, "parent-next", payload, output)
+        _append_event(campaign_id, record, operation_id, "PARENT_STAGE_STARTED", payload)
+        return output
+
+
+def campaign_parent_finish_stage(campaign_id: str, operation_id: str) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id)
+    with _ledger_lock(campaign_id):
+        record = _parent_record(campaign_id)
+        payload: dict[str, Any] = {}
+        retry = _parent_retry(record, operation_id, "parent-finish-stage", payload)
+        if retry is not None:
+            return retry
+        _parent_validate(record, allow_dirty=True)
+        if record["state"] not in PARENT_STAGES:
+            raise _fail("STAGE_ORDER_VIOLATION", "no active stage can be finished")
+        stage = _parent_stage(record)
+        changed, totals = _parent_changed_files(record, stage)
+        gate_path, projection = _parent_projection(record)
+        try:
+            gate = subprocess.run([sys.executable, str(Path(record["project_root_path"]) / "scripts/ci/architecture_slice_gate.py"), "--contract", str(gate_path), "--contract-sha", _json_sha256(projection)], cwd=record["project_root_path"], capture_output=True, text=True, check=False, shell=False)
+        finally:
+            gate_path.unlink(missing_ok=True)
+        try:
+            gate_result = json.loads(gate.stdout)
+        except json.JSONDecodeError as exc:
+            raise _fail("STAGE_EVIDENCE_INCOMPLETE", "stage gate returned invalid evidence") from exc
+        if gate.returncode or not gate_result.get("pass"):
+            raise _fail("STAGE_EVIDENCE_INCOMPLETE", "stage gate evidence failed")
+        suite_results = []
+        for suite_id in stage["suite_ids"]:
+            suite = _suite_for(record, suite_id)
+            run = subprocess.run(suite["argv"], cwd=record["project_root_path"], capture_output=True, text=True, check=False, shell=False)
+            entry = {"suite_id": suite_id, "argv": suite["argv"], "exit_code": run.returncode, "passed": run.returncode == 0}
+            suite_results.append(entry)
+            if run.returncode:
+                raise _fail("STAGE_EVIDENCE_INCOMPLETE", "stage suite evidence failed")
+        diff_check = subprocess.run(["git", "diff", "--check"], cwd=record["project_root_path"], capture_output=True, text=True, check=False, shell=False)
+        if diff_check.returncode:
+            raise _fail("STAGE_EVIDENCE_INCOMPLETE", "stage diff evidence failed")
+        evidence = {"gate_pass": True, "tests_pass": True, "diff_check_pass": True, "scope_pass": True, "ceiling_pass": True}
+        if not set(stage["required_evidence"]).issubset(evidence):
+            raise _fail("STAGE_EVIDENCE_INCOMPLETE", "required stage evidence is unavailable")
+        record["completed_files"] = sorted(set(record.get("completed_files", [])) | {item["path"] for item in changed})
+        record["completed_stages"] = record["completed_stages"] + [stage["id"]]
+        record["results"].append({"stage": stage["id"], "changed_files": changed, "diff_totals": totals, "evidence": evidence, "suite_results": suite_results})
+        if record["current_stage_index"] == len(record["parent_seam"]["stages"]) - 1:
+            record["state"] = "VALIDATED"
+            record["active_stage"] = None
+            record["edit_validation"] = {"result": {"changed_files": changed, "expected_parent_head": record["starting_head"], "patch_sha": hashlib.sha256(_finish_patch(Path(record["project_root_path"]), record["completed_files"])).hexdigest()}}
+        else:
+            record["current_stage_index"] += 1
+            record["state"] = PARENT_STAGES[record["current_stage_index"]]
+            record["active_stage"] = record["parent_seam"]["stages"][record["current_stage_index"]]
+        output = {"state": record["state"], "completed_stage": stage["id"], "evidence": evidence, "suite_results": suite_results}
+        _record_operation(record, operation_id, "parent-finish-stage", payload, output)
+        _append_event(campaign_id, record, operation_id, "PARENT_STAGE_FINISHED", payload)
+        return output
+
+
+def campaign_parent_commit(campaign_id: str, operation_id: str) -> dict[str, Any]:
+    operation_id = _operation_id(operation_id)
+    with _ledger_lock(campaign_id):
+        record = _parent_record(campaign_id)
+        payload: dict[str, Any] = {}
+        retry = _parent_retry(record, operation_id, "parent-commit", payload)
+        if retry is not None:
+            return retry
+        if record["state"] != "VALIDATED":
+            raise _fail("STAGE_ORDER_VIOLATION", "parent commit requires VALIDATED state")
+        current_head = _ledger_git(Path(record["project_root_path"]), "rev-parse", "HEAD")
+        _parent_validate(record, allow_dirty=False, expected_commit=current_head)
+        if current_head == record["starting_head"]:
+            raise _fail("VALIDATED_COMMIT_REJECTED", "parent commit is not present")
+        committed_head = _validate_validated_commit(record)
+        record["protected_files"] = list(record["parent_files"])
+        record["state"] = "COMMITTED"
+        record["current_head"] = committed_head
+        output = {"state": record["state"], "protected_files": record["protected_files"], "current_head": record["current_head"]}
+        _record_operation(record, operation_id, "parent-commit", payload, output)
+        _append_event(campaign_id, record, operation_id, "PARENT_COMMITTED", payload)
+        return output
 
 
 def _discovery_load(discovery_id: str) -> dict[str, Any]:
@@ -1276,6 +1618,31 @@ def campaign_ledger_init(campaign_id: str, operation_id: str, repo: str | Path, 
             queued["gate_projection_sha256"] = _json_sha256(projection)
             queue.append(queued)
             _check_authorized(path, Path(identity["worktree_path"]))
+        parent = queue[0]["typed_contract"].get("parent_seam") if len(queue) == 1 else None
+        if parent is not None:
+            if len(queue) != 1:
+                raise _fail("PARENT_CONTRACT_MALFORMED", "parent campaign requires one parent contract")
+            _reject_parent_scope_overlap(campaign_id, set(parent["authorized_files"]))
+            now = _utcnow()
+            record = {
+                "schema_version": PARENT_SCHEMA_VERSION, "mode": "PARENT", "campaign_id": campaign_id,
+                "repo_path": str(repo), "worktree_path": identity["worktree_path"],
+                "project_root_path": identity["project_root_path"], "git_root_path": identity["git_root_path"],
+                "git_common_dir": identity["git_common_dir"], "git_dir": identity["git_dir"],
+                "contract_root": str(contract_root), "starting_head": identity["head"],
+                "current_head": identity["head"], "gate_blob_sha": gate_blob_sha, "contracts": queue,
+                "contract_queue_sha256": _json_sha256(queue), "start_time": now, "last_checkpoint_at": now,
+                "state": "ADMITTED", "current_index": 0, "pending_action": None,
+                "edit_admission": None, "edit_validation": None, "parent_seam": parent,
+                "parent_files": list(parent["authorized_files"]), "active_stage": None,
+                "current_stage_index": -1, "completed_stages": [], "completed_files": [],
+                "protected_files": [], "results": [], "stop_reason": None, "operations": [],
+                "suites": suite_records,
+            }
+            result = _result_view(record)
+            _record_operation(record, operation_id, "init", payload, result)
+            _append_event(campaign_id, record, operation_id, "PARENT_ADMITTED", payload)
+            return result
         record = {
             "schema_version": 1, "campaign_id": campaign_id, "repo_path": str(repo),
             "worktree_path": identity["worktree_path"], "project_root_path": identity["project_root_path"], "git_root_path": identity["git_root_path"],

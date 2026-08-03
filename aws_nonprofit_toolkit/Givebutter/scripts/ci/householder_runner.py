@@ -658,6 +658,19 @@ def campaign_status(task_id: str) -> dict[str, Any]:
     return householder_campaign.campaign_status(task_id)
 
 
+def campaign_parent_next(task_id: str, operation_id: str) -> dict[str, Any]:
+    """Advance the persisted parent seam; stage selection remains ledger-owned."""
+    return householder_campaign.campaign_parent_next(task_id, operation_id)
+
+
+def campaign_parent_finish_stage(task_id: str, operation_id: str) -> dict[str, Any]:
+    return householder_campaign.campaign_parent_finish_stage(task_id, operation_id)
+
+
+def campaign_parent_commit(task_id: str, operation_id: str) -> dict[str, Any]:
+    return householder_campaign.campaign_parent_commit(task_id, operation_id)
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="householder_runner.py")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -698,6 +711,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     campaign_status_cmd = sub.add_parser("campaign-status")
     campaign_status_cmd.add_argument("--task-id", required=True)
 
+    parent_next_cmd = sub.add_parser("campaign-parent-next")
+    parent_next_cmd.add_argument("--task-id", required=True)
+    parent_next_cmd.add_argument("--operation-id", required=True)
+    parent_finish_cmd = sub.add_parser("campaign-parent-finish-stage")
+    parent_finish_cmd.add_argument("--task-id", required=True)
+    parent_finish_cmd.add_argument("--operation-id", required=True)
+    parent_commit_cmd = sub.add_parser("campaign-parent-commit")
+    parent_commit_cmd.add_argument("--task-id", required=True)
+    parent_commit_cmd.add_argument("--operation-id", required=True)
+
     return parser.parse_args(argv)
 
 
@@ -724,6 +747,12 @@ def main(argv: list[str] | None = None) -> int:
             result = campaign_initialize(args.task_id, Path(args.contract_file))
         elif args.command == "campaign-status":
             result = campaign_status(args.task_id)
+        elif args.command == "campaign-parent-next":
+            result = campaign_parent_next(args.task_id, args.operation_id)
+        elif args.command == "campaign-parent-finish-stage":
+            result = campaign_parent_finish_stage(args.task_id, args.operation_id)
+        elif args.command == "campaign-parent-commit":
+            result = campaign_parent_commit(args.task_id, args.operation_id)
         else:  # pragma: no cover
             raise ValueError("unknown command")
         print(json.dumps(result, indent=2, sort_keys=True))

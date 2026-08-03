@@ -570,6 +570,76 @@ def discovery_findings(discovery_id="discovery-01", files=None):
     }
 
 
+def parent_contract(repo, tmp_path, allowed=None, ceiling=20):
+    allowed = allowed or ["seed.txt"]
+    stages = []
+    for ordinal, stage_id in enumerate(("structure", "integration", "cleanup")):
+        stages.append({
+            "id": stage_id,
+            "ordinal": ordinal,
+            "allowed_files": list(allowed),
+            "suite_ids": ["wrapper-unit"],
+            "max_production_lines": ceiling,
+            "max_test_lines": 20,
+            "required_evidence": ["gate_pass", "tests_pass", "diff_check_pass", "scope_pass", "ceiling_pass"],
+        })
+    payload = {
+        "task_id": "parent-contract",
+        "seam": "parent-seam",
+        "typed_contract": {
+            "baseline_head": git(repo, "rev-parse", "HEAD"),
+            "gate_sha": git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"),
+            "allowed_files": list(allowed),
+            "max_production_lines": 100,
+            "max_test_lines": 100,
+            "suite_ids": ["wrapper-unit"],
+            "invariants": ["preserve behavior"],
+            "completed_seams": [],
+            "completed_seam_files": {},
+            "protected_files": [],
+            "parent_seam": {"id": "parent-seam", "authorized_files": list(allowed), "stages": stages},
+        },
+    }
+    path = tmp_path / "parent-contract.json"
+    path.write_text(json.dumps(payload) + "\n")
+    return {"path": str(path), "sha256": campaign._json_sha256(payload)}
+
+
+def test_parent_repeated_file_lifecycle_restart_retry_and_commit(repo, tmp_path, monkeypatch):
+    monkeypatch.setitem(campaign.SUITE_REGISTRY, "wrapper-unit", ["python3", "-c", "pass"])
+    item = parent_contract(repo, tmp_path)
+    campaign.campaign_ledger_init("parent-01", "init-parent", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+    assert campaign.campaign_parent_status("parent-01")["state"] == "ADMITTED"
+    started = campaign.campaign_parent_next("parent-01", "next-structure")
+    events = Path(campaign._events_file("parent-01"))
+    before = events.read_bytes()
+    assert campaign.campaign_parent_next("parent-01", "next-structure") == started
+    assert events.read_bytes() == before
+    (repo / "seed.txt").write_text("stage one\n")
+    assert campaign.campaign_parent_finish_stage("parent-01", "finish-structure")["state"] == "INTEGRATION"
+    assert campaign.campaign_parent_finish_stage("parent-01", "finish-integration")["state"] == "CLEANUP"
+    assert campaign.campaign_parent_finish_stage("parent-01", "finish-cleanup")["state"] == "VALIDATED"
+    git(repo, "add", "seed.txt")
+    git(repo, "commit", "-qm", "parent validated change")
+    closed = campaign.campaign_parent_commit("parent-01", "commit-parent")
+    assert closed["state"] == "COMMITTED"
+    assert closed["protected_files"] == ["seed.txt"]
+
+
+def test_parent_rejects_stage_skip_and_outside_change_without_event(repo, tmp_path, monkeypatch):
+    monkeypatch.setitem(campaign.SUITE_REGISTRY, "wrapper-unit", ["python3", "-c", "pass"])
+    item = parent_contract(repo, tmp_path)
+    campaign.campaign_ledger_init("parent-02", "init-parent", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+    with pytest.raises(campaign.CampaignError, match="STAGE_ORDER_VIOLATION"):
+        campaign.campaign_parent_finish_stage("parent-02", "finish-before-start")
+    campaign.campaign_parent_next("parent-02", "next-structure")
+    (repo / "outside.txt").write_text("unauthorized\n")
+    before = Path(campaign._events_file("parent-02")).read_bytes()
+    with pytest.raises(campaign.CampaignError, match="STAGE_FILE_OUTSIDE_PARENT"):
+        campaign.campaign_parent_finish_stage("parent-02", "finish-outside")
+    assert Path(campaign._events_file("parent-02")).read_bytes() == before
+
+
 def start_discovery(repo, tmp_path, monkeypatch, discovery_id="discovery-01"):
     monkeypatch.setattr(campaign, "repo_root", lambda: repo)
     monkeypatch.setattr(campaign, "DISCOVERY_RUN_ROOT", tmp_path / "discoveries")

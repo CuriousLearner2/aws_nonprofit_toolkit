@@ -26,7 +26,7 @@ STATE_ROOT = Path(os.environ.get("HOUSEHOLDER_LAUNCH_STATE_ROOT", "/private/tmp/
 PYTHON311 = os.environ.get("HOUSEHOLDER_PYTHON311", "python3.11")
 REMOTE_URL = os.environ.get("HOUSEHOLDER_GITHUB_REMOTE", "")
 MARKERS = ("scripts/ci/householder_campaign.py", "scripts/ci/architecture_slice_gate.py", "scripts/householder/autosave_service.py", "tests/integration/test_autosave_validation.py")
-ERRORS = {"BASELINE_UNAVAILABLE", "BASELINE_MISMATCH", "MIRROR_UNAVAILABLE", "CHECKOUT_COLLISION", "PROJECT_ROOT_UNAVAILABLE", "PROJECT_ROOT_AMBIGUOUS", "ENVIRONMENT_MISMATCH", "SUITE_PREFLIGHT_FAILED", "SCOPE_OVERLAP", "SCOPE_LOCK_STALE_UNSAFE", "CONTRACT_INVALID", "WRAPPER_INITIALIZATION_FAILED", "LAUNCH_STATE_CONFLICT", "PARTIAL_CLEANUP_FAILED"}
+ERRORS = {"BASELINE_UNAVAILABLE", "BASELINE_MISMATCH", "MIRROR_UNAVAILABLE", "CHECKOUT_COLLISION", "PROJECT_ROOT_UNAVAILABLE", "PROJECT_ROOT_AMBIGUOUS", "ENVIRONMENT_MISMATCH", "SUITE_PREFLIGHT_FAILED", "SCOPE_OVERLAP", "SCOPE_LOCK_STALE_UNSAFE", "CONTRACT_INVALID", "WRAPPER_INITIALIZATION_FAILED", "LAUNCH_STATE_CONFLICT", "PARTIAL_CLEANUP_FAILED", "LAUNCHER_STAGE_OVERRIDE_REJECTED"}
 
 
 class LaunchError(Exception):
@@ -62,6 +62,8 @@ def _git_out(cwd: Path, *args: str) -> str:
 
 def _normalise_input(value: dict[str, Any]) -> dict[str, Any]:
     required = {"baseline", "campaign_id", "mode", "authorized_production_paths", "authorized_test_paths", "suite_ids", "time_limit_seconds"}
+    if isinstance(value, dict) and any(field in value for field in ("stage", "stage_id", "stage_index", "command_override", "suite_override", "file_override")):
+        raise LaunchError("LAUNCHER_STAGE_OVERRIDE_REJECTED", "stage selection is ledger-owned")
     if not isinstance(value, dict) or set(value) - required - {"typed_contract"} or required - set(value): raise LaunchError("CONTRACT_INVALID", "input fields are missing or unknown")
     baseline = value["baseline"]
     if not isinstance(baseline, str) or len(baseline) != 40 or baseline.lower() != baseline or any(c not in "0123456789abcdef" for c in baseline): raise LaunchError("BASELINE_MISMATCH", "baseline must be an exact lowercase commit SHA")
@@ -249,7 +251,11 @@ def launch(payload: dict[str, Any] | Path, *, operation_id: str | None = None) -
             if payload["mode"] == "discovery": wrapper_state = wrapper.campaign_discovery_start(payload["campaign_id"], operation_id)
             else:
                 contract = _contract(project, payload, operation_id, wrapper); gate = _git_out(project, "hash-object", str(project / "scripts/ci/architecture_slice_gate.py")); contract_sha = wrapper._json_sha256(json.loads(contract.read_text(encoding="utf-8")))
-                wrapper.campaign_ledger_init(payload["campaign_id"], operation_id, project, gate, [{"path": str(contract), "sha256": contract_sha}], payload["suite_ids"]); wrapper.campaign_ledger_next(payload["campaign_id"]); wrapper_state = wrapper.campaign_ledger_start_edit(payload["campaign_id"], 0, operation_id + "-start-edit")
+                wrapper.campaign_ledger_init(payload["campaign_id"], operation_id, project, gate, [{"path": str(contract), "sha256": contract_sha}], payload["suite_ids"])
+                if wrapper.is_parent_contract(contract):
+                    wrapper_state = wrapper.campaign_parent_next(payload["campaign_id"], operation_id + "-start-stage")
+                else:
+                    wrapper.campaign_ledger_next(payload["campaign_id"]); wrapper_state = wrapper.campaign_ledger_start_edit(payload["campaign_id"], 0, operation_id + "-start-edit")
             output = {"status": "ready", "error_code": None, "baseline": resolution, "checkout": str(checkout), "git_root": identity["git_root"], "project_root": identity["project_root"], "environment_fingerprint": environment, "suite_results": suites, "acquired_locks": locks, "ledger_path": str(wrapper._ledger_file(payload["campaign_id"])), "wrapper_state": wrapper_state}
             _atomic(state_path, {"input_sha256": digest, "operation_id": operation_id, "status": "ready", "output": output}); return output
     except LaunchError:
