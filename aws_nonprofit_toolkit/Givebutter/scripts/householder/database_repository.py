@@ -341,7 +341,7 @@ class DatabaseImportRepository:
             ).all()
 
             for review_item, subject in validation_reviews:
-                if subject.subject_type == 'import_contact_snapshot':
+                if subject.subject_type in ('import_contact_snapshot', 'import_raw_row'):
                     contact_id = subject.subject_id
                     payload = review_item.payload_json or {}
                     if contact_id not in validation_map:
@@ -436,32 +436,43 @@ class DatabaseImportRepository:
                     except (InvalidOperation, ValueError, TypeError):
                         amount_str = str(contact.amount)
 
-                # Get current validation issues (recalculated based on effective values)
-                try:
-                    current_issues = recalculate_row_issues(import_id, contact.raw_import_row_id, self.database_url)
-                except Exception:
-                    current_issues = []
-
-                # Use first issue if any exist
+                # Preserve the repository's direct ValidationPageViewModel
+                # contract; the route service applies the canonical display
+                # projection to the returned rows.
                 issue_type = None
                 issue_description = None
                 issue_field = None
                 issue_reason = None
                 review_item_id = None
-                if current_issues:
-                    first_issue = current_issues[0]
-                    issue_field = first_issue.get('field')
-                    issue_description = first_issue.get('description')
-                    review_item_id = first_issue.get('issue_id')
-                    severity = first_issue.get('severity', 'warning')
-
-                    # Map severity and field to issue_type codes that validation_service expects
-                    if severity == 'error':
-                        issue_type = 'missing-required'
-                        issue_reason = 'missing'
-                    else:
-                        issue_type = 'format-invalid'
-                        issue_reason = 'possible_typo'
+                persisted_issue = validation_map.get(contact.id)
+                if persisted_issue:
+                    issue_type = persisted_issue.get('issue_type')
+                    issue_description = persisted_issue.get('issue_description')
+                    issue_field = persisted_issue.get('field')
+                    issue_reason = persisted_issue.get('reason')
+                    review_item_id = persisted_issue.get('review_item_id')
+                if not persisted_issue:
+                    try:
+                        current_issues = recalculate_row_issues(
+                            import_id, contact.raw_import_row_id, self.database_url
+                        )
+                    except Exception:
+                        current_issues = []
+                    if current_issues:
+                        first_issue = current_issues[0]
+                        issue_field = first_issue.get('field')
+                        issue_description = first_issue.get('description')
+                        review_item_id = first_issue.get('issue_id')
+                        issue_type = (
+                            'missing-required'
+                            if first_issue.get('severity') == 'error'
+                            else 'format-invalid'
+                        )
+                        issue_reason = (
+                            'missing'
+                            if first_issue.get('severity') == 'error'
+                            else 'possible_typo'
+                        )
 
                 # Determine effective status from latest ReviewDecision
                 effective_status = 'pending'

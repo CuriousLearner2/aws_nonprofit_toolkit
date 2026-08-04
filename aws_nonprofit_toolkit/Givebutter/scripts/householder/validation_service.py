@@ -13,10 +13,7 @@ import os
 
 from .repository_provider import get_import_repository
 from .issue_recalculation_service import recalculate_row_issues
-from .issue_evaluation_policy import evaluate_effective_values
-from .issue_presentation import present_validation_issues
-from .row_status_service import derive_row_status
-from .row_status_policy import derive_row_status as _derive_row_status
+from .issue_presentation import project_validation_record
 from .validation_failure_policy import is_expected_validation_failure
 
 
@@ -48,66 +45,23 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
     if config:
         database_url = config.get('GIVEBUTTER_DATABASE_URL')
 
-    # Enrich validation_issues with row_status and issues using recalculation service
+    # Enrich every repository row through the one canonical projection boundary.
     for record in result.get('validation_issues', []):
-        raw_import_row_id = record.get('raw_import_row_id')
-
-        if raw_import_row_id:
-            try:
-                # Get all issues for this row (recalculates based on effective values)
-                all_issues = recalculate_row_issues(
-                    import_id,
-                    raw_import_row_id,
-                    database_url=database_url,
-                )
-
-                # Get row status
-                row_status = derive_row_status(
-                    import_id,
-                    raw_import_row_id,
-                    database_url=database_url,
-                )
-
-                # Format issues for template
-                record['issues'] = present_validation_issues(all_issues)
-                record['row_status'] = row_status
-            except Exception as error:
-                if not is_expected_validation_failure(error):
-                    raise
-                # Fall back to fixture-provided data if batch/row not in database
-                # (e.g., when using fixture repository with synthetic row IDs)
-                # First check if fixture has an issue_type
-                if record.get('issue_type') and not record.get('issues'):
-                    # Format fixture-provided issue_type/issue_description to issues list
-                    record['issues'] = [
-                        {
-                            'field': record.get('issue_field', 'unknown'),
-                            'reason': record.get('issue_description', 'Issue detected'),
-                            'severity': 'error' if record.get('issue_type') == 'missing-required' else 'warning'
-                        }
-                    ]
-                elif not record.get('issue_type'):
-                    # No fixture-provided issue_type; validate fixture fields to detect issues
-                    # using the same blank-allowed review-time policy as DB-backed rows.
-                    fixture_values = {
-                        'date': record.get('date'),
-                        'amount': record.get('amount'),
-                        'email': record.get('email'),
-                        'phone': record.get('phone'),
-                        'address': record.get('address'),
-                    }
-                    validation_issues = evaluate_effective_values(fixture_values)
-                    record['issues'] = present_validation_issues(validation_issues)
-                else:
-                    # Shouldn't reach here, but be safe
-                    record['issues'] = []
-
-                # Set row_status by delegating to the canonical row-status policy.
-                if not record.get('row_status'):
-                    record['row_status'] = _derive_row_status(record.get('issues', []))
-        else:
-            # No issue in this record
-            record['row_status'] = 'No issues'
-            record['issues'] = []
+        try:
+            project_validation_record(
+                record, import_id, database_url=database_url,
+                recalculation=recalculate_row_issues,
+            )
+        except Exception as error:
+            if not is_expected_validation_failure(error):
+                raise
+            # Synthetic fixture rows may carry only the fixture issue contract.
+            record.pop('row_status', None)
+            record.pop('issues', None)
+            project_validation_record(
+                record, import_id, database_url=None,
+                recalculation=recalculate_row_issues,
+                use_database=False,
+            )
 
     return result
