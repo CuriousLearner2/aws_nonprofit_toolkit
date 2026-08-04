@@ -16,6 +16,33 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+try:
+    from .householder_paths import (
+        CanonicalPathError,
+        canonical_changed_paths,
+        canonicalize,
+        canonicalize_git_path,
+        canonicalize_many,
+        discover_layout,
+        resolve_in_project,
+        sha256_patch,
+        to_git_path,
+        validate_project_relative,
+    )
+except ImportError:  # pragma: no cover - direct script execution
+    from householder_paths import (
+        CanonicalPathError,
+        canonical_changed_paths,
+        canonicalize,
+        canonicalize_git_path,
+        canonicalize_many,
+        discover_layout,
+        resolve_in_project,
+        sha256_patch,
+        to_git_path,
+        validate_project_relative,
+    )
+
 
 
 SCHEMA_VERSION = 1
@@ -434,11 +461,10 @@ def _normalized_relative_paths(items: Any, field: str) -> list[str]:
         raise _fail("CONTRACT_MALFORMED", f"{field} must be a JSON array")
     normalized: list[str] = []
     for item in items:
-        if type(item) is not str or not item or item.strip() != item or "\\" in item:
-            raise _fail("CONTRACT_MALFORMED", f"{field} entries must be relative paths")
-        value = posixpath.normpath(item)
-        if value in ("", ".") or value.startswith("../") or value == ".." or value.startswith("/"):
-            raise _fail("CONTRACT_MALFORMED", f"{field} entries must be relative paths")
+        try:
+            value = validate_project_relative(item, field=field)
+        except CanonicalPathError as exc:
+            raise _fail("CONTRACT_MALFORMED", f"{field} entries must be relative paths") from exc
         normalized.append(value)
     if len(normalized) != len(set(normalized)):
         raise _fail("CONTRACT_MALFORMED", f"{field} entries must be unique")
@@ -793,13 +819,16 @@ def _validate_admitted_edit_checkpoint(record: dict[str, Any]) -> None:
 
 
 def _finish_patch(repo: Path, paths: list[str]) -> bytes:
+    layout = discover_layout(_canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel")), markers=PROJECT_MARKERS)
+    git_root = layout.git_root
     patch = b""
     for path in sorted(paths):
-        status = _ledger_git(repo, "status", "--porcelain=v1", "--", path)
+        git_path = to_git_path(path, layout)
+        status = _ledger_git(git_root, "status", "--porcelain=v1", "--", git_path)
         if status.startswith("??"):
-            patch += subprocess.run(["git", "diff", "--binary", "--no-index", "/dev/null", path], cwd=repo, capture_output=True, check=False).stdout
+            patch += subprocess.run(["git", "diff", "--binary", "--no-index", "/dev/null", git_path], cwd=git_root, capture_output=True, check=False).stdout
         else:
-            patch += subprocess.run(["git", "diff", "--binary", "--no-ext-diff", "--", path], cwd=repo, capture_output=True, check=False).stdout
+            patch += subprocess.run(["git", "diff", "--binary", "--no-ext-diff", "--", git_path], cwd=git_root, capture_output=True, check=False).stdout
     return patch
 
 
@@ -829,14 +858,14 @@ def _validate_validated_commit(record: dict[str, Any]) -> str:
         raise _fail("VALIDATED_COMMIT_REJECTED", "commit contains a rename, copy, or merge-style change")
     committed_paths_raw = {line.split("\t", 1)[1] for line in name_status}
     committed_paths_project = {_project_relative_path(repo, path) for path in committed_paths_raw}
-    if validated_paths != committed_paths_raw and validated_paths != committed_paths_project:
+    if validated_paths != committed_paths_project:
         raise _fail("VALIDATED_COMMIT_REJECTED", "commit paths differ from validated paths")
     diff_paths = committed_paths_project
     patch = subprocess.run(
         ["git", "diff", "--binary", "--no-ext-diff", expected_parent, head, "--", *sorted(diff_paths)],
         cwd=repo, capture_output=True, check=False,
     ).stdout
-    if hashlib.sha256(patch).hexdigest() != validated_patch_sha:
+    if sha256_patch(patch) != validated_patch_sha:
         raise _fail("VALIDATED_COMMIT_REJECTED", "commit content differs from validated patch")
     _ledger_validate(record, expected_commit=head, allow_dirty=False)
     return head
@@ -855,12 +884,13 @@ def campaign_ledger_finish_edit(campaign_id: str, contract_index: int, operation
             raise _fail("EDIT_ALREADY_VALIDATED", "contract edit already validated")
         repo = Path(record["worktree_path"]); contract = _finish_contract(record["contracts"][contract_index]["path"]); changed = _finish_changes(record, contract); paths = [item["path"] for item in changed]
         queued = record["contracts"][contract_index]
+        projection = _gate_projection(queued, repo, record["suites"])
         projection_fd, projection_name = tempfile.mkstemp(prefix="householder-gate-", suffix=".json", dir=str(_ledger_file(campaign_id).parent))
         os.close(projection_fd)
         projection_file = Path(projection_name)
-        projection_file.write_text(json.dumps(queued["gate_projection"], sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+        projection_file.write_text(json.dumps(projection, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
         try:
-            gate = subprocess.run(["python3", str(repo / "scripts/ci/architecture_slice_gate.py"), "--contract", str(projection_file), "--contract-sha", queued["gate_projection_sha256"]], cwd=repo, capture_output=True, text=True, check=False, shell=False)
+            gate = subprocess.run(["python3", str(repo / "scripts/ci/architecture_slice_gate.py"), "--contract", str(projection_file), "--contract-sha", _json_sha256(projection)], cwd=repo, capture_output=True, text=True, check=False, shell=False)
         finally:
             projection_file.unlink(missing_ok=True)
         try: gate_result = json.loads(gate.stdout)
@@ -875,7 +905,7 @@ def campaign_ledger_finish_edit(campaign_id: str, contract_index: int, operation
         if check.returncode: raise _fail("DIFF_CHECK_FAILED", "git diff --check failed")
         patch = _finish_patch(Path(record["worktree_path"]), paths); totals = {"production": gate_result.get("production_totals", {}), "test": gate_result.get("test_totals", {})}
         expected_parent_head = _ledger_git(repo, "rev-parse", "HEAD")
-        output = {"contract_index": contract_index, "changed_files": gate_result.get("files", changed), "diff_totals": totals, "gate_result": gate_result, "suite_results": suite_results, "diff_check": {"passed": True}, "patch_sha": hashlib.sha256(patch).hexdigest(), "gate_pass": True, "tests_pass": True, "commit_sha": expected_parent_head, "expected_parent_head": expected_parent_head, "suite_id": record["suites"][0]["id"], "admission_operation_id": admission["operation_id"]}
+        output = {"contract_index": contract_index, "changed_files": gate_result.get("files", changed), "diff_totals": totals, "gate_result": gate_result, "suite_results": suite_results, "diff_check": {"passed": True}, "patch_sha": sha256_patch(patch), "gate_pass": True, "tests_pass": True, "commit_sha": expected_parent_head, "expected_parent_head": expected_parent_head, "suite_id": record["suites"][0]["id"], "admission_operation_id": admission["operation_id"]}
         record["edit_validation"] = {"contract_index": contract_index, "operation_id": operation_id, "result": output}; _record_operation(record, operation_id, "finish-edit", payload, output); _append_event(campaign_id, record, operation_id, "EDIT_VALIDATED", payload); return output
 @contextmanager
 def _ledger_lock(campaign_id: str):
@@ -903,15 +933,11 @@ def _ledger_git(repo: Path, *args: str) -> str:
 
 def _project_relative_path(repo: Path, path: str) -> str:
     """Normalize Git's repository-root status paths to project-root paths."""
-    git_root = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
-    project = _canonical_path(repo)
-    prefix = project.relative_to(git_root).as_posix()
-    if prefix in ("", "."):
-        return path
-    if path == prefix:
-        return ""
-    marker = prefix + "/"
-    return path[len(marker):] if path.startswith(marker) else path
+    try:
+        layout = discover_layout(_canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel")), markers=PROJECT_MARKERS)
+        return canonicalize_git_path(path, layout)
+    except CanonicalPathError as exc:
+        raise _fail("PATH_OUTSIDE_ROOT", str(exc)) from exc
 
 
 def _ledger_identity(repo: Path) -> dict[str, Any]:
@@ -999,14 +1025,14 @@ def _gate_projection(item: dict[str, Any], repo: Path, suites: list[dict[str, An
     typed = item["typed_contract"]
     git_root = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
     project = _canonical_path(repo)
-    prefix = project.relative_to(git_root).as_posix()
-    allowed = [path if not prefix or prefix == "." else f"{prefix}/{path}" for path in typed["allowed_files"]]
+    layout = discover_layout(git_root, markers=PROJECT_MARKERS)
+    allowed = list(typed["allowed_files"])
     new_production = []
-    for path in allowed:
-        baseline_path = f"{typed['baseline_head']}:{path}"
+    for project_path in allowed:
+        baseline_path = f"{typed['baseline_head']}:{to_git_path(project_path, layout)}"
         result = subprocess.run(["git", "cat-file", "-e", baseline_path], cwd=repo, capture_output=True, text=True, check=False, shell=False)
-        if result.returncode and path.startswith("scripts/") and not path.startswith("tests/"):
-            new_production.append(path)
+        if result.returncode and project_path.startswith("scripts/") and not project_path.startswith("tests/"):
+            new_production.append(project_path)
     return {
         "schema_version": 1,
         "task_id": item["task_id"],
@@ -1022,6 +1048,27 @@ def _gate_projection(item: dict[str, Any], repo: Path, suites: list[dict[str, An
         "required_test_commands": [" ".join(shlex.quote(arg) for arg in suite["argv"]) for suite in suites],
         "gate_blob_sha": typed["gate_sha"],
     }
+
+
+def _canonical_projection(value: dict[str, Any], repo: Path) -> dict[str, Any]:
+    """Compare projection paths semantically, regardless of Git/project origin."""
+    git_root = _canonical_path(_ledger_git(repo, "rev-parse", "--show-toplevel"))
+    layout = discover_layout(git_root, markers=PROJECT_MARKERS)
+    normalized = dict(value)
+    for field in ("authorized_files", "allowed_new_production_files", "forbidden_files"):
+        if field in normalized:
+            try:
+                normalized[field] = sorted(canonicalize_many(normalized[field], layout, field=field))
+            except CanonicalPathError as exc:
+                raise _fail("CONTRACT_MUTATED", "generated gate projection contains an invalid path") from exc
+    if "authorized_files" in normalized and "baseline_ref" in normalized:
+        normalized["allowed_new_production_files"] = sorted(
+            path for path in normalized["authorized_files"]
+            if path.startswith("scripts/")
+            and not path.startswith("tests/")
+            and _git(["cat-file", "-e", f"{normalized['baseline_ref']}:{to_git_path(path, layout)}"], cwd=repo).returncode != 0
+        )
+    return normalized
 
 
 def _check_authorized(contract_path: Path, worktree: Path) -> None:
@@ -1423,7 +1470,8 @@ def _ledger_validate(record: dict[str, Any], expected_commit: str | None = None,
         if current["typed_contract"] != item.get("typed_contract"):
             raise _fail("CONTRACT_MUTATED", "normalized contract changed")
         projection = _gate_projection(current, worktree, record["suites"])
-        if projection != item.get("gate_projection") or _json_sha256(projection) != item.get("gate_projection_sha256"):
+        stored_projection = item.get("gate_projection")
+        if not isinstance(stored_projection, dict) or _canonical_projection(projection, worktree) != _canonical_projection(stored_projection, worktree):
             raise _fail("CONTRACT_MUTATED", "generated gate projection changed")
         _check_authorized(Path(item["path"]), worktree)
     if identity["head"] != record["current_head"] and identity["head"] != expected_commit:

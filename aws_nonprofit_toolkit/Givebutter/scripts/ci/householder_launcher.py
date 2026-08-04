@@ -20,6 +20,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from .householder_paths import CanonicalPathError, canonicalize_many, discover_layout
+except ImportError:  # pragma: no cover - direct script execution
+    from householder_paths import CanonicalPathError, canonicalize_many, discover_layout
+
 MIRROR_PATH = Path(os.environ.get("HOUSEHOLDER_MIRROR_PATH", "/Users/gautambiswas/householder-integration-mirror.git"))
 LAUNCH_ROOT = Path(os.environ.get("HOUSEHOLDER_LAUNCH_ROOT", "/private/tmp/householder-launches"))
 LOCK_ROOT = Path(os.environ.get("HOUSEHOLDER_SCOPE_LOCK_ROOT", "/private/tmp/householder-scope-locks"))
@@ -84,9 +89,11 @@ def _normalise_input(value: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(paths, list) or any(not isinstance(p, str) or not p or p.strip() != p for p in paths): raise LaunchError("CONTRACT_INVALID", f"{field} is malformed")
         normalized = []
         for path in paths:
-            if "\\" in path or path.startswith("/") or ".." in Path(path).parts or Path(path).as_posix() != path: raise LaunchError("CONTRACT_INVALID", f"{field} contains an escaped path")
+            if "\\" in path or "\0" in path or ".." in Path(path).parts:
+                raise LaunchError("CONTRACT_INVALID", f"{field} contains an escaped path")
             normalized.append(path)
-        if len(normalized) != len(set(normalized)): raise LaunchError("CONTRACT_INVALID", f"{field} contains duplicate paths")
+        if len(normalized) != len(set(normalized)):
+            raise LaunchError("CONTRACT_INVALID", f"{field} contains duplicate paths")
         result[field] = normalized
     suites = value["suite_ids"]
     if not isinstance(suites, list) or not suites or any(not isinstance(s, str) or not s.strip() for s in suites) or len(suites) != len(set(suites)): raise LaunchError("CONTRACT_INVALID", "suite_ids is malformed")
@@ -111,15 +118,22 @@ def _resolve_baseline(baseline: str) -> dict[str, Any]:
 
 
 def discover_project_root(git_root: Path) -> Path:
-    candidates = [git_root, git_root / "aws_nonprofit_toolkit" / "Givebutter"]
-    valid = []
-    for candidate in candidates:
-        if not candidate.exists(): continue
-        if candidate.is_symlink() or candidate.resolve() != candidate: raise LaunchError("PROJECT_ROOT_UNAVAILABLE", "project root is symlinked")
-        if all((candidate / marker).is_file() for marker in MARKERS): valid.append(candidate)
-    if not valid: raise LaunchError("PROJECT_ROOT_UNAVAILABLE", "project root is unavailable")
-    if len(valid) != 1: raise LaunchError("PROJECT_ROOT_AMBIGUOUS", "multiple project roots found")
-    return valid[0]
+    try:
+        return discover_layout(git_root, markers=MARKERS).project_root
+    except CanonicalPathError as exc:
+        code = "PROJECT_ROOT_AMBIGUOUS" if "ambiguous" in str(exc) else "PROJECT_ROOT_UNAVAILABLE"
+        raise LaunchError(code, str(exc)) from exc
+
+
+def _canonicalise_payload(payload: dict[str, Any], project: Path) -> dict[str, Any]:
+    try:
+        layout = discover_layout(Path(_git_out(project, "rev-parse", "--show-toplevel")), markers=MARKERS)
+        normalized = dict(payload)
+        for field in ("authorized_production_paths", "authorized_test_paths"):
+            normalized[field] = canonicalize_many(payload[field], layout, field=field)
+        return normalized
+    except CanonicalPathError as exc:
+        raise LaunchError("CONTRACT_INVALID", str(exc)) from exc
 
 
 def _declared_packages(project: Path) -> list[str]:
@@ -214,7 +228,10 @@ def _suite_records(project: Path, suite_ids: list[str], executable: str, environ
     return records
 
 
-def _preflight(project: Path, suite_ids: list[str], executable: str, environment: dict[str, Any], deadline: float) -> list[dict[str, Any]]:
+def _preflight(project: Path, suite_ids: list[str], executable: str, environment: dict[str, Any] | float, deadline: float | None = None) -> list[dict[str, Any]]:
+    if deadline is None:
+        deadline = float(environment)
+        environment = {"fingerprint": "legacy-test"}
     results = []
     for record in _suite_records(project, suite_ids, executable, environment):
         command = record["argv"]
@@ -390,7 +407,9 @@ def launch(payload: dict[str, Any] | Path, *, operation_id: str | None = None) -
         needs_clone = True
     try:
         if needs_clone: _clone(checkout, payload["baseline"])
-        project = discover_project_root(checkout); identity = {"git_root": str(Path(_git_out(project, "rev-parse", "--show-toplevel"))), "project_root": str(project), "worktree": str(project), "git_common_dir": _git_out(project, "rev-parse", "--git-common-dir"), "git_dir": _git_out(project, "rev-parse", "--git-dir")}
+        project = discover_project_root(checkout)
+        payload = _canonicalise_payload(payload, project)
+        identity = {"git_root": str(Path(_git_out(project, "rev-parse", "--show-toplevel"))), "project_root": str(project), "worktree": str(project), "git_common_dir": _git_out(project, "rev-parse", "--git-common-dir"), "git_dir": _git_out(project, "rev-parse", "--git-dir")}
         environment = _environment(project); suites = _preflight(project, payload["suite_ids"], environment["python_executable"], environment, time.time() + payload["time_limit_seconds"])
         with scope_lock(payload["campaign_id"], payload["mode"], project, payload["authorized_production_paths"] + payload["authorized_test_paths"], operation_id) as locks:
             wrapper = _wrapper(project)
@@ -434,6 +453,7 @@ def doctor(payload: dict[str, Any] | Path) -> dict[str, Any]:
         shutil.rmtree(checkout)
         _clone(checkout, payload["baseline"])
         project = discover_project_root(checkout)
+        payload = _canonicalise_payload(payload, project)
         environment = _environment(project)
         suites = _preflight(project, payload["suite_ids"], environment["python_executable"], environment, time.time() + payload["time_limit_seconds"])
         return _bounded({"status": "READY", "error_code": None, "baseline": resolution, "git_root": str(Path(_git_out(project, "rev-parse", "--show-toplevel"))), "project_root": str(project), "environment_fingerprint": environment, "suite_records": suites})
