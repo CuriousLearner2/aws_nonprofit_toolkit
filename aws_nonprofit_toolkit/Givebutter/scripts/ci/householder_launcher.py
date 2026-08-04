@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import platform
+import secrets
 import shutil
 import subprocess
 import sys
@@ -28,7 +29,7 @@ PYTHON311_VENV = os.environ.get("HOUSEHOLDER_PYTHON311_VENV", "/Users/gautambisw
 EXPECTED_ENVIRONMENT_FINGERPRINT = os.environ.get("HOUSEHOLDER_ENVIRONMENT_FINGERPRINT", "")
 REMOTE_URL = os.environ.get("HOUSEHOLDER_GITHUB_REMOTE", "")
 MARKERS = ("scripts/ci/householder_campaign.py", "scripts/ci/architecture_slice_gate.py", "scripts/householder/autosave_service.py", "tests/integration/test_autosave_validation.py")
-ERRORS = {"BASELINE_UNAVAILABLE", "BASELINE_MISMATCH", "MIRROR_UNAVAILABLE", "CHECKOUT_COLLISION", "PROJECT_ROOT_UNAVAILABLE", "PROJECT_ROOT_AMBIGUOUS", "ENVIRONMENT_MISMATCH", "SUITE_PREFLIGHT_FAILED", "SUITE_PATH_INVALID", "SCOPE_OVERLAP", "SCOPE_LOCK_STALE_UNSAFE", "CONTRACT_INVALID", "WRAPPER_INITIALIZATION_FAILED", "LAUNCH_STATE_CONFLICT", "PARTIAL_CLEANUP_FAILED", "LAUNCHER_STAGE_OVERRIDE_REJECTED"}
+ERRORS = {"BASELINE_UNAVAILABLE", "BASELINE_MISMATCH", "MIRROR_UNAVAILABLE", "CHECKOUT_COLLISION", "PROJECT_ROOT_UNAVAILABLE", "PROJECT_ROOT_AMBIGUOUS", "ENVIRONMENT_MISMATCH", "SUITE_PREFLIGHT_FAILED", "SUITE_PATH_INVALID", "SCOPE_OVERLAP", "SCOPE_LOCK_LIVE", "SCOPE_LOCK_IDENTITY_AMBIGUOUS", "SCOPE_LOCK_STALE_UNSAFE", "PROCESS_IDENTITY_CORRUPT", "CONTRACT_INVALID", "WRAPPER_INITIALIZATION_FAILED", "LAUNCH_STATE_CONFLICT", "PARTIAL_CLEANUP_FAILED", "LAUNCHER_STAGE_OVERRIDE_REJECTED"}
 
 
 class LaunchError(Exception):
@@ -40,6 +41,10 @@ class LaunchError(Exception):
 def _sha(data: bytes) -> str: return hashlib.sha256(data).hexdigest()
 def _digest(value: Any) -> str: return _sha(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode())
 def _now() -> str: return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+PROCESS_TOKEN = secrets.token_urlsafe(32)
+PROCESS_TOKEN_CREATED_AT = _now()
 
 
 def _atomic(path: Path, value: dict[str, Any]) -> None:
@@ -230,6 +235,67 @@ def _alive(pid: int) -> bool | None:
     try: os.kill(pid, 0); return True
     except ProcessLookupError: return False
     except PermissionError: return None
+    except OSError: return None
+
+
+def _process_token_root() -> Path:
+    return STATE_ROOT / "process-tokens"
+
+
+def _process_registration_path(pid: int) -> Path:
+    return _process_token_root() / f"pid-{pid}.json"
+
+
+def _process_owner_path(pid: int, token: str) -> Path:
+    return _process_token_root() / f"owner-{pid}-{token}.json"
+
+
+def _process_state(campaign_id: str, operation_id: str) -> tuple[Path, Path]:
+    pid = os.getpid()
+    registration = _process_registration_path(pid)
+    owner = _process_owner_path(pid, PROCESS_TOKEN)
+    state = {"pid": pid, "process_token": PROCESS_TOKEN, "campaign_id": campaign_id, "operation_id": operation_id, "created_at": PROCESS_TOKEN_CREATED_AT}
+    try:
+        _atomic(registration, state)
+        _atomic(owner, state)
+    except OSError as exc:
+        owner.unlink(missing_ok=True)
+        registration.unlink(missing_ok=True)
+        raise LaunchError("PROCESS_IDENTITY_CORRUPT", "process identity state cannot be persisted") from exc
+    return registration, owner
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LaunchError("PROCESS_IDENTITY_CORRUPT", "process identity state is unreadable") from exc
+    if not isinstance(value, dict):
+        raise LaunchError("PROCESS_IDENTITY_CORRUPT", "process identity state is malformed")
+    return value
+
+
+def _validate_process_owner(record: dict[str, Any]) -> None:
+    try:
+        pid = int(record["pid"]); token = record["process_token"]; owner_path = Path(record["owner_state"])
+        if not isinstance(token, str) or not token or owner_path != _process_owner_path(pid, token): raise ValueError
+        owner = _read_json(owner_path)
+        registration = _read_json(_process_registration_path(pid))
+        required = {"pid": pid, "process_token": token, "campaign_id": record["campaign_id"], "operation_id": record["launcher_operation_id"], "created_at": record["process_created_at"]}
+        if any(owner.get(key) != value for key, value in required.items()) or any(registration.get(key) != value for key, value in required.items()): raise ValueError
+    except (KeyError, TypeError, ValueError):
+        raise LaunchError("PROCESS_IDENTITY_CORRUPT", "process identity token state does not match lock")
+
+
+def _cleanup_process_state(registration: Path | None, owner: Path | None) -> None:
+    if owner is not None: owner.unlink(missing_ok=True)
+    if registration is not None:
+        try:
+            current = _read_json(registration)
+        except LaunchError:
+            registration.unlink(missing_ok=True)
+            current = {}
+        if current.get("process_token") == PROCESS_TOKEN: registration.unlink(missing_ok=True)
 
 
 @contextmanager
@@ -240,26 +306,38 @@ def scope_lock(campaign_id: str, mode: str, checkout: Path, paths: list[str], op
     with guard.open("a+") as handle:
         import fcntl; fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         acquired: list[Path] = []
+        registration: Path | None = None
+        owner: Path | None = None
         try:
             requested = set(paths)
+            registration, owner = _process_state(campaign_id, operation_id)
             for path in sorted(LOCK_ROOT.glob("*.json")):
-                try: record = json.loads(path.read_text(encoding="utf-8")); pid = int(record["pid"])
-                except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc: raise LaunchError("SCOPE_LOCK_STALE_UNSAFE", "scope lock is unreadable") from exc
+                record = _read_json(path)
+                try: pid = int(record["pid"])
+                except (KeyError, TypeError, ValueError) as exc: raise LaunchError("PROCESS_IDENTITY_CORRUPT", "scope lock owner is malformed") from exc
                 alive = _alive(pid)
-                if alive is None: raise LaunchError("SCOPE_LOCK_STALE_UNSAFE", "scope lock process is ambiguous")
-                if alive is False: path.unlink(missing_ok=True); continue
-                if _process_identity(pid) != record.get("process_start_identity"): raise LaunchError("SCOPE_LOCK_STALE_UNSAFE", "live lock identity mismatch")
-                if requested.intersection(record.get("authorized_paths", [])): raise LaunchError("SCOPE_OVERLAP", "authorized scope overlaps active writer")
+                if alive is None: raise LaunchError("SCOPE_LOCK_IDENTITY_AMBIGUOUS", "scope lock process liveness is ambiguous")
+                _validate_process_owner(record)
+                if alive:
+                    supplementary = _process_identity(pid)
+                    if supplementary and record.get("process_start_identity") and supplementary != record["process_start_identity"]:
+                        raise LaunchError("PROCESS_IDENTITY_CORRUPT", "supplementary process identity does not match lock")
+                    if requested.intersection(record.get("authorized_paths", [])):
+                        raise LaunchError("SCOPE_LOCK_LIVE", "live scope lock overlaps requested scope", {"error_class": "SCOPE_OVERLAP"})
+                    raise LaunchError("SCOPE_LOCK_LIVE", "scope lock owner is live")
+                path.unlink(missing_ok=True)
+                owner_path = Path(record["owner_state"])
+                owner_path.unlink(missing_ok=True)
+                _process_registration_path(pid).unlink(missing_ok=True)
             target = LOCK_ROOT / f"{campaign_id}-{uuid.uuid4().hex}.json"
-            record = {"campaign_id": campaign_id, "mode": mode, "checkout": str(checkout), "authorized_paths": sorted(requested), "pid": os.getpid(), "process_start_identity": _process_identity(os.getpid()), "acquisition_timestamp": _now(), "launcher_operation_id": operation_id}
-            if not record["process_start_identity"]: raise LaunchError("SCOPE_LOCK_STALE_UNSAFE", "current process identity is unavailable")
+            record = {"campaign_id": campaign_id, "mode": mode, "checkout": str(checkout), "authorized_paths": sorted(requested), "pid": os.getpid(), "process_token": PROCESS_TOKEN, "owner_state": str(owner), "process_created_at": PROCESS_TOKEN_CREATED_AT, "process_start_identity": _process_identity(os.getpid()), "acquisition_timestamp": _now(), "launcher_operation_id": operation_id}
             fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as output: json.dump(record, output, sort_keys=True); output.write("\n"); output.flush(); os.fsync(output.fileno())
             acquired.append(target); yield [str(target)]
-        except Exception:
+        finally:
             for path in acquired: path.unlink(missing_ok=True)
-            raise
-        finally: fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            _cleanup_process_state(registration, owner)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _contract(project: Path, payload: dict[str, Any], operation_id: str, wrapper: Any) -> Path:
