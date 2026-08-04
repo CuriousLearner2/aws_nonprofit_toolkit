@@ -89,3 +89,23 @@ def test_fixed_suite_registry_and_exact_retry(tmp_path, monkeypatch):
     output = {"status": "ready", "checkout": str(path)}
     (tmp_path / "state").mkdir(); (tmp_path / "state/one.json").write_text(json.dumps({"input_sha256": launcher._digest(value), "status": "ready", "output": output}))
     with pytest.raises(launcher.LaunchError, match="completed checkout"): launcher.launch(value)
+
+
+def test_wrapper_ledger_root_is_unique_under_launcher_state_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(launcher, "STATE_ROOT", tmp_path / "state")
+    assert launcher._wrapper_ledger_root("campaign-a") == tmp_path / "state/wrapper-ledgers/campaign-a"
+    assert launcher._wrapper_ledger_root("campaign-b") != launcher._wrapper_ledger_root("campaign-a")
+
+
+def test_wrapper_initialization_error_preserves_underlying_code():
+    error = launcher.LaunchError("WRAPPER_INITIALIZATION_FAILED", "launcher failed", {"underlying_error_code": "PARENT_SCOPE_CONFLICT", "underlying_error": "active parent scope is unreadable"})
+    assert error.code == "WRAPPER_INITIALIZATION_FAILED"
+    assert error.details == {"underlying_error_code": "PARENT_SCOPE_CONFLICT", "underlying_error": "active parent scope is unreadable"}
+
+
+def test_wrapper_ledger_configuration_supports_published_baseline_wrapper(tmp_path, monkeypatch):
+    monkeypatch.setattr(launcher, "STATE_ROOT", tmp_path / "state")
+    wrapper = type("BaselineWrapper", (), {"LEDGER_ROOT": tmp_path / "global"})()
+    root = launcher._configure_wrapper_ledger(wrapper, "campaign")
+    assert root == tmp_path / "state/wrapper-ledgers/campaign"
+    assert wrapper.LEDGER_ROOT == root

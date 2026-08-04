@@ -49,9 +49,7 @@ def _run_case(tmp_path: Path, source: Path, authorization: str) -> dict:
     launcher.LOCK_ROOT = tmp_path / (campaign_id + "-" + form + "-lock")
     original_wrapper = launcher._wrapper
     def load_wrapper(project):
-        wrapper = original_wrapper(project)
-        wrapper.LEDGER_ROOT = tmp_path / (campaign_id + "-" + form + "-ledger")
-        return wrapper
+        return original_wrapper(project)
     launcher._wrapper = load_wrapper
     gate_sha = _git(source, "hash-object", "aws_nonprofit_toolkit/Givebutter/scripts/ci/architecture_slice_gate.py")
     contract = _contract(tmp_path, authorization, gate_sha)
@@ -73,6 +71,7 @@ def _run_case(tmp_path: Path, source: Path, authorization: str) -> dict:
     assert launched["wrapper_state"]["authorized_files"] == [TARGET]
     wrapper = launcher._wrapper(project)
     ledger = Path(launched["ledger_path"])
+    wrapper.LEDGER_ROOT = Path(launched["ledger_root"])
     before_events = ledger.with_name("events.jsonl").read_text(encoding="utf-8").splitlines()
     target = project / TARGET
     original = target.read_text(encoding="utf-8")

@@ -411,7 +411,8 @@ def campaign_status(task_id: str) -> dict[str, Any]:
 
 
 # External stateful ledger surface. Legacy repo-local state APIs are disabled.
-LEDGER_ROOT = Path("/private/tmp/householder-campaigns")
+DEFAULT_LEDGER_ROOT = Path("/private/tmp/householder-campaigns")
+LEDGER_ROOT = Path(os.environ.get("HOUSEHOLDER_LEDGER_ROOT", str(DEFAULT_LEDGER_ROOT)))
 DISCOVERY_RUN_ROOT = Path("/private/tmp/householder-discoveries")
 DISCOVERY_DEADLINE = timedelta(minutes=30)
 CAMPAIGN_STATES = {"READY", "ACTIVE", "VALIDATING", "COMMITTED", "FAILED", "QUARANTINED", "STOPPED"}
@@ -454,6 +455,13 @@ PARENT_ERROR_CODES = {
     "STAGE_RETRY_MISMATCH", "LAUNCHER_STAGE_OVERRIDE_REJECTED",
 }
 PARENT_EVIDENCE_FIELDS = {"gate_pass", "tests_pass", "diff_check_pass", "scope_pass", "ceiling_pass"}
+
+
+def configure_ledger_root(root: str | Path) -> Path:
+    """Set the external ledger root for this wrapper process."""
+    global LEDGER_ROOT
+    LEDGER_ROOT = Path(root)
+    return LEDGER_ROOT
 
 
 def _normalized_relative_paths(items: Any, field: str) -> list[str]:

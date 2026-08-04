@@ -626,6 +626,28 @@ def test_parent_repeated_file_lifecycle_restart_retry_and_commit(repo, tmp_path,
     assert closed["protected_files"] == ["seed.txt"]
 
 
+def test_parent_scope_scan_is_limited_to_configured_ledger_root(repo, tmp_path, monkeypatch):
+    monkeypatch.setitem(campaign.SUITE_REGISTRY, "wrapper-unit", ["python3", "-c", "pass"])
+    global_root = tmp_path / "global-ledgers"; (global_root / "historical").mkdir(parents=True)
+    (global_root / "historical/state.json").write_text("{malformed\n")
+    active_root = tmp_path / "active-ledgers"
+    campaign.configure_ledger_root(active_root)
+    item = parent_contract(repo, tmp_path)
+    result = campaign.campaign_ledger_init("isolated-parent", "init-isolated-parent", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+    assert result["state"] == "ADMITTED"
+    assert Path(campaign._ledger_file("isolated-parent")).is_file()
+
+
+def test_parent_scope_scan_fails_closed_inside_configured_ledger_root(repo, tmp_path, monkeypatch):
+    monkeypatch.setitem(campaign.SUITE_REGISTRY, "wrapper-unit", ["python3", "-c", "pass"])
+    active_root = tmp_path / "active-ledgers"; (active_root / "historical").mkdir(parents=True)
+    (active_root / "historical/state.json").write_text("{malformed\n")
+    campaign.configure_ledger_root(active_root)
+    item = parent_contract(repo, tmp_path)
+    with pytest.raises(campaign.CampaignError, match="PARENT_SCOPE_CONFLICT"):
+        campaign.campaign_ledger_init("closed-parent", "init-closed-parent", repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+
+
 def test_parent_rejects_stage_skip_and_outside_change_without_event(repo, tmp_path, monkeypatch):
     monkeypatch.setitem(campaign.SUITE_REGISTRY, "wrapper-unit", ["python3", "-c", "pass"])
     item = parent_contract(repo, tmp_path)

@@ -267,6 +267,10 @@ def _process_owner_path(pid: int, token: str) -> Path:
     return _process_token_root() / f"owner-{pid}-{token}.json"
 
 
+def _wrapper_ledger_root(campaign_id: str) -> Path:
+    return STATE_ROOT / "wrapper-ledgers" / campaign_id
+
+
 def _process_state(campaign_id: str, operation_id: str) -> tuple[Path, Path]:
     pid = os.getpid()
     registration = _process_registration_path(pid)
@@ -371,6 +375,18 @@ def _contract(project: Path, payload: dict[str, Any], operation_id: str, wrapper
     return path
 
 
+def _configure_wrapper_ledger(wrapper: Any, campaign_id: str) -> Path:
+    root = _wrapper_ledger_root(campaign_id)
+    configure = getattr(wrapper, "configure_ledger_root", None)
+    if callable(configure):
+        configure(root)
+    elif hasattr(wrapper, "LEDGER_ROOT"):
+        wrapper.LEDGER_ROOT = root
+    else:
+        raise LaunchError("WRAPPER_INITIALIZATION_FAILED", "wrapper does not support launcher ledger isolation", {"underlying_error_code": "WRAPPER_LEDGER_CONFIGURATION_UNAVAILABLE", "underlying_error": "wrapper exposes neither configure_ledger_root nor LEDGER_ROOT"})
+    return root
+
+
 def _clone(path: Path, baseline: str) -> None:
     if path.exists(): raise LaunchError("CHECKOUT_COLLISION", "checkout path already exists")
     result = subprocess.run(["git", "clone", "--no-local", "--no-checkout", str(MIRROR_PATH), str(path)], text=True, capture_output=True, check=False)
@@ -415,13 +431,14 @@ def launch(payload: dict[str, Any] | Path, *, operation_id: str | None = None) -
             wrapper = _wrapper(project)
             if payload["mode"] == "discovery": wrapper_state = wrapper.campaign_discovery_start(payload["campaign_id"], operation_id)
             else:
+                ledger_root = _configure_wrapper_ledger(wrapper, payload["campaign_id"])
                 contract = _contract(project, payload, operation_id, wrapper); gate = _git_out(project, "hash-object", str(project / "scripts/ci/architecture_slice_gate.py")); contract_sha = wrapper._json_sha256(json.loads(contract.read_text(encoding="utf-8")))
                 wrapper.campaign_ledger_init(payload["campaign_id"], operation_id, project, gate, [{"path": str(contract), "sha256": contract_sha}], payload["suite_ids"])
                 if wrapper.is_parent_contract(contract):
                     wrapper_state = wrapper.campaign_parent_next(payload["campaign_id"], operation_id + "-start-stage")
                 else:
                     wrapper.campaign_ledger_next(payload["campaign_id"]); wrapper_state = wrapper.campaign_ledger_start_edit(payload["campaign_id"], 0, operation_id + "-start-edit")
-            output = {"status": "ready", "error_code": None, "baseline": resolution, "checkout": str(checkout), "git_root": identity["git_root"], "project_root": identity["project_root"], "environment_fingerprint": environment, "suite_results": suites, "typed_suite_records": suites, "acquired_locks": locks, "ledger_path": str(wrapper._ledger_file(payload["campaign_id"])), "wrapper_state": wrapper_state}
+            output = {"status": "ready", "error_code": None, "baseline": resolution, "checkout": str(checkout), "git_root": identity["git_root"], "project_root": identity["project_root"], "environment_fingerprint": environment, "suite_results": suites, "typed_suite_records": suites, "acquired_locks": locks, "ledger_root": str(ledger_root) if payload["mode"] == "campaign" else None, "ledger_path": str(wrapper._ledger_file(payload["campaign_id"])), "wrapper_state": wrapper_state}
             _atomic(state_path, {"input_sha256": digest, "operation_id": operation_id, "status": "ready", "output": output}); return output
     except LaunchError:
         try: shutil.rmtree(checkout); state_path.unlink(missing_ok=True)
@@ -430,7 +447,7 @@ def launch(payload: dict[str, Any] | Path, *, operation_id: str | None = None) -
     except Exception as exc:
         try: shutil.rmtree(checkout); state_path.unlink(missing_ok=True)
         except OSError as cleanup: raise LaunchError("PARTIAL_CLEANUP_FAILED", "partial cleanup failed") from cleanup
-        raise LaunchError("WRAPPER_INITIALIZATION_FAILED", "launcher failed") from exc
+        raise LaunchError("WRAPPER_INITIALIZATION_FAILED", "launcher failed", {"underlying_error_code": getattr(exc, "code", type(exc).__name__), "underlying_error": str(exc)}) from exc
 
 
 def _bounded(value: Any, limit: int = 20000) -> Any:
@@ -460,7 +477,7 @@ def doctor(payload: dict[str, Any] | Path) -> dict[str, Any]:
     except LaunchError as exc:
         return _bounded({"status": "ERROR", "error_code": exc.code, "message": str(exc), **exc.details})
     except Exception as exc:
-        return _bounded({"status": "ERROR", "error_code": "WRAPPER_INITIALIZATION_FAILED", "message": str(exc)})
+        return _bounded({"status": "ERROR", "error_code": "WRAPPER_INITIALIZATION_FAILED", "message": str(exc), "underlying_error_code": getattr(exc, "code", type(exc).__name__), "underlying_error": str(exc)})
     finally:
         if checkout is not None:
             shutil.rmtree(checkout, ignore_errors=True)
@@ -473,7 +490,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(output, sort_keys=True)); return 0 if output["status"] == "READY" else 1
     try: output = launch(args.input)
     except LaunchError as exc: output = {"status": "failed", "error_code": exc.code, "message": str(exc), **exc.details}
-    except Exception as exc: output = {"status": "failed", "error_code": "WRAPPER_INITIALIZATION_FAILED", "message": str(exc)}
+    except Exception as exc: output = {"status": "failed", "error_code": "WRAPPER_INITIALIZATION_FAILED", "message": str(exc), "underlying_error_code": getattr(exc, "code", type(exc).__name__), "underlying_error": str(exc)}
     print(json.dumps(output, sort_keys=True)); return 0 if output["status"] == "ready" else 1
 
 
