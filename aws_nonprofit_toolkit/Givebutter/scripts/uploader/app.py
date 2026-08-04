@@ -1489,44 +1489,13 @@ def defer_validation_item(import_id, review_item_id):
 
 @app.route('/imports/<import_id>/autosave', methods=['POST'])
 def autosave_row_corrections(import_id):
-    """Autosave row-level corrections (v1.1 Phase 2).
-
-    Stores corrected/export values in ReviewDecision.reviewed_values.
-    Raw import data remains immutable.
-    Creates append-only ReviewDecision record.
-    Returns refreshed row state for immediate UI refresh.
-
-    Expected JSON:
-    {
-        'raw_import_row_id': int,
-        'corrected_values': {'field': value, ...}
-    }
-
-    Returns:
-    {
-        'success': bool,
-        'decision_id': int,
-        'effective_values': dict,
-        'row_status': str,
-        'issues': list,
-        'saved_at': str (ISO timestamp),
-        'message': str
-    }
-    """
-    from householder.autosave_service import (
-        autosave_row_corrections,
-        build_fixture_autosave_response,
-        get_effective_values,
-    )
-    from householder.row_status_service import derive_row_status
-    from householder.issue_recalculation_service import recalculate_row_issues
-    from datetime import datetime
+    """Adapt HTTP input and the internal autosave result to Flask."""
+    from householder.autosave_service import run_autosave
 
     data = request.get_json() or {}
     raw_import_row_id = data.get('raw_import_row_id')
     corrected_values = data.get('corrected_values', {})
     reviewer = request.headers.get('X-Reviewer-ID')
-    config_database_url = current_app.config.get('GIVEBUTTER_DATABASE_URL')
     repository_mode = (
         current_app.config.get('HOUSEHOLDER_REPOSITORY')
         or os.environ.get('HOUSEHOLDER_REPOSITORY', '')
@@ -1536,205 +1505,15 @@ def autosave_row_corrections(import_id):
     if not raw_import_row_id:
         return jsonify({'error': 'raw_import_row_id required'}), 400
 
-    def _build_blocking_autosave_issue(error_message: str) -> dict:
-        """Return a renderable blocking issue for autosave fallback errors."""
-        return {
-            'field': 'raw_import_row_id',
-            'reason': f'Autosave failed: {error_message}',
-            'severity': 'error',
-        }
-
-    if not config_database_url and repository_mode != 'database':
-        fixture_result = build_fixture_autosave_response(
-            batch_id=import_id,
-            raw_import_row_id=raw_import_row_id,
-            corrected_values=corrected_values,
-        )
-        status_code = fixture_result.pop('status_code', 200)
-        return jsonify(fixture_result), status_code
-
-    try:
-        # Validate corrections BEFORE saving
-        from householder.autosave_service import validate_corrected_values
-        is_valid, errors = validate_corrected_values(corrected_values)
-
-        if not is_valid:
-            # Convert validation errors into synthetic issue objects for row_status calculation
-            # This ensures row_status reflects the validation errors even though they haven't been saved
-            validation_issues = [
-                {
-                    'field': field,
-                    'description': error_msg,
-                    'severity': 'error',  # Validation errors are always blocking
-                    'is_validation_error': True
-                }
-                for field, error_msg in errors.items()
-            ]
-
-            # Also get any existing issues from database (may include pre-existing problems)
-            existing_issues = recalculate_row_issues(
-                batch_id=import_id,
-                raw_import_row_id=raw_import_row_id,
-                database_url=database_url,
-            )
-
-            # Merge validation errors with existing issues (validation errors take precedence for their fields)
-            all_issues = validation_issues + existing_issues
-
-            row_status = derive_row_status(
-                batch_id=import_id,
-                raw_import_row_id=raw_import_row_id,
-                issues=all_issues,
-                database_url=database_url,
-            )
-
-            # Map issues to template format: description -> reason for frontend consistency
-            formatted_issues = [
-                {
-                    'field': issue.get('field', 'unknown'),
-                    'reason': issue.get('description', 'Issue detected'),
-                    'severity': issue.get('severity', 'warning')
-                }
-                for issue in all_issues
-            ]
-
-            # Return validation error - don't save
-            logger.info(f"Row {raw_import_row_id} autosave validation failed: {errors}")
-            return jsonify({
-                'success': False,
-                'error': 'Validation failed',
-                'validation_errors': errors,
-                'message': 'Corrections not saved - please fix validation errors',
-                'row_status': row_status,
-                'issues': formatted_issues
-            }), 400
-
-        # Save corrections (only if validation passed)
-        result = autosave_row_corrections(
-            batch_id=import_id,
-            raw_import_row_id=raw_import_row_id,
-            corrected_values=corrected_values,
-            reviewer=reviewer,
-            database_url=database_url,
-        )
-
-        # Get refreshed row state
-        effective_values = get_effective_values(
-            batch_id=import_id,
-            raw_import_row_id=raw_import_row_id,
-            database_url=database_url,
-        )
-
-        issues = recalculate_row_issues(
-            batch_id=import_id,
-            raw_import_row_id=raw_import_row_id,
-            proposed_values=corrected_values,
-            database_url=database_url,
-        )
-
-        row_status = derive_row_status(
-            batch_id=import_id,
-            raw_import_row_id=raw_import_row_id,
-            issues=issues,
-            database_url=database_url,
-        )
-
-        logger.info(f"Row {raw_import_row_id} autosave completed: {corrected_values}")
-
-        # Map issues to template format: description -> reason for frontend consistency
-        formatted_issues = [
-            {
-                'field': issue.get('field', 'unknown'),
-                'reason': issue.get('description', 'Issue detected'),
-                'severity': issue.get('severity', 'warning')
-            }
-            for issue in issues
-        ]
-
-        return jsonify({
-            'success': True,
-            'decision_id': result.decision_id,
-            'effective_values': effective_values,
-            'row_status': row_status,
-            'issues': formatted_issues,
-            'saved_at': datetime.now(timezone.utc).isoformat(),
-            'message': 'Autosave completed successfully'
-        }), 200
-    except ValueError as e:
-        logger.warning(f"Autosave validation error: {str(e)}")
-        # Ensure error response includes issues/row_status so JavaScript can sync UI
-        # This prevents disconnect between inline field error and row status display
-        try:
-            issues = recalculate_row_issues(
-                batch_id=import_id,
-                raw_import_row_id=raw_import_row_id,
-                database_url=database_url,
-            )
-            row_status = derive_row_status(
-                batch_id=import_id,
-                raw_import_row_id=raw_import_row_id,
-                issues=issues,
-                database_url=database_url,
-            )
-            formatted_issues = [
-                {
-                    'field': issue.get('field', 'unknown'),
-                    'reason': issue.get('description', 'Issue detected'),
-                    'severity': issue.get('severity', 'warning')
-                }
-                for issue in issues
-            ]
-        except Exception:
-            # If we can't get issues (e.g., row doesn't exist in fixture mode),
-            # return empty issues but still include the field for JavaScript to process
-            formatted_issues = []
-            row_status = 'Blocking'
-
-        if row_status == 'Blocking' and not formatted_issues:
-            formatted_issues = [_build_blocking_autosave_issue(str(e))]
-            row_status = 'Blocking'
-
-        return jsonify({
-            'error': str(e),
-            'issues': formatted_issues,
-            'row_status': row_status
-        }), 400
-    except Exception as e:
-        logger.error(f"Error during autosave: {str(e)}")
-        # Ensure error response includes issues/row_status so JavaScript can sync UI
-        try:
-            issues = recalculate_row_issues(
-                batch_id=import_id,
-                raw_import_row_id=raw_import_row_id,
-                database_url=database_url,
-            )
-            row_status = derive_row_status(
-                batch_id=import_id,
-                raw_import_row_id=raw_import_row_id,
-                issues=issues,
-                database_url=database_url,
-            )
-            formatted_issues = [
-                {
-                    'field': issue.get('field', 'unknown'),
-                    'reason': issue.get('description', 'Issue detected'),
-                    'severity': issue.get('severity', 'warning')
-                }
-                for issue in issues
-            ]
-        except Exception:
-            formatted_issues = []
-            row_status = 'Blocking'
-
-        if row_status == 'Blocking' and not formatted_issues:
-            formatted_issues = [_build_blocking_autosave_issue(str(e))]
-            row_status = 'Blocking'
-
-        return jsonify({
-            'error': 'Autosave failed',
-            'issues': formatted_issues,
-            'row_status': row_status
-        }), 500
+    result = run_autosave(
+        batch_id=import_id,
+        raw_import_row_id=raw_import_row_id,
+        corrected_values=corrected_values,
+        reviewer=reviewer,
+        repository_mode=repository_mode,
+        database_url=database_url,
+    )
+    return jsonify(result.payload), result.status_code
 
 
 @app.route('/imports/<import_id>/row-decision', methods=['POST'])

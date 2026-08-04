@@ -6,6 +6,7 @@ Each autosave creates a new ReviewDecision record (never updates).
 Audit trail preserves full correction history.
 """
 
+from dataclasses import dataclass
 from typing import Optional, Mapping, Any
 from datetime import datetime, timezone
 
@@ -13,6 +14,107 @@ from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
 from .editable_field_validation import validate_editable_field_values as _validate_editable_field_values
 from .effective_value_resolution import get_effective_values as _get_effective_values
+
+
+@dataclass(frozen=True)
+class AutosaveResult:
+    """Internal result shared by fixture and database autosave modes."""
+
+    status_code: int
+    payload: dict
+
+
+def run_autosave(batch_id, raw_import_row_id, corrected_values, reviewer=None,
+                 repository_mode="", database_url=None) -> AutosaveResult:
+    """Own autosave validation, persistence, reload, issues, and row status."""
+    if not database_url and repository_mode != "database":
+        payload = build_fixture_autosave_response(
+            batch_id, raw_import_row_id, corrected_values
+        )
+        return AutosaveResult(payload.pop("status_code", 200), payload)
+
+    try:
+        is_valid, errors = validate_corrected_values(corrected_values)
+        if not is_valid:
+            existing = _recalculate_and_status(batch_id, raw_import_row_id, database_url)[0]
+            validation_issues = [
+                {"field": field, "description": message, "severity": "error",
+                 "is_validation_error": True}
+                for field, message in errors.items()
+            ]
+            issues = validation_issues + existing
+            return AutosaveResult(400, {
+                "success": False, "error": "Validation failed",
+                "validation_errors": errors,
+                "message": "Corrections not saved - please fix validation errors",
+                "row_status": _derive_database_row_status(
+                    batch_id, raw_import_row_id, issues, database_url
+                ),
+                "issues": _format_issues(issues),
+            })
+
+        result = autosave_row_corrections(
+            batch_id, raw_import_row_id, corrected_values,
+            reviewer=reviewer, database_url=database_url
+        )
+        effective_values = get_effective_values(
+            batch_id, raw_import_row_id, database_url
+        )
+        issues = _recalculate_and_status(
+            batch_id, raw_import_row_id, database_url, corrected_values
+        )[0]
+        return AutosaveResult(200, {
+            "success": True, "decision_id": result.decision_id,
+            "effective_values": effective_values,
+            "row_status": _derive_database_row_status(
+                batch_id, raw_import_row_id, issues, database_url
+            ),
+            "issues": _format_issues(issues),
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "message": "Autosave completed successfully",
+        })
+    except ValueError as exc:
+        return _error_result(400, str(exc), batch_id, raw_import_row_id, database_url)
+    except Exception as exc:
+        return _error_result(500, "Autosave failed", batch_id, raw_import_row_id, database_url, exc)
+
+
+def _recalculate_and_status(batch_id, raw_import_row_id, database_url, proposed_values=None):
+    from .issue_recalculation_service import recalculate_row_issues
+    issues = recalculate_row_issues(
+        batch_id=batch_id, raw_import_row_id=raw_import_row_id,
+        proposed_values=proposed_values, database_url=database_url
+    )
+    return issues, _derive_database_row_status(batch_id, raw_import_row_id, issues, database_url)
+
+
+def _derive_database_row_status(batch_id, raw_import_row_id, issues, database_url):
+    from .row_status_service import derive_row_status
+    return derive_row_status(
+        batch_id=batch_id, raw_import_row_id=raw_import_row_id,
+        issues=issues, database_url=database_url
+    )
+
+
+def _error_result(status_code, error, batch_id, raw_import_row_id, database_url, cause=None):
+    try:
+        issues, row_status = _recalculate_and_status(batch_id, raw_import_row_id, database_url)
+    except Exception:
+        issues, row_status = [], "Blocking"
+    if row_status == "Blocking" and not issues:
+        issues = [{"field": "raw_import_row_id", "description":
+                   f"Autosave failed: {cause or error}", "severity": "error"}]
+    return AutosaveResult(status_code, {
+        "error": error, "issues": _format_issues(issues), "row_status": row_status
+    })
+
+
+def _format_issues(issues):
+    return [{
+        "field": issue.get("field", "unknown"),
+        "reason": issue.get("description", issue.get("reason", "Issue detected")),
+        "severity": issue.get("severity", "warning"),
+    } for issue in issues]
 
 
 def autosave_row_corrections(
