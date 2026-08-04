@@ -39,7 +39,7 @@ def latest_decision_status(review_item_id: int, database_url: str, status_map: M
         latest = (
             session.query(ReviewDecision)
             .filter_by(review_item_id=review_item_id)
-            .order_by(ReviewDecision.created_at.desc())
+            .order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc())
             .first()
         )
         return 'pending' if not latest else status_map.get(latest.decision, 'pending')

@@ -14,6 +14,7 @@ from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
 from .editable_field_validation import validate_editable_field_values as _validate_editable_field_values
 from .effective_value_resolution import get_effective_values as _get_effective_values
+from .row_status_policy import derive_row_status
 
 
 @dataclass(frozen=True)
@@ -395,9 +396,4 @@ def _merge_issues(issues: list[dict]) -> list[dict]:
 
 def _derive_row_status_from_issues(issues: list[dict]) -> str:
     """Derive row status from issue severities without requiring a database."""
-    has_error = any(issue.get("severity") == "error" for issue in issues)
-    if has_error:
-        return "Blocking"
-    if issues:
-        return "Warning"
-    return "No issues"
+    return derive_row_status(issues)

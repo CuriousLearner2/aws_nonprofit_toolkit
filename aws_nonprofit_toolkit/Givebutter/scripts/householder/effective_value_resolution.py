@@ -16,6 +16,11 @@ def _effective_key(field: Any) -> str:
     return normalize_validation_issue_field(field)
 
 
+def decision_order_key(decision: Any) -> tuple[Any, Any]:
+    """Return the canonical chronological ordering for persisted decisions."""
+    return decision.created_at, decision.id
+
+
 def merge_effective_values(
     raw_values: Mapping[str, Any] | None,
     reviewed_values: Mapping[str, Any] | None,
@@ -61,7 +66,8 @@ def get_effective_values(
         decisions = session.query(ReviewDecision).filter_by(
             batch_id=batch_id,
             raw_import_row_id=raw_import_row_id,
-        ).order_by(ReviewDecision.created_at.asc(), ReviewDecision.id.asc()).all()
+        ).all()
+        decisions.sort(key=decision_order_key)
 
         reviewed_values: dict[str, Any] = {}
         for decision in decisions:

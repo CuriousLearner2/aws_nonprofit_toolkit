@@ -25,6 +25,7 @@ from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .service_contracts import ExportRow, ExportPreviewResult
 from .export_preview_policy import validation_issue_field, validation_issue_type
+from .effective_value_resolution import decision_order_key
 
 
 def _batch_row_is_approved_with_overrides(batch, raw_import_row_id):
@@ -166,22 +167,22 @@ def build_export_preview(
             if item.item_type == 'validation':
                 if decision.review_item_id not in validation_decisions:
                     validation_decisions[decision.review_item_id] = decision
-                elif decision.created_at > validation_decisions[decision.review_item_id].created_at:
+                elif decision_order_key(decision) > decision_order_key(validation_decisions[decision.review_item_id]):
                     validation_decisions[decision.review_item_id] = decision
             elif item.item_type == 'normalization':
                 if decision.review_item_id not in normalization_decisions:
                     normalization_decisions[decision.review_item_id] = decision
-                elif decision.created_at > normalization_decisions[decision.review_item_id].created_at:
+                elif decision_order_key(decision) > decision_order_key(normalization_decisions[decision.review_item_id]):
                     normalization_decisions[decision.review_item_id] = decision
             elif item.item_type == 'duplicate':
                 if decision.review_item_id not in duplicate_decisions:
                     duplicate_decisions[decision.review_item_id] = decision
-                elif decision.created_at > duplicate_decisions[decision.review_item_id].created_at:
+                elif decision_order_key(decision) > decision_order_key(duplicate_decisions[decision.review_item_id]):
                     duplicate_decisions[decision.review_item_id] = decision
             elif item.item_type == 'household':
                 if decision.review_item_id not in household_decisions:
                     household_decisions[decision.review_item_id] = decision
-                elif decision.created_at > household_decisions[decision.review_item_id].created_at:
+                elif decision_order_key(decision) > decision_order_key(household_decisions[decision.review_item_id]):
                     household_decisions[decision.review_item_id] = decision
 
         # Count deferred households
