@@ -1,850 +1,196 @@
-"""
-Database Write Repository - Database implementation of write operations.
+"""Database implementations of the four item-level decision writers."""
 
-Phase 2-Step 2: Implements ValidationDecisionWriter for database backend.
-"""
-
-from typing import Optional
+import json
+import re
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
-from .database_models import Base, ImportBatch, ReviewItem, ReviewDecision, AuditLogRecord
+from .database_models import ReviewItem
+from .decision_write_coordinator import DecisionPreparation, record_item_decision
 from .write_repository_contracts import (
-    ValidationDecisionResult, ValidationDecisionWriter,
-    NormalizationDecisionResult, NormalizationDecisionWriter,
-    DuplicateDecisionResult, DuplicateDecisionWriter,
-    HouseholdDecisionResult, HouseholdDecisionWriter,
+    ValidationDecisionResult, NormalizationDecisionResult,
+    DuplicateDecisionResult, HouseholdDecisionResult,
 )
 
 
 def get_db_session(database_url: str = 'sqlite:///./givebutter.db') -> Session:
-    """
-    Create a new database session.
-
-    Args:
-        database_url: Database connection string
-
-    Returns:
-        SQLAlchemy Session instance
-    """
     engine = create_engine(database_url, echo=False)
-    SessionLocal = sessionmaker(bind=engine)
-    return SessionLocal()
+    return sessionmaker(bind=engine)()
 
 
 class DatabaseValidationDecisionWriter:
-    """Implement ValidationDecisionWriter for database backend."""
-
     def __init__(self, database_url: str = 'sqlite:///./givebutter.db'):
-        """
-        Initialize write repository with database connection string.
-
-        Args:
-            database_url: Database connection URL
-        """
         self.database_url = database_url
 
     def create_validation_decision(
-        self,
-        batch_id: str,
-        review_item_id: int,
-        decision: str,
-        notes: Optional[str] = None,
-        reviewed_values: Optional[dict] = None,
+        self, batch_id: str, review_item_id: int, decision: str,
+        notes: Optional[str] = None, reviewed_values: Optional[dict] = None,
         reviewer: Optional[str] = None,
     ) -> ValidationDecisionResult:
-        """
-        Create a validation decision and audit log entry atomically.
+        stored_values = reviewed_values.copy() if reviewed_values else {}
+        if notes:
+            stored_values['notes'] = notes
 
-        Workflow:
-        1. Validate inputs (batch exists, item exists, item type is 'validation')
-        2. Begin transaction
-        3. Insert ReviewDecision (with reviewed_values if provided)
-        4. Insert AuditLogRecord
-        5. Commit transaction
-        6. Derive effective status
-        7. Return result
-
-        Args:
-            batch_id: Import batch ID
-            review_item_id: ReviewItem.id
-            decision: One of 'accept_issue', 'dismiss_issue', 'defer'
-            notes: Optional notes
-            reviewed_values: Optional dict of field corrections (e.g., {'name': 'John Doe', 'email': 'john@example.com'})
-                           Stored as metadata without mutating raw data.
-            reviewer: Reviewer identifier
-
-        Returns:
-            ValidationDecisionResult
-
-        Raises:
-            ValueError: If validation fails
-            Exception: If database transaction fails
-        """
-        session = get_db_session(self.database_url)
-        try:
-            # Validation: Import batch exists
-            batch = session.query(ImportBatch).filter_by(id=batch_id).first()
-            if not batch:
-                raise ValueError(f"Import batch '{batch_id}' not found")
-
-            # Validation: Review item exists
-            item = session.query(ReviewItem).filter_by(id=review_item_id).first()
-            if not item:
-                raise ValueError(f"Review item {review_item_id} not found")
-
-            # Validation: Item belongs to this batch
-            if item.batch_id != batch_id:
-                raise ValueError(
-                    f"Review item {review_item_id} does not belong to batch '{batch_id}'"
-                )
-
-            # Validation: Item type is 'validation'
-            if item.item_type != 'validation':
-                raise ValueError(
-                    f"Review item {review_item_id} is not a validation item (type: {item.item_type})"
-                )
-
-            # Create ReviewDecision
-            # Merge reviewed_values from parameter with notes
-            stored_values = reviewed_values.copy() if reviewed_values else {}
-            if notes:
-                stored_values['notes'] = notes
-            final_reviewed_values = stored_values if stored_values else None
-
-            decision_record = ReviewDecision(
-                batch_id=batch_id,
-                review_item_id=review_item_id,
-                decision=decision,
-                reviewed_values=final_reviewed_values,
-                reviewer=reviewer,
-                created_at=datetime.now(timezone.utc),
-            )
-            session.add(decision_record)
-            session.flush()  # Flush to get the ID
-
-            decision_id = decision_record.id
-            now = datetime.now(timezone.utc)
-
-            # Create AuditLogRecord
-            # Determine prior status (from latest previous decision)
-            prior_status = self._get_prior_status(session, review_item_id, decision_id)
-
-            # Determine effective status (what it is now after this decision)
-            status_map = {
-                'accept_issue': 'accepted',
-                'dismiss_issue': 'dismissed',
-                'defer': 'deferred',
-            }
-            effective_status = status_map.get(decision, 'pending')
-
-            audit_details = {
-                'decision_type': 'validation_decision',
-                'decision_value': decision,
-                'notes': notes,
-                'reviewed_values': reviewed_values,
-                'prior_status': prior_status,
-                'effective_status': effective_status,
-            }
-
-            audit_record = AuditLogRecord(
-                batch_id=batch_id,
-                action_type='decision_recorded',
-                action_timestamp=now,
-                actor=reviewer,
-                item_id=review_item_id,
-                decision_id=decision_id,
-                details=audit_details,
-                created_at=now,
-            )
-            session.add(audit_record)
-            session.flush()  # Flush to get the ID
-
-            audit_id = audit_record.id
-
-            # Commit transaction
-            session.commit()
-
-            return ValidationDecisionResult(
-                decision_id=decision_id,
-                review_item_id=review_item_id,
-                decision=decision,
-                effective_status=effective_status,
-                audit_log_id=audit_id,
-                timestamp=now,
+        def prepare(_item: ReviewItem) -> DecisionPreparation:
+            effective = {'accept_issue': 'accepted', 'dismiss_issue': 'dismissed', 'defer': 'deferred'}.get(decision, 'pending')
+            return DecisionPreparation(
+                reviewed_values=stored_values or None,
+                audit_details={
+                    'decision_type': 'validation_decision', 'decision_value': decision,
+                    'notes': notes, 'reviewed_values': reviewed_values,
+                },
+                effective_status=effective,
             )
 
-        except ValueError:
-            # Validation errors: rollback and re-raise
-            session.rollback()
-            raise
-        except Exception as e:
-            # Unexpected errors: rollback and wrap
-            session.rollback()
-            raise RuntimeError(f"Error recording validation decision: {str(e)}") from e
-        finally:
-            session.close()
-
-    def _get_prior_status(self, session: Session, review_item_id: int, exclude_decision_id: int) -> str:
-        """
-        Get the effective status before the most recent decision.
-
-        Args:
-            session: Active database session
-            review_item_id: ReviewItem.id
-            exclude_decision_id: Decision ID to exclude (current decision)
-
-        Returns:
-            Prior effective status, or 'pending' if no prior decisions
-        """
-        prior = (
-            session.query(ReviewDecision)
-            .filter_by(review_item_id=review_item_id)
-            .filter(ReviewDecision.id != exclude_decision_id)
-            .order_by(ReviewDecision.created_at.desc())
-            .first()
+        return record_item_decision(
+            lambda: get_db_session(self.database_url), batch_id=batch_id,
+            review_item_id=review_item_id, decision=decision, reviewer=reviewer,
+            item_type='validation', decision_type='validation_decision',
+            status_map={'accept_issue': 'accepted', 'dismiss_issue': 'dismissed', 'defer': 'deferred'},
+            result_type=ValidationDecisionResult, error_label='validation', prepare=prepare,
         )
-
-        if not prior:
-            return 'pending'
-
-        status_map = {
-            'accept_issue': 'accepted',
-            'dismiss_issue': 'dismissed',
-            'defer': 'deferred',
-        }
-        return status_map.get(prior.decision, 'pending')
 
 
 class DatabaseNormalizationDecisionWriter:
-    """Implement NormalizationDecisionWriter for database backend."""
-
     def __init__(self, database_url: str = 'sqlite:///./givebutter.db'):
-        """
-        Initialize write repository with database connection string.
-
-        Args:
-            database_url: Database connection URL
-        """
         self.database_url = database_url
 
     def create_normalization_decision(
-        self,
-        batch_id: str,
-        review_item_id: int,
-        decision: str,
-        notes: Optional[str] = None,
-        reviewer: Optional[str] = None,
+        self, batch_id: str, review_item_id: int, decision: str,
+        notes: Optional[str] = None, reviewer: Optional[str] = None,
     ) -> NormalizationDecisionResult:
-        """
-        Create a normalization decision and audit log entry atomically.
-
-        Workflow:
-        1. Validate inputs (batch exists, item exists, item type is 'normalization')
-        2. Extract field/raw_value/normalized_value from ReviewItem.payload_json
-        3. Begin transaction
-        4. Insert ReviewDecision
-        5. Insert AuditLogRecord
-        6. Commit transaction
-        7. Derive effective status
-        8. Return result
-
-        Args:
-            batch_id: Import batch ID
-            review_item_id: ReviewItem.id
-            decision: One of 'accept_normalization', 'reject_normalization', 'defer'
-            notes: Optional notes
-            reviewer: Reviewer identifier
-
-        Returns:
-            NormalizationDecisionResult
-
-        Raises:
-            ValueError: If validation fails
-            Exception: If database transaction fails
-        """
-        import json
-
-        session = get_db_session(self.database_url)
-        try:
-            # Validation: Import batch exists
-            batch = session.query(ImportBatch).filter_by(id=batch_id).first()
-            if not batch:
-                raise ValueError(f"Import batch '{batch_id}' not found")
-
-            # Validation: Review item exists
-            item = session.query(ReviewItem).filter_by(id=review_item_id).first()
-            if not item:
-                raise ValueError(f"Review item {review_item_id} not found")
-
-            # Validation: Item belongs to this batch
-            if item.batch_id != batch_id:
-                raise ValueError(
-                    f"Review item {review_item_id} does not belong to batch '{batch_id}'"
-                )
-
-            # Validation: Item type is 'normalization'
-            if item.item_type != 'normalization':
-                raise ValueError(
-                    f"Review item {review_item_id} is not a normalization item (type: {item.item_type})"
-                )
-
-            # Extract field details from payload_json
+        def prepare(item: ReviewItem) -> DecisionPreparation:
             payload = item.payload_json
             if not isinstance(payload, dict):
                 payload = json.loads(payload) if isinstance(payload, str) else {}
-
             field_name = payload.get('field')
             raw_value = payload.get('raw_value')
             normalized_value = payload.get('normalized_value')
-
             if not all([field_name, raw_value is not None, normalized_value is not None]):
-                raise ValueError(
-                    "Normalization payload missing field/raw_value/normalized_value"
-                )
-
-            # Create ReviewDecision with reviewed_values
-            reviewed_values = {
-                'field': field_name,
-                'raw_value': raw_value,
-                'normalized_value': normalized_value,
-            }
+                raise ValueError('Normalization payload missing field/raw_value/normalized_value')
+            reviewed = {'field': field_name, 'raw_value': raw_value, 'normalized_value': normalized_value}
             if notes:
-                reviewed_values['notes'] = notes
-
-            decision_record = ReviewDecision(
-                batch_id=batch_id,
-                review_item_id=review_item_id,
-                decision=decision,
-                reviewed_values=reviewed_values,
-                reviewer=reviewer,
-                created_at=datetime.now(timezone.utc),
-            )
-            session.add(decision_record)
-            session.flush()  # Flush to get the ID
-
-            decision_id = decision_record.id
-            now = datetime.now(timezone.utc)
-
-            # Create AuditLogRecord
-            # Determine prior status (from latest previous decision)
-            prior_status = self._get_prior_status(session, review_item_id, decision_id)
-
-            # Determine effective status (what it is now after this decision)
-            status_map = {
-                'accept_normalization': 'accepted',
-                'reject_normalization': 'rejected',
-                'defer': 'deferred',
-            }
-            effective_status = status_map.get(decision, 'pending')
-
-            audit_details = {
-                'decision_type': 'normalization_decision',
-                'decision_value': decision,
-                'field': field_name,
-                'raw_value': raw_value,
-                'normalized_value': normalized_value,
-                'notes': notes,
-                'prior_status': prior_status,
-                'effective_status': effective_status,
-            }
-
-            audit_record = AuditLogRecord(
-                batch_id=batch_id,
-                action_type='decision_recorded',
-                action_timestamp=now,
-                actor=reviewer,
-                item_id=review_item_id,
-                decision_id=decision_id,
-                details=audit_details,
-                created_at=now,
-            )
-            session.add(audit_record)
-            session.flush()  # Flush to get the ID
-
-            audit_id = audit_record.id
-
-            # Commit transaction
-            session.commit()
-
-            return NormalizationDecisionResult(
-                decision_id=decision_id,
-                review_item_id=review_item_id,
-                decision=decision,
-                effective_status=effective_status,
-                audit_log_id=audit_id,
-                timestamp=now,
+                reviewed['notes'] = notes
+            effective = {'accept_normalization': 'accepted', 'reject_normalization': 'rejected', 'defer': 'deferred'}.get(decision, 'pending')
+            return DecisionPreparation(
+                reviewed_values=reviewed,
+                audit_details={
+                    'decision_type': 'normalization_decision', 'decision_value': decision,
+                    'field': field_name, 'raw_value': raw_value,
+                    'normalized_value': normalized_value, 'notes': notes,
+                },
+                effective_status=effective,
             )
 
-        except ValueError:
-            # Validation errors: rollback and re-raise
-            session.rollback()
-            raise
-        except Exception as e:
-            # Unexpected errors: rollback and wrap
-            session.rollback()
-            raise RuntimeError(f"Error recording normalization decision: {str(e)}") from e
-        finally:
-            session.close()
-
-    def _get_prior_status(self, session: Session, review_item_id: int, exclude_decision_id: int) -> str:
-        """
-        Get the effective status before the most recent decision.
-
-        Args:
-            session: Active database session
-            review_item_id: ReviewItem.id
-            exclude_decision_id: Decision ID to exclude (current decision)
-
-        Returns:
-            Prior effective status, or 'pending' if no prior decisions
-        """
-        prior = (
-            session.query(ReviewDecision)
-            .filter_by(review_item_id=review_item_id)
-            .filter(ReviewDecision.id != exclude_decision_id)
-            .order_by(ReviewDecision.created_at.desc())
-            .first()
+        return record_item_decision(
+            lambda: get_db_session(self.database_url), batch_id=batch_id,
+            review_item_id=review_item_id, decision=decision, reviewer=reviewer,
+            item_type='normalization', decision_type='normalization_decision',
+            status_map={'accept_normalization': 'accepted', 'reject_normalization': 'rejected', 'defer': 'deferred'},
+            result_type=NormalizationDecisionResult, error_label='normalization', prepare=prepare,
         )
-
-        if not prior:
-            return 'pending'
-
-        status_map = {
-            'accept_normalization': 'accepted',
-            'reject_normalization': 'rejected',
-            'defer': 'deferred',
-        }
-        return status_map.get(prior.decision, 'pending')
 
 
 class DatabaseDuplicateDecisionWriter:
-    """Implement DuplicateDecisionWriter for database backend."""
-
     def __init__(self, database_url: str = 'sqlite:///./givebutter.db'):
-        """
-        Initialize write repository with database connection string.
-
-        Args:
-            database_url: Database connection URL
-        """
         self.database_url = database_url
 
     def create_duplicate_decision(
-        self,
-        batch_id: str,
-        review_item_id: int,
-        decision: str,
-        notes: Optional[str] = None,
-        reviewer: Optional[str] = None,
+        self, batch_id: str, review_item_id: int, decision: str,
+        notes: Optional[str] = None, reviewer: Optional[str] = None,
     ) -> DuplicateDecisionResult:
-        """
-        Create a duplicate decision and audit log entry atomically.
-
-        Workflow:
-        1. Validate inputs (batch exists, item exists, item type is 'duplicate')
-        2. Extract contact/evidence details from ReviewItem.payload_json
-        3. Begin transaction
-        4. Insert ReviewDecision
-        5. Update ReviewItem.status to 'decided' for workflow progression
-        6. Insert AuditLogRecord
-        7. Commit transaction
-        8. Derive effective status
-        9. Return result
-
-        Args:
-            batch_id: Import batch ID
-            review_item_id: ReviewItem.id
-            decision: One of 'same_person', 'different_people', 'defer'
-            notes: Optional notes
-            reviewer: Reviewer identifier
-
-        Returns:
-            DuplicateDecisionResult
-
-        Raises:
-            ValueError: If validation fails
-            Exception: If database transaction fails
-        """
-        import json
-
-        session = get_db_session(self.database_url)
-        try:
-            # Validation: Import batch exists
-            batch = session.query(ImportBatch).filter_by(id=batch_id).first()
-            if not batch:
-                raise ValueError(f"Import batch '{batch_id}' not found")
-
-            # Validation: Review item exists
-            item = session.query(ReviewItem).filter_by(id=review_item_id).first()
-            if not item:
-                raise ValueError(f"Review item {review_item_id} not found")
-
-            # Validation: Item belongs to this batch
-            if item.batch_id != batch_id:
-                raise ValueError(
-                    f"Review item {review_item_id} does not belong to batch '{batch_id}'"
-                )
-
-            # Validation: Item type is 'duplicate'
-            if item.item_type != 'duplicate':
-                raise ValueError(
-                    f"Review item {review_item_id} is not a duplicate item (type: {item.item_type})"
-                )
-
-            # Extract candidate and evidence details from payload_json
+        def prepare(item: ReviewItem) -> DecisionPreparation:
             payload = item.payload_json
             if not isinstance(payload, dict):
                 payload = json.loads(payload) if isinstance(payload, str) else {}
-
-            contact_a_data = payload.get('contact_a', {})
-            contact_b_data = payload.get('contact_b', {})
-            supporting_evidence = payload.get('supporting_evidence', [])
-            conflicting_evidence = payload.get('conflicting_evidence', [])
-
-            # Build reviewed_values from candidate data
-            reviewed_values = {
-                'primary_contact_id': contact_a_data.get('id'),
-                'secondary_contact_ids': [contact_b_data.get('id')] if contact_b_data.get('id') else [],
-                'candidate_contact_ids': [
-                    contact_a_data.get('id'),
-                    contact_b_data.get('id'),
-                ] if contact_a_data.get('id') and contact_b_data.get('id') else [],
-                'evidence_supporting': supporting_evidence if isinstance(supporting_evidence, list) else [],
-                'evidence_conflicting': conflicting_evidence if isinstance(conflicting_evidence, list) else [],
+            contact_a = payload.get('contact_a', {})
+            contact_b = payload.get('contact_b', {})
+            supporting = payload.get('supporting_evidence', [])
+            conflicting = payload.get('conflicting_evidence', [])
+            secondary = [contact_b.get('id')] if contact_b.get('id') else []
+            candidates = [contact_a.get('id'), contact_b.get('id')] if contact_a.get('id') and contact_b.get('id') else []
+            supporting = supporting if isinstance(supporting, list) else []
+            conflicting = conflicting if isinstance(conflicting, list) else []
+            reviewed = {
+                'primary_contact_id': contact_a.get('id'), 'secondary_contact_ids': secondary,
+                'candidate_contact_ids': candidates, 'evidence_supporting': supporting,
+                'evidence_conflicting': conflicting,
             }
             if notes:
-                reviewed_values['notes'] = notes
-
-            decision_record = ReviewDecision(
-                batch_id=batch_id,
-                review_item_id=review_item_id,
-                decision=decision,
-                reviewed_values=reviewed_values,
-                reviewer=reviewer,
-                created_at=datetime.now(timezone.utc),
-            )
-            session.add(decision_record)
-            session.flush()  # Flush to get the ID
-
-            decision_id = decision_record.id
-            now = datetime.now(timezone.utc)
-
-            # Update ReviewItem status to 'decided' so duplicates list moves to next pending pair
-            item.status = 'decided'
-            session.add(item)
-
-            # Create AuditLogRecord
-            # Determine prior status (from latest previous decision)
-            prior_status = self._get_prior_status(session, review_item_id, decision_id)
-
-            # Determine effective status (what it is now after this decision)
-            status_map = {
-                'same_person': 'same_person',
-                'different_people': 'different_people',
-                'defer': 'deferred',
+                reviewed['notes'] = notes
+            effective = {'same_person': 'same_person', 'different_people': 'different_people', 'defer': 'deferred'}.get(decision, 'pending')
+            details = {
+                'decision_type': 'duplicate_decision', 'decision_value': decision,
+                'primary_contact_id': contact_a.get('id'), 'secondary_contact_ids': secondary,
+                'candidate_contact_ids': candidates, 'evidence_supporting': supporting,
+                'evidence_conflicting': conflicting, 'notes': notes,
             }
-            effective_status = status_map.get(decision, 'pending')
-
-            audit_details = {
-                'decision_type': 'duplicate_decision',
-                'decision_value': decision,
-                'primary_contact_id': contact_a_data.get('id'),
-                'secondary_contact_ids': [contact_b_data.get('id')] if contact_b_data.get('id') else [],
-                'candidate_contact_ids': [
-                    contact_a_data.get('id'),
-                    contact_b_data.get('id'),
-                ] if contact_a_data.get('id') and contact_b_data.get('id') else [],
-                'evidence_supporting': supporting_evidence if isinstance(supporting_evidence, list) else [],
-                'evidence_conflicting': conflicting_evidence if isinstance(conflicting_evidence, list) else [],
-                'notes': notes,
-                'prior_status': prior_status,
-                'effective_status': effective_status,
-            }
-
-            audit_record = AuditLogRecord(
-                batch_id=batch_id,
-                action_type='decision_recorded',
-                action_timestamp=now,
-                actor=reviewer,
-                item_id=review_item_id,
-                decision_id=decision_id,
-                details=audit_details,
-                created_at=now,
-            )
-            session.add(audit_record)
-            session.flush()  # Flush to get the ID
-
-            audit_id = audit_record.id
-
-            # Commit transaction
-            session.commit()
-
-            return DuplicateDecisionResult(
-                decision_id=decision_id,
-                review_item_id=review_item_id,
-                decision=decision,
-                effective_status=effective_status,
-                audit_log_id=audit_id,
-                timestamp=now,
+            return DecisionPreparation(
+                reviewed_values=reviewed, audit_details=details, effective_status=effective,
+                mutate_item=lambda current: setattr(current, 'status', 'decided'),
             )
 
-        except ValueError:
-            # Validation errors: rollback and re-raise
-            session.rollback()
-            raise
-        except Exception as e:
-            # Unexpected errors: rollback and wrap
-            session.rollback()
-            raise RuntimeError(f"Error recording duplicate decision: {str(e)}") from e
-        finally:
-            session.close()
-
-    def _get_prior_status(self, session: Session, review_item_id: int, exclude_decision_id: int) -> str:
-        """
-        Get the effective status before the most recent decision.
-
-        Args:
-            session: Active database session
-            review_item_id: ReviewItem.id
-            exclude_decision_id: Decision ID to exclude (current decision)
-
-        Returns:
-            Prior effective status, or 'pending' if no prior decisions
-        """
-        prior = (
-            session.query(ReviewDecision)
-            .filter_by(review_item_id=review_item_id)
-            .filter(ReviewDecision.id != exclude_decision_id)
-            .order_by(ReviewDecision.created_at.desc())
-            .first()
+        return record_item_decision(
+            lambda: get_db_session(self.database_url), batch_id=batch_id,
+            review_item_id=review_item_id, decision=decision, reviewer=reviewer,
+            item_type='duplicate', decision_type='duplicate_decision',
+            status_map={'same_person': 'same_person', 'different_people': 'different_people', 'defer': 'deferred'},
+            result_type=DuplicateDecisionResult, error_label='duplicate', prepare=prepare,
         )
-
-        if not prior:
-            return 'pending'
-
-        status_map = {
-            'same_person': 'same_person',
-            'different_people': 'different_people',
-            'defer': 'deferred',
-        }
-        return status_map.get(prior.decision, 'pending')
 
 
 class DatabaseHouseholdDecisionWriter:
-    """Implement HouseholdDecisionWriter for database backend."""
-
     def __init__(self, database_url: str = 'sqlite:///./givebutter.db'):
-        """
-        Initialize write repository with database connection string.
-
-        Args:
-            database_url: Database connection URL
-        """
         self.database_url = database_url
 
     def create_household_decision(
-        self,
-        batch_id: str,
-        review_item_id: int,
-        decision: str,
-        notes: Optional[str] = None,
-        reviewer: Optional[str] = None,
+        self, batch_id: str, review_item_id: int, decision: str,
+        notes: Optional[str] = None, reviewer: Optional[str] = None,
     ) -> HouseholdDecisionResult:
-        """
-        Create a household decision and audit log entry atomically.
-
-        Workflow:
-        1. Validate inputs (batch exists, item exists, item type is 'household')
-        2. Extract household/member details from ReviewItem.payload_json
-        3. Begin transaction
-        4. Insert ReviewDecision
-        5. Insert AuditLogRecord
-        6. Commit transaction
-        7. Derive effective status
-        8. Return result
-
-        Args:
-            batch_id: Import batch ID
-            review_item_id: ReviewItem.id
-            decision: One of 'confirm_household', 'reject_household', 'defer'
-            notes: Optional notes
-            reviewer: Reviewer identifier
-
-        Returns:
-            HouseholdDecisionResult
-
-        Raises:
-            ValueError: If validation fails
-            Exception: If database transaction fails
-        """
-        import json
-
-        session = get_db_session(self.database_url)
-        try:
-            # Validation: Import batch exists
-            batch = session.query(ImportBatch).filter_by(id=batch_id).first()
-            if not batch:
-                raise ValueError(f"Import batch '{batch_id}' not found")
-
-            # Validation: Review item exists
-            item = session.query(ReviewItem).filter_by(id=review_item_id).first()
-            if not item:
-                raise ValueError(f"Review item {review_item_id} not found")
-
-            # Validation: Item belongs to this batch
-            if item.batch_id != batch_id:
-                raise ValueError(
-                    f"Review item {review_item_id} does not belong to batch '{batch_id}'"
-                )
-
-            # Validation: Item type is 'household'
-            if item.item_type != 'household':
-                raise ValueError(
-                    f"Review item {review_item_id} is not a household item (type: {item.item_type})"
-                )
-
-            # Extract household and member details from payload_json
+        def prepare(item: ReviewItem) -> DecisionPreparation:
             payload = item.payload_json
             if not isinstance(payload, dict):
                 payload = json.loads(payload) if isinstance(payload, str) else {}
-
-            candidate_household_id = payload.get('id')
-            suggested_household_label = payload.get('suggested_name')
+            household_id = payload.get('id')
+            label = payload.get('suggested_name')
             address = payload.get('address')
             basis = payload.get('evidence', [])
-            proposed_members = payload.get('proposed_members', [])
-            proposed_members_count = len(proposed_members) if isinstance(proposed_members, list) else 0
-
-            # Extract candidate contact IDs from proposed_members if available
-            candidate_contact_ids = []
-            if isinstance(proposed_members, list):
-                for member in proposed_members:
+            members = payload.get('proposed_members', [])
+            member_count = len(members) if isinstance(members, list) else 0
+            candidate_ids = []
+            if isinstance(members, list):
+                for member in members:
                     if isinstance(member, str):
-                        # Format: "John Smith (TXN-001)" or "Contact-123"
-                        import re
                         match = re.search(r'\(([^)]+)\)', member)
                         if match:
-                            candidate_contact_ids.append(match.group(1))
-
-            # Build reviewed_values from household data
-            reviewed_values = {
-                'candidate_household_id': candidate_household_id,
-                'candidate_contact_ids': candidate_contact_ids,
-                'suggested_household_label': suggested_household_label,
-                'address': address,
-                'basis': basis if isinstance(basis, list) else [],
-                'proposed_members_count': proposed_members_count,
+                            candidate_ids.append(match.group(1))
+            basis = basis if isinstance(basis, list) else []
+            reviewed = {
+                'candidate_household_id': household_id, 'candidate_contact_ids': candidate_ids,
+                'suggested_household_label': label, 'address': address, 'basis': basis,
+                'proposed_members_count': member_count,
             }
             if notes:
-                reviewed_values['notes'] = notes
-
-            decision_record = ReviewDecision(
-                batch_id=batch_id,
-                review_item_id=review_item_id,
-                decision=decision,
-                reviewed_values=reviewed_values,
-                reviewer=reviewer,
-                created_at=datetime.now(timezone.utc),
-            )
-            session.add(decision_record)
-            session.flush()  # Flush to get the ID
-
-            decision_id = decision_record.id
-            now = datetime.now(timezone.utc)
-
-            # Create AuditLogRecord
-            # Determine prior status (from latest previous decision)
-            prior_status = self._get_prior_status(session, review_item_id, decision_id)
-
-            # Determine effective status (what it is now after this decision)
-            status_map = {
-                'confirm_household': 'confirmed',
-                'reject_household': 'rejected',
-                'defer': 'deferred',
-            }
-            effective_status = status_map.get(decision, 'pending')
-
-            audit_details = {
-                'decision_type': 'household_decision',
-                'decision_value': decision,
-                'candidate_household_id': candidate_household_id,
-                'candidate_contact_ids': candidate_contact_ids,
-                'suggested_household_label': suggested_household_label,
-                'address': address,
-                'basis': basis if isinstance(basis, list) else [],
-                'proposed_members_count': proposed_members_count,
-                'notes': notes,
-                'prior_status': prior_status,
-                'effective_status': effective_status,
-            }
-
-            audit_record = AuditLogRecord(
-                batch_id=batch_id,
-                action_type='decision_recorded',
-                action_timestamp=now,
-                actor=reviewer,
-                item_id=review_item_id,
-                decision_id=decision_id,
-                details=audit_details,
-                created_at=now,
-            )
-            session.add(audit_record)
-            session.flush()  # Flush to get the ID
-
-            audit_id = audit_record.id
-
-            # Commit transaction
-            session.commit()
-
-            return HouseholdDecisionResult(
-                decision_id=decision_id,
-                review_item_id=review_item_id,
-                decision=decision,
-                effective_status=effective_status,
-                audit_log_id=audit_id,
-                timestamp=now,
+                reviewed['notes'] = notes
+            effective = {'confirm_household': 'confirmed', 'reject_household': 'rejected', 'defer': 'deferred'}.get(decision, 'pending')
+            return DecisionPreparation(
+                reviewed_values=reviewed,
+                audit_details={
+                    'decision_type': 'household_decision', 'decision_value': decision,
+                    'candidate_household_id': household_id, 'candidate_contact_ids': candidate_ids,
+                    'suggested_household_label': label, 'address': address, 'basis': basis,
+                    'proposed_members_count': member_count, 'notes': notes,
+                },
+                effective_status=effective,
             )
 
-        except ValueError:
-            # Validation errors: rollback and re-raise
-            session.rollback()
-            raise
-        except Exception as e:
-            # Unexpected errors: rollback and wrap
-            session.rollback()
-            raise RuntimeError(f"Error recording household decision: {str(e)}") from e
-        finally:
-            session.close()
-
-    def _get_prior_status(self, session: Session, review_item_id: int, exclude_decision_id: int) -> str:
-        """
-        Get the effective status before the most recent decision.
-
-        Args:
-            session: Active database session
-            review_item_id: ReviewItem.id
-            exclude_decision_id: Decision ID to exclude (current decision)
-
-        Returns:
-            Prior effective status, or 'pending' if no prior decisions
-        """
-        prior = (
-            session.query(ReviewDecision)
-            .filter_by(review_item_id=review_item_id)
-            .filter(ReviewDecision.id != exclude_decision_id)
-            .order_by(ReviewDecision.created_at.desc())
-            .first()
+        return record_item_decision(
+            lambda: get_db_session(self.database_url), batch_id=batch_id,
+            review_item_id=review_item_id, decision=decision, reviewer=reviewer,
+            item_type='household', decision_type='household_decision',
+            status_map={'confirm_household': 'confirmed', 'reject_household': 'rejected', 'defer': 'deferred'},
+            result_type=HouseholdDecisionResult, error_label='household', prepare=prepare,
         )
-
-        if not prior:
-            return 'pending'
-
-        status_map = {
-            'confirm_household': 'confirmed',
-            'reject_household': 'rejected',
-            'defer': 'deferred',
-        }
-        return status_map.get(prior.decision, 'pending')
