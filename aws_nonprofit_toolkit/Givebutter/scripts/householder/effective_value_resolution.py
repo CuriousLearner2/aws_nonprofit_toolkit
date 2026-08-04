@@ -21,6 +21,17 @@ def decision_order_key(decision: Any) -> tuple[Any, Any]:
     return decision.created_at, decision.id
 
 
+def fold_row_reviewed_values(decisions: list[Any]) -> dict[Any, dict[str, Any]]:
+    """Fold row-level reviewed values in canonical decision order."""
+    folded: dict[Any, dict[str, Any]] = {}
+    for decision in sorted(decisions, key=decision_order_key):
+        if decision.review_item_id is not None:
+            continue
+        if decision.reviewed_values:
+            folded.setdefault(decision.raw_import_row_id, {}).update(decision.reviewed_values)
+    return folded
+
+
 def merge_effective_values(
     raw_values: Mapping[str, Any] | None,
     reviewed_values: Mapping[str, Any] | None,
@@ -67,10 +78,8 @@ def get_effective_values(
             batch_id=batch_id,
             raw_import_row_id=raw_import_row_id,
         ).all()
-        decisions.sort(key=decision_order_key)
-
         reviewed_values: dict[str, Any] = {}
-        for decision in decisions:
+        for decision in sorted(decisions, key=decision_order_key):
             if decision.reviewed_values:
                 reviewed_values.update(decision.reviewed_values)
 

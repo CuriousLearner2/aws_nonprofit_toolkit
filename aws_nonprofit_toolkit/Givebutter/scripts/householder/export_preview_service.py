@@ -25,7 +25,7 @@ from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .service_contracts import ExportRow, ExportPreviewResult
 from .export_preview_policy import validation_issue_field, validation_issue_type
-from .effective_value_resolution import decision_order_key
+from .effective_value_resolution import decision_order_key, fold_row_reviewed_values
 
 
 def _batch_row_is_approved_with_overrides(batch, raw_import_row_id):
@@ -144,19 +144,13 @@ def build_export_preview(
         normalization_decisions = {}
         duplicate_decisions = {}
         household_decisions = {}
-        row_level_autosave_decisions = {}
-
-        for decision in session.query(ReviewDecision).filter_by(
+        decisions = session.query(ReviewDecision).filter_by(
             batch_id=import_id
-        ).order_by(ReviewDecision.created_at.asc(), ReviewDecision.id.asc()).all():
-            # Handle row-level autosave decisions (review_item_id=None)
+        ).order_by(ReviewDecision.created_at.asc(), ReviewDecision.id.asc()).all()
+        row_level_autosave_decisions = fold_row_reviewed_values(decisions)
+
+        for decision in decisions:
             if decision.review_item_id is None:
-                raw_row_id = decision.raw_import_row_id
-                if raw_row_id not in row_level_autosave_decisions:
-                    row_level_autosave_decisions[raw_row_id] = {}
-                # Merge all reviewed_values for this row (later decisions override earlier)
-                if decision.reviewed_values:
-                    row_level_autosave_decisions[raw_row_id].update(decision.reviewed_values)
                 continue
 
             # Get the latest decision for each review item

@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from scripts.householder.database_models import Base, ImportBatch, RawImportRow, ReviewDecision, create_db_engine
 from scripts.householder.effective_value_resolution import (
     effective_value_for_field,
+    fold_row_reviewed_values,
     get_effective_values,
     merge_effective_values,
 )
@@ -44,3 +45,20 @@ def test_get_effective_values_merges_persisted_corrections(tmp_path: Path):
         assert effective["address"] == "34 Elm St"
     finally:
         session.close()
+
+
+def test_fold_row_reviewed_values_uses_decision_order_and_row_scope():
+    class Decision:
+        def __init__(self, created_at, decision_id, row_id, review_item_id, values):
+            self.created_at = created_at
+            self.id = decision_id
+            self.raw_import_row_id = row_id
+            self.review_item_id = review_item_id
+            self.reviewed_values = values
+
+    decisions = [
+        Decision(2, 2, 7, None, {"email": "new@example.com"}),
+        Decision(1, 1, 7, None, {"email": "old@example.com", "phone": "555"}),
+        Decision(3, 3, 7, 99, {"email": "item@example.com"}),
+    ]
+    assert fold_row_reviewed_values(decisions) == {7: {"email": "new@example.com", "phone": "555"}}

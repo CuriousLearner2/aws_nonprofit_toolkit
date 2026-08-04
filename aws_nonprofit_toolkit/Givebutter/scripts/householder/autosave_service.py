@@ -15,6 +15,7 @@ from .repository_provider import get_import_repository
 from .editable_field_validation import validate_editable_field_values as _validate_editable_field_values
 from .effective_value_resolution import get_effective_values as _get_effective_values
 from .row_status_policy import derive_row_status
+from .issue_presentation import present_validation_issues
 
 
 @dataclass(frozen=True)
@@ -111,11 +112,7 @@ def _error_result(status_code, error, batch_id, raw_import_row_id, database_url,
 
 
 def _format_issues(issues):
-    return [{
-        "field": issue.get("field", "unknown"),
-        "reason": issue.get("description", issue.get("reason", "Issue detected")),
-        "severity": issue.get("severity", "warning"),
-    } for issue in issues]
+    return present_validation_issues(issues)
 
 
 def autosave_row_corrections(

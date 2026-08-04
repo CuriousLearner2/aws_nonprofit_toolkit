@@ -12,10 +12,20 @@ from scripts.householder.service_contracts import (
 )
 from scripts.householder.fixture_repository import FixtureImportRepository
 from scripts.householder.validation_service import get_validation_review
+from scripts.householder.issue_presentation import present_validation_issues
 
 
 class TestValidationRow:
     """Test ValidationRow view model."""
+
+    def test_validation_issue_presentation_preserves_shared_contract(self):
+        assert present_validation_issues([
+            {"field": "email", "description": "Invalid", "severity": "error"},
+            {"field": "phone", "reason": "Missing"},
+        ]) == [
+            {"field": "email", "reason": "Invalid", "severity": "error"},
+            {"field": "phone", "reason": "Missing", "severity": "warning"},
+        ]
 
     def test_validation_row_creation(self):
         """Test that ValidationRow can be created with required fields."""

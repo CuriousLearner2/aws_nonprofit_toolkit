@@ -12,7 +12,9 @@ from typing import Dict, Any, Optional, Mapping
 import os
 
 from .repository_provider import get_import_repository
-from .issue_recalculation_service import recalculate_row_issues, _validate_effective_values
+from .issue_recalculation_service import recalculate_row_issues
+from .issue_evaluation_policy import evaluate_effective_values
+from .issue_presentation import present_validation_issues
 from .row_status_service import derive_row_status
 from .row_status_policy import derive_row_status as _derive_row_status
 from .validation_failure_policy import is_expected_validation_failure
@@ -67,14 +69,7 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                 )
 
                 # Format issues for template
-                record['issues'] = [
-                    {
-                        'field': issue.get('field', 'unknown'),
-                        'reason': issue.get('description', 'Issue detected'),
-                        'severity': issue.get('severity', 'warning')
-                    }
-                    for issue in all_issues
-                ]
+                record['issues'] = present_validation_issues(all_issues)
                 record['row_status'] = row_status
             except Exception as error:
                 if not is_expected_validation_failure(error):
@@ -101,15 +96,8 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                         'phone': record.get('phone'),
                         'address': record.get('address'),
                     }
-                    validation_issues = _validate_effective_values(fixture_values)
-                    record['issues'] = [
-                        {
-                            'field': issue.get('field', 'unknown'),
-                            'reason': issue.get('description', 'Issue detected'),
-                            'severity': issue.get('severity', 'warning')
-                        }
-                        for issue in validation_issues
-                    ]
+                    validation_issues = evaluate_effective_values(fixture_values)
+                    record['issues'] = present_validation_issues(validation_issues)
                 else:
                     # Shouldn't reach here, but be safe
                     record['issues'] = []
