@@ -1863,6 +1863,44 @@ def review_item_decision_history(import_id, review_item_id):
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 503
 
+@app.route('/imports/<import_id>/decision-history')
+def import_decision_history(import_id):
+    """Render the read-only history of stored decisions for an import."""
+    from householder import decision_history_view_service
+
+    try:
+        report = decision_history_view_service.get_decision_history_report(
+            import_id, config={'GIVEBUTTER_DATABASE_URL': _get_runtime_database_url()}
+        )
+        return render_template('imports/decision_history.html', report=report)
+    except LookupError:
+        return jsonify({'error': 'Import not found'}), 404
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 503
+
+@app.route('/imports/<import_id>/decision-history.json')
+def download_import_decision_history(import_id):
+    """Download the same read-only decision history report as deterministic JSON."""
+    from householder import decision_history_view_service
+
+    try:
+        report = decision_history_view_service.get_decision_history_report(
+            import_id, config={'GIVEBUTTER_DATABASE_URL': _get_runtime_database_url()}
+        )
+        return Response(
+            decision_history_view_service.to_deterministic_json(report),
+            mimetype='application/json',
+            headers={
+                'Content-Disposition': (
+                    f'attachment; filename="{import_id}-decision-history.json"'
+                )
+            },
+        )
+    except LookupError:
+        return jsonify({'error': 'Import not found'}), 404
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 503
+
 @app.route('/imports/<import_id>/exports')
 def import_exports(import_id):
     """Export console for generating and downloading exports."""

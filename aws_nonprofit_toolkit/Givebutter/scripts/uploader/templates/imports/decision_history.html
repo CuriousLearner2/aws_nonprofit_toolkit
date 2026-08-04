@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Decision History — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Decision History</h1>
+<p class="page-metadata"><strong>Import:</strong> {{ report.import_id }} | <strong>Records:</strong> {{ report.decisions|length }}</p>
+<div class="safety-strip" data-testid="decision-history-immutability">
+    This report displays stored immutable review decisions in chronological order. It does not derive current status, effective values, resolution meaning, or approval state.
+</div>
+
+<div style="margin: 18px 0; display: flex; gap: 12px;">
+    <a class="btn btn-secondary" href="/imports/{{ report.import_id }}/decision-history.json" download>Download JSON</a>
+    <a class="btn btn-secondary" href="/imports/{{ report.import_id }}/audit">Back to Audit</a>
+</div>
+
+<div class="table-container">
+    <table data-testid="decision-history-table">
+        <thead>
+            <tr><th>ID</th><th>Review Item</th><th>Raw Row</th><th>Decision</th><th>Reviewed Values</th><th>Reviewer</th><th>Created</th></tr>
+        </thead>
+        <tbody>
+        {% for decision in report.decisions %}
+            <tr data-decision-id="{{ decision.id }}">
+                <td>{{ decision.id }}</td>
+                <td>{{ decision.review_item_id if decision.review_item_id is not none else '' }}</td>
+                <td>{{ decision.raw_import_row_id if decision.raw_import_row_id is not none else '' }}</td>
+                <td>{{ decision.decision }}</td>
+                <td>{{ decision.reviewed_values|tojson }}</td>
+                <td>{{ decision.reviewer or '' }}</td>
+                <td>{{ decision.created_at or '' }}</td>
+            </tr>
+        {% else %}
+            <tr data-testid="decision-history-empty"><td colspan="7">No stored decisions for this import.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div style="margin-top: 24px; display: flex; gap: 12px;">
+    <a href="/imports/{{ report.import_id }}/audit" class="btn btn-secondary">Audit</a>
+    <a href="/imports/{{ report.import_id }}/dashboard" class="btn btn-secondary">Dashboard</a>
+    <a href="/imports/{{ report.import_id }}/readiness" class="btn btn-secondary">Readiness</a>
+    <a href="/imports/{{ report.import_id }}/exports" class="btn btn-secondary">Exports</a>
+</div>
+{% endblock %}
