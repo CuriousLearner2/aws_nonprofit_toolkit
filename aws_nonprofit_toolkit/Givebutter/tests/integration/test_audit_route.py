@@ -121,6 +121,23 @@ class TestAuditRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'Export' in response.data
 
+    def test_audit_csv_is_read_only_and_deterministic(self, client_with_fixture):
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit/export.csv')
+        assert response.status_code == 200
+        assert response.headers['Content-Type'].startswith('text/csv')
+        assert response.data.startswith(b'Timestamp,Action,Details,Reviewer\n')
+        assert b'IMP-2025-0101-A-audit.csv' in response.headers['Content-Disposition'].encode()
+
+    def test_audit_filter_and_pagination_are_shareable(self, client_with_fixture):
+        response = client_with_fixture.get(
+            '/imports/IMP-2025-0101-A/audit?action=record-deferred&per_page=1&page=1'
+        )
+        html = response.data.decode('utf-8', errors='ignore')
+        assert response.status_code == 200
+        assert 'name="action"' in html
+        assert 'value="record-deferred" selected' in html
+        assert 'Total Entries:' in html
+
     def test_audit_contains_table_headers(self, client_with_fixture):
         """Test that audit page contains table headers."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')

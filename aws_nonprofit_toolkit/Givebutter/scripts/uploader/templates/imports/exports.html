@@ -270,6 +270,7 @@
                     <th style="width: 120px;">Generated</th>
                     <th style="width: 80px;">Rows</th>
                     <th style="width: 80px;">Warnings</th>
+                    <th style="width: 90px;">Size</th>
                     <th style="width: 100px;"></th>
                 </tr>
             </thead>
@@ -281,6 +282,7 @@
                     <td style="font-size: 13px; color: #666;">{{ export.generated_timestamp }}</td>
                     <td style="font-size: 13px; color: #666; text-align: right;">{{ export.row_count }}</td>
                     <td style="font-size: 13px; color: {% if export.warning_count > 0 %}#fca5a5{% else %}#9ca3af{% endif %}; text-align: right;">{{ export.warning_count }}</td>
+                    <td style="font-size: 13px; color: #666; text-align: right;">{{ export.file_size }}</td>
                     <td style="text-align: center;">
                         <a href="/imports/{{ batch.id }}/exports/download/{{ export.audit_log_id }}" class="table-action" data-action="download-export" data-audit-log-id="{{ export.audit_log_id }}">Download</a>
                     </td>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, current_app, send_file
+from flask import Flask, render_template, request, jsonify, redirect, current_app, send_file, Response
 from functools import wraps
 import csv
 import os
@@ -1838,8 +1838,30 @@ def import_households(import_id):
 @app.route('/imports/<import_id>/audit')
 def import_audit(import_id):
     """Audit log for all reviewer decisions."""
-    data = audit_service.get_audit_log(import_id)
+    data = audit_service.get_audit_log(
+        import_id, action=request.args.get('action', ''),
+        page=request.args.get('page', 1, type=int),
+        per_page=request.args.get('per_page', 50, type=int),
+    )
     return render_template('imports/audit.html', **data)
+
+@app.route('/imports/<import_id>/audit/export.csv')
+def export_audit_log(import_id):
+    """Download the selected immutable audit history as deterministic CSV."""
+    csv_text = audit_service.get_audit_log_csv(import_id, action=request.args.get('action', ''))
+    return Response(csv_text, mimetype='text/csv', headers={
+        'Content-Disposition': f'attachment; filename="{import_id}-audit.csv"'
+    })
+
+@app.route('/imports/<import_id>/review-items/<int:review_item_id>/decision-history')
+def review_item_decision_history(import_id, review_item_id):
+    """Return append-only decision history for a review item."""
+    try:
+        return jsonify(audit_service.get_decision_history(import_id, review_item_id)), 200
+    except LookupError:
+        return jsonify({'error': 'Review item not found'}), 404
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 503
 
 @app.route('/imports/<import_id>/exports')
 def import_exports(import_id):

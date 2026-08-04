@@ -9,6 +9,7 @@ Phase 2-Step 16: Added get_recent_exports() to fetch from audit log.
 """
 
 import os
+from pathlib import Path
 from typing import Dict, Any, Optional, Mapping, List
 
 from sqlalchemy import create_engine
@@ -103,15 +104,26 @@ def get_recent_exports(import_id: str, config: Optional[Mapping[str, Any]] = Non
             exports = []
             for record in records:
                 details = record.details or {}
+                filename = details.get('filename', 'Unknown')
+                export_dir = config.get('EXPORT_OUTPUT_DIR') or os.environ.get(
+                    'EXPORT_OUTPUT_DIR', '/tmp/givebutter/exports')
+                root = Path(export_dir).resolve()
+                path = (root / str(filename)).resolve()
+                try:
+                    stat = path.stat() if (path.parent == root or root in path.parents) and path.is_file() else None
+                except OSError:
+                    stat = None
                 exports.append({
                     "audit_log_id": record.id,
-                    "filename": details.get('filename', 'Unknown'),
+                    "filename": filename,
                     "export_type": details.get('export_type', 'csv'),
                     "generated_at": record.action_timestamp.isoformat() if record.action_timestamp else '',
                     "generated_timestamp": record.action_timestamp.strftime('%Y-%m-%d %H:%M') if record.action_timestamp else '',
                     "row_count": details.get('row_count', 0),
                     "warning_count": details.get('warning_count', 0),
-                    "file_size": "0 B",  # Not stored, placeholder for template
+                    "file_size": _format_file_size(stat.st_size if stat else 0),
+                    "file_size_bytes": stat.st_size if stat else 0,
+                    "file_exists": bool(stat),
                 })
 
             return exports
@@ -125,3 +137,11 @@ def get_recent_exports(import_id: str, config: Optional[Mapping[str, Any]] = Non
         logger = logging.getLogger(__name__)
         logger.error(f"Error fetching recent exports: {str(e)}")
         return []
+
+
+def _format_file_size(size: int) -> str:
+    if size < 1024:
+        return f'{size} B'
+    if size < 1024 * 1024:
+        return f'{size / 1024:.1f} KB'
+    return f'{size / (1024 * 1024):.1f} MB'

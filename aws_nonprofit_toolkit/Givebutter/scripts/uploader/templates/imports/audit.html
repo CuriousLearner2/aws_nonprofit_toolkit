@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>Audit Log</h1>
-<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Total Entries:</strong> {{ audit_log|length }}</p>
+<p class="page-metadata"><strong>Batch:</strong> {{ batch.id }} | <strong>Total Entries:</strong> {{ audit_log_total }}</p>
 
 <div class="safety-strip">Complete record of all reviewer decisions and system actions for this import. Immutable reference for compliance.</div>
 <div class="safety-strip" data-testid="audit-filter-orientation" style="margin-top: 12px;">
@@ -20,17 +20,28 @@
 
 <!-- Filter & Export -->
 <div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">
-    <select id="action-filter" style="padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
-        <option value="">All Actions</option>
+    <form method="get" style="display: flex; gap: 12px; align-items: center;">
+    <select id="action-filter" name="action" style="padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+        <option value="" {% if not audit_action %}selected{% endif %}>All Actions</option>
         <option value="marked-duplicate">Marked as Duplicate</option>
         <option value="marked-different">Marked as Different</option>
         <option value="normalization-accepted">Normalization Accepted</option>
         <option value="normalization-rejected">Normalization Rejected</option>
         <option value="household-confirmed">Household Confirmed</option>
-        <option value="record-deferred">Record Deferred</option>
+        <option value="record-deferred" {% if audit_action == 'record-deferred' %}selected{% endif %}>Record Deferred</option>
     </select>
-    <button class="btn btn-secondary" style="margin-left: auto;">Export Audit Log</button>
+    <button type="submit" class="btn btn-secondary">Apply</button>
+    <a class="btn btn-secondary" style="margin-left: auto;" href="/imports/{{ batch.id }}/audit/export.csv{% if audit_action %}?action={{ audit_action }}{% endif %}">Export Audit Log</a>
+    </form>
 </div>
+
+{% if audit_total_pages > 1 %}
+<nav aria-label="Audit history pagination" style="margin-top: 18px;">
+    {% if audit_page > 1 %}<a href="?action={{ audit_action }}&page={{ audit_page - 1 }}&per_page={{ audit_per_page }}">Previous</a>{% endif %}
+    <span style="margin: 0 12px;">Page {{ audit_page }} of {{ audit_total_pages }}</span>
+    {% if audit_page < audit_total_pages %}<a href="?action={{ audit_action }}&page={{ audit_page + 1 }}&per_page={{ audit_per_page }}">Next</a>{% endif %}
+</nav>
+{% endif %}
 
 <!-- Audit Log Table -->
 <div class="table-container">
