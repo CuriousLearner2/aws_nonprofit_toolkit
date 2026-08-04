@@ -52,13 +52,30 @@ def test_scope_overlap_dead_recovery_and_read_only(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "LOCK_ROOT", tmp_path / "locks")
     monkeypatch.setattr(launcher, "_process_identity", lambda pid: f"p{pid}")
     project = tmp_path / "project"; project.mkdir(); lock_dir = tmp_path / "locks"; lock_dir.mkdir()
-    other = lock_dir / "other.json"; other.write_text(json.dumps({"pid": os.getpid(), "process_start_identity": f"p{os.getpid()}", "authorized_paths": ["scripts/a.py"]}))
+    pid = os.getpid(); token = launcher.PROCESS_TOKEN
+    owner = launcher._process_owner_path(pid, token)
+    registration = launcher._process_registration_path(pid)
+    identity = {"pid": pid, "process_token": token, "campaign_id": "other", "operation_id": "other-op", "created_at": launcher.PROCESS_TOKEN_CREATED_AT}
+    owner.parent.mkdir(parents=True, exist_ok=True)
+    owner.write_text(json.dumps(identity))
+    registration.write_text(json.dumps(identity))
+    other = lock_dir / "other.json"
+    other.write_text(json.dumps({"pid": pid, "process_token": token, "owner_state": str(owner), "campaign_id": "other", "launcher_operation_id": "other-op", "process_created_at": launcher.PROCESS_TOKEN_CREATED_AT, "process_start_identity": f"p{pid}", "authorized_paths": ["scripts/a.py"]}))
+    monkeypatch.setattr(launcher, "_process_state", lambda *_args: (None, None))
     with pytest.raises(launcher.LaunchError, match="overlaps"):
         with launcher.scope_lock("two", "campaign", project, ["scripts/a.py"], "op"): pass
     other.unlink()
-    with launcher.scope_lock("one", "campaign", project, ["scripts/a.py"], "op") as locks: assert len(locks) == 1
-    assert Path(locks[0]).is_file(); Path(locks[0]).unlink()
-    stale = lock_dir / "stale.json"; stale.write_text(json.dumps({"pid": 999999, "process_start_identity": "gone", "authorized_paths": ["scripts/stale.py"]}))
+    owner.unlink(); registration.unlink()
+    with launcher.scope_lock("one", "campaign", project, ["scripts/a.py"], "op") as locks:
+        assert len(locks) == 1
+        assert Path(locks[0]).is_file()
+    stale_pid = 999999; stale_token = "dead-token"
+    stale_owner = launcher._process_owner_path(stale_pid, stale_token)
+    stale_registration = launcher._process_registration_path(stale_pid)
+    stale_identity = {"pid": stale_pid, "process_token": stale_token, "campaign_id": "stale", "operation_id": "stale-op", "created_at": launcher.PROCESS_TOKEN_CREATED_AT}
+    stale_owner.parent.mkdir(parents=True, exist_ok=True)
+    stale_owner.write_text(json.dumps(stale_identity)); stale_registration.write_text(json.dumps(stale_identity))
+    stale = lock_dir / "stale.json"; stale.write_text(json.dumps({"pid": stale_pid, "process_token": stale_token, "owner_state": str(stale_owner), "campaign_id": "stale", "launcher_operation_id": "stale-op", "process_created_at": launcher.PROCESS_TOKEN_CREATED_AT, "process_start_identity": "gone", "authorized_paths": ["scripts/stale.py"]}))
     with launcher.scope_lock("three", "campaign", project, ["scripts/new.py"], "op") as locks: Path(locks[0]).unlink()
     with launcher.scope_lock("read", "discovery", project, ["scripts/a.py"], "op") as locks: assert locks == []
 

@@ -1,12 +1,14 @@
 """Focused tests for launcher environment verification and doctor output."""
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
 
 
 LAUNCHER_PATH = Path(__file__).parents[2] / "scripts" / "ci" / "householder_launcher.py"
+sys.path.insert(0, str(LAUNCHER_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("householder_launcher_under_test", LAUNCHER_PATH)
 launcher = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -19,6 +21,13 @@ def _project(tmp_path: Path) -> Path:
     (project / "requirements.txt").write_text("pytest==7.4.3\n", encoding="utf-8")
     (project / "requirements-test.txt").write_text("pytest-asyncio==0.21.1\n", encoding="utf-8")
     return project
+
+
+def _markers(project: Path) -> None:
+    for marker in launcher.MARKERS:
+        path = project / marker
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# marker\n", encoding="utf-8")
 
 
 def test_verified_venv_fingerprint_contains_required_identity(tmp_path, monkeypatch):
@@ -120,9 +129,10 @@ def test_doctor_success_is_bounded_and_does_not_use_scope_or_campaign_ledger(mon
     payload = {"baseline": "a" * 40, "campaign_id": "doctor-test", "mode": "campaign", "authorized_production_paths": [], "authorized_test_paths": ["tests/test.py"], "suite_ids": ["fixed"], "time_limit_seconds": 10}
     project = tmp_path / "project"
     project.mkdir()
+    _markers(project)
     calls = []
     monkeypatch.setattr(launcher, "_resolve_baseline", lambda _: {"sha": payload["baseline"]})
-    monkeypatch.setattr(launcher, "_clone", lambda checkout, baseline: (project / "tests").mkdir())
+    monkeypatch.setattr(launcher, "_clone", lambda checkout, baseline: (project / "tests").mkdir(exist_ok=True))
     monkeypatch.setattr(launcher, "discover_project_root", lambda _: project)
     monkeypatch.setattr(launcher, "_git_out", lambda *args: str(project))
     monkeypatch.setattr(launcher, "_environment", lambda _: {"fingerprint": "f" * 64, "python_executable": "/approved/python"})
@@ -139,6 +149,7 @@ def test_doctor_retry_is_idempotent_at_command_result_level(monkeypatch, tmp_pat
     payload = {"baseline": "a" * 40, "campaign_id": "doctor-retry", "mode": "campaign", "authorized_production_paths": [], "authorized_test_paths": [], "suite_ids": ["fixed"], "time_limit_seconds": 10}
     project = tmp_path / "project"
     project.mkdir()
+    _markers(project)
     monkeypatch.setattr(launcher, "_resolve_baseline", lambda _: {"sha": payload["baseline"]})
     monkeypatch.setattr(launcher, "_clone", lambda checkout, baseline: None)
     monkeypatch.setattr(launcher, "discover_project_root", lambda _: project)
@@ -156,6 +167,7 @@ def test_doctor_preserves_bounded_preflight_stdout_and_stderr(monkeypatch, tmp_p
     payload = {"baseline": "a" * 40, "campaign_id": "doctor-error", "mode": "campaign", "authorized_production_paths": [], "authorized_test_paths": [], "suite_ids": ["fixed"], "time_limit_seconds": 10}
     project = tmp_path / "project"
     project.mkdir()
+    _markers(project)
     monkeypatch.setattr(launcher, "_resolve_baseline", lambda _: {"sha": payload["baseline"]})
     monkeypatch.setattr(launcher, "_clone", lambda checkout, baseline: None)
     monkeypatch.setattr(launcher, "discover_project_root", lambda _: project)
