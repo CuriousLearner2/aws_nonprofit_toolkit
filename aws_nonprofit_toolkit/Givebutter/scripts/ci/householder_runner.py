@@ -671,6 +671,10 @@ def campaign_parent_commit(task_id: str, operation_id: str) -> dict[str, Any]:
     return householder_campaign.campaign_parent_commit(task_id, operation_id)
 
 
+def campaign_parent_heartbeat(task_id: str, operation_id: str) -> dict[str, Any]:
+    return householder_campaign.campaign_parent_heartbeat(task_id, operation_id)
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="householder_runner.py")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -720,6 +724,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parent_commit_cmd = sub.add_parser("campaign-parent-commit")
     parent_commit_cmd.add_argument("--task-id", required=True)
     parent_commit_cmd.add_argument("--operation-id", required=True)
+    parent_heartbeat_cmd = sub.add_parser("campaign-parent-heartbeat")
+    parent_heartbeat_cmd.add_argument("--task-id", required=True)
+    parent_heartbeat_cmd.add_argument("--operation-id", required=True)
 
     return parser.parse_args(argv)
 
@@ -753,6 +760,8 @@ def main(argv: list[str] | None = None) -> int:
             result = campaign_parent_finish_stage(args.task_id, args.operation_id)
         elif args.command == "campaign-parent-commit":
             result = campaign_parent_commit(args.task_id, args.operation_id)
+        elif args.command == "campaign-parent-heartbeat":
+            result = campaign_parent_heartbeat(args.task_id, args.operation_id)
         else:  # pragma: no cover
             raise ValueError("unknown command")
         print(json.dumps(result, indent=2, sort_keys=True))

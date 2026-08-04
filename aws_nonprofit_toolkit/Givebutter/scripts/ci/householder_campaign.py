@@ -840,7 +840,7 @@ def _finish_patch(repo: Path, paths: list[str]) -> bytes:
     return patch
 
 
-def _validate_validated_commit(record: dict[str, Any]) -> str:
+def _validate_validated_commit(record: dict[str, Any], *, allow_stale: bool = False) -> str:
     validation = record.get("edit_validation")
     if not validation or not isinstance(validation.get("result"), dict):
         raise _fail("EDIT_NOT_VALIDATED", "validated commit requires finish-edit evidence")
@@ -875,8 +875,30 @@ def _validate_validated_commit(record: dict[str, Any]) -> str:
     ).stdout
     if sha256_patch(patch) != validated_patch_sha:
         raise _fail("VALIDATED_COMMIT_REJECTED", "commit content differs from validated patch")
-    _ledger_validate(record, expected_commit=head, allow_dirty=False)
+    _ledger_validate(record, expected_commit=head, allow_dirty=False, allow_stale=allow_stale)
     return head
+
+
+def _validate_validated_worktree(record: dict[str, Any]) -> None:
+    """Validate the exact pre-commit worktree represented by finish-stage evidence."""
+    validation = record.get("edit_validation")
+    if not validation or not isinstance(validation.get("result"), dict):
+        raise _fail("VALIDATED_HEARTBEAT_REJECTED", "validated evidence is incomplete")
+    result = validation["result"]
+    expected_parent = result.get("expected_parent_head")
+    if not isinstance(expected_parent, str):
+        raise _fail("VALIDATED_HEARTBEAT_REJECTED", "validated parent HEAD is missing")
+    repo = Path(record["worktree_path"])
+    head = _ledger_git(repo, "rev-parse", "HEAD")
+    if head != expected_parent:
+        raise _fail("VALIDATED_HEARTBEAT_REJECTED", "validated parent HEAD changed")
+    changed = _finish_changes(record, _finish_contract(record["contracts"][0]["path"]))
+    expected = result.get("changed_files")
+    if not isinstance(expected, list) or {item["path"] for item in changed} != {item.get("path") for item in expected}:
+        raise _fail("VALIDATED_HEARTBEAT_REJECTED", "validated changed paths differ")
+    patch_sha = sha256_patch(_finish_patch(repo, [item["path"] for item in changed]))
+    if patch_sha != result.get("patch_sha"):
+        raise _fail("VALIDATED_HEARTBEAT_REJECTED", "validated patch changed")
 
 
 def campaign_ledger_finish_edit(campaign_id: str, contract_index: int, operation_id: str) -> dict[str, Any]:
@@ -1265,8 +1287,8 @@ def campaign_parent_status(campaign_id: str) -> dict[str, Any]:
         return _result_view(record)
 
 
-def _parent_validate(record: dict[str, Any], *, allow_dirty: bool = False, expected_commit: str | None = None) -> None:
-    _ledger_validate(record, expected_commit=expected_commit, allow_dirty=allow_dirty)
+def _parent_validate(record: dict[str, Any], *, allow_dirty: bool = False, expected_commit: str | None = None, allow_stale: bool = False) -> None:
+    _ledger_validate(record, expected_commit=expected_commit, allow_dirty=allow_dirty, allow_stale=allow_stale)
     parent = record["parent_seam"]
     if record["parent_files"] != parent["authorized_files"]:
         raise _fail("EVENT_LOG_CORRUPT", "parent ownership envelope changed")
@@ -1434,6 +1456,33 @@ def campaign_parent_commit(campaign_id: str, operation_id: str) -> dict[str, Any
         output = {"state": record["state"], "protected_files": record["protected_files"], "current_head": record["current_head"]}
         _record_operation(record, operation_id, "parent-commit", payload, output)
         _append_event(campaign_id, record, operation_id, "PARENT_COMMITTED", payload)
+        return output
+
+
+def campaign_parent_heartbeat(campaign_id: str, operation_id: str) -> dict[str, Any]:
+    """Refresh a stale validated parent without reopening or changing its seam."""
+    operation_id = _operation_id(operation_id)
+    with _ledger_lock(campaign_id):
+        record = _parent_record(campaign_id)
+        payload: dict[str, Any] = {}
+        retry = _parent_retry(record, operation_id, "parent-heartbeat", payload)
+        if retry is not None:
+            return retry
+        if record["state"] != "VALIDATED":
+            raise _fail("STAGE_ORDER_VIOLATION", "heartbeat requires VALIDATED state")
+        repo = Path(record["worktree_path"])
+        head = _ledger_git(repo, "rev-parse", "HEAD")
+        expected_parent = record["edit_validation"]["result"].get("expected_parent_head")
+        _parent_validate(record, allow_dirty=True, expected_commit=head, allow_stale=True)
+        if head == expected_parent:
+            _validate_validated_worktree(record)
+        else:
+            _validate_validated_commit(record, allow_stale=True)
+        timestamp = _utcnow()
+        record["last_checkpoint_at"] = timestamp
+        output = {"state": record["state"], "heartbeat_at": timestamp}
+        _record_operation(record, operation_id, "parent-heartbeat", payload, output)
+        _append_event(campaign_id, record, operation_id, "PARENT_HEARTBEAT", payload)
         return output
 
 

@@ -626,6 +626,63 @@ def test_parent_repeated_file_lifecycle_restart_retry_and_commit(repo, tmp_path,
     assert closed["protected_files"] == ["seed.txt"]
 
 
+def _validated_parent(repo, tmp_path, monkeypatch, campaign_id):
+    monkeypatch.setitem(campaign.SUITE_REGISTRY, "wrapper-unit", ["python3", "-c", "pass"])
+    item = parent_contract(repo, tmp_path)
+    campaign.campaign_ledger_init(campaign_id, "init-" + campaign_id, repo, git(repo, "hash-object", "scripts/ci/architecture_slice_gate.py"), [item])
+    campaign.campaign_parent_next(campaign_id, "next-" + campaign_id)
+    (repo / "seed.txt").write_text("stage one\n")
+    campaign.campaign_parent_finish_stage(campaign_id, "finish-structure-" + campaign_id)
+    campaign.campaign_parent_finish_stage(campaign_id, "finish-integration-" + campaign_id)
+    campaign.campaign_parent_finish_stage(campaign_id, "finish-cleanup-" + campaign_id)
+
+
+def test_parent_validated_heartbeat_refreshes_stale_precommit_and_is_idempotent(repo, tmp_path, monkeypatch):
+    _validated_parent(repo, tmp_path, monkeypatch, "parent-heartbeat-before")
+    stale = campaign.datetime.now(campaign.timezone.utc) + campaign.timedelta(minutes=13)
+    monkeypatch.setattr(campaign, "_now_utc", lambda: stale)
+    events = Path(campaign._events_file("parent-heartbeat-before"))
+    before = len(events.read_bytes().splitlines())
+    refreshed = campaign.campaign_parent_heartbeat("parent-heartbeat-before", "heartbeat-before")
+    assert refreshed["state"] == "VALIDATED"
+    assert len(events.read_bytes().splitlines()) == before + 1
+    assert campaign.campaign_parent_heartbeat("parent-heartbeat-before", "heartbeat-before") == refreshed
+    assert len(events.read_bytes().splitlines()) == before + 1
+
+
+def test_parent_validated_heartbeat_refreshes_stale_exact_commit_and_restart(repo, tmp_path, monkeypatch):
+    _validated_parent(repo, tmp_path, monkeypatch, "parent-heartbeat-after")
+    git(repo, "add", "seed.txt"); git(repo, "commit", "-qm", "validated change")
+    stale = campaign.datetime.now(campaign.timezone.utc) + campaign.timedelta(minutes=13)
+    monkeypatch.setattr(campaign, "_now_utc", lambda: stale)
+    refreshed = campaign.campaign_parent_heartbeat("parent-heartbeat-after", "heartbeat-after")
+    loaded = importlib.reload(campaign)
+    monkeypatch.setattr(loaded, "LEDGER_ROOT", Path(repo).parent / "campaigns")
+    monkeypatch.setattr(loaded, "_now_utc", lambda: stale)
+    events = Path(loaded._events_file("parent-heartbeat-after"))
+    before = len(events.read_bytes().splitlines())
+    assert loaded.campaign_parent_heartbeat("parent-heartbeat-after", "heartbeat-after") == refreshed
+    assert len(events.read_bytes().splitlines()) == before
+    assert loaded.campaign_parent_commit("parent-heartbeat-after", "commit-after-heartbeat")["state"] == "COMMITTED"
+
+
+def test_parent_validated_heartbeat_rejects_extra_or_changed_worktree(repo, tmp_path, monkeypatch):
+    _validated_parent(repo, tmp_path, monkeypatch, "parent-heartbeat-reject")
+    stale = campaign.datetime.now(campaign.timezone.utc) + campaign.timedelta(minutes=13)
+    monkeypatch.setattr(campaign, "_now_utc", lambda: stale)
+    events = Path(campaign._events_file("parent-heartbeat-reject"))
+    before = events.read_bytes()
+    (repo / "extra.txt").write_text("outside\n")
+    with pytest.raises(campaign.CampaignError, match="UNAUTHORIZED_CHANGE"):
+        campaign.campaign_parent_heartbeat("parent-heartbeat-reject", "heartbeat-extra")
+    assert events.read_bytes() == before
+    (repo / "extra.txt").unlink()
+    (repo / "seed.txt").write_text("amended\n")
+    with pytest.raises(campaign.CampaignError, match="VALIDATED_HEARTBEAT_REJECTED"):
+        campaign.campaign_parent_heartbeat("parent-heartbeat-reject", "heartbeat-changed")
+    assert events.read_bytes() == before
+
+
 def test_parent_scope_scan_is_limited_to_configured_ledger_root(repo, tmp_path, monkeypatch):
     monkeypatch.setitem(campaign.SUITE_REGISTRY, "wrapper-unit", ["python3", "-c", "pass"])
     global_root = tmp_path / "global-ledgers"; (global_root / "historical").mkdir(parents=True)
