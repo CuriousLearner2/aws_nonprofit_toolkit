@@ -41,7 +41,7 @@ def _run_git(repo: Path, *args: str, check: bool = True) -> subprocess.Completed
 
 def _init_repo(root: Path) -> Path:
     repo = root / 'repo'
-    repo.mkdir()
+    repo.mkdir(parents=True)
     _run_git(repo, 'init')
     _run_git(repo, 'config', 'user.email', 'codex@example.com')
     _run_git(repo, 'config', 'user.name', 'Codex')
@@ -143,6 +143,28 @@ def _base_repo(tmp_path: Path) -> Path:
     _write(repo, 'tests/unit/test_validation_policy.py', 'def test_validate():\n    assert True\n')
     _commit(repo, 'baseline')
     return repo
+
+
+def _nested_repo(tmp_path: Path) -> tuple[Path, Path]:
+    repo = _init_repo(tmp_path)
+    project = repo / 'aws_nonprofit_toolkit' / 'Givebutter'
+    _write(project, 'scripts/householder/validation_policy.py', 'def validate(value):\n    return value.strip()\n')
+    _write(project, 'tests/unit/test_validation_policy.py', 'def test_validate():\n    assert True\n')
+    _write(project, 'tests/integration/test_validation_policy.py', 'def test_integration():\n    assert True\n')
+    _commit(repo, 'baseline')
+    return repo, project
+
+
+def _nested_contract(**overrides: object) -> dict:
+    return _contract(
+        authorized_files=[
+            'scripts/householder/validation_policy.py',
+            'tests/unit/test_validation_policy.py',
+            'tests/integration/test_validation_policy.py',
+        ],
+        allowed_new_production_files=[],
+        **overrides,
+    )
 
 
 def test_schema_and_required_fields_validation(tmp_path: Path) -> None:
@@ -480,3 +502,88 @@ def test_ambiguous_repo_root_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match='ambiguous repo roots or not in a git repository'):
         _evaluate(repo, contract_path, contract_sha, cwd=tmp_path)
+
+
+def test_nested_unit_integration_tests_are_tests_and_scripts_are_production(tmp_path: Path) -> None:
+    repo, project = _nested_repo(tmp_path)
+    _write(project, 'scripts/householder/validation_policy.py', 'changed\n')
+    _write(project, 'tests/unit/test_validation_policy.py', 'one\ntwo\nthree\n')
+    _write(project, 'tests/integration/test_validation_policy.py', 'one\ntwo\nthree\n')
+    contract = _nested_contract()
+    contract_path, contract_sha = _write_contract(repo, contract)
+
+    result = _evaluate(repo, contract_path, contract_sha, cwd=project)
+
+    assert result['pass'] is True
+    assert result['files'] == [
+        {'path': 'scripts/householder/validation_policy.py', 'additions': 1, 'deletions': 2},
+        {'path': 'tests/integration/test_validation_policy.py', 'additions': 3, 'deletions': 2},
+        {'path': 'tests/unit/test_validation_policy.py', 'additions': 3, 'deletions': 2},
+    ]
+    assert result['production_totals'] == {'additions': 1, 'deletions': 2, 'changed_lines': 3}
+    assert result['test_totals'] == {'additions': 6, 'deletions': 4, 'changed_lines': 10}
+
+
+def test_flat_and_nested_projections_have_identical_classification_and_counts(tmp_path: Path) -> None:
+    flat = _base_repo(tmp_path / 'flat')
+    nested, project = _nested_repo(tmp_path / 'nested')
+    for root in (flat, project):
+        _write(root, 'scripts/householder/validation_policy.py', 'changed\n')
+        _write(root, 'tests/unit/test_validation_policy.py', 'one\ntwo\n')
+    flat_contract = _contract()
+    nested_contract = _nested_contract()
+    flat_path, flat_sha = _write_contract(flat, flat_contract, name='flat.json')
+    nested_path, nested_sha = _write_contract(nested, nested_contract, name='nested.json')
+
+    flat_result = _evaluate(flat, flat_path, flat_sha)
+    nested_result = _evaluate(nested, nested_path, nested_sha, cwd=project)
+
+    assert flat_result['files'] == nested_result['files']
+    assert flat_result['production_totals'] == nested_result['production_totals']
+    assert flat_result['test_totals'] == nested_result['test_totals']
+
+
+def test_nested_line_ceilings_remain_separate(tmp_path: Path) -> None:
+    repo, project = _nested_repo(tmp_path)
+    _write(project, 'scripts/householder/validation_policy.py', 'one\ntwo\nthree\n')
+    _write(project, 'tests/unit/test_validation_policy.py', 'one\ntwo\nthree\n')
+    contract = _nested_contract(production_changed_lines_max=2, test_changed_lines_max=5)
+    contract_path, contract_sha = _write_contract(repo, contract)
+
+    result = _evaluate(repo, contract_path, contract_sha, cwd=project)
+
+    assert result['pass'] is False
+    assert 'production line ceiling exceeded' in result['violations']
+    assert 'test line ceiling exceeded' not in result['violations']
+
+
+def test_unauthorized_nested_production_file_still_fails_closed(tmp_path: Path) -> None:
+    repo, project = _nested_repo(tmp_path)
+    _write(project, 'scripts/householder/extra.py', 'print(1)\n')
+    contract = _nested_contract()
+    contract_path, contract_sha = _write_contract(repo, contract)
+
+    result = _evaluate(repo, contract_path, contract_sha, cwd=project)
+
+    assert result['pass'] is False
+    assert 'unauthorized file changed: scripts/householder/extra.py' in result['violations']
+    assert 'new production file not allowed: scripts/householder/extra.py' in result['violations']
+
+
+def test_nested_path_escape_and_symlink_escape_fail_closed(tmp_path: Path) -> None:
+    repo, project = _nested_repo(tmp_path)
+    outside = tmp_path / 'outside.py'
+    outside.write_text('outside\n', encoding='utf-8')
+    escaped = project / 'tests' / 'unit' / 'escaped.py'
+    escaped.symlink_to(outside)
+
+    with pytest.raises(ValueError, match='outside canonical project root'):
+        architecture_slice_gate._project_relative_path(repo, project, 'other/escaped.py')
+    with pytest.raises(ValueError, match='escapes canonical project root'):
+        architecture_slice_gate._project_relative_path(
+            repo,
+            project,
+            'aws_nonprofit_toolkit/Givebutter/tests/unit/escaped.py',
+        )
+    with pytest.raises(ValueError, match='path traversal'):
+        architecture_slice_gate._project_relative_path(repo, project, 'aws_nonprofit_toolkit/Givebutter/../outside.py')

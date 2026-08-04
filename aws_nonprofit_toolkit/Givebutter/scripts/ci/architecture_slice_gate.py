@@ -73,11 +73,50 @@ def _canonicalize_path(value: str) -> str:
     if text.startswith("./"):
         text = text[2:]
     if text.startswith("/"):
-        text = text[1:]
+        raise ValueError(f"absolute paths are not allowed: {value!r}")
     parts = [part for part in text.split("/") if part and part != "."]
     if any(part == ".." for part in parts):
         raise ValueError(f"invalid path traversal in contract: {value!r}")
     return "/".join(parts)
+
+
+def _canonical_project_root(repo_root: Path, project_root: Path | None) -> Path:
+    """Resolve the persisted project root and prove it is inside the Git root."""
+    candidate = Path(project_root or Path.cwd()).resolve()
+    root = repo_root.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("canonical project root is outside the Git root") from exc
+    if not candidate.is_dir():
+        raise ValueError("canonical project root is not a directory")
+    return candidate
+
+
+def _project_relative_path(repo_root: Path, project_root: Path, git_path: str) -> str:
+    """Map a Git-root-relative path to the persisted project-root-relative path."""
+    normalized_git_path = _canonicalize_path(git_path)
+    prefix = project_root.relative_to(repo_root).as_posix()
+    if prefix == ".":
+        prefix = ""
+    if prefix:
+        if normalized_git_path == prefix:
+            relative = ""
+        elif normalized_git_path.startswith(prefix + "/"):
+            relative = normalized_git_path[len(prefix) + 1:]
+        else:
+            raise ValueError(f"changed path outside canonical project root: {git_path!r}")
+    else:
+        relative = normalized_git_path
+    if not relative:
+        raise ValueError(f"changed path names the canonical project root: {git_path!r}")
+    canonical = _canonicalize_path(relative)
+    resolved = (project_root / canonical).resolve()
+    try:
+        resolved.relative_to(project_root)
+    except ValueError as exc:
+        raise ValueError(f"changed path escapes canonical project root: {git_path!r}") from exc
+    return canonical
 
 
 def _normalize_unique_strings(values: Any, field: str, *, allow_empty: bool = True) -> list[str]:
@@ -247,6 +286,7 @@ def evaluate_contract(
     cwd: Path | None = None,
 ) -> dict[str, Any]:
     repo_root = _git_repo_root(cwd)
+    project_root = _canonical_project_root(repo_root, cwd)
     loaded = _load_contract(Path(contract_path))
     normalized = _normalize_contract(loaded)
     computed_contract_sha = _canonical_contract_sha(normalized)
@@ -264,11 +304,13 @@ def evaluate_contract(
     allowed_new_production = set(normalized["allowed_new_production_files"])
 
     tracked_paths: list[str] = []
+    tracked_project_paths: dict[str, str] = {}
     file_entries: list[dict[str, Any]] = []
     violations: list[str] = []
 
     for status, path in changed:
-        normalized_path = _canonicalize_path(path)
+        normalized_git_path = _canonicalize_path(path)
+        normalized_path = _project_relative_path(repo_root, project_root, normalized_git_path)
         if normalized_path in blocked_files:
             violations.append(f"forbidden file changed: {normalized_path}")
         if normalized_path not in authorized:
@@ -278,19 +320,21 @@ def evaluate_contract(
                 violations.append(f"new production file not authorized: {normalized_path}")
             if normalized_path not in allowed_new_production and _classify_path(normalized_path) == "production":
                 violations.append(f"new production file not allowed: {normalized_path}")
-            additions = _read_file_lines(repo_root / normalized_path)
+            additions = _read_file_lines(repo_root / normalized_git_path)
             deletions = 0
             file_entries.append({"path": normalized_path, "additions": additions, "deletions": deletions})
         else:
-            tracked_paths.append(normalized_path)
+            tracked_paths.append(normalized_git_path)
+            tracked_project_paths[normalized_git_path] = normalized_path
 
     tracked_counts = _tracked_numstat(repo_root, normalized["baseline_ref"], tracked_paths)
-    for path in tracked_paths:
-        if path not in tracked_counts:
-            violations.append(f"missing tracked diff stats for {path}")
+    for git_path in tracked_paths:
+        project_path = tracked_project_paths[git_path]
+        if git_path not in tracked_counts:
+            violations.append(f"missing tracked diff stats for {project_path}")
             continue
-        additions, deletions = tracked_counts[path]
-        file_entries.append({"path": path, "additions": additions, "deletions": deletions})
+        additions, deletions = tracked_counts[git_path]
+        file_entries.append({"path": project_path, "additions": additions, "deletions": deletions})
 
     file_entries.sort(key=lambda item: item["path"])
 
@@ -306,7 +350,7 @@ def evaluate_contract(
 
     for path in normalized["forbidden_imports"]:
         for entry in file_entries:
-            file_path = repo_root / entry["path"]
+            file_path = project_root / entry["path"]
             if file_path.exists() and path in file_path.read_text(encoding="utf-8"):
                 violations.append(f"forbidden import rejected: {path}")
     for symbol in normalized["forbidden_symbols"]:
