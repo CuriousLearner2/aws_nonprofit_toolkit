@@ -33,6 +33,18 @@ def test_verified_venv_fingerprint_contains_required_identity(tmp_path, monkeypa
     assert result["installed_packages"]["pytest"] == "7.4.3"
 
 
+def test_durable_venv_is_the_default_configuration():
+    assert launcher.PYTHON311_VENV == "/Users/gautambiswas/.householder/envs/python311"
+
+
+def test_incomplete_configured_venv_is_rejected(tmp_path, monkeypatch):
+    project = _project(tmp_path)
+    monkeypatch.setattr(launcher, "PYTHON311_VENV", str(tmp_path / "incomplete-venv"))
+    with pytest.raises(launcher.LaunchError) as exc:
+        launcher._environment(project)
+    assert exc.value.code == "ENVIRONMENT_MISMATCH"
+
+
 def test_bare_interpreter_is_rejected_without_expected_fingerprint(tmp_path, monkeypatch):
     project = _project(tmp_path)
     monkeypatch.setattr(launcher, "PYTHON311_VENV", "")
