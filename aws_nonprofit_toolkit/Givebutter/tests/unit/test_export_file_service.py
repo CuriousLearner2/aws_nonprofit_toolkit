@@ -17,12 +17,14 @@ from scripts.householder.export_file_service import (
     ExportError,
     ExportBlockedError,
     ExportIOError,
+    ExportCompensationError,
     ExportUnresolvedValidationWarningError,
     ExportUnresolvedHouseholdWarningError,
     _sanitize_filename,
     _generate_safe_filename,
     _encode_csv_field,
     _generate_csv_content,
+    _publish_export,
 )
 from scripts.householder.service_contracts import ExportRow, ExportPreviewResult
 
@@ -172,6 +174,140 @@ def test_missing_output_dir_raises_error(monkeypatch):
                 "IMP-TEST-001",
                 "",
             )
+
+
+def test_atomic_publication_writes_complete_payload_before_replace(temp_export_dir):
+    """The destination is absent until replacement and then is complete."""
+    destination = Path(temp_export_dir) / "export.csv"
+    observed = {}
+    real_replace = os.replace
+
+    def replace(source, target):
+        observed["before_replace"] = destination.exists()
+        real_replace(source, target)
+
+    with patch("scripts.householder.export_file_service.os.replace", side_effect=replace):
+        result = _publish_export(str(destination), "header\ncomplete\n")
+
+    assert result == str(destination)
+    assert observed == {"before_replace": False}
+    assert destination.read_bytes() == b"header\ncomplete\n"
+    assert list(Path(temp_export_dir).glob("*.tmp")) == []
+
+
+@pytest.mark.parametrize("failure", ["write", "flush", "close"])
+def test_atomic_publication_cleans_temporary_file_before_replace(
+    temp_export_dir, monkeypatch, failure
+):
+    """Write, flush, and close failures publish neither file nor partial data."""
+    destination = Path(temp_export_dir) / "export.csv"
+
+    def fail(_path, _content):
+        raise ExportIOError(f"controlled {failure} failure")
+
+    monkeypatch.setattr(
+        "scripts.householder.export_file_service._write_complete_temp_file", fail
+    )
+    with pytest.raises(ExportIOError, match=f"controlled {failure} failure"):
+        _publish_export(str(destination), "partial")
+
+    assert not destination.exists()
+    assert list(Path(temp_export_dir).iterdir()) == []
+
+
+def test_atomic_publication_replacement_failure_cleans_temporary_file(
+    temp_export_dir, monkeypatch
+):
+    destination = Path(temp_export_dir) / "export.csv"
+    monkeypatch.setattr(
+        "scripts.householder.export_file_service.os.replace",
+        MagicMock(side_effect=OSError("controlled replacement failure")),
+    )
+
+    with pytest.raises(ExportIOError, match="controlled replacement failure"):
+        _publish_export(str(destination), "complete")
+
+    assert not destination.exists()
+    assert list(Path(temp_export_dir).iterdir()) == []
+
+
+def test_atomic_publication_engine_setup_failure_compensates(
+    mock_preview_ready, temp_export_dir, monkeypatch
+):
+    monkeypatch.setattr(
+        "scripts.householder.export_file_service.create_engine",
+        MagicMock(side_effect=RuntimeError("controlled engine failure")),
+    )
+
+    with patch(
+        "scripts.householder.export_file_service.build_export_preview",
+        return_value=mock_preview_ready,
+    ), pytest.raises(ExportIOError, match="Export audit failed"):
+        generate_export_file(
+            "IMP-TEST-001",
+            temp_export_dir,
+            config={"GIVEBUTTER_DATABASE_URL": "sqlite:///:memory:"},
+        )
+
+    assert list(Path(temp_export_dir).iterdir()) == []
+
+
+def test_atomic_publication_audit_failure_compensates_published_file(
+    mock_preview_ready, temp_export_dir
+):
+    with patch(
+        "scripts.householder.export_file_service.build_export_preview",
+        return_value=mock_preview_ready,
+    ), patch(
+        "scripts.householder.export_file_service.create_engine",
+        return_value=MagicMock(),
+    ), patch(
+        "scripts.householder.export_file_service.sessionmaker",
+    ) as factory, patch(
+        "scripts.householder.export_file_service._create_audit_record",
+        side_effect=RuntimeError("controlled commit failure"),
+    ):
+        factory.return_value.return_value = MagicMock()
+        with pytest.raises(ExportIOError, match="Export audit failed"):
+            generate_export_file(
+                "IMP-TEST-001",
+                temp_export_dir,
+                config={"GIVEBUTTER_DATABASE_URL": "sqlite:///:memory:"},
+            )
+
+    assert list(Path(temp_export_dir).iterdir()) == []
+
+
+def test_atomic_publication_reports_compensation_failure(
+    mock_preview_ready, temp_export_dir, monkeypatch
+):
+    def refuse_unlink(path_obj):
+        if path_obj.suffix == ".csv":
+            raise OSError("controlled compensation failure")
+        return None
+
+    monkeypatch.setattr(Path, "unlink", refuse_unlink)
+    with pytest.raises(ExportCompensationError, match="cleanup failed"):
+        with patch(
+            "scripts.householder.export_file_service.build_export_preview",
+            return_value=mock_preview_ready,
+        ), patch(
+            "scripts.householder.export_file_service.create_engine",
+            return_value=MagicMock(),
+        ), patch(
+            "scripts.householder.export_file_service.sessionmaker",
+        ) as factory, patch(
+            "scripts.householder.export_file_service._create_audit_record",
+            side_effect=RuntimeError("controlled audit failure"),
+        ):
+            factory.return_value.return_value = MagicMock()
+            generate_export_file(
+                "IMP-TEST-001",
+                temp_export_dir,
+                config={"GIVEBUTTER_DATABASE_URL": "sqlite:///:memory:"},
+            )
+
+    assert len(list(Path(temp_export_dir).glob("*.csv"))) == 1
 
 
 def test_invalid_import_raises_error(temp_export_dir, monkeypatch):

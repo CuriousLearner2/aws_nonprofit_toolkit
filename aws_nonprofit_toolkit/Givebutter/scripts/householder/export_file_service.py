@@ -8,6 +8,7 @@ Does NOT mutate source data or call external systems.
 import os
 import json
 import logging
+import tempfile
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Optional, Mapping, Any
@@ -77,6 +78,11 @@ class ExportIOError(ExportError):
     pass
 
 
+class ExportCompensationError(ExportIOError):
+    """Publication and rollback both failed."""
+    pass
+
+
 @dataclass(frozen=True)
 class ExportFileResult:
     """Result of successful export file generation."""
@@ -129,13 +135,46 @@ def _get_safe_file_path(output_dir: str, filename: str) -> str:
     raise ExportIOError(f"Cannot find available filename for {filename}")
 
 
-def _write_csv_file(file_path: str, content: str) -> None:
-    """Write CSV content to file."""
+def _write_complete_temp_file(file_path: str, content: str) -> None:
+    """Write and flush a complete export payload to a temporary file."""
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
+            f.flush()
     except Exception as e:
-        raise ExportIOError(f"Failed to write export file: {str(e)}")
+        raise ExportIOError(f"Failed to write export file: {str(e)}") from e
+
+
+def _publish_export(file_path: str, content: str) -> str:
+    """Publish a complete export and return its destination path."""
+    destination = Path(file_path)
+    temporary_path = None
+    replaced = False
+    try:
+        fd, temporary_name = tempfile.mkstemp(
+            dir=str(destination.parent),
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+        )
+        temporary_path = Path(temporary_name)
+        os.close(fd)
+        _write_complete_temp_file(str(temporary_path), content)
+        if destination.exists():
+            raise ExportIOError(f"Export destination already exists: {destination}")
+        os.replace(str(temporary_path), str(destination))
+        temporary_path = None
+        replaced = True
+        return str(destination)
+    except ExportError:
+        raise
+    except Exception as error:
+        raise ExportIOError(f"Failed to publish export file: {error}") from error
+    finally:
+        if temporary_path is not None and not replaced:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except Exception:
+                logger.warning("Unable to remove temporary export file: %s", temporary_path)
 
 
 def _create_audit_record(
@@ -297,23 +336,18 @@ def generate_export_file(
     # Generate CSV content
     csv_content = _generate_csv_content(preview.export_rows)
 
-    # Write CSV file
-    _write_csv_file(file_path, csv_content)
-
-    logger.info(f"Export file generated: {import_id} -> {file_path}")
-
-    # Create database connection for audit log
-    engine = create_engine(database_url, echo=False)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
-
+    published_path = _publish_export(file_path, csv_content)
+    session = None
     try:
-        # Create audit record
+        # Create database connection for audit log only after publication.
+        engine = create_engine(database_url, echo=False)
+        SessionLocal = sessionmaker(bind=engine)
+        session = SessionLocal()
         audit_log_id = _create_audit_record(
             session,
             import_id,
             filename,
-            file_path,
+            published_path,
             preview,
             reviewer,
             confirmed_unresolved_validations,
@@ -321,8 +355,20 @@ def generate_export_file(
             confirmed_unresolved_duplicates,
             confirmed_unresolved_normalizations,
         )
+    except Exception as audit_error:
+        try:
+            Path(published_path).unlink()
+        except Exception as compensation_error:
+            raise ExportCompensationError(
+                f"Export audit failed: {audit_error}; "
+                f"published file cleanup failed: {compensation_error}"
+            ) from audit_error
+        raise ExportIOError(f"Export audit failed: {audit_error}") from audit_error
     finally:
-        session.close()
+        if session is not None:
+            session.close()
+
+    logger.info(f"Export file generated: {import_id} -> {file_path}")
 
     # Return result
     return ExportFileResult(
