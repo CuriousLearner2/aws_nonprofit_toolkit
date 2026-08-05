@@ -155,11 +155,20 @@ def _get_runtime_database_url() -> str | None:
 
 
 def _get_runtime_repository_config() -> dict:
-    """Return a config snapshot that stays aligned with the active DB-backed runtime."""
+    """Resolve repository selection once at the application boundary."""
     runtime_config = dict(current_app.config)
     database_url = _get_runtime_database_url()
+    repository_mode = (
+        'database'
+        if database_url
+        else (
+            current_app.config.get('HOUSEHOLDER_REPOSITORY')
+            or os.environ.get('HOUSEHOLDER_REPOSITORY')
+            or 'fixture'
+        )
+    )
+    runtime_config['HOUSEHOLDER_REPOSITORY'] = str(repository_mode).strip().lower()
     if database_url:
-        runtime_config['HOUSEHOLDER_REPOSITORY'] = 'database'
         runtime_config['GIVEBUTTER_DATABASE_URL'] = database_url
     return runtime_config
 
@@ -1210,13 +1219,15 @@ def test_override_dialog():
 @app.route('/imports')
 def imports_list():
     """List all imports with status through service boundary."""
-    imports = import_service.get_imports()
+    imports = import_service.get_imports(config=_get_runtime_repository_config())
     return render_template('imports/list.html', imports=imports)
 
 @app.route('/imports/<import_id>/dashboard')
 def import_dashboard(import_id):
     """Import dashboard with queue navigation."""
-    dashboard_data = dashboard_service.get_import_dashboard(import_id)
+    dashboard_data = dashboard_service.get_import_dashboard(
+        import_id, config=_get_runtime_repository_config()
+    )
     return render_template('imports/dashboard.html',
                          batch=dashboard_data['batch'],
                          queue_status=dashboard_data['queue_status'])
@@ -1246,29 +1257,17 @@ def import_duplicates(import_id):
     # Ensure index is non-negative (Flask type=int can be negative)
     index = max(0, index)
 
-    data = duplicates_service.get_duplicates_review(import_id, index=index)
+    data = duplicates_service.get_duplicates_review(
+        import_id, index=index, config=_get_runtime_repository_config()
+    )
     return render_template('imports/duplicates.html', **data)
 
 @app.route('/imports/<import_id>/validation')
 def import_validation(import_id):
     """Validation review for records with issues."""
-    config_database_url = current_app.config.get('GIVEBUTTER_DATABASE_URL')
-    repository_mode = (
-        current_app.config.get('HOUSEHOLDER_REPOSITORY')
-        or os.environ.get('HOUSEHOLDER_REPOSITORY', '')
-    ).lower()
-    database_url = _get_runtime_database_url()
-
-    if config_database_url or repository_mode == 'database':
-        data = validation_service.get_validation_review(
-            import_id,
-            config={
-                'HOUSEHOLDER_REPOSITORY': 'database',
-                'GIVEBUTTER_DATABASE_URL': database_url,
-            },
-        )
-    else:
-        data = validation_service.get_validation_review(import_id)
+    data = validation_service.get_validation_review(
+        import_id, config=_get_runtime_repository_config()
+    )
     return render_template('imports/validation.html', **data)
 
 @app.route('/imports/<import_id>/normalizations')
@@ -1279,7 +1278,9 @@ def import_normalizations(import_id):
     # Ensure index is non-negative (Flask type=int can be negative)
     index = max(0, index)
 
-    data = normalizations_service.get_normalizations_review(import_id, index=index)
+    data = normalizations_service.get_normalizations_review(
+        import_id, index=index, config=_get_runtime_repository_config()
+    )
     return render_template('imports/normalizations.html', **data)
 
 @app.route('/imports/<import_id>/validation/<int:review_item_id>/decision', methods=['POST'])
@@ -1296,6 +1297,7 @@ def record_validation_decision(import_id, review_item_id):
             decision=decision,
             notes=notes,
             reviewer=reviewer,
+            config=_get_runtime_repository_config(),
         )
         logger.info(f"Validation decision recorded: {result.decision} for item {review_item_id}")
         return redirect(f'/imports/{import_id}/validation')
@@ -1325,6 +1327,7 @@ def save_validation_correction(import_id, review_item_id):
             decision='accept_issue',
             reviewed_values=reviewed_values,
             reviewer=reviewer,
+            config=_get_runtime_repository_config(),
         )
         logger.info(f"Validation correction saved for item {review_item_id}: {reviewed_values}")
         return jsonify({
@@ -1352,6 +1355,7 @@ def defer_validation_item(import_id, review_item_id):
             review_item_id=review_item_id,
             decision='defer',
             reviewer=reviewer,
+            config=_get_runtime_repository_config(),
         )
         logger.info(f"Validation item {review_item_id} deferred for later review")
         return jsonify({
@@ -1632,6 +1636,7 @@ def record_duplicate_decision(import_id, review_item_id):
             decision=decision,
             notes=notes,
             reviewer=reviewer,
+            config=_get_runtime_repository_config(),
         )
         logger.info(f"Duplicate decision recorded: {result.decision} for item {review_item_id}")
         return redirect(f'/imports/{import_id}/duplicates')
@@ -1665,6 +1670,7 @@ def record_household_decision(import_id, review_item_id):
         next_index = household_decision_service.get_next_unresolved_household_index(
             import_id=import_id,
             current_review_item_id=review_item_id,
+            config=_get_runtime_repository_config(),
         )
 
         if next_index is not None:
@@ -1695,6 +1701,7 @@ def record_normalization_decision(import_id, review_item_id):
             decision=decision,
             notes=notes,
             reviewer=reviewer,
+            config=_get_runtime_repository_config(),
         )
         logger.info(f"Normalization decision recorded: {result.decision} for item {review_item_id}")
         return redirect(f'/imports/{import_id}/normalizations')
@@ -1713,7 +1720,9 @@ def import_households(import_id):
     # Ensure index is non-negative (Flask type=int can be negative)
     index = max(0, index)
 
-    data = households_service.get_households_review(import_id, index=index)
+    data = households_service.get_households_review(
+        import_id, index=index, config=_get_runtime_repository_config()
+    )
     return render_template('imports/households.html', **data)
 
 @app.route('/imports/<import_id>/audit')
@@ -1723,13 +1732,18 @@ def import_audit(import_id):
         import_id, action=request.args.get('action', ''),
         page=request.args.get('page', 1, type=int),
         per_page=request.args.get('per_page', 50, type=int),
+        config=_get_runtime_repository_config(),
     )
     return render_template('imports/audit.html', **data)
 
 @app.route('/imports/<import_id>/audit/export.csv')
 def export_audit_log(import_id):
     """Download the selected immutable audit history as deterministic CSV."""
-    csv_text = audit_service.get_audit_log_csv(import_id, action=request.args.get('action', ''))
+    csv_text = audit_service.get_audit_log_csv(
+        import_id,
+        config=_get_runtime_repository_config(),
+        action=request.args.get('action', ''),
+    )
     return Response(csv_text, mimetype='text/csv', headers={
         'Content-Disposition': f'attachment; filename="{import_id}-audit.csv"'
     })
@@ -1738,7 +1752,9 @@ def export_audit_log(import_id):
 def review_item_decision_history(import_id, review_item_id):
     """Return append-only decision history for a review item."""
     try:
-        return jsonify(audit_service.get_decision_history(import_id, review_item_id)), 200
+        return jsonify(audit_service.get_decision_history(
+            import_id, review_item_id, config=_get_runtime_repository_config()
+        )), 200
     except LookupError:
         return jsonify({'error': 'Review item not found'}), 404
     except ValueError as exc:
@@ -1751,7 +1767,7 @@ def import_decision_history(import_id):
 
     try:
         report = decision_history_view_service.get_decision_history_report(
-            import_id, config={'GIVEBUTTER_DATABASE_URL': _get_runtime_database_url()}
+            import_id, config=_get_runtime_repository_config()
         )
         return render_template('imports/decision_history.html', report=report)
     except LookupError:
@@ -1766,7 +1782,7 @@ def download_import_decision_history(import_id):
 
     try:
         report = decision_history_view_service.get_decision_history_report(
-            import_id, config={'GIVEBUTTER_DATABASE_URL': _get_runtime_database_url()}
+            import_id, config=_get_runtime_repository_config()
         )
         return Response(
             decision_history_view_service.to_deterministic_json(report),
@@ -1942,6 +1958,7 @@ def download_export(import_id, audit_log_id):
             import_id=import_id,
             audit_log_id=audit_log_id,
             export_dir=output_dir,
+            config=_get_runtime_repository_config(),
         )
 
         logger.info(f"Export download: {import_id} audit={audit_log_id} file={download_info.filename}")

@@ -29,15 +29,8 @@ def get_normalizations_review(
     """
     repository = get_import_repository(config)
 
-    try:
-        normalizations_vm = repository.get_normalizations(import_id, index=index)
-        return normalizations_vm.to_template_dict()
-    except (AttributeError, NotImplementedError):
-        # Fallback for when repository method isn't fully implemented
-        return {
-            "batch": {"id": import_id},
-            "message": "Normalizations review - coming soon"
-        }
+    normalizations_vm = repository.get_normalizations(import_id, index=index)
+    return normalizations_vm.to_template_dict()
 
 
 def record_normalization_decision(

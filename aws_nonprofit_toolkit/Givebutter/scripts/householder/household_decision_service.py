@@ -102,7 +102,8 @@ def get_effective_status(review_item_id: int, database_url: str = 'sqlite:///./g
 def get_next_unresolved_household_index(
     import_id: str,
     current_review_item_id: int,
-    database_url: str = 'sqlite:///./givebutter.db'
+    database_url: str = 'sqlite:///./givebutter.db',
+    config: Optional[Mapping[str, Any]] = None,
 ) -> Optional[int]:
     """
     Find the index of the next unresolved (pending) household after current_review_item_id.
@@ -123,7 +124,9 @@ def get_next_unresolved_household_index(
     from sqlalchemy.orm import sessionmaker
     from .database_models import ReviewItem, ReviewDecision
 
-    # Use environment variable if not explicitly provided
+    # Use the application-bound configuration before environment compatibility.
+    if config and config.get('GIVEBUTTER_DATABASE_URL'):
+        database_url = config['GIVEBUTTER_DATABASE_URL']
     if database_url == 'sqlite:///./givebutter.db':
         env_url = os.environ.get('GIVEBUTTER_DATABASE_URL')
         if env_url:
