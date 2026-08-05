@@ -30,6 +30,7 @@ from .database_models import (
     ReviewItemSubject,
 )
 from .ingestion_plan_policy import IngestionPlan
+from .approval_repository import ApprovalRepositoryProtocol, DatabaseApprovalRepository
 
 
 @dataclass(frozen=True)
@@ -211,6 +212,16 @@ def get_import_repository(
             f"Invalid HOUSEHOLDER_REPOSITORY mode: {repository_mode}. "
             f"Valid modes: 'fixture' (default), 'database'."
         )
+
+
+def get_approval_repository(
+    config: Optional[Mapping[str, Any]] = None,
+) -> ApprovalRepositoryProtocol:
+    """Return the provider-selected persistence adapter for batch approval."""
+    database_url = _get_database_url(config)
+    if not database_url:
+        raise ValueError("Approval requires database configuration")
+    return DatabaseApprovalRepository(database_url)
 
 
 def _get_repository_mode(config: Optional[Mapping[str, Any]] = None) -> str:
