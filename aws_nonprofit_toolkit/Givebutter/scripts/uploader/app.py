@@ -93,6 +93,7 @@ try:
         duplicate_decision_service,
         audit_service,
         exports_service,
+        recalculate_tier_service,
     )
 except ImportError:
     # Fallback for direct script execution
@@ -110,6 +111,7 @@ except ImportError:
         duplicate_decision_service,
         audit_service,
         exports_service,
+        recalculate_tier_service,
     )
 
 app = Flask(__name__)
@@ -1063,129 +1065,8 @@ def recalculate_tier(filename):
         if not record:
             return jsonify({'error': 'No record provided'}), 400
 
-        # Load configs
-        rules = load_rules()
-        reference = load_reference_list()
-
-        # Build header mapping from the record keys
-        # Create a minimal header_map from record keys
-        header_map = build_header_mapping(record.keys())
-
-        # Run all validations on the record - collect issues and suggestions
-        validation_results = {}
-        issues = []
-        suggestions = []
-
-        # Validate transaction ID (required)
-        tier, reason, suggestion = validate_transaction_id(record, header_map)
-        validation_results['transaction_id'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Transaction ID: {reason}")
-        if suggestion:
-            suggestions.append(suggestion)
-
-        # Validate date (required)
-        tier, reason, suggestion = validate_date(record, header_map)
-        validation_results['date'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Date: {reason}")
-        if suggestion:
-            suggestions.append(suggestion)
-
-        # Validate email (required)
-        tier, reason, suggestion = validate_email(record, header_map, rules, reference)
-        validation_results['email'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Email: {reason}")
-        if suggestion:
-            suggestions.append(suggestion)
-
-        # Validate amount (required)
-        tier, reason, suggestion = validate_amount(record, header_map, reference)
-        validation_results['amount'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Amount: {reason}")
-        if suggestion:
-            suggestions.append(suggestion)
-
-        # Validate name (required)
-        tier, reason, suggestion = validate_name(record, header_map, reference)
-        validation_results['name'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Name: {reason}")
-        if suggestion:
-            suggestions.append(suggestion)
-
-        # Validate phone (optional)
-        tier, reason, suggestion = validate_phone(record, header_map, rules)
-        validation_results['phone'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Phone: {reason}")
-        if suggestion:
-            suggestions.append(suggestion)
-
-        # Validate address (optional)
-        tier, reason = validate_address(record, header_map)
-        validation_results['address'] = {'tier': tier, 'reason': reason}
-        if reason:
-            issues.append(f"Address: {reason}")
-
-        # Assign tier based on validation results
-        # Always recalculate the tier from validation results when this endpoint is called
-        new_tier = assign_tier(validation_results)
-
-        # Save the edited record back to the CSV file
-        try:
-            path = PROCESSING_DIR / filename
-            df = pd.read_csv(path, dtype=str, encoding='utf-8').fillna('')
-
-            # Find the record index - use the first column (transaction ID) as lookup
-            record_idx = None
-            txn_id_col = header_map.get('transaction_id')
-            if txn_id_col and txn_id_col in record:
-                for idx, row in df.iterrows():
-                    if str(row[txn_id_col]).strip() == str(record[txn_id_col]).strip():
-                        record_idx = idx
-                        break
-
-            # If found, update all edited fields in the DataFrame
-            if record_idx is not None:
-                for field_key, col_name in header_map.items():
-                    if col_name in record:
-                        # Create column if it doesn't exist (e.g., adding phone to records without phone)
-                        if col_name not in df.columns:
-                            df[col_name] = ''
-                        df.at[record_idx, col_name] = record[col_name]
-
-                # Update validation columns
-                df.at[record_idx, 'Validation_Tier'] = new_tier
-                df.at[record_idx, 'Issues'] = "; ".join(issues) if issues else "None"
-                df.at[record_idx, 'Suggested_Modifications'] = "; ".join(suggestions) if suggestions else ""
-
-                # Update operator decision and notes if provided
-                if 'Operator_Decision' in record and record['Operator_Decision']:
-                    if 'Operator_Decision' not in df.columns:
-                        df['Operator_Decision'] = ''
-                    df.at[record_idx, 'Operator_Decision'] = record['Operator_Decision']
-
-                if 'Operator_Notes' in record:
-                    if 'Operator_Notes' not in df.columns:
-                        df['Operator_Notes'] = ''
-                    df.at[record_idx, 'Operator_Notes'] = record['Operator_Notes']
-
-                # Save back to CSV
-                df.to_csv(path, index=False, encoding='utf-8')
-                logger.info(f"Saved edits to {filename} at index {record_idx}")
-        except Exception as e:
-            logger.error(f"Failed to save edits to CSV: {e}")
-            # Don't fail the request, just log the error
-
-        logger.info(f"Recalculated tier for {filename}: {new_tier}")
-        return jsonify({
-            'tier': new_tier,
-            'issues': issues[:5],  # Limit to 5 like processor does
-            'suggestions': suggestions[:5]
-        })
+        result = recalculate_tier_service.recalculate_tier(record, PROCESSING_DIR, filename)
+        return jsonify(result)
 
     except Exception as e:
         logger.error(f"Error recalculating tier for {filename}: {e}")
