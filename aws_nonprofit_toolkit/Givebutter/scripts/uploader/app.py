@@ -35,6 +35,7 @@ from processor import (
     UnsupportedGivebutterCSVError,
     ProcessorOutputError,
 )
+from householder.http_error_adapter import adapt_error
 
 # Import ingestion service for optional database mode
 try:
@@ -117,6 +118,13 @@ except ImportError:
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _adapt_route_error(error, *, extensions=None, default_message=None, context=None, domain=None,
+                       status_code=None):
+    return adapt_error(error, response_factory=jsonify, logger=logger, context=context,
+                       extensions=extensions, default_message=default_message, domain=domain,
+                       status_code=status_code)
 
 # --- Paths ---
 BASE_DIR = Path(__file__).resolve().parents[2]  # Givebutter/
@@ -1301,12 +1309,9 @@ def record_validation_decision(import_id, review_item_id):
         )
         logger.info(f"Validation decision recorded: {result.decision} for item {review_item_id}")
         return redirect(f'/imports/{import_id}/validation')
-    except ValueError as e:
-        logger.warning(f"Validation error recording decision: {str(e)}")
-        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error recording validation decision: {str(e)}")
-        return jsonify({'error': 'Error recording decision'}), 500
+        return _adapt_route_error(e, default_message='Error recording decision',
+                                  context={'route': 'validation_decision', 'import_id': import_id})
 
 
 @app.route('/imports/<import_id>/validation/<int:review_item_id>/save-correction', methods=['POST'])
@@ -1336,12 +1341,9 @@ def save_validation_correction(import_id, review_item_id):
             'effective_status': result.effective_status,
             'message': 'Correction saved successfully'
         }), 200
-    except ValueError as e:
-        logger.warning(f"Validation error saving correction: {str(e)}")
-        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error saving validation correction: {str(e)}")
-        return jsonify({'error': 'Error saving correction'}), 500
+        return _adapt_route_error(e, default_message='Error saving correction',
+                                  context={'route': 'validation_correction', 'import_id': import_id})
 
 
 @app.route('/imports/<import_id>/validation/<int:review_item_id>/defer', methods=['POST'])
@@ -1364,12 +1366,9 @@ def defer_validation_item(import_id, review_item_id):
             'effective_status': result.effective_status,
             'message': 'Item deferred successfully'
         }), 200
-    except ValueError as e:
-        logger.warning(f"Validation error deferring item: {str(e)}")
-        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error deferring validation item: {str(e)}")
-        return jsonify({'error': 'Error deferring item'}), 500
+        return _adapt_route_error(e, default_message='Error deferring item',
+                                  context={'route': 'validation_defer', 'import_id': import_id})
 
 
 @app.route('/imports/<import_id>/autosave', methods=['POST'])
@@ -1613,12 +1612,9 @@ def approve_import_batch(import_id):
             'message': 'Batch approval recorded successfully'
         }), 200
 
-    except ValueError as e:
-        logger.warning(f"Approval validation error: {str(e)}")
-        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error during batch approval: {str(e)}")
-        return jsonify({'error': 'Batch approval failed'}), 500
+        return _adapt_route_error(e, default_message='Batch approval failed', domain='approval',
+                                  context={'route': 'batch_approval', 'import_id': import_id})
 
 @app.route('/imports/<import_id>/duplicates/<int:review_item_id>/decision', methods=['POST'])
 def record_duplicate_decision(import_id, review_item_id):
@@ -1640,12 +1636,9 @@ def record_duplicate_decision(import_id, review_item_id):
         )
         logger.info(f"Duplicate decision recorded: {result.decision} for item {review_item_id}")
         return redirect(f'/imports/{import_id}/duplicates')
-    except ValueError as e:
-        logger.warning(f"Validation error recording duplicate decision: {str(e)}")
-        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error recording duplicate decision: {str(e)}")
-        return jsonify({'error': 'Error recording decision'}), 500
+        return _adapt_route_error(e, default_message='Error recording decision',
+                                  context={'route': 'duplicate_decision', 'import_id': import_id})
 
 @app.route('/imports/<import_id>/households/<int:review_item_id>/decision', methods=['POST'])
 def record_household_decision(import_id, review_item_id):
@@ -1680,12 +1673,9 @@ def record_household_decision(import_id, review_item_id):
             # All households resolved, redirect to exports page
             return redirect(f'/imports/{import_id}/exports')
 
-    except ValueError as e:
-        logger.warning(f"Validation error recording household decision: {str(e)}")
-        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error recording household decision: {str(e)}")
-        return jsonify({'error': 'Error recording decision'}), 500
+        return _adapt_route_error(e, default_message='Error recording decision',
+                                  context={'route': 'household_decision', 'import_id': import_id})
 
 @app.route('/imports/<import_id>/normalizations/<int:review_item_id>/decision', methods=['POST'])
 def record_normalization_decision(import_id, review_item_id):
@@ -1705,12 +1695,9 @@ def record_normalization_decision(import_id, review_item_id):
         )
         logger.info(f"Normalization decision recorded: {result.decision} for item {review_item_id}")
         return redirect(f'/imports/{import_id}/normalizations')
-    except ValueError as e:
-        logger.warning(f"Validation error recording normalization decision: {str(e)}")
-        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error recording normalization decision: {str(e)}")
-        return jsonify({'error': 'Error recording decision'}), 500
+        return _adapt_route_error(e, default_message='Error recording decision',
+                                  context={'route': 'normalization_decision', 'import_id': import_id})
 
 @app.route('/imports/<import_id>/households')
 def import_households(import_id):
@@ -1819,12 +1806,9 @@ def preview_export(import_id):
         data['preview_available'] = True
 
         return render_template('imports/exports.html', **data)
-    except ValueError as e:
-        logger.warning(f"Export preview error: {str(e)}")
-        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error generating export preview: {str(e)}")
-        return jsonify({'error': 'Error generating preview'}), 500
+        return _adapt_route_error(e, default_message='Error generating preview', domain='export',
+                                  context={'route': 'export_preview', 'import_id': import_id})
 
 
 @app.route('/imports/<import_id>/exports/generate', methods=['POST'])
