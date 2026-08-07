@@ -6,7 +6,7 @@ from typing import Any
 
 
 _EXPORT_HEADER = (
-    'source_row_index', 'transaction_id', 'first_name', 'last_name', 'email', 'phone',
+    'source_row_index', 'transaction_id', 'date', 'first_name', 'last_name', 'email', 'phone',
     'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'amount',
     'validation_status', 'validation_issues', 'normalized_fields', 'normalization_warnings',
     'duplicate_group_id', 'duplicate_decision', 'duplicate_warnings',
@@ -35,6 +35,7 @@ def generate_csv_content(export_rows: tuple) -> str:
         writer.writerow([
             encode_csv_field(row.source_row_index),
             encode_csv_field(row.transaction_id),
+            encode_csv_field(row.date),
             encode_csv_field(row.first_name),
             encode_csv_field(row.last_name),
             encode_csv_field(row.email),

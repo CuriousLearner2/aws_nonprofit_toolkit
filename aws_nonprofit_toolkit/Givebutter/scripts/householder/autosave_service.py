@@ -12,7 +12,13 @@ from datetime import datetime, timezone
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
 from .editable_field_validation import validate_editable_field_values as _validate_editable_field_values
+from .editable_field_validation import validate_name_correction as _validate_name_correction
 from .effective_value_resolution import get_effective_values as _get_effective_values
+
+
+def validate_name_correction(value: Any) -> Optional[str]:
+    """Compatibility wrapper for the shared reviewed-name policy."""
+    return _validate_name_correction(value)
 
 
 def autosave_row_corrections(
@@ -164,7 +170,17 @@ def validate_corrected_values(
         - If valid: (True, None)
         - If invalid: (False, {'field': 'error message', ...})
     """
-    return _validate_editable_field_values(corrected_values)
+    non_name_values = {
+        field: value for field, value in corrected_values.items() if field != 'name'
+    }
+    is_valid, errors = _validate_editable_field_values(non_name_values)
+    if 'name' in corrected_values:
+        name_error = validate_name_correction(corrected_values['name'])
+        if name_error:
+            errors = dict(errors or {})
+            errors['name'] = name_error
+            is_valid = False
+    return is_valid, errors
 
 
 def build_fixture_autosave_response(

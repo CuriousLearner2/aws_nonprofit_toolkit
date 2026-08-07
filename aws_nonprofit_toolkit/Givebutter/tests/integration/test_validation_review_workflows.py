@@ -1737,6 +1737,7 @@ class TestNeedsFollowUpDecision:
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
                 'notes': None,
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -1744,7 +1745,7 @@ class TestNeedsFollowUpDecision:
         # Backend enforces notes requirement for follow-up decisions
         assert response.status_code == 400
         data = response.get_json()
-        assert 'Notes are required' in str(data)
+        assert data['error'] == 'Notes required for Follow-up decision'
 
     def test_needs_follow_up_with_notes_records_successfully(
         self, flask_client_with_validation_batch
@@ -1759,6 +1760,7 @@ class TestNeedsFollowUpDecision:
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
                 'notes': 'Needs to verify donation amount with donor',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -1787,6 +1789,7 @@ class TestDeferDecision:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'defer',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -1860,14 +1863,11 @@ class TestApprovalWarnings:
             f"Warning-only approval should not be blocked, got {response.status_code}: {response.get_json()}"
         )
         data = response.get_json()
-        assert data.get('requires_override_confirmation') is not True, (
-            f"Warning-only validation issues must not require override confirmation, got: {data}"
+        assert data.get('requires_override_confirmation') is True, (
+            f"Warning-only validation issues require a row disposition, got: {data}"
         )
-        assert data.get('success') is True, (
-            f"Warning-only validation issues should allow approval to proceed, got: {data}"
-        )
-        assert data.get('approval_status') == 'approved', (
-            f"Warning-only approval should proceed as approved, got: {data}"
+        assert data.get('success') is not True, (
+            f"Warning-only validation issues must not finalize without a disposition, got: {data}"
         )
 
         session = Session()
@@ -1984,6 +1984,7 @@ class TestNeedsFollowUpWorkflow:
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
                 'notes': None,
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -1992,8 +1993,8 @@ class TestNeedsFollowUpWorkflow:
         assert response.status_code == 400, \
             f"Expected 400 for needs_follow_up without notes, got {response.status_code}"
         data = response.get_json()
-        assert 'Notes are required' in data.get('error', ''), \
-            f"Expected 'Notes are required' in error, got: {data}"
+        assert data.get('error') == 'Notes required for Follow-up decision', \
+            f"Expected follow-up notes error, got: {data}"
 
     def test_needs_follow_up_records_with_notes(
         self, flask_client_with_validation_batch
@@ -2009,6 +2010,7 @@ class TestNeedsFollowUpWorkflow:
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
                 'notes': notes_text,
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2050,6 +2052,7 @@ class TestNeedsFollowUpWorkflow:
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
                 'notes': 'Verify with donor',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2081,6 +2084,7 @@ class TestDeferWorkflow:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'defer',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2119,6 +2123,7 @@ class TestDeferWorkflow:
                 'raw_import_row_id': raw_id,
                 'decision': 'defer',
                 'notes': 'Review in next batch cycle',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2529,10 +2534,10 @@ class TestReviewDecisionEffectiveValueRetrieval:
 class TestDetailsModalControls:
     """Test details modal is read-only and no longer duplicates row decisions."""
 
-    def test_details_modal_is_read_only(
+    def test_details_modal_matches_approved_review_design(
         self, flask_client_with_validation_batch
     ):
-        """Details modal should not contain a duplicate decision dropdown."""
+        """Details modal contains the approved review form and history readout."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
 
         # Load validation page - modal is populated via JavaScript
@@ -2544,7 +2549,140 @@ class TestDetailsModalControls:
 
         assert 'Details' in html, "Validation page should expose the Details action"
         assert 'Record Details' in html, "Modal title should describe the details view"
-        assert 'row-decision-' not in html, "Modal should not contain a duplicate decision dropdown"
+        assert 'Current issues' in html
+        assert 'Reviewer disposition' in html
+        assert 'Previous reviewer dispositions and reasons / notes' in html
+        assert 'Correct record values in the validation table.' in html
+        assert 'Update the reviewer disposition or reason / notes for this record.' in html
+        assert 'No new history entry is created if the decision and notes are unchanged.' in html
+        assert 'Save review' in html
+        assert 'row-review-decision-' in html
+        assert 'followup-notes-' in html
+
+    def test_reviewer_name_is_modal_only_and_payload_is_present(
+        self, flask_client_with_validation_batch
+    ):
+        """Reviewer capture lives in the save modal, not on the page."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+
+        response = client.get('/imports/validation-workflow-test-batch/validation')
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+
+        assert 'data-testid="reviewer-entry"' not in html
+        assert 'reviewer-name-field' in html
+        assert 'Required when saving a decision or notes. Entered manually and not authenticated.' in html
+        assert 'Enter your name before saving this review.' in html
+        assert html.count('reviewer_name: reviewerName') >= 1
+        assert 'openRowReviewModal' in html
+        assert 'Edit review' in html
+
+    def test_row_review_modal_defers_request_until_save_and_retains_name(
+        self, flask_client_with_validation_batch
+    ):
+        """Opening/canceling is local; Save is the only row-decision request path."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+
+        response = client.get('/imports/validation-workflow-test-batch/validation')
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        modal_start = html.index('async function openRowReviewModal')
+        save_start = html.index("saveBtn?.addEventListener('click'", modal_start)
+        pre_save = html[modal_start:save_start]
+        assert 'fetch(`/imports/${batchId}/row-decision`' not in pre_save
+        assert 'beginRowDecisionRequest(rawId)' not in pre_save
+        assert 'cancelBtn?.addEventListener' in html
+        assert 'reviewerNameForSession = reviewerName' in html
+        assert 'value="${escapeHtml(reviewerNameForSession)}"' in html
+        assert 'requireReviewModalReviewerName(modal)' in html
+
+    def test_missing_reviewer_name_rejects_all_row_review_events_without_records(
+        self, flask_client_with_validation_batch
+    ):
+        """Decision, note, and clear events require a non-blank reviewer name."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+
+        def counts(raw_id):
+            session = Session()
+            try:
+                return (
+                    session.query(ReviewDecision).filter_by(raw_import_row_id=raw_id).count(),
+                    session.query(AuditLogRecord).count(),
+                )
+            finally:
+                session.close()
+
+        for reviewer_name in (None, '', '   '):
+            raw_id = raw_rows[0]
+            before = counts(raw_id)
+            response = client.post(
+                '/imports/validation-workflow-test-batch/row-decision',
+                json={
+                    'raw_import_row_id': raw_id,
+                    'decision': 'accept_as_is',
+                    'reviewer_name': reviewer_name,
+                    'interaction_sequence': 1,
+                },
+            )
+            assert response.status_code == 400
+            assert response.get_json()['error'] == 'Reviewer name is required'
+            assert counts(raw_id) == before
+
+        raw_id = raw_rows[1]
+        saved = client.post(
+            '/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+                'notes': 'Initial note',
+                'reviewer_name': 'Reviewer One',
+                'interaction_sequence': 1,
+            },
+        )
+        assert saved.status_code == 200
+        before = counts(raw_id)
+
+        for payload in (
+            {'decision': 'accept_as_is', 'notes': 'Changed note', 'interaction_sequence': 2},
+            {'decision': 'accept_as_is', 'notes': '', 'interaction_sequence': 3},
+            {'decision': 'clear_decision', 'notes': None, 'interaction_sequence': 4},
+        ):
+            payload['raw_import_row_id'] = raw_id
+            response = client.post(
+                '/imports/validation-workflow-test-batch/row-decision',
+                json=payload,
+            )
+            assert response.status_code == 400
+            assert response.get_json()['error'] == 'Reviewer name is required'
+            assert counts(raw_id) == before
+
+    def test_reviewer_name_is_trimmed_and_stored_in_decision_and_audit(
+        self, flask_client_with_validation_batch
+    ):
+        """The normalized manual name is stored in both persistence records."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[2]
+
+        response = client.post(
+            '/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'accept_as_is',
+                'notes': 'Reviewed existing validation state',
+                'reviewer_name': '  Maya Chen  ',
+                'interaction_sequence': 1,
+            },
+        )
+        assert response.status_code == 200
+
+        session = Session()
+        try:
+            decision = session.query(ReviewDecision).filter_by(raw_import_row_id=raw_id).one()
+            audit = session.query(AuditLogRecord).filter_by(decision_id=decision.id).one()
+            assert decision.reviewer == 'Maya Chen'
+            assert audit.actor == 'Maya Chen'
+        finally:
+            session.close()
 
     def test_follow_up_notes_ui_exists_inline(
         self, flask_client_with_validation_batch
@@ -2558,8 +2696,9 @@ class TestDetailsModalControls:
         assert response.status_code == 200
         html = response.get_data(as_text=True)
 
-        assert 'Save Follow-up' in html or 'followup-notes-' in html
-        assert 'Needs Follow-up Notes' in html or 'follow-up notes' in html.lower()
+        assert 'row-review-save-form' in html
+        assert 'Needs follow-up' in html
+        assert 'Notes required for Follow-up decision' in html
 
     def test_details_modal_no_record_decision_button(
         self, flask_client_with_validation_batch
@@ -2599,6 +2738,7 @@ class TestDetailsModalControls:
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
                 'notes': 'Test note',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2611,6 +2751,90 @@ class TestDetailsModalControls:
         data = response.get_json()
         assert data['has_decision'] is True, \
             f"After recording decision, has_decision should be True, got: {data}"
+
+    def test_row_decision_get_returns_prior_history_newest_first_and_excludes_current(
+        self, flask_client_with_validation_batch
+    ):
+        """The Details response exposes only prior reviewer revisions."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+        endpoint = f'/imports/validation-workflow-test-batch/row-decision/{raw_id}'
+
+        first = client.post(
+            '/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'needs_follow_up',
+                'notes': 'Initial note',
+                'reviewer_name': 'Reviewer One',
+                'interaction_sequence': 1,
+            },
+        )
+        assert first.status_code == 200
+        first_id = first.get_json()['decision_id']
+
+        second = client.post(
+            '/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': 'needs_follow_up',
+                'notes': 'Updated note only',
+                'reviewer_name': 'Reviewer Two',
+                'interaction_sequence': 2,
+            },
+        )
+        assert second.status_code == 200
+        second_id = second.get_json()['decision_id']
+
+        session = Session()
+        try:
+            first_decision = session.query(ReviewDecision).filter_by(id=first_id).one()
+            first_decision.reviewer = None
+            session.commit()
+        finally:
+            session.close()
+
+        data = client.get(endpoint).get_json()
+        assert data['has_decision'] is True
+        assert data['decision'] == 'needs_follow_up'
+        assert data['notes'] == 'Updated note only'
+        assert data['reviewer'] == 'Reviewer Two'
+        assert [entry['decision_id'] for entry in data['history']] == [first_id]
+        assert data['history'][0]['notes'] == 'Initial note'
+        assert data['history'][0]['reviewer'] is None
+        assert second_id not in [entry['decision_id'] for entry in data['history']]
+
+    def test_unchanged_row_decision_with_new_sequence_creates_no_revision(
+        self, flask_client_with_validation_batch
+    ):
+        """Saving unchanged decision and notes is idempotent across sequences."""
+        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        raw_id = raw_rows[5]
+        payload = {
+            'raw_import_row_id': raw_id,
+            'decision': 'accept_as_is',
+            'notes': 'Reviewed existing validation state',
+            'reviewer_name': 'Test Reviewer',
+            'interaction_sequence': 1,
+        }
+        first = client.post('/imports/validation-workflow-test-batch/row-decision', json=payload)
+        assert first.status_code == 200
+        session = Session()
+        try:
+            before = session.query(ReviewDecision).filter_by(raw_import_row_id=raw_id).count()
+        finally:
+            session.close()
+
+        payload['interaction_sequence'] = 2
+        second = client.post('/imports/validation-workflow-test-batch/row-decision', json=payload)
+        assert second.status_code == 200
+        assert second.get_json()['idempotent'] is True
+        session = Session()
+        try:
+            after = session.query(ReviewDecision).filter_by(raw_import_row_id=raw_id).count()
+        finally:
+            session.close()
+        assert after == before
 
     def test_exact_duplicate_row_decision_is_idempotent(
         self, flask_client_with_validation_batch
@@ -2636,9 +2860,11 @@ class TestDetailsModalControls:
 
         first = client.post(
             f'/imports/validation-workflow-test-batch/row-decision',
-            json={
-                'raw_import_row_id': raw_id,
-                'decision': 'accept_as_is',
+                json={
+                    'raw_import_row_id': raw_id,
+                    'decision': 'accept_as_is',
+                    'notes': 'Reviewed existing validation state',
+                    'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2651,9 +2877,11 @@ class TestDetailsModalControls:
 
         duplicate = client.post(
             f'/imports/validation-workflow-test-batch/row-decision',
-            json={
-                'raw_import_row_id': raw_id,
-                'decision': 'accept_as_is',
+                json={
+                    'raw_import_row_id': raw_id,
+                    'decision': 'accept_as_is',
+                    'notes': 'Reviewed existing validation state',
+                    'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2676,6 +2904,7 @@ class TestDetailsModalControls:
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
                 'notes': 'Confirm with donor later',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 2,
             }
         )
@@ -2698,9 +2927,11 @@ class TestDetailsModalControls:
 
         response = client.post(
             f'/imports/validation-workflow-test-batch/row-decision',
-            json={
-                'raw_import_row_id': raw_id,
-                'decision': 'accept_as_is',
+                json={
+                    'raw_import_row_id': raw_id,
+                    'decision': 'accept_as_is',
+                    'notes': 'Reviewed existing validation state',
+                    'reviewer_name': 'Test Reviewer',
             }
         )
 
@@ -2739,6 +2970,8 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
+                'notes': 'Reviewed existing validation state',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2749,6 +2982,7 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'reject_row',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 2,
             }
         )
@@ -2759,6 +2993,8 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
+                'notes': 'Reviewed existing validation state',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2797,6 +3033,8 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
+                'notes': 'Reviewed existing validation state',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2845,6 +3083,7 @@ class TestDetailsModalControls:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'accept_as_is',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -2985,6 +3224,7 @@ class TestModalPreservesFieldIssues:
                 'raw_import_row_id': raw_id,
                 'decision': 'defer',
                 'notes': 'Will follow up',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )
@@ -3022,6 +3262,7 @@ class TestModalPreservesFieldIssues:
                 'raw_import_row_id': raw_id,
                 'decision': 'needs_follow_up',
                 'notes': 'Must contact donor',
+                'reviewer_name': 'Test Reviewer',
                 'interaction_sequence': 1,
             }
         )

@@ -142,7 +142,7 @@ class TestRecordRowDecision:
                 database_url=db_url
             )
 
-        assert 'Notes are required' in str(exc_info.value)
+        assert str(exc_info.value) == 'Notes required for Follow-up decision'
 
     def test_record_defer_without_notes(self, temp_db):
         """Test that 'defer' decision doesn't require notes."""

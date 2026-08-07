@@ -511,6 +511,7 @@ class ExportRow:
     export_warnings: tuple
     export_blocked: bool
     export_derived_at: 'datetime' = None
+    date: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -519,6 +520,7 @@ class ExportRow:
         return {
             "source_row_index": self.source_row_index,
             "transaction_id": self.transaction_id,
+            "date": self.date,
             "first_name": self.first_name,
             "last_name": self.last_name,
             "email": self.email,

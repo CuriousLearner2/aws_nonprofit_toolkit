@@ -233,16 +233,16 @@ async def test_dense_row_decision_controls_stay_visible_and_persist_after_reload
             await page.locator("#record-modal").wait_for(state="visible", timeout=5000)
             modal_text = await page.locator("#modal-record-content").inner_text()
             assert "GB201" in modal_text
-            assert "2026-05-20" in modal_text
-            assert long_name in modal_text
-            assert long_email in modal_text
-            assert "Current Issues" in modal_text
+            assert "Current issues" in modal_text
+            assert "Current review" in modal_text
+            assert await page.locator('#record-modal input.autosave-field').count() == 0
+            assert await page.locator('#record-modal input.reviewer-name-field').count() == 1
 
             assert await row.locator('input.autosave-field[data-field="name"]').input_value() == long_name
             assert await row.locator('input.autosave-field[data-field="email"]').input_value() == long_email
             assert await row.locator('input.autosave-field[data-field="date"]').input_value() == "2026-05-20"
 
-            await page.locator('#record-modal button:has-text("Close")').click()
+            await page.locator('#modal-record-footer button.btn-secondary').click()
             await page.wait_for_function(
                 "() => !document.querySelector('#record-modal')?.classList.contains('show')",
                 timeout=5000,
@@ -252,10 +252,10 @@ async def test_dense_row_decision_controls_stay_visible_and_persist_after_reload
             await page.locator("#record-modal").wait_for(state="visible", timeout=5000)
             reopened_text = await page.locator("#modal-record-content").inner_text()
             assert "GB201" in reopened_text
-            assert long_name in reopened_text
-            assert long_email in reopened_text
-            assert "Current Issues" in reopened_text
-            await page.locator('#record-modal button:has-text("Close")').click()
+            assert "Current issues" in reopened_text
+            assert "Current review" in reopened_text
+            assert await page.locator('#record-modal input.autosave-field').count() == 0
+            await page.locator('#modal-record-footer button.btn-secondary').click()
             await page.wait_for_function(
                 "() => !document.querySelector('#record-modal')?.classList.contains('show')",
                 timeout=5000,
@@ -266,6 +266,7 @@ async def test_dense_row_decision_controls_stay_visible_and_persist_after_reload
             followup_notes = page.locator('#record-modal textarea[id^="followup-notes-"]')
             assert await followup_notes.is_visible(), "Follow-up notes field should be visible"
             await followup_notes.fill("Please verify the long-value dense row before export.")
+            await page.locator('#record-modal .reviewer-name-field').fill('UAT Reviewer')
 
             save_followup = page.locator('#record-modal button[id^="save-followup-notes-"]')
             assert await save_followup.is_visible(), "Save Follow-up button should be visible"
@@ -313,7 +314,7 @@ async def test_dense_row_decision_controls_stay_visible_and_persist_after_reload
             assert "GB201" in reloaded_modal
             assert long_name in reloaded_modal
             assert long_email in reloaded_modal
-            assert "Current Issues" in reloaded_modal
+            assert "Current issues" in reloaded_modal
             assert await reloaded_row.locator('input.autosave-field[data-field="name"]').input_value() == long_name
             assert await reloaded_row.locator('input.autosave-field[data-field="email"]').input_value() == long_email
             assert await reloaded_row.locator('input.autosave-field[data-field="date"]').input_value() == "2026-05-20"

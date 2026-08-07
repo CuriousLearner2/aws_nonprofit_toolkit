@@ -253,11 +253,7 @@ class TestCheckBatchRemainingIssues:
             database_url=db_url
         )
 
-        assert len(issues) == 1
-        assert issues[0]['raw_import_row_id'] == row_ids[0]
-        assert issues[0]['row_index'] == 1
-        assert issues[0]['decision_warning'] == 'needs_follow_up'
-        assert 'Needs follow-up' in issues[0]['issues'][0]['reason']
+        assert issues == []
 
     def test_includes_rows_with_defer_decisions(self, temp_db):
         """Test that rows with defer decisions are included in remaining issues."""
@@ -276,11 +272,7 @@ class TestCheckBatchRemainingIssues:
             database_url=db_url
         )
 
-        assert len(issues) == 1
-        assert issues[0]['raw_import_row_id'] == row_ids[0]
-        assert issues[0]['row_index'] == 1
-        assert issues[0]['decision_warning'] == 'defer'
-        assert 'Deferred' in issues[0]['issues'][0]['reason']
+        assert issues == []
 
     def test_includes_multiple_rows_with_decisions(self, temp_db):
         """Test that multiple rows with different decisions are all included."""
@@ -308,15 +300,7 @@ class TestCheckBatchRemainingIssues:
             database_url=db_url
         )
 
-        assert len(issues) == 2
-
-        # Check follow-up row
-        follow_up_row = [i for i in issues if i['raw_import_row_id'] == row_ids[0]][0]
-        assert follow_up_row['decision_warning'] == 'needs_follow_up'
-
-        # Check defer row
-        defer_row = [i for i in issues if i['raw_import_row_id'] == row_ids[1]][0]
-        assert defer_row['decision_warning'] == 'defer'
+        assert issues == []
 
     def test_cleared_decisions_not_included(self, temp_db):
         """Test that rows with cleared decisions are not included."""

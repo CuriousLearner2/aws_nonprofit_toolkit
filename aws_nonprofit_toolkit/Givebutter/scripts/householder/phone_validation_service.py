@@ -42,12 +42,12 @@ def validate_review_phone(
     Validate a reviewed phone number using phonenumbers.
 
     The canonical policy preserves the repo's accepted North American
-    formatting flexibility while enforcing exactly 10 national digits for
-    domestic numbers:
+    formatting flexibility while using libphonenumber's validity rules:
     - numbers are parsed from the original string
     - default region is US when no country code is present
     - +1 / leading 1 domestic formats are accepted
-    - parsed values must have country code 1 and a 10-digit national number
+    - explicit international country codes are validated against that country
+    - domestic parsing defaults to US, while valid NANP regions are accepted
     - parse failures, missing digits, extra digits, and extensions are blocking
     - whitespace is trimmed for validation only
     - the reviewed string itself is preserved by callers
@@ -64,14 +64,17 @@ def validate_review_phone(
     except phonenumbers.NumberParseException:
         return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
 
-    national_digits = str(parsed.national_number)
-    if parsed.country_code != 1:
-        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
-
-    if len(national_digits) != 10:
-        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
-
     if parsed.extension:
+        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
+
+    has_explicit_country_code = text.startswith('+') or text.startswith('00')
+    if not phonenumbers.is_possible_number(parsed):
+        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
+    if not has_explicit_country_code and (
+        parsed.country_code != 1 or len(str(parsed.national_number)) != 10
+    ):
+        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
+    if has_explicit_country_code and not phonenumbers.is_valid_number(parsed):
         return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
 
     return PhoneValidationResult(

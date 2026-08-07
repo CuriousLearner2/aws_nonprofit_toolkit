@@ -9,10 +9,9 @@
 
     <div class="safety-strip"
          data-testid="validation-scope-banner"
-         data-dynamic-fields="amount,email,phone,address"
-         data-import-stage-fields="date"
+         data-dynamic-fields="name,email,phone,date,amount,address"
          data-unsupported-fields="campaign">
-        Dynamic review checks run for amount, email, phone, and address edits. Date checks come from import-stage validation, and campaign is not dynamically revalidated on this screen.
+        Live review checks run for name, email, phone, date, amount, and address edits. Invalid name, email, phone, date, and amount values are rejected; address problems are surfaced as warnings. Campaign fields are not dynamically revalidated on this screen.
     </div>
 
     <div class="issue-severity-legend" data-testid="issue-severity-legend" style="display: flex; gap: 10px; align-items: center; margin: 10px 0 18px 0; font-size: 12px; color: #6b7280;">
@@ -111,7 +110,8 @@
                 <th style="width: 120px;">Phone</th>
                 <th style="width: 70px;">Amount</th>
                 <th style="width: 100px;">Address</th>
-                <th style="width: 100px;">Row Status</th>
+                <th style="width: 100px;">Validation status</th>
+                <th style="width: 130px;">Reviewer disposition</th>
                 <th style="width: 150px;">Issues</th>
                 <th style="width: 60px;">Actions</th>
             </tr>
@@ -134,7 +134,7 @@
                 <td>
                     <input type="text" class="inline-edit-field autosave-field" data-field="date" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.date or '' }}" placeholder="YYYY-MM-DD" title="{{ record.date or '' }}"
-                           style="width: 65px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                           style="width: 100px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
                     <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
@@ -150,7 +150,7 @@
                 <td>
                     <input type="text" class="inline-edit-field autosave-field" data-field="email" data-raw-id="{{ record.raw_import_row_id }}" data-testid="email-input-{{ record.id }}"
                            value="{{ record.email or '' }}" placeholder="email@example.com"
-                           style="width: 105px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                           style="width: 220px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
                     <span class="autosave-status" data-testid="email-status-{{ record.id }}" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
@@ -174,21 +174,28 @@
                 <td>
                     <input type="text" class="inline-edit-field autosave-field" data-field="address" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.address or '' }}" placeholder="Street, City, State"
-                           style="width: 95px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
+                           style="width: 260px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
                     <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
                 </td>
 
-                <!-- Row Status with Decision Dropdown -->
+                <!-- System-derived validation status -->
+                <td class="validation-status-cell" data-testid="validation-status-cell-{{ record.id }}">
+                    <span class="validation-status-label" data-testid="validation-status-{{ record.id }}">{{ record.row_status or 'No issues' }}</span>
+                </td>
+
+                <!-- Reviewer disposition -->
                 <td class="row-status-cell" data-testid="row-status-cell-{{ record.id }}">
                     <select class="row-status-dropdown" data-raw-id="{{ record.raw_import_row_id }}" data-testid="row-status-dropdown-{{ record.id }}"
                             style="padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 11px; font-weight: 600; box-sizing: border-box; width: 95px;">
-                        <option value="">{{ record.row_status or 'No issues' }}</option>
+                        <option value="">No disposition</option>
                         <option value="accept_as_is">Accept as-is</option>
                         <option value="needs_follow_up">Needs follow-up</option>
                         <option value="defer">Defer</option>
                         <option value="reject_row">Reject row</option>
-                        <option value="return_to_system" class="reset-option" style="display: none;">Return to system status</option>
-                    </select>
+                            <option value="return_to_system" class="reset-option" style="display: none;">Return to system status</option>
+                        </select>
+                    <button type="button" class="edit-row-review" data-raw-id="{{ record.raw_import_row_id }}" data-record-id="{{ record.id }}"
+                            style="display: none; margin-top: 4px; padding: 3px 6px; border: 1px solid #9ca3af; border-radius: 3px; background: white; color: #374151; cursor: pointer; font-size: 11px;">Edit review</button>
                 </td>
 
                 <!-- Read-only: Issues -->
@@ -217,7 +224,7 @@
             </tr>
             {% endfor %}
             <tr id="validation-status-filter-empty-state" data-testid="validation-status-filter-empty-state" hidden>
-                <td colspan="10" style="text-align: center; color: #666; padding: 20px;">No rows match this filter.</td>
+                <td colspan="11" style="text-align: center; color: #666; padding: 20px;">No rows match this filter.</td>
             </tr>
         </tbody>
     </table>
@@ -250,6 +257,33 @@
         Back to Dashboard
     </a>
 </div>
+
+<style>
+    #record-modal .modal-content {
+        max-width: 850px;
+        max-height: calc(100vh - 40px);
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    #record-modal .modal-header {
+        margin-bottom: 0;
+        padding: 18px 24px 14px;
+        flex: 0 0 auto;
+    }
+    #record-modal .modal-body {
+        margin-bottom: 0;
+        padding: 16px 24px 18px;
+        overflow: auto;
+        flex: 1 1 auto;
+    }
+    #record-modal .modal-footer {
+        padding: 12px 24px;
+        align-items: center;
+        flex: 0 0 auto;
+    }
+</style>
 
 <!-- Record Details Modal -->
 <div id="record-modal" class="modal">
@@ -537,7 +571,7 @@ function getMergedIssues(rawId, persistedIssues) {
     return Array.from(mergedByKey.values());
 }
 
-// Calculate Row Status from merged issue list (persisted + active errors)
+// Calculate validation status from merged issue list (persisted + active errors)
 function calculateRowStatus(allIssues) {
     if (!allIssues || allIssues.length === 0) {
         return 'No issues';
@@ -568,7 +602,7 @@ function renderIssuesCell(issuesCell, persistedIssues, updateRowStatus = true) {
 
     issuesCell.innerHTML = buildIssueSummaryHtml(allIssues);
 
-    // Also update Row Status based on merged issues
+    // Also update validation status based on merged issues
     if (updateRowStatus) {
         updateRowStatusFromIssues(issuesCell.closest('tr'), allIssues);
     }
@@ -581,16 +615,17 @@ function initializeValidationIssuePresentation() {
     });
 }
 
-// Update Row Status dropdown based on merged issues
+// Update the read-only validation status without changing reviewer disposition
 function updateRowStatusFromIssues(row, allIssues) {
     const rowStatus = calculateRowStatus(allIssues);
+    const statusLabel = row.querySelector('.validation-status-label');
+    if (statusLabel) {
+        statusLabel.textContent = rowStatus;
+    }
+    row.setAttribute('data-row-status', rowStatus);
     const dropdown = row.querySelector('.row-status-dropdown');
     if (dropdown) {
-        const firstOption = dropdown.querySelector('option:first-child');
-        if (firstOption) {
-            firstOption.textContent = rowStatus;
-        }
-        dropdown.value = '';
+        dropdown.value = dropdown.dataset.currentDecision || '';
     }
 }
 
@@ -632,20 +667,23 @@ async function loadRowDecisions() {
                 // Show/hide reset option in main table dropdown
                 const tableDropdown = document.querySelector(`.row-status-dropdown[data-raw-id="${rawId}"]`);
                 if (tableDropdown) {
+                    tableDropdown.dataset.currentNotes = data.notes || '';
                     const resetOption = tableDropdown.querySelector('.reset-option');
+                    const editReviewButton = tableDropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
                     if (data.has_decision) {
                         resetOption.style.display = 'block';
                         // Store decision status in element for later use
                         tableDropdown.setAttribute('data-has-decision', 'true');
-                        const firstOption = tableDropdown.querySelector('option:first-child');
-                        if (firstOption && data.decision) {
-                            firstOption.textContent = data.decision.replace(/_/g, ' ');
-                        }
                         tableDropdown.value = data.decision || '';
                         tableDropdown.style.backgroundColor = '#fef3c7';
+                        if (editReviewButton) editReviewButton.style.display = 'inline-block';
                     } else {
                         resetOption.style.display = 'none';
                         tableDropdown.setAttribute('data-has-decision', 'false');
+                        tableDropdown.dataset.systemDisposition = getRowStatusLabel(row) === 'No issues' ? 'true' : 'false';
+                        tableDropdown.value = getRowStatusLabel(row) === 'No issues' ? 'accept_as_is' : '';
+                        tableDropdown.style.backgroundColor = '';
+                        if (editReviewButton) editReviewButton.style.display = 'none';
                     }
                 }
             }
@@ -706,6 +744,39 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    const issueFilter = document.getElementById('issue-filter');
+    const issueRows = Array.from(document.querySelectorAll('tr.validation-row[data-issues-json]'));
+
+    if (issueFilter && issueRows.length) {
+        const issueTypeMatches = {
+            'missing-required': issue => /missing|required|blank|empty/i.test(issue.reason || issue.description || ''),
+            'format-invalid': issue => /invalid|format/i.test(issue.reason || issue.description || ''),
+            'length-exceeded': issue => /length|long|short|characters?/i.test(issue.reason || issue.description || ''),
+        };
+
+        function rowIssues(row) {
+            try {
+                return JSON.parse(row.dataset.issuesJson || '[]');
+            } catch (error) {
+                return [];
+            }
+        }
+
+        function applyIssueFilter() {
+            const selectedType = issueFilter.value;
+            issueRows.forEach(row => {
+                const matches = !selectedType || rowIssues(row).some(issue => {
+                    if (issue.issue_type === selectedType || issue.issueType === selectedType) return true;
+                    return issueTypeMatches[selectedType]?.(issue) || false;
+                });
+                row.hidden = !matches;
+            });
+        }
+
+        issueFilter.addEventListener('change', applyIssueFilter);
+        applyIssueFilter();
+    }
+
     const filterButtons = Array.from(document.querySelectorAll('[data-row-status-filter]'));
     const rows = Array.from(document.querySelectorAll('tr.validation-row[data-row-status]'));
     const emptyState = document.getElementById('validation-status-filter-empty-state');
@@ -928,7 +999,7 @@ function cancelFieldEdit(input) {
     const numRawId = parseInt(rawId);
     removeActiveError(numRawId, field);
 
-    // Recalculate and re-render Issues and Row Status (removes abandoned error, keeps persisted issues)
+    // Recalculate and re-render Issues and validation status (removes abandoned error, keeps persisted issues)
     const issuesCell = row.querySelector('.issues-cell');
     if (issuesCell) {
         // Get persisted issues from the existing data (before active errors were added)
@@ -1039,7 +1110,7 @@ async function autosaveField(input) {
             statusSpan.style.color = '#ef4444';
             input.style.borderColor = '#ef4444';
 
-            // Update Row Status and Issues to show current validation state from error response
+            // Update validation status and Issues from the error response
             try {
                 const errorData = await response.json();
                 if (errorData.row_status || errorData.issues !== undefined) {
@@ -1049,14 +1120,15 @@ async function autosaveField(input) {
                         addActiveError(parseInt(rawId), field, validationError.reason, validationError.severity);
                     }
 
-                    // Update Row Status dropdown (preserve dropdown, update display)
+                    // Update read-only validation status (preserve reviewer disposition)
                     const dropdown = row.querySelector('.row-status-dropdown');
                     if (dropdown && errorData.row_status) {
-                        const firstOption = dropdown.querySelector('option:first-child');
-                        if (firstOption) {
-                            firstOption.textContent = errorData.row_status || 'No issues';
+                        const statusLabel = row.querySelector('.validation-status-label');
+                        if (statusLabel) {
+                            statusLabel.textContent = errorData.row_status || 'No issues';
                         }
-                        dropdown.value = '';
+                        row.setAttribute('data-row-status', errorData.row_status || 'No issues');
+                        dropdown.value = dropdown.dataset.currentDecision || '';
                     }
 
                     // Update Issues display: persisted issues + active errors combined and deduplicated
@@ -1123,7 +1195,7 @@ function updateRowFromAutosave(row, result, editedField) {
     });
 
     // Update Issues with persisted issues + remaining active errors
-    // renderIssuesCell will also recalculate Row Status from merged issues
+    // renderIssuesCell will also recalculate validation status from merged issues
     const issuesCell = row.querySelector('.issues-cell');
     if (issuesCell && result.issues !== undefined) {
         renderIssuesCell(issuesCell, result.issues);
@@ -1143,12 +1215,12 @@ async function getRowDecisionData(rawId) {
     try {
         const response = await fetch(`/imports/${batchId}/row-decision/${rawId}`);
         if (!response.ok) {
-            return { has_decision: false, decision: null, notes: null, timestamp: null, interaction_sequence: 0 };
+            return { has_decision: false, decision: null, notes: null, timestamp: null, reviewer: null, interaction_sequence: 0, history: [] };
         }
         return await response.json();
     } catch (error) {
         console.error(`Error loading row decision for ${rawId}:`, error);
-        return { has_decision: false, decision: null, notes: null, timestamp: null, interaction_sequence: 0 };
+        return { has_decision: false, decision: null, notes: null, timestamp: null, reviewer: null, interaction_sequence: 0, history: [] };
     }
 }
 
@@ -1157,70 +1229,125 @@ function getRowFieldValue(row, field) {
     return input ? input.value || '' : '';
 }
 
+let reviewerNameForSession = '';
+
+function requireReviewModalReviewerName(modal) {
+    const field = modal?.querySelector('.reviewer-name-field');
+    const error = modal?.querySelector('.reviewer-name-error');
+    const reviewerName = (field?.value || '').trim();
+    if (field) {
+        field.value = reviewerName;
+    }
+    if (!reviewerName) {
+        if (error) error.style.display = 'block';
+        if (field) field.focus();
+        return null;
+    }
+    if (error) error.style.display = 'none';
+    reviewerNameForSession = reviewerName;
+    return reviewerName;
+}
+
 function getRowIssuesMarkup(row) {
     return buildIssueDetailsHtml(getRowIssuesData(row));
 }
 
 function getRowStatusLabel(row) {
-    const dropdown = row.querySelector('.row-status-dropdown');
-    return dropdown?.querySelector('option:first-child')?.textContent?.trim()
+    return row.querySelector('.validation-status-label')?.textContent?.trim()
         || row.getAttribute('data-row-status')
         || 'No issues';
 }
 
+function formatRowDecisionLabel(decision) {
+    const labels = {
+        accept_as_is: 'Accept as-is',
+        needs_follow_up: 'Needs follow-up',
+        defer: 'Defer',
+        reject_row: 'Reject row',
+        clear_decision: 'Clear decision',
+    };
+    return labels[decision] || String(decision || '').replace(/_/g, ' ') || 'No decision';
+}
+
+function buildRecordIssueCardsHtml(row) {
+    const issues = getRowIssuesData(row);
+    if (!issues.length) {
+        return '<span style="color: #9ca3af; font-style: italic;">None</span>';
+    }
+
+    return issues.map(issue => {
+        const severity = issue.severity === 'error' ? 'Error' : 'Warning';
+        const isBlocking = issue.severity === 'error';
+        const field = issue.field || 'unknown';
+        const message = issue.description || getIssueReason(issue);
+        const currentValue = getRowFieldValue(row, field);
+        const background = isBlocking ? '#fff7f7' : '#fffcf2';
+        const border = isBlocking ? '#ef4444' : '#f59e0b';
+        const severityBackground = isBlocking ? '#fee2e2' : '#fef3c7';
+        const severityColor = isBlocking ? '#991b1b' : '#92400e';
+        return `
+            <article style="margin-bottom: 8px; padding: 11px 13px; border-left: 4px solid ${border}; border-radius: 4px; background: ${background};">
+                <div style="display: flex; justify-content: space-between; gap: 12px; font-weight: 700;">
+                    <div><span style="margin-right: 8px; padding: 3px 7px; border-radius: 3px; background: ${severityBackground}; color: ${severityColor}; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;">${severity}</span>${escapeHtml(field)}</div>
+                    <span style="color: ${severityColor}; font-size: 12px;">${isBlocking ? 'Blocks approval' : 'Does not block approval'}</span>
+                </div>
+                <p style="margin: 7px 0; color: #374151; line-height: 1.35;">${escapeHtml(message)}</p>
+                <div style="padding-top: 7px; border-top: 1px solid rgba(107, 114, 128, .18); font-size: 12px;"><strong style="margin-right: 12px; color: #6b7280;">Current value</strong>${currentValue ? escapeHtml(currentValue) : '<span style="color: #6b7280; font-style: italic;">Blank</span>'}</div>
+            </article>`;
+    }).join('');
+}
+
+function buildRecordHistoryHtml(history) {
+    if (!Array.isArray(history) || history.length === 0) {
+        return '<span style="color: #9ca3af; font-style: italic;">No previous reviewer-saved revisions.</span>';
+    }
+
+    return history.map(entry => `
+        <article style="position: relative; padding: 0 0 12px 17px; border-left: 2px solid #dbeafe;">
+            <span style="position: absolute; left: -6px; top: 2px; width: 8px; height: 8px; border: 2px solid #fff; border-radius: 50%; background: #93c5fd; box-shadow: 0 0 0 1px #60a5fa;"></span>
+            <div style="font-weight: 700;">${escapeHtml(formatRowDecisionLabel(entry.decision))}</div>
+            <div style="margin: 4px 0; color: #374151; line-height: 1.35;">${entry.notes ? escapeHtml(entry.notes) : '<span style="color: #6b7280; font-style: italic;">No notes</span>'}</div>
+            <div style="color: #6b7280; font-size: 12px;">${escapeHtml(entry.reviewer || 'Reviewer not identified')} · ${escapeHtml(entry.timestamp || '')}</div>
+        </article>`).join('');
+}
+
 function buildRecordSummaryHtml(row, recordId, decisionData) {
     const transactionId = escapeHtml(row.querySelector('td:nth-child(1)')?.textContent?.trim() || '');
-    const rowStatus = escapeHtml(getRowStatusLabel(row));
-    const decisionText = decisionData?.has_decision
-        ? escapeHtml((decisionData.decision || '').replace(/_/g, ' '))
-        : '<span style="color: #9ca3af; font-style: italic;">No reviewer decision</span>';
-    const notesText = decisionData?.notes
-        ? escapeHtml(decisionData.notes)
-        : '<span style="color: #9ca3af; font-style: italic;">None</span>';
-
-    const fields = [
-        ['Date', getRowFieldValue(row, 'date')],
-        ['Name', getRowFieldValue(row, 'name')],
-        ['Email', getRowFieldValue(row, 'email')],
-        ['Phone', getRowFieldValue(row, 'phone')],
-        ['Amount', getRowFieldValue(row, 'amount')],
-        ['Address', getRowFieldValue(row, 'address')],
-    ];
-
-    const fieldRows = fields.map(([label, value]) => `
-        <tr>
-            <td style="padding: 6px; border-bottom: 1px solid #eee; width: 160px;"><strong>${escapeHtml(label)}:</strong></td>
-            <td style="padding: 6px; border-bottom: 1px solid #eee;">${escapeHtml(value)}</td>
-        </tr>
-    `).join('');
+    const selectedDecision = decisionData?.has_decision
+        ? decisionData.decision
+        : getRowStatusLabel(row) === 'No issues' ? 'accept_as_is' : '';
+    const decisionOptions = [
+        ['', 'No disposition'],
+        ['accept_as_is', 'Accept as-is'],
+        ['needs_follow_up', 'Needs follow-up'],
+        ['defer', 'Defer'],
+        ['reject_row', 'Reject row'],
+        ...(decisionData?.has_decision ? [['clear_decision', 'Clear decision']] : []),
+    ].map(([value, label]) => `<option value="${value}" ${selectedDecision === value ? 'selected' : ''}>${label}</option>`).join('');
 
     return `
-        <div style="margin-bottom: 20px;">
-            <h3 style="margin-top: 0;">Record #${escapeHtml(recordId)}</h3>
-            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                <tr>
-                    <td style="padding: 6px; border-bottom: 1px solid #eee; width: 160px;"><strong>Transaction ID:</strong></td>
-                    <td style="padding: 6px; border-bottom: 1px solid #eee;">${transactionId}</td>
-                </tr>
-                ${fieldRows}
-                <tr>
-                    <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Current Status:</strong></td>
-                    <td style="padding: 6px; border-bottom: 1px solid #eee;">${rowStatus}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Current Decision:</strong></td>
-                    <td style="padding: 6px; border-bottom: 1px solid #eee;">${decisionText}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Notes:</strong></td>
-                    <td style="padding: 6px; border-bottom: 1px solid #eee;">${notesText}</td>
-                </tr>
-            </table>
+        <div style="margin-bottom: 14px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 4px; background: #f9fafb; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div><span style="display: block; margin-bottom: 3px; color: #6b7280; font-size: 10px; font-weight: 700; text-transform: uppercase;">Record number</span><strong>#${escapeHtml(recordId)}</strong></div>
+            <div><span style="display: block; margin-bottom: 3px; color: #6b7280; font-size: 10px; font-weight: 700; text-transform: uppercase;">Transaction ID</span><strong>${transactionId}</strong></div>
+            <div><span style="display: block; margin-bottom: 3px; color: #6b7280; font-size: 10px; font-weight: 700; text-transform: uppercase;">Validation status</span><strong>${escapeHtml(getRowStatusLabel(row))}</strong></div>
         </div>
-        <div style="margin-top: 18px;">
-            <h3 style="margin: 0 0 8px 0;">Current Issues</h3>
-            <div>${getRowIssuesMarkup(row)}</div>
-        </div>
+        <section style="margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><h3 style="margin: 0; font-size: 14px;">Current issues</h3><span style="color: #6b7280; font-size: 12px;">${getRowIssuesData(row).length} issue${getRowIssuesData(row).length === 1 ? '' : 's'}</span></div>
+            <p style="margin: 0 0 8px; color: #6b7280; font-size: 12px;">Correct record values in the validation table.</p>
+            <div>${buildRecordIssueCardsHtml(row)}</div>
+        </section>
+        <section style="margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><h3 style="margin: 0; font-size: 14px;">Reviewer disposition</h3></div>
+            <p style="margin: 0 0 8px; color: #6b7280; font-size: 12px;">Update the reviewer disposition or reason / notes for this record.</p>
+            <div data-testid="row-review-save-form" style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 4px; background: #f9fafb;">
+                <div style="margin-bottom: 10px;"><label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name</label><input class="reviewer-name-field" id="row-review-reviewer-${recordId}" type="text" autocomplete="off" value="${escapeHtml(reviewerNameForSession)}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;"><div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Required when saving a decision or notes. Entered manually and not authenticated.</div><div class="reviewer-name-error" role="alert" style="display: none; font-size: 12px; color: #b91c1c; margin-top: 4px;">Enter your name before saving this review.</div></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"><div><label for="row-review-decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer disposition</label><select id="row-review-decision-${recordId}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">${decisionOptions}</select></div><div><label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes</label><textarea id="followup-notes-${recordId}" placeholder="Add a reason or notes for this disposition..." style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;">${escapeHtml(decisionData?.notes || '')}</textarea><div id="followup-notes-requirement-${recordId}" class="notes-requirement" role="alert" style="display: none; font-size: 12px; color: #ef4444; margin-top: 4px;">Notes required for Follow-up decision</div></div></div>
+            </div>
+        </section>
+        <section>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><h3 style="margin: 0; font-size: 14px;">Previous reviewer dispositions and reasons / notes</h3><span style="color: #6b7280; font-size: 12px;">Newest first</span></div>
+            <div>${buildRecordHistoryHtml(decisionData?.history || [])}</div>
+        </section>
     `;
 }
 
@@ -1274,80 +1401,6 @@ function clearRowDecisionRequest(rawId, requestToken) {
     }
 }
 
-function closeFollowUpNotesModal(dropdownState) {
-    if (dropdownState && dropdownState.dropdown) {
-        const { dropdown, previousValue, previousLabel } = dropdownState;
-        const firstOption = dropdown.querySelector('option:first-child');
-        if (firstOption) {
-            firstOption.textContent = previousLabel || 'No issues';
-        }
-        dropdown.value = previousValue || '';
-        dropdown.style.backgroundColor = previousValue ? '#fef3c7' : 'white';
-        dropdown.setAttribute('data-has-decision', previousValue ? 'true' : 'false');
-        const resetOption = dropdown.querySelector('.reset-option');
-        if (resetOption) {
-            resetOption.style.display = previousValue ? 'block' : 'none';
-        }
-    }
-
-    const modal = document.getElementById('record-modal');
-    if (modal) {
-        modal.dataset.followupActive = 'false';
-        modal.dataset.followupRawId = '';
-        modal.dataset.followupPreviousValue = '';
-        modal.dataset.followupPreviousLabel = '';
-    }
-
-    const footer = document.getElementById('modal-record-footer');
-    if (footer) {
-        footer.style.display = '';
-        footer.innerHTML = '<button type="button" class="btn btn-secondary" onclick="closeModal(\'record-modal\')">Close</button>';
-    }
-
-    closeModal('record-modal');
-}
-
-window.restoreRecordModalState = function(modal) {
-    if (!modal || modal.id !== 'record-modal') {
-        return;
-    }
-
-    if (modal.dataset.followupActive !== 'true') {
-        return;
-    }
-
-    const rawId = modal.dataset.followupRawId || '';
-    if (!rawId) {
-        return;
-    }
-
-    const dropdown = document.querySelector(`.row-status-dropdown[data-raw-id="${rawId}"]`);
-    if (!dropdown) {
-        return;
-    }
-
-    const previousValue = modal.dataset.followupPreviousValue || '';
-    const previousLabel = modal.dataset.followupPreviousLabel || 'No issues';
-    const firstOption = dropdown.querySelector('option:first-child');
-    if (firstOption) {
-        firstOption.textContent = previousLabel;
-    }
-    dropdown.value = previousValue;
-    dropdown.style.backgroundColor = previousValue ? '#fef3c7' : 'white';
-    dropdown.setAttribute('data-has-decision', previousValue ? 'true' : 'false');
-    const resetOption = dropdown.querySelector('.reset-option');
-    if (resetOption) {
-        resetOption.style.display = previousValue ? 'block' : 'none';
-    }
-    dropdown.dataset.previousValue = previousValue;
-    dropdown.dataset.previousLabel = previousLabel;
-
-    modal.dataset.followupActive = 'false';
-    modal.dataset.followupRawId = '';
-    modal.dataset.followupPreviousValue = '';
-    modal.dataset.followupPreviousLabel = '';
-};
-
 async function openRecordDetailsModal(recordId) {
     const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
     if (!row) return;
@@ -1371,337 +1424,399 @@ async function openRecordDetailsModal(recordId) {
     }
     if (modalFooter) {
         modalFooter.style.display = '';
-        modalFooter.innerHTML = '<button type="button" class="btn btn-secondary" onclick="closeModal(\'record-modal\')">Close</button>';
+        modalFooter.innerHTML = `
+            <span style="margin-right: auto; align-self: center; color: #6b7280; font-size: 12px;">No new history entry is created if the decision and notes are unchanged.</span>
+            <button type="button" class="btn btn-secondary" id="cancel-record-review-${recordId}">Cancel</button>
+            <button type="button" class="btn btn-primary" id="save-record-review-${recordId}">Save review</button>`;
     }
 
     modalBody.innerHTML = buildRecordSummaryHtml(row, recordId, decisionData);
+    attachRecordDetailsReviewHandlers(recordId, row, decisionData);
     openModal('record-modal');
 }
 
-async function openFollowUpNotesModal(recordId, dropdown, rowDecisionRequest) {
+function attachRecordDetailsReviewHandlers(recordId, row, decisionData) {
+    const modal = document.getElementById('record-modal');
+    const rawId = parseInt(row.getAttribute('data-raw-id'));
+    const dropdown = row.querySelector('.row-status-dropdown');
+    const saveBtn = document.getElementById(`save-record-review-${recordId}`);
+    const cancelBtn = document.getElementById(`cancel-record-review-${recordId}`);
+    const decisionField = document.getElementById(`row-review-decision-${recordId}`);
+    const notesField = document.getElementById(`followup-notes-${recordId}`);
+    const notesRequirement = modal?.querySelector('.notes-requirement');
+
+    saveBtn?.addEventListener('click', async function() {
+        if (saveBtn.disabled) return;
+
+        const reviewerName = requireReviewModalReviewerName(modal);
+        if (!reviewerName) return;
+
+        const decision = decisionField?.value || '';
+        const notes = (notesField?.value || '').trim();
+        const requiresNotes = decision === 'needs_follow_up'
+            ? !notes
+            : decision === 'accept_as_is' && getRowIssuesData(row).length > 0 && !notes;
+        if (requiresNotes) {
+            if (notesRequirement) {
+                notesRequirement.textContent = decision === 'needs_follow_up'
+                    ? 'Notes required for Follow-up decision'
+                    : 'Reason / notes required for Accept as-is when validation issues exist';
+                notesRequirement.style.display = 'block';
+            }
+            notesField?.focus();
+            return;
+        }
+        if (notesRequirement) notesRequirement.style.display = 'none';
+        if (!decision) {
+            alert('Select a decision before saving this review.');
+            return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        const rowDecisionRequest = beginRowDecisionRequest(rawId);
+
+        try {
+            const response = await fetch(`/imports/${batchId}/row-decision`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    raw_import_row_id: rawId,
+                    decision,
+                    notes: notes || null,
+                    reviewer_name: reviewerName,
+                    interaction_sequence: rowDecisionRequest.sequence,
+                }),
+                signal: rowDecisionRequest.controller.signal,
+            });
+
+            if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) return;
+
+            if (response.ok) {
+                const result = await response.json();
+                applySavedRowDecision(dropdown, result, decision, notes);
+                clearRowDecisionRequest(rawId, rowDecisionRequest.token);
+                closeModal('record-modal');
+                alert('Review saved.');
+            } else {
+                const error = await response.json();
+                clearRowDecisionRequest(rawId, rowDecisionRequest.token);
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save review';
+                alert('Error: ' + (error.error || 'Failed to save review'));
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) return;
+            clearRowDecisionRequest(rawId, rowDecisionRequest.token);
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save review';
+            alert('Error: ' + error.message);
+        }
+    });
+
+    cancelBtn?.addEventListener('click', function() {
+        closeModal('record-modal');
+    });
+}
+
+function setSavedRowReviewState(dropdown, decision, label, notes) {
+    const row = dropdown.closest('tr');
+    const statusLabel = row?.querySelector('.validation-status-label');
+    if (statusLabel && label) {
+        statusLabel.textContent = label;
+        row.setAttribute('data-row-status', label);
+    }
+    dropdown.value = decision || '';
+    dropdown.dataset.currentDecision = decision || '';
+    dropdown.dataset.currentNotes = notes || '';
+    dropdown.dataset.previousValue = decision || '';
+    dropdown.dataset.previousLabel = label || 'No issues';
+    dropdown.style.backgroundColor = decision ? '#fef3c7' : 'white';
+    dropdown.setAttribute('data-has-decision', decision ? 'true' : 'false');
+
+    const resetOption = dropdown.querySelector('.reset-option');
+    if (resetOption) {
+        resetOption.style.display = decision ? 'block' : 'none';
+    }
+    const editReviewButton = dropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
+    if (editReviewButton) {
+        editReviewButton.style.display = decision ? 'inline-block' : 'none';
+    }
+}
+
+function closeRowReviewModal(dropdownState) {
+    if (dropdownState?.dropdown) {
+        const { dropdown, previousValue, previousLabel } = dropdownState;
+        setSavedRowReviewState(
+            dropdown,
+            previousValue || '',
+            previousLabel || 'No issues',
+            dropdown.dataset.currentNotes || ''
+        );
+    }
+
+    const modal = document.getElementById('record-modal');
+    if (modal) {
+        modal.dataset.reviewActive = 'false';
+        modal.dataset.reviewRawId = '';
+        modal.dataset.reviewPreviousValue = '';
+        modal.dataset.reviewPreviousLabel = '';
+    }
+
+    const footer = document.getElementById('modal-record-footer');
+    if (footer) {
+        footer.style.display = '';
+        footer.innerHTML = '<button type="button" class="btn btn-secondary" onclick="closeModal(\'record-modal\')">Close</button>';
+    }
+
+    closeModal('record-modal');
+}
+
+window.restoreRecordModalState = function(modal) {
+    if (!modal || modal.id !== 'record-modal' || modal.dataset.reviewActive !== 'true') {
+        return;
+    }
+
+    const rawId = modal.dataset.reviewRawId || '';
+    const dropdown = document.querySelector(`.row-status-dropdown[data-raw-id="${rawId}"]`);
+    if (!dropdown) {
+        return;
+    }
+
+    setSavedRowReviewState(
+        dropdown,
+        modal.dataset.reviewPreviousValue || '',
+        modal.dataset.reviewPreviousLabel || 'No issues',
+        dropdown.dataset.currentNotes || ''
+    );
+    modal.dataset.reviewActive = 'false';
+    modal.dataset.reviewRawId = '';
+    modal.dataset.reviewPreviousValue = '';
+    modal.dataset.reviewPreviousLabel = '';
+};
+
+function applySavedRowDecision(dropdown, result, decision, notes) {
+    if (decision === 'clear_decision') {
+        const systemStatus = result.row_status || 'No issues';
+        setSavedRowReviewState(dropdown, systemStatus === 'No issues' ? 'accept_as_is' : '', systemStatus, '');
+        dropdown.dataset.hasDecision = 'false';
+        dropdown.dataset.systemDisposition = systemStatus === 'No issues' ? 'true' : 'false';
+        dropdown.dataset.currentDecision = '';
+        const resetOption = dropdown.querySelector('.reset-option');
+        if (resetOption) resetOption.style.display = 'none';
+        const editReviewButton = dropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
+        if (editReviewButton) editReviewButton.style.display = 'none';
+        return;
+    }
+    setSavedRowReviewState(
+        dropdown,
+        decision,
+        result.row_status || decision.replace(/_/g, ' '),
+        notes
+    );
+    dropdown.dataset.systemDisposition = 'false';
+}
+
+async function openRowReviewModal(recordId, dropdown, requestedDecision) {
     const row = document.querySelector(`tr[data-record-id="${recordId}"]`);
     if (!row) return;
 
     const rawId = parseInt(row.getAttribute('data-raw-id'));
     const modal = document.getElementById('record-modal');
     const requestToken = String(++recordModalOpenSequence);
-    if (modal) {
-        modal.dataset.requestToken = requestToken;
-    }
-    const decisionData = await getRowDecisionData(rawId);
-    if (!modal || modal.dataset.requestToken !== requestToken) {
-        return;
-    }
-    const notesValue = decisionData?.notes || '';
+    const previousValue = dropdown.dataset.currentDecision || dropdown.dataset.previousValue || '';
+    const previousLabel = dropdown.dataset.previousLabel || getRowStatusLabel(row) || 'No issues';
+    const currentNotes = dropdown.dataset.currentNotes || '';
+    const selectedDecision = requestedDecision || previousValue;
+
+    setSavedRowReviewState(dropdown, previousValue, previousLabel, currentNotes);
+    if (!modal) return;
+
+    modal.dataset.requestToken = requestToken;
+    modal.dataset.reviewActive = 'true';
+    modal.dataset.reviewRawId = String(rawId);
+    modal.dataset.reviewPreviousValue = previousValue;
+    modal.dataset.reviewPreviousLabel = previousLabel;
+
     const modalBody = document.getElementById('modal-record-content');
     const modalTitle = document.querySelector('#record-modal .modal-title');
     const modalFooter = document.getElementById('modal-record-footer');
-
-    if (modalTitle) {
-        modalTitle.textContent = 'Needs Follow-up Notes';
-    }
-    if (modalFooter) {
-        modalFooter.style.display = 'none';
-        modalFooter.innerHTML = '';
-    }
+    if (modalTitle) modalTitle.textContent = 'Save review';
+    const decisionOptions = [
+        ['accept_as_is', 'Accept as-is'],
+        ['needs_follow_up', 'Needs follow-up'],
+        ['defer', 'Defer'],
+        ['reject_row', 'Reject row'],
+        ...(dropdown.dataset.hasDecision === 'true' ? [['clear_decision', 'Clear decision']] : []),
+    ];
+    const optionsHtml = decisionOptions.map(([value, label]) =>
+        `<option value="${value}" ${selectedDecision === value ? 'selected' : ''}>${label}</option>`
+    ).join('');
 
     modalBody.innerHTML = `
-        ${buildRecordSummaryHtml(row, recordId, decisionData)}
-        <div style="margin-top: 20px;">
-            <h3 style="margin-top: 0;">Add Notes</h3>
-            <label for="followup-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Notes:</label>
-            <textarea id="followup-notes-${recordId}" placeholder="Notes required when Follow-up is chosen..." style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; min-height: 80px; box-sizing: border-box;">${escapeHtml(notesValue)}</textarea>
-            <div id="followup-notes-requirement-${recordId}" style="font-size: 12px; color: #ef4444; margin-top: 4px; display: none;">Notes required for Follow-up decision</div>
-            <div style="display: flex; gap: 8px; margin-top: 12px;">
-                <button type="button" id="save-followup-notes-${recordId}" class="btn btn-primary" style="flex: 1; padding: 8px; background-color: #3b82f6; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Save Follow-up</button>
-                <button type="button" id="cancel-followup-notes-${recordId}" class="btn btn-secondary" style="flex: 1; padding: 8px; background-color: #6b7280; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Cancel</button>
+        <div data-testid="row-review-save-form">
+            <div style="margin-bottom: 14px;">
+                <label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name</label>
+                <input class="reviewer-name-field" id="row-review-reviewer-${recordId}" type="text" autocomplete="off"
+                       value="${escapeHtml(reviewerNameForSession)}"
+                       style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Required when saving a decision or notes. Entered manually and not authenticated.</div>
+                <div class="reviewer-name-error" role="alert" style="display: none; font-size: 12px; color: #b91c1c; margin-top: 4px;">Enter your name before saving this review.</div>
+            </div>
+            <div style="margin-bottom: 14px;">
+                <label for="row-review-decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer disposition</label>
+                <select id="row-review-decision-${recordId}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
+                    ${optionsHtml}
+                </select>
+            </div>
+            <div>
+                <label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes</label>
+                <textarea id="followup-notes-${recordId}" placeholder="Add notes for this review..."
+                          style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;">${escapeHtml(currentNotes)}</textarea>
+                <div id="followup-notes-requirement-${recordId}" class="notes-requirement" role="alert" style="display: none; font-size: 12px; color: #ef4444; margin-top: 4px;">Notes required for Follow-up decision</div>
             </div>
         </div>
     `;
-
+    modalFooter.style.display = '';
+    modalFooter.innerHTML = `
+        <button type="button" class="btn btn-secondary" id="cancel-row-review-${recordId}">Cancel</button>
+        <button type="button" class="btn btn-primary" id="save-followup-notes-${recordId}">Save</button>
+    `;
     openModal('record-modal');
 
+    const decisionField = document.getElementById(`row-review-decision-${recordId}`);
     const notesField = document.getElementById(`followup-notes-${recordId}`);
-    const notesRequirement = document.getElementById(`followup-notes-requirement-${recordId}`);
+    const notesRequirement = modal.querySelector('.notes-requirement');
     const saveBtn = document.getElementById(`save-followup-notes-${recordId}`);
-    const cancelBtn = document.getElementById(`cancel-followup-notes-${recordId}`);
-    const previousValue = dropdown.dataset.previousValue || '';
-    const previousLabel = dropdown.dataset.previousLabel || 'No issues';
-    if (modal) {
-        modal.dataset.followupActive = 'true';
-        modal.dataset.followupRawId = String(rawId);
-        modal.dataset.followupPreviousValue = previousValue;
-        modal.dataset.followupPreviousLabel = previousLabel;
-    }
+    const cancelBtn = document.getElementById(`cancel-row-review-${recordId}`);
 
-    if (notesField) {
-        notesField.focus();
-        notesField.setSelectionRange(notesField.value.length, notesField.value.length);
-    }
+    decisionField?.focus();
+    saveBtn?.addEventListener('click', async function() {
+        if (saveBtn.disabled) return;
 
-    if (notesRequirement) {
-        notesRequirement.style.display = 'block';
-    }
+        const reviewerName = requireReviewModalReviewerName(modal);
+        if (!reviewerName) return;
 
-    if (saveBtn) {
-        saveBtn.addEventListener('click', async function() {
-            if (saveBtn.disabled) {
-                return;
+        const decision = decisionField?.value || '';
+        const notes = (notesField?.value || '').trim();
+        const requiresNotes = decision === 'needs_follow_up'
+            ? !notes
+            : decision === 'accept_as_is' && getRowIssuesData(row).length > 0 && !notes;
+        if (requiresNotes) {
+            if (notesRequirement) {
+                notesRequirement.textContent = decision === 'needs_follow_up'
+                    ? 'Notes required for Follow-up decision'
+                    : 'Reason / notes required for Accept as-is when validation issues exist';
+                notesRequirement.style.display = 'block';
             }
-            const requestToken = modal?.dataset.requestToken || '';
-            const notes = (notesField?.value || '').trim();
-            if (!notes) {
-                if (notesRequirement) {
-                    notesRequirement.style.display = 'block';
-                }
-                if (notesField) {
-                    notesField.focus();
-                }
-                alert('Notes are required when Needs follow-up is selected');
-                return;
-            }
-
-            saveBtn.disabled = true;
-            saveBtn.textContent = 'Saving...';
-
-            try {
-                const response = await fetch(`/imports/${batchId}/row-decision`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        raw_import_row_id: rawId,
-                        decision: 'needs_follow_up',
-                        notes: notes,
-                        interaction_sequence: rowDecisionRequest.sequence,
-                    }),
-                    signal: rowDecisionRequest.controller.signal,
-                });
-
-                if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
-                    return;
-                }
-
-                if (response.ok) {
-                    const result = await response.json();
-                    const tableDropdown = document.querySelector(`.row-status-dropdown[data-raw-id="${rawId}"]`);
-                    if (tableDropdown) {
-                        const firstOption = tableDropdown.querySelector('option:first-child');
-                        if (firstOption) {
-                            firstOption.textContent = result.row_status || 'Needs follow-up';
-                        }
-                        tableDropdown.value = 'needs_follow_up';
-                        tableDropdown.style.backgroundColor = '#fef3c7';
-                        tableDropdown.setAttribute('data-has-decision', 'true');
-                        const resetOption = tableDropdown.querySelector('.reset-option');
-                        if (resetOption) {
-                            resetOption.style.display = 'block';
-                        }
-                        tableDropdown.dataset.previousValue = 'needs_follow_up';
-                        tableDropdown.dataset.previousLabel = result.row_status || 'Needs follow-up';
-                    }
-
-                    const isCurrentModal = !!modal && modal.dataset.requestToken === requestToken;
-                    if (isCurrentModal) {
-                        modal.dataset.followupActive = 'false';
-                        modal.dataset.followupRawId = '';
-                        modal.dataset.followupPreviousValue = '';
-                        modal.dataset.followupPreviousLabel = '';
-                        if (notesRequirement) {
-                            notesRequirement.style.display = 'none';
-                        }
-                        closeModal('record-modal');
-                    }
-                    clearRowDecisionRequest(rawId, rowDecisionRequest.token);
-                    alert('Status recorded successfully');
-                } else {
-                    if (modal && modal.dataset.requestToken === requestToken) {
-                        saveBtn.disabled = false;
-                        saveBtn.textContent = 'Save Follow-up';
-                    }
-                    const error = await response.json();
-                    clearRowDecisionRequest(rawId, rowDecisionRequest.token);
-                    alert('Error: ' + (error.error || 'Failed to record decision'));
-                }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    return;
-                }
-                if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
-                    return;
-                }
-                if (modal && modal.dataset.requestToken === requestToken) {
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Save Follow-up';
-                }
-                clearRowDecisionRequest(rawId, rowDecisionRequest.token);
-                alert('Error: ' + error.message);
-            }
-        });
-    }
-
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', function() {
-            closeFollowUpNotesModal({
-                dropdown,
-                previousValue,
-                previousLabel,
-            });
-        });
-    }
-}
-
-// Row Status Decision Dropdown
-document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
-    dropdown.addEventListener('focus', function() {
-        const firstOption = this.querySelector('option:first-child');
-        this.dataset.previousValue = this.value || '';
-        this.dataset.previousLabel = firstOption?.textContent?.trim() || 'No issues';
-    });
-
-    dropdown.addEventListener('change', async function(e) {
-        const decision = this.value;
-        const rawId = parseInt(this.getAttribute('data-raw-id'));
-        const row = this.closest('tr');
-
-        if (!decision) {
-            // Reset dropdown
-            this.value = '';
+            notesField?.focus();
             return;
         }
+        if (notesRequirement) notesRequirement.style.display = 'none';
 
-        // Handle "Return to system status" with confirmation
-        if (decision === 'return_to_system') {
-            const confirmMessage = 'This will remove the reviewer\'s decision and show the current system status for this row. Raw data and issues will not be changed.\n\nContinue?';
-            if (!confirm(confirmMessage)) {
-                this.value = '';
-                return;
-            }
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        const rowDecisionRequest = beginRowDecisionRequest(rawId);
 
-            // Send clear_decision to backend (which is what return_to_system means)
-            const rowDecisionRequest = beginRowDecisionRequest(rawId);
-            try {
-                const response = await fetch(`/imports/${batchId}/row-decision`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        raw_import_row_id: rawId,
-                        decision: 'clear_decision',
-                        interaction_sequence: rowDecisionRequest.sequence,
-                    }),
-                    signal: rowDecisionRequest.controller.signal,
-                });
-
-                if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
-                    return;
-                }
-
-                if (response.ok) {
-                    const result = await response.json();
-
-                    // Update dropdown - reset to show system status (preserve dropdown, update first option)
-                    const firstOption = this.querySelector('option:first-child');
-                    if (firstOption) {
-                        firstOption.textContent = result.row_status || 'No issues';
-                    }
-                    this.value = '';
-                    this.style.backgroundColor = 'white';
-                    this.setAttribute('data-has-decision', 'false');
-
-                    // Hide reset option now that decision is cleared
-                    const resetOption = this.querySelector('.reset-option');
-                    if (resetOption) {
-                        resetOption.style.display = 'none';
-                    }
-
-                    // Show success message
-                    clearRowDecisionRequest(rawId, rowDecisionRequest.token);
-                    alert('Reviewer decision removed. Row status now reflects system status.');
-                    console.log(`Row ${rawId} decision cleared`);
-                } else {
-                    const error = await response.json();
-                    clearRowDecisionRequest(rawId, rowDecisionRequest.token);
-                    alert('Error: ' + (error.error || 'Failed to clear decision'));
-                    this.value = '';
-                }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    return;
-                }
-                clearRowDecisionRequest(rawId, rowDecisionRequest.token);
-                alert('Error: ' + error.message);
-                this.value = '';
-            }
-            return;
-        }
-
-        // Handle "Needs follow-up" - open notes modal
-        if (decision === 'needs_follow_up') {
-            const recordId = row.getAttribute('data-record-id');
-            const rowDecisionRequest = beginRowDecisionRequest(rawId);
-            await openFollowUpNotesModal(recordId, this, rowDecisionRequest);
-            return;
-        }
-
-        // For other decisions, record immediately
         try {
-            const rowDecisionRequest = beginRowDecisionRequest(rawId);
             const response = await fetch(`/imports/${batchId}/row-decision`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     raw_import_row_id: rawId,
                     decision: decision,
+                    notes: notes || null,
+                    reviewer_name: reviewerName,
                     interaction_sequence: rowDecisionRequest.sequence,
                 }),
                 signal: rowDecisionRequest.controller.signal,
             });
 
-            if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
-                return;
-            }
+            if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) return;
 
             if (response.ok) {
                 const result = await response.json();
-
-                // Update dropdown to show selected decision (preserve dropdown, update first option)
-                const firstOption = this.querySelector('option:first-child');
-                if (firstOption) {
-                    firstOption.textContent = result.decision.replace(/_/g, ' ');
-                }
-                this.value = decision;
-
-                // Add visual indicator for human dispositions
-                this.style.backgroundColor = '#fef3c7';
-                this.setAttribute('data-has-decision', 'true');
-
-                // Show reset option now that a decision exists
-                const resetOption = this.querySelector('.reset-option');
-                if (resetOption) {
-                    resetOption.style.display = 'block';
-                }
-
+                applySavedRowDecision(dropdown, result, decision, notes);
                 clearRowDecisionRequest(rawId, rowDecisionRequest.token);
-                console.log(`Row ${rawId} decision recorded: ${decision}`);
+                modal.dataset.reviewActive = 'false';
+                modal.dataset.reviewRawId = '';
+                modal.dataset.reviewPreviousValue = '';
+                modal.dataset.reviewPreviousLabel = '';
+                closeModal('record-modal');
+                alert('Review saved.');
             } else {
                 const error = await response.json();
                 clearRowDecisionRequest(rawId, rowDecisionRequest.token);
-                alert('Error: ' + (error.error || 'Failed to record decision'));
-                this.value = '';
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save';
+                alert('Error: ' + (error.error || 'Failed to save review'));
             }
         } catch (error) {
-            if (error.name === 'AbortError') {
-                return;
-            }
-            if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) {
-                return;
-            }
+            if (error.name === 'AbortError') return;
+            if (!isCurrentRowDecisionRequest(rawId, rowDecisionRequest.token)) return;
             clearRowDecisionRequest(rawId, rowDecisionRequest.token);
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
             alert('Error: ' + error.message);
-            this.value = '';
         }
+    });
+
+    cancelBtn?.addEventListener('click', function() {
+        closeRowReviewModal({
+            dropdown,
+            previousValue,
+            previousLabel,
+        });
+    });
+}
+
+// Reviewer disposition dropdown
+document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
+    dropdown.addEventListener('focus', function() {
+        this.dataset.previousValue = this.value || '';
+        this.dataset.previousLabel = getRowStatusLabel(this.closest('tr')) || 'No issues';
+    });
+
+    dropdown.addEventListener('change', async function() {
+        const requestedDecision = this.value;
+        const rawId = parseInt(this.getAttribute('data-raw-id'));
+        const row = this.closest('tr');
+        if (!requestedDecision || !row) {
+            this.value = this.dataset.currentDecision || '';
+            return;
+        }
+
+        if (requestedDecision === 'return_to_system' && !confirm(
+            'This will remove the reviewer decision and show the current system status for this row. Raw data and issues will not be changed.\\n\\nContinue?'
+        )) {
+            this.value = this.dataset.currentDecision || '';
+            return;
+        }
+
+        if (requestedDecision === 'accept_as_is'
+            && this.dataset.hasDecision !== 'true'
+            && getRowStatusLabel(row) === 'No issues') {
+            this.dataset.systemDisposition = 'true';
+            this.value = 'accept_as_is';
+            return;
+        }
+
+        await openRowReviewModal(
+            row.getAttribute('data-record-id'),
+            this,
+            requestedDecision === 'return_to_system' ? 'clear_decision' : requestedDecision
+        );
     });
 });
 
+document.querySelectorAll('.edit-row-review').forEach(button => {
+    button.addEventListener('click', async function() {
+        const dropdown = this.closest('.row-status-cell')?.querySelector('.row-status-dropdown');
+        if (!dropdown) return;
+        await openRowReviewModal(this.getAttribute('data-record-id'), dropdown, dropdown.dataset.currentDecision || dropdown.value);
+    });
+});
 // Details modal for row inspection
 document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
     link.addEventListener('click', async function(e) {
@@ -1812,14 +1927,15 @@ async function confirmApprovalWithOverrides(remainingIssues) {
                     row.setAttribute('data-row-status', 'Overridden');
                     row.style.backgroundColor = '#eef2ff';
 
-                    // Update Row Status dropdown (preserve dropdown, update display)
+                    // Update read-only validation status (preserve reviewer disposition)
                     const dropdown = row.querySelector('.row-status-dropdown');
                     if (dropdown) {
-                        const firstOption = dropdown.querySelector('option:first-child');
-                        if (firstOption) {
-                            firstOption.textContent = 'Overridden';
+                        const statusLabel = row.querySelector('.validation-status-label');
+                        if (statusLabel) {
+                            statusLabel.textContent = 'Overridden';
                         }
-                        dropdown.value = '';
+                        row.setAttribute('data-row-status', 'Overridden');
+                        dropdown.value = dropdown.dataset.currentDecision || '';
                         dropdown.style.backgroundColor = '#e0e7ff';
                     }
 

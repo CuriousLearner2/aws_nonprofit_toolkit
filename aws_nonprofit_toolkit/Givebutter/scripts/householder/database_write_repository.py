@@ -10,7 +10,15 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
-from .database_models import Base, ImportBatch, ReviewItem, ReviewDecision, AuditLogRecord
+from .database_models import (
+    Base,
+    ImportBatch,
+    ImportContact,
+    ReviewItem,
+    ReviewDecision,
+    ReviewItemSubject,
+    AuditLogRecord,
+)
 from .write_repository_contracts import (
     ValidationDecisionResult, ValidationDecisionWriter,
     NormalizationDecisionResult, NormalizationDecisionWriter,
@@ -114,9 +122,22 @@ class DatabaseValidationDecisionWriter:
                 stored_values['notes'] = notes
             final_reviewed_values = stored_values if stored_values else None
 
+            # Validation corrections are applied by row-level recalculation.
+            # Persist the linked raw row so those corrections are visible after
+            # a fresh application/database read.
+            subject = session.query(ReviewItemSubject).filter_by(
+                review_item_id=review_item_id,
+                subject_type='import_contact_snapshot',
+            ).first()
+            raw_import_row_id = None
+            if subject:
+                contact = session.query(ImportContact).filter_by(id=subject.subject_id).first()
+                raw_import_row_id = contact.raw_import_row_id if contact else None
+
             decision_record = ReviewDecision(
                 batch_id=batch_id,
                 review_item_id=review_item_id,
+                raw_import_row_id=raw_import_row_id,
                 decision=decision,
                 reviewed_values=final_reviewed_values,
                 reviewer=reviewer,

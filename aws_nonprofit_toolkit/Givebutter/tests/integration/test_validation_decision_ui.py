@@ -50,6 +50,8 @@ def flask_client_with_validation_items(temp_db, monkeypatch):
     database_url, engine = temp_db
 
     app.config['TESTING'] = True
+    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', database_url)
 
     # IMPORTANT: Configure environment for database mode
     # This ensures all services use the test database
@@ -164,8 +166,9 @@ class TestValidationDecisionUI:
         html = response.data.decode('utf-8')
 
         assert 'data-testid="validation-scope-banner"' in html
-        assert 'data-dynamic-fields="amount,email,phone,address"' in html
-        assert 'data-import-stage-fields="date"' in html
+        assert 'data-dynamic-fields="name,email,phone,date,amount,address"' in html
+        assert 'Live review checks run for name, email, phone, date, amount, and address edits. Invalid name, email, phone, date, and amount values are rejected; address problems are surfaced as warnings. Campaign fields are not dynamically revalidated on this screen.' in html
+        assert 'data-import-stage-fields=' not in html
         assert 'data-unsupported-fields="campaign"' in html
 
     def test_validation_page_shows_issue_severity_legend(self, flask_client_with_validation_items):
@@ -182,7 +185,7 @@ class TestValidationDecisionUI:
         assert 'Issue colors:' in html
         assert 'Blocking issues' in html
         assert 'Warnings' in html
-        assert 'Row Status' in html
+        assert 'Validation status' in html
 
     def test_approval_modal_explains_blocking_vs_warning(self, flask_client_with_validation_items):
         """Approval modal explains that blocking issues require override confirmation."""
@@ -205,7 +208,7 @@ class TestValidationDecisionUI:
         html = response.data.decode('utf-8')
 
         # Check for Row Status column header and values
-        assert 'Row Status' in html
+        assert 'Validation status' in html
         # Should show derived row status values
         assert 'No issues' in html or 'Warning' in html or 'Blocking' in html
 
@@ -297,7 +300,7 @@ class TestValidationDecisionUI:
         html = response.data.decode('utf-8')
 
         # Should show Row Status column with derived status values
-        assert 'Row Status' in html
+        assert 'Validation status' in html
         assert 'No issues' in html or 'Warning' in html or 'Blocking' in html
 
     def test_accepted_decision_shows_accepted_status(self, flask_client_with_validation_items):

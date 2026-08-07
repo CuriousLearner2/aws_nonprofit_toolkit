@@ -17,10 +17,11 @@ from .database_models import (
     ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewItemSubject
 )
 from .effective_value_resolution import get_effective_values
+from .autosave_service import validate_name_correction
 from .amount_validation_service import validate_review_amount
 from .email_validation_service import validate_review_email
 from .date_validation_service import validate_review_date
-from .phone_validation_service import is_valid_phone
+from .phone_validation_service import is_valid_phone, validate_review_phone
 from .issue_identity import normalize_validation_issue_field
 from .issue_reconciliation import reconcile_missing_address_issues
 from .recalculation_input_policy import (
@@ -124,9 +125,11 @@ def recalculate_row_issues(
             get_effective_values(batch_id, raw_import_row_id, database_url),
             proposed_values,
         )
-
         # Get raw data for comparison
-        raw_data = raw_row.raw_csv_data or {}
+        raw_data = {
+            normalize_validation_issue_field(key) or key: value
+            for key, value in (raw_row.raw_csv_data or {}).items()
+        }
         contact = session.query(ImportContact).filter_by(
             batch_id=batch_id,
             raw_import_row_id=raw_import_row_id,
@@ -141,7 +144,10 @@ def recalculate_row_issues(
             ReviewItem.batch_id == batch_id,
             ReviewItem.item_type == 'validation',
             ReviewItemSubject.subject_type.in_(['import_raw_row', 'import_contact_snapshot']),
-            ReviewItemSubject.subject_id == raw_import_row_id
+            ReviewItemSubject.subject_id.in_([
+                raw_import_row_id,
+                contact.id if contact else raw_import_row_id,
+            ])
         ).all()
 
         # For each existing issue, check if it's still valid given the effective values
@@ -151,7 +157,9 @@ def recalculate_row_issues(
             payload = issue.payload_json or {}
             issue_field = payload.get('field')  # e.g., 'email'
             issue_reason = payload.get('reason')  # e.g., 'possible_typo'
-            severity = payload.get('severity', 'warning')
+            severity = payload.get('severity') or (
+                'error' if payload.get('validation_tier') == 'FAIL' else 'warning'
+            )
             normalized_field = normalize_validation_issue_field(issue_field)
 
             # Get the corrected value for this field (if any)
@@ -162,6 +170,28 @@ def recalculate_row_issues(
                 effective_value = effective_values.get(normalized_field)
                 raw_value = raw_data.get(normalized_field)
 
+            # Generic imported issues do not carry a usable reason. Reconcile
+            # them against the canonical field validator before projecting them.
+            description = None
+            generic_description = (
+                not payload.get('description') and not issue_reason
+            ) or _is_generic_field_issue(
+                str(payload.get('description') or payload.get('reason') or ''),
+                normalized_field or issue_field,
+            )
+            if generic_description:
+                specific_description = _specific_issue_description(
+                    normalized_field,
+                    effective_value,
+                )
+                if specific_description is None:
+                    continue
+                description = specific_description
+                if not issue_reason:
+                    issue_reason = 'format'
+                if normalized_field == 'address':
+                    severity = 'warning'
+
             # Check if issue is still valid with the effective value
             # Logic: if a correction was made to the field, we assume the issue is resolved
 
@@ -170,7 +200,8 @@ def recalculate_row_issues(
                 continue
             else:
                 # Issue remains unresolved
-                description = payload.get('description', f"Issue with {issue_field}")
+                if description is None:
+                    description = payload.get('description', f"Issue with {issue_field}")
 
             # Add suggestion if it's a common typo domain
             if issue_field == 'email' and issue_reason in ('typo', 'possible_typo', 'format'):
@@ -181,7 +212,7 @@ def recalculate_row_issues(
             current_issues.append({
                 'issue_id': issue.id,
                 'issue_type': issue.item_type,
-                'field': issue_field,
+                'field': normalized_field or issue_field,
                 'reason': issue_reason,
                 'source': payload.get('source'),
                 'description': description,
@@ -265,10 +296,90 @@ def recalculate_row_issues(
             new_address_issues,
         )
 
-        return current_issues
+        projected = _suppress_redundant_generic_issues(current_issues, effective_values)
+        deduped = []
+        seen_address_warnings = set()
+        for issue in projected:
+            if (
+                normalize_validation_issue_field(issue.get('field')) == 'address'
+                and str(issue.get('severity')).lower() == 'warning'
+            ):
+                key = (
+                    str(issue.get('description') or issue.get('message') or '').strip().lower(),
+                )
+                if key in seen_address_warnings:
+                    continue
+                seen_address_warnings.add(key)
+            deduped.append(issue)
+        return deduped
 
     finally:
         session.close()
+
+
+def _specific_issue_description(field: Optional[str], value: Any) -> Optional[str]:
+    """Return a validator reason, or None when the current value is valid."""
+    if field == 'phone':
+        result = validate_review_phone(value, allow_blank=False, default_region='US')
+        return result.blocking_error if not result.valid else None
+    if field == 'email':
+        result = validate_review_email(value, allow_blank=False)
+        if not result.valid:
+            return result.blocking_error or 'Invalid email format'
+        return result.warnings[0] if result.warnings else None
+    if field == 'date':
+        result = validate_review_date(value, allow_blank=False)
+        return result.blocking_error if not result.valid else None
+    if field == 'amount':
+        result = validate_review_amount(value, allow_blank=False)
+        return result.blocking_error if not result.valid else None
+    if field == 'name':
+        return validate_name_correction(value)
+    if field == 'address':
+        issue = _validate_address('' if value is None else str(value).strip())
+        return issue.get('description') if issue else None
+    return None
+
+
+def _suppress_redundant_generic_issues(
+    issues: List[Dict[str, Any]],
+    effective_values: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Drop a generic field issue when a specific issue covers the same value."""
+    specific_keys = set()
+    for issue in issues:
+        field = normalize_validation_issue_field(issue.get('field')) or str(issue.get('field') or '').strip().lower()
+        severity = str(issue.get('severity') or '').strip().lower()
+        description = str(issue.get('description') or issue.get('message') or issue.get('reason') or '').strip()
+        if field and severity and description and not _is_generic_field_issue(description, field):
+            specific_keys.add((field, severity, _issue_value_key(effective_values, field)))
+
+    filtered = []
+    seen_exact = set()
+    for issue in issues:
+        field = normalize_validation_issue_field(issue.get('field')) or str(issue.get('field') or '').strip().lower()
+        severity = str(issue.get('severity') or '').strip().lower()
+        description = str(issue.get('description') or issue.get('message') or issue.get('reason') or '').strip()
+        key = (field, severity, _issue_value_key(effective_values, field))
+        if _is_generic_field_issue(description, field) and key in specific_keys:
+            continue
+        exact_key = (field, severity, _issue_value_key(effective_values, field), description.casefold())
+        if exact_key in seen_exact:
+            continue
+        seen_exact.add(exact_key)
+        filtered.append(issue)
+    return filtered
+
+
+def _issue_value_key(values: Dict[str, Any], field: str) -> str:
+    value = value_for_validation_field(values, field)
+    return str(value).strip() if value is not None else ''
+
+
+def _is_generic_field_issue(description: str, field: str) -> bool:
+    normalized_description = re.sub(r'[_\-]+', ' ', description).strip().casefold()
+    normalized_field = re.sub(r'[_\-]+', ' ', field).strip().casefold()
+    return normalized_description == f'issue with {normalized_field}'
 
 
 def is_issue_resolved(
@@ -302,6 +413,26 @@ def is_issue_resolved(
     if issue_reason == 'missing':
         # Issue resolved if now non-empty
         return bool(effective_str)
+
+    if field == 'name':
+        if validate_name_correction(effective_value):
+            return False
+        if raw_value is None:
+            return False
+        raw_str = str(raw_value).strip() if raw_value else ''
+        return bool(effective_str) and effective_str != raw_str
+
+    if field == 'phone':
+        if not is_valid_phone(effective_str) or raw_value is None:
+            return False
+        raw_str = str(raw_value).strip() if raw_value else ''
+        return bool(effective_str) and effective_str != raw_str
+
+    if field == 'date':
+        if not validate_review_date(effective_str, allow_blank=True).valid or raw_value is None:
+            return False
+        raw_str = str(raw_value).strip() if raw_value else ''
+        return bool(effective_str) and effective_str != raw_str
 
     if field == 'email':
         email_result = validate_review_email(effective_str, allow_blank=False)
@@ -384,6 +515,17 @@ def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[st
                 'description': date_issue.blocking_error or 'Invalid date format',
                 'severity': 'error',
                 'is_new': True
+            })
+
+    # Validate name if present; reviewed names must be non-empty and 2-100 chars.
+    if 'name' in effective_values:
+        name_error = validate_name_correction(effective_values.get('name'))
+        if name_error:
+            issues.append({
+                'field': 'name',
+                'description': name_error,
+                'severity': 'error',
+                'is_new': True,
             })
 
     # Validate email if present. Use the canonical helper so raw-only rows and
@@ -508,7 +650,7 @@ def _validate_address(address: str) -> Optional[Dict[str, Any]]:
     require ZIP, city, or state completeness on this screen, but it should not
     silently treat malformed city/state fragments as clean addresses.
     """
-    if not address or not str(address).strip():
+    if address is None or str(address).strip().casefold() in {'', 'nan', 'none', 'null'}:
         return {
             'field': 'address',
             'reason': 'missing',

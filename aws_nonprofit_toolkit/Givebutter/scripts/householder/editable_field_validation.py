@@ -6,6 +6,19 @@ from collections.abc import Mapping
 from typing import Any, Optional
 
 
+def validate_name_correction(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return "Invalid name format"
+    text = value.strip()
+    if not text:
+        return "Invalid name format"
+    if len(text) < 2:
+        return "Name is too short"
+    if len(text) > 100:
+        return "Name is too long"
+    return None
+
+
 def validate_editable_field_values(
     corrected_values: Mapping[str, Any],
 ) -> tuple[bool, Optional[dict[str, str]]]:
@@ -47,8 +60,9 @@ def validate_editable_field_values(
             continue
 
         if field == "name":
-            if not isinstance(value, str) or not value.strip():
-                errors["name"] = "Invalid name format"
+            name_error = validate_name_correction(value)
+            if name_error:
+                errors["name"] = name_error
             continue
 
         if field == "address":

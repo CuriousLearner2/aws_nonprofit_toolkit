@@ -255,7 +255,7 @@ def check_batch_remaining_issues(
     """
     from .row_status_service import derive_row_status
     from .issue_recalculation_service import recalculate_row_issues
-    from .row_decision_service import get_rows_with_follow_up, get_rows_with_defer
+    from .row_decision_service import get_rows_with_follow_up, get_rows_with_defer, get_row_decision_state
 
     if database_url is None:
         database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
@@ -278,6 +278,7 @@ def check_batch_remaining_issues(
 
         issues_by_row = {}
         status_by_row = {}
+        disposition_by_row = {}
         for row in rows:
             issues_by_row[row.id] = recalculate_row_issues(
                 batch_id=batch_id,
@@ -289,14 +290,41 @@ def check_batch_remaining_issues(
                 raw_import_row_id=row.id,
                 database_url=database_url
             )
+            disposition_by_row[row.id] = get_row_decision_state(
+                batch_id=batch_id,
+                raw_import_row_id=row.id,
+                database_url=database_url,
+            ).get('has_decision', False)
 
-        return project_remaining_issues(
+        projected = project_remaining_issues(
             rows=rows,
             issues_by_row=issues_by_row,
             status_by_row=status_by_row,
             follow_up_rows=follow_up_rows,
             defer_rows=defer_rows,
         )
+        projected = [
+            entry for entry in projected
+            if not disposition_by_row.get(entry['raw_import_row_id'], False)
+        ]
+        for row in rows:
+            if issues_by_row[row.id] and not disposition_by_row[row.id]:
+                existing = next(
+                    (entry for entry in projected if entry['raw_import_row_id'] == row.id),
+                    None,
+                )
+                if existing is None:
+                    projected.append({
+                        'raw_import_row_id': row.id,
+                        'row_index': row.row_index,
+                        'issues': issues_by_row[row.id],
+                        'row_status': status_by_row[row.id],
+                        'decision_warning': 'disposition_required',
+                    })
+                else:
+                    existing['issues'] = issues_by_row[row.id]
+                    existing['decision_warning'] = 'disposition_required'
+        return sorted(projected, key=lambda entry: entry['row_index'])
 
     finally:
         session.close()

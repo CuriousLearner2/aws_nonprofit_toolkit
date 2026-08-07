@@ -53,6 +53,8 @@ def flask_client_with_rows(temp_db, monkeypatch):
     database_url, engine = temp_db
 
     app.config['TESTING'] = True
+    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', database_url)
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
 
     # Seed database
@@ -173,6 +175,7 @@ class TestRowDecisionReset:
             json={
                 'raw_import_row_id': raw_id,
                 'decision': 'clear_decision',
+                'reviewer_name': 'Reset Reviewer',
                 'interaction_sequence': 2,
             }
         )

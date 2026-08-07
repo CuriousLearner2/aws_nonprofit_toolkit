@@ -374,7 +374,8 @@ class DatabaseImportRepository:
                 raw_row = session.query(RawImportRow).filter_by(id=contact.raw_import_row_id).first()
                 raw_csv_data = raw_row.raw_csv_data if raw_row else {}
                 transaction_id = (
-                    raw_csv_data.get('transaction_id')
+                    raw_csv_data.get('Transaction ID')
+                    or raw_csv_data.get('transaction_id')
                     or raw_csv_data.get('Donation ID')
                     or raw_csv_data.get('donation_id')
                     or ''
@@ -425,7 +426,9 @@ class DatabaseImportRepository:
                     if amount_result.valid and amount_result.normalized_value:
                         try:
                             amount_val = Decimal(amount_result.normalized_value)
-                            amount_str = f'${amount_val:,.2f}'
+                            # Reviewed amounts are already canonicalized by autosave;
+                            # keep the read model aligned with preview and CSV.
+                            amount_str = f'{amount_val:.2f}'
                         except (InvalidOperation, ValueError):
                             amount_str = str(effective_amount)
                     else:

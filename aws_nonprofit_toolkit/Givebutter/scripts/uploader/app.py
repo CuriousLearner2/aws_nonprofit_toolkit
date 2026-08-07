@@ -1749,6 +1749,7 @@ def record_row_decision(import_id):
         'raw_import_row_id': int,
         'decision': 'accept_as_is' | 'needs_follow_up' | 'defer' | 'reject_row' | 'clear_decision',
         'notes': str (required for 'needs_follow_up', optional for 'defer')
+        'reviewer_name': str (required for every saved review event)
     }
 
     Returns:
@@ -1767,7 +1768,8 @@ def record_row_decision(import_id):
     decision = data.get('decision', '').strip()
     notes = data.get('notes', '').strip() if data.get('notes') else None
     interaction_sequence = data.get('interaction_sequence')
-    reviewer = request.headers.get('X-Reviewer-ID')
+    reviewer_name = data.get('reviewer_name')
+    reviewer_name = reviewer_name.strip() if isinstance(reviewer_name, str) else ''
     database_url = _get_runtime_database_url()
 
     if not raw_import_row_id:
@@ -1775,6 +1777,9 @@ def record_row_decision(import_id):
 
     if not decision:
         return jsonify({'error': 'decision required'}), 400
+
+    if not reviewer_name:
+        return jsonify({'error': 'Reviewer name is required', 'success': False}), 400
 
     if interaction_sequence is None:
         return jsonify({
@@ -1813,7 +1818,7 @@ def record_row_decision(import_id):
             decision=decision,
             notes=notes,
             interaction_sequence=interaction_sequence,
-            reviewer=reviewer,
+            reviewer_name=reviewer_name,
             database_url=database_url,
         )
         logger.info(f"Row {raw_import_row_id} decision recorded: {decision}")

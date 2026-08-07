@@ -553,8 +553,10 @@ def ingest_processed_csv(
                             payload_json={
                                 "field": field_name,
                                 "issue": issue_description,
+                                "reason": "format" if field_name.strip().lower() == "amount" else None,
                                 "suggestion": suggestion,
                                 "validation_tier": validation_tier,
+                                "severity": "error" if validation_tier == "FAIL" else "warning",
                             },
                         )
                         session.add(validation_item)

@@ -23,6 +23,7 @@ from .amount_validation_service import validate_review_amount
 from .date_validation_service import validate_review_date
 from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
+from .issue_recalculation_service import recalculate_row_issues
 from .service_contracts import ExportRow, ExportPreviewResult
 from .export_preview_policy import validation_issue_field, validation_issue_type
 
@@ -129,6 +130,7 @@ def build_export_preview(
         # Map normalization items to their linked contact IDs via ReviewItemSubject
         # This ensures a normalization is applied only to the contact it belongs to
         normalization_to_contacts = {}
+        validation_to_contacts = {}
         for subject in session.query(ReviewItemSubject).filter(
             ReviewItemSubject.subject_type == 'import_contact_snapshot'
         ).all():
@@ -137,6 +139,8 @@ def build_export_preview(
                 if subject.review_item_id not in normalization_to_contacts:
                     normalization_to_contacts[subject.review_item_id] = set()
                 normalization_to_contacts[subject.review_item_id].add(subject.subject_id)
+            elif item and item.item_type == 'validation':
+                validation_to_contacts.setdefault(subject.review_item_id, set()).add(subject.subject_id)
 
         # Query all decisions by type
         validation_decisions = {}
@@ -144,6 +148,7 @@ def build_export_preview(
         duplicate_decisions = {}
         household_decisions = {}
         row_level_autosave_decisions = {}
+        row_human_dispositions = {}
 
         for decision in session.query(ReviewDecision).filter_by(
             batch_id=import_id
@@ -151,6 +156,12 @@ def build_export_preview(
             # Handle row-level autosave decisions (review_item_id=None)
             if decision.review_item_id is None:
                 raw_row_id = decision.raw_import_row_id
+                if decision.decision.startswith('row_status:'):
+                    disposition = decision.decision.replace('row_status:', '', 1)
+                    row_human_dispositions[raw_row_id] = (
+                        None if disposition == 'clear_decision' else disposition
+                    )
+                    continue
                 if raw_row_id not in row_level_autosave_decisions:
                     row_level_autosave_decisions[raw_row_id] = {}
                 # Merge all reviewed_values for this row (later decisions override earlier)
@@ -246,6 +257,8 @@ def build_export_preview(
                 batch,
                 contact.raw_import_row_id,
             )
+            row_human_disposition = row_human_dispositions.get(contact.raw_import_row_id)
+            row_has_unresolved_validation = False
 
             # Start with original snapshot values
             raw_row = raw_rows.get(contact.raw_import_row_id)
@@ -290,6 +303,22 @@ def build_export_preview(
             row_autosave_values = row_level_autosave_decisions.get(contact.raw_import_row_id)
             if row_autosave_values:
                 field_values.update(row_autosave_values)
+                if 'address' in row_autosave_values:
+                    field_values['address_line1'] = row_autosave_values['address']
+                if 'name' in row_autosave_values:
+                    name_parts = str(row_autosave_values['name'] or '').strip().split(None, 1)
+                    field_values['first_name'] = name_parts[0] if name_parts else ''
+                    field_values['last_name'] = name_parts[1] if len(name_parts) > 1 else ''
+
+            # Apply accepted validation corrections only to the contact linked
+            # to that validation item.
+            for val_item_id, val_decision in validation_decisions.items():
+                if contact.id not in validation_to_contacts.get(val_item_id, set()):
+                    continue
+                if val_decision.decision == 'accept_issue' and val_decision.reviewed_values:
+                    for field_key in field_values.keys():
+                        if field_key in val_decision.reviewed_values:
+                            field_values[field_key] = val_decision.reviewed_values[field_key]
 
             reviewed_date = row_autosave_values.get('date') if row_autosave_values and 'date' in row_autosave_values else raw_date
             date_validation = validate_review_date(reviewed_date, allow_blank=True)
@@ -403,7 +432,8 @@ def build_export_preview(
             for val_item in review_items.values():
                 if val_item.item_type != 'validation' or val_item.batch_id != import_id:
                     continue
-
+                if contact.id not in validation_to_contacts.get(val_item.id, set()):
+                    continue
                 val_decision = validation_decisions.get(val_item.id)
                 payload = val_item.payload_json or {}
                 if isinstance(payload, str):
@@ -424,6 +454,7 @@ def build_export_preview(
                     elif val_decision.decision == 'defer':
                         validation_status = 'deferred'
                         row_warnings.append(f"Validation issue unresolved: {issue_type}")
+                        row_has_unresolved_validation = True
                 else:
                     issue_type_lower = str(issue_type).lower() if issue_type else ''
                     raw_value_lookup = {
@@ -431,15 +462,22 @@ def build_export_preview(
                         'amount': raw_amount,
                         'email': raw_email,
                         'phone': raw_phone,
+                        'address': raw_row.raw_csv_data.get('Address 1') if raw_row and isinstance(raw_row.raw_csv_data, dict) else None,
                     }
 
-                    if issue_field in raw_value_lookup and is_issue_resolved(
-                        issue_field,
-                        field_values.get(issue_field),
+                    effective_issue_value = field_values.get(resolved_issue_field)
+                    if resolved_issue_field == 'address':
+                        effective_issue_value = field_values.get('address_line1')
+
+                    if resolved_issue_field in raw_value_lookup and is_issue_resolved(
+                        resolved_issue_field,
+                        effective_issue_value,
                         issue_reason or issue_type,
-                        raw_value=raw_value_lookup.get(issue_field),
+                        raw_value=raw_value_lookup.get(resolved_issue_field),
                     ):
                         continue
+
+                    row_has_unresolved_validation = True
 
                     if row_is_approved_with_overrides:
                         continue
@@ -461,18 +499,43 @@ def build_export_preview(
                 row_blockers.append("Unresolved validation: date")
                 validation_issues.append(date_validation_issue)
                 validation_status = 'blocked'
+                row_has_unresolved_validation = True
             if amount_validation_issue and 'amount' not in validation_decision_fields and not row_is_approved_with_overrides:
                 row_blockers.append("Unresolved validation: amount")
                 validation_issues.append(amount_validation_issue)
                 validation_status = 'blocked'
+                row_has_unresolved_validation = True
             if email_validation_issue and 'email' not in validation_decision_fields and not row_is_approved_with_overrides:
                 row_blockers.append("Unresolved validation: email")
                 validation_issues.append(email_validation_issue)
                 validation_status = 'blocked'
+                row_has_unresolved_validation = True
             if phone_validation_issue and 'phone' not in validation_decision_fields and not row_is_approved_with_overrides:
                 row_blockers.append("Unresolved validation: phone")
                 validation_issues.append(phone_validation_issue)
                 validation_status = 'blocked'
+                row_has_unresolved_validation = True
+
+            # Address warnings are synthesized by the shared recalculation
+            # path and are not otherwise part of this preview's field checks.
+            address_issues = recalculate_row_issues(
+                batch_id=import_id,
+                raw_import_row_id=contact.raw_import_row_id,
+                database_url=database_url,
+            )
+            address_corrected = bool(
+                row_autosave_values
+                and any(key in row_autosave_values for key in ('address', 'address_line1'))
+            )
+            if (
+                not address_corrected
+                and any(str(issue.get('field', '')).lower() == 'address' for issue in address_issues)
+            ):
+                row_has_unresolved_validation = True
+                for issue in address_issues:
+                    if str(issue.get('field', '')).lower() == 'address':
+                        description = issue.get('description') or issue.get('message') or 'Address issue'
+                        validation_issues.append(f"Address: {description}")
 
             # Collect duplicate decision affecting this contact
             duplicate_group_id = None
@@ -539,10 +602,24 @@ def build_export_preview(
                 list(row_warnings) + normalization_warnings + duplicate_warnings + household_warnings
             ))
 
+            # A clean row is system-accepted.  Every issue-bearing row needs a
+            # saved human disposition before it can be finalized or exported.
+            # A saved human disposition acknowledges the validation issue; the
+            # issue itself remains visible in the preview row.
+            if row_has_unresolved_validation and not row_human_disposition:
+                row_blockers.append('Reviewer disposition required')
+            elif row_human_disposition:
+                row_blockers = [
+                    blocker for blocker in row_blockers
+                    if not blocker.startswith('Unresolved validation:')
+                ]
+            row_blockers = list(dict.fromkeys(row_blockers))
+
             # Create export row
             export_row = ExportRow(
                 source_row_index=row_index,
                 transaction_id=transaction_id,
+                date=reviewed_date,
                 first_name=field_values.get('first_name'),
                 last_name=field_values.get('last_name'),
                 email=field_values.get('email'),

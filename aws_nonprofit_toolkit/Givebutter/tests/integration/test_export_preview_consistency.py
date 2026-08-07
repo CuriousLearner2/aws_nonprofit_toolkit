@@ -16,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.uploader.app import app
 from scripts.householder.database_models import (
-    Base, ImportBatch, RawImportRow, ImportContact, ReviewItem, ReviewDecision, AuditLogRecord
+    Base, ImportBatch, RawImportRow, ImportContact, ReviewItem, ReviewDecision,
+    ReviewItemSubject, AuditLogRecord
 )
 from scripts.householder.export_preview_service import build_export_preview
 from scripts.householder.export_file_service import generate_export_file, ExportBlockedError
@@ -257,6 +258,7 @@ def test_preview_deferred_counts_match_audit_snapshot(preview_consistency_db):
         amount=100.00,
     )
     session.add(contact)
+    session.flush()
 
     # Create validation review item with deferred decision
     val_item = ReviewItem(
@@ -360,20 +362,38 @@ def test_preview_warning_counts_match_audit_snapshot(preview_consistency_db):
         payload_json={'issue_type': 'missing_phone', 'issue': 'Phone missing'},
     )
     session.add(val_item)
+    session.flush()
+    session.add(ReviewItemSubject(
+        review_item_id=val_item.id,
+        subject_type='import_contact_snapshot',
+        subject_id=contact.id,
+    ))
     session.commit()
 
-    # Build preview
+    # Build preview: the warning blocks until the row has a disposition.
+    blocked_preview = build_export_preview('IMP-WARN-001', config={'GIVEBUTTER_DATABASE_URL': database_url})
+
+    # A warning-bearing row needs a saved reviewer disposition before export.
+    assert blocked_preview.is_export_ready is False, (
+        "Unresolved validation warning must block export until disposition"
+    )
+    assert blocked_preview.warning_count > 0, (
+        f"Expected warning_count > 0, got {blocked_preview.warning_count}"
+    )
+
+    session.add(ReviewDecision(
+        batch_id='IMP-WARN-001',
+        review_item_id=None,
+        raw_import_row_id=row.id,
+        decision='row_status:accept_as_is',
+        reviewed_values={'notes': 'Reviewed warning', 'reviewed_status': 'accept_as_is'},
+        reviewer='test_user',
+    ))
+    session.commit()
     preview = build_export_preview('IMP-WARN-001', config={'GIVEBUTTER_DATABASE_URL': database_url})
+    assert preview.is_export_ready is True
 
-    # Verify preview shows warnings (export_ready=True but has warning_count)
-    assert preview.is_export_ready is True, (
-        "Unresolved validation should not block export, only warn"
-    )
-    assert preview.warning_count > 0, (
-        f"Expected warning_count > 0, got {preview.warning_count}"
-    )
-
-    # Generate export (succeeds despite warnings)
+    # Generate export (succeeds after the warning-bearing row is dispositioned)
     result = generate_export_file(
         import_id='IMP-WARN-001',
         output_dir=export_dir,

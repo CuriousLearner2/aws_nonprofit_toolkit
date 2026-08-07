@@ -72,14 +72,30 @@ def _extract_row_status_decision_state(review_decision):
     )
 
 
+def _serialize_row_decision_history(decisions):
+    history = []
+    for decision in decisions:
+        decision_type, notes, sequence = _extract_row_status_decision_state(decision)
+        history.append({
+            'decision_id': decision.id,
+            'decision': decision_type,
+            'notes': notes,
+            'reviewer': decision.reviewer,
+            'timestamp': decision.created_at.isoformat(),
+            'interaction_sequence': sequence or 0,
+        })
+    return history
+
+
 def record_row_decision(
     batch_id: str,
     raw_import_row_id: int,
     decision: str,
     notes: Optional[str] = None,
     interaction_sequence: Optional[Any] = None,
-    reviewer: Optional[str] = None,
+    reviewer_name: Optional[str] = None,
     database_url: Optional[str] = None,
+    reviewer: Optional[str] = None,
 ) -> dict:
     """
     Record a reviewer's row-level status decision.
@@ -93,7 +109,7 @@ def record_row_decision(
         decision: One of: 'accept_as_is', 'needs_follow_up', 'defer', 'reject_row', 'clear_decision'
         notes: Optional reviewer notes (required for 'needs_follow_up')
         interaction_sequence: Monotonic per-row interaction order number
-        reviewer: Optional reviewer identifier
+        reviewer_name: Required manually entered reviewer name
         database_url: Optional database connection URL
 
     Returns:
@@ -111,6 +127,10 @@ def record_row_decision(
     if not database_url:
         raise ValueError("Row decision requires database configuration")
 
+    # ``reviewer`` remains an internal compatibility alias for existing direct
+    # service callers; the row-decision HTTP flow supplies reviewer_name.
+    normalized_reviewer_name = (reviewer_name if reviewer_name is not None else reviewer or '').strip() or None
+
     # Validate decision type
     valid_decisions = {
         'accept_as_is',
@@ -126,7 +146,7 @@ def record_row_decision(
 
     # Validate notes for follow-up
     if decision == 'needs_follow_up' and not (notes and notes.strip()):
-        raise ValueError("Notes are required when 'Needs follow-up' is selected")
+        raise ValueError('Notes required for Follow-up decision')
 
     normalized_sequence = normalize_interaction_sequence(interaction_sequence)
     use_sequence_guard = normalized_sequence is not None
@@ -155,6 +175,20 @@ def record_row_decision(
             raise ValueError(
                 f"Raw import row {raw_import_row_id} does not belong to batch '{batch_id}'"
             )
+
+        # A human Accept as-is on a row that still has validation issues must
+        # carry an explanation.  Clean rows are system-accepted in the UI and
+        # never reach this persistence path.
+        if decision == 'accept_as_is' and not (notes and notes.strip()):
+            from .issue_recalculation_service import recalculate_row_issues
+            if recalculate_row_issues(
+                batch_id=batch_id,
+                raw_import_row_id=raw_import_row_id,
+                database_url=database_url,
+            ):
+                raise ValueError(
+                    'Reason / notes required for Accept as-is when validation issues exist'
+                )
 
         normalized_notes = normalize_row_decision_notes(notes)
         latest_row_decision = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
@@ -191,6 +225,20 @@ def record_row_decision(
                     }
                 raise ValueError("Row decision interaction_sequence already recorded for this row")
 
+        if latest_decision_type == decision and latest_notes == normalized_notes:
+            from .row_status_service import derive_row_status
+            row_status = derive_row_status(batch_id, raw_import_row_id, database_url)
+            return {
+                'decision_id': latest_row_decision.id if latest_row_decision else None,
+                'decision': decision,
+                'timestamp': latest_row_decision.created_at.isoformat() if latest_row_decision else datetime.now(timezone.utc).isoformat(),
+                'success': True,
+                'message': f'Row decision already recorded: {decision}',
+                'row_status': row_status,
+                'idempotent': True,
+                'interaction_sequence': latest_sequence,
+            }
+
         # Build reviewed_values with decision, notes, and ordering metadata
         reviewed_values = {
             'reviewed_status': decision,
@@ -210,7 +258,7 @@ def record_row_decision(
             raw_import_row_id=raw_import_row_id,
             decision=f'row_status:{decision}',  # Prefix to distinguish from item decisions
             reviewed_values=reviewed_values,
-            reviewer=reviewer
+            reviewer=normalized_reviewer_name
         )
         session.add(row_decision)
         session.flush()
@@ -228,7 +276,7 @@ def record_row_decision(
             batch_id=batch_id,
             action_type='decision_recorded',
             action_timestamp=now,
-            actor=reviewer,
+            actor=normalized_reviewer_name,
             decision_id=row_decision.id,
             details=audit_details,
             created_at=now,
@@ -279,7 +327,17 @@ def get_row_decision_state(
     session = SessionLocal()
 
     try:
-        latest = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
+        row_decisions = (
+            session.query(ReviewDecision)
+            .filter_by(
+                batch_id=batch_id,
+                raw_import_row_id=raw_import_row_id,
+            )
+            .filter(ReviewDecision.decision.like('row_status:%'))
+            .order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc())
+            .all()
+        )
+        latest = row_decisions[0] if row_decisions else None
         if not latest:
             return {
                 'has_decision': False,
@@ -288,6 +346,7 @@ def get_row_decision_state(
                 'timestamp': None,
                 'reviewer': None,
                 'interaction_sequence': 0,
+                'history': [],
             }
 
         decision_type, notes, sequence = _extract_row_status_decision_state(latest)
@@ -300,6 +359,7 @@ def get_row_decision_state(
             'timestamp': latest.created_at.isoformat(),
             'reviewer': latest.reviewer,
             'interaction_sequence': sequence or 0,
+            'history': _serialize_row_decision_history(row_decisions[1:]),
         }
 
     finally:

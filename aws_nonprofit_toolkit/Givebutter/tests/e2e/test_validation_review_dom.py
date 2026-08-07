@@ -213,6 +213,12 @@ async def assert_no_status_feedback(field_status):
     assert 'Saving' not in status_text, f"Should not show 'Saving...', got: {status_text}"
 
 
+async def enter_reviewer_name(page, name='UAT Reviewer'):
+    reviewer_field = await page.query_selector('#record-modal .reviewer-name-field')
+    assert reviewer_field is not None, "Reviewer name field should exist in the review-save modal"
+    await reviewer_field.fill(name)
+
+
 @pytest.fixture
 def e2e_database_and_app():
     """
@@ -571,7 +577,263 @@ async def test_email_typo_save_feedback_remains_issue_aware(
 
     finally:
         stop_flask_server(server, flask_thread)
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_transaction_id_projection_is_visible_in_table_and_details(e2e_database_and_app):
+    """Canonical raw CSV Transaction ID is projected into both record surfaces."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = 'transaction-id-projection-regression'
+    session.add(ImportBatch(
+        id=batch_id, filename='transaction-id.csv', upload_timestamp=datetime.now(timezone.utc),
+        status='pending_review', raw_row_count=1,
+    ))
+    session.flush()
+    row = RawImportRow(
+        batch_id=batch_id, row_index=1,
+        raw_csv_data={
+            'Transaction ID': 'txn-canonical-123', 'name': 'Jordan Lee',
+            'email': 'jordan@example.com', 'phone': '4155552671',
+            'address': '1 Main St', 'date': '2026-01-15', 'amount': '10.00',
+        },
+    )
+    session.add(row)
+    session.flush()
+    session.add(ImportContact(
+        batch_id=batch_id, raw_import_row_id=row.id, first_name='Jordan', last_name='Lee',
+        email='jordan@example.com', phone='4155552671', address_line1='1 Main St', amount=10.0,
+    ))
+    session.commit()
+    session.close()
+
+    server, flask_thread, base_url = start_flask_server(flask_app)
+    try:
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(f'{base_url}/imports/{batch_id}/validation')
+            row_locator = page.locator('tr.validation-row').first
+            assert await row_locator.locator('td').first.inner_text() == 'txn-canonical-123'
+            await row_locator.locator('[data-action="inspect-record"]').click()
+            details = page.locator('#modal-record-content')
+            await details.wait_for()
+            assert 'txn-canonical-123' in await details.inner_text()
+            await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_validation_status_and_reviewer_disposition_remain_separate(e2e_database_and_app):
+    """Saving a disposition never replaces the system-derived validation status."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = 'status-disposition-terminology-regression'
+    session.add(ImportBatch(
+        id=batch_id, filename='status-disposition.csv', upload_timestamp=datetime.now(timezone.utc),
+        status='pending_review', raw_row_count=1,
+    ))
+    session.flush()
+    row = RawImportRow(
+        batch_id=batch_id, row_index=1,
+        raw_csv_data={
+            'Transaction ID': 'txn-status-456', 'name': 'Jordan Lee',
+            'email': 'invalid-email', 'phone': '4155552671',
+            'address': '1 Main St', 'date': '2026-01-15', 'amount': '10.00',
+        },
+    )
+    session.add(row)
+    session.flush()
+    session.add(ImportContact(
+        batch_id=batch_id, raw_import_row_id=row.id, first_name='Jordan', last_name='Lee',
+        email='invalid-email', phone='4155552671', address_line1='1 Main St', amount=10.0,
+    ))
+    session.commit()
+    session.close()
+
+    server, flask_thread, base_url = start_flask_server(flask_app)
+    try:
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(f'{base_url}/imports/{batch_id}/validation')
+            row_locator = page.locator('tr.validation-row').first
+            validation_status = row_locator.locator('.validation-status-label')
+            assert await validation_status.inner_text() == 'Blocking'
+            assert await row_locator.locator('th').count() == 0
+            assert 'Validation status' in await page.locator('thead').inner_text()
+            assert 'Reviewer disposition' in await page.locator('thead').inner_text()
+
+            await row_locator.locator('.row-status-dropdown').select_option('accept_as_is')
+            modal = page.locator('#record-modal')
+            await modal.wait_for()
+            assert await modal.locator('label', has_text='Reviewer disposition').count() == 1
+            assert await modal.locator('label', has_text='Reason / notes').count() == 1
+            await modal.locator('.reviewer-name-field').fill('UAT Reviewer')
+            await modal.locator('textarea[id^="followup-notes-"]').fill('Reviewed for follow-up disposition')
+            await modal.locator('button[id^="save-followup-notes-"]').click()
+            await page.wait_for_function(
+                """() => document.querySelector('tr.validation-row .row-status-dropdown')?.value === 'accept_as_is'"""
+            )
+            assert await validation_status.inner_text() == 'Blocking'
+            assert await row_locator.locator('.row-status-dropdown').input_value() == 'accept_as_is'
+            await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_validation_presentation_guidance_and_input_widths(e2e_database_and_app):
+    """Validation guidance and requested field widths remain readable at desktop size."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = 'validation-presentation-regression'
+    session.add(ImportBatch(
+        id=batch_id, filename='presentation.csv', upload_timestamp=datetime.now(timezone.utc),
+        status='pending_review', raw_row_count=1,
+    ))
+    session.flush()
+    row = RawImportRow(
+        batch_id=batch_id,
+        row_index=1,
+        raw_csv_data={
+            'Transaction ID': 'txn-presentation-789',
+            'name': 'Alexandra Morgan',
+            'email': 'alexandra.morgan@example.org',
+            'phone': '4155552671',
+            'date': '2026-12-31',
+            'amount': '1250.00',
+            'address': '1234 Mission St, San Francisco CA 94103',
+        },
+    )
+    session.add(row)
+    session.flush()
+    session.add(ImportContact(
+        batch_id=batch_id,
+        raw_import_row_id=row.id,
+        first_name='Alexandra',
+        last_name='Morgan',
+        email='alexandra.morgan@example.org',
+        phone='4155552671',
+        address_line1='1234 Mission St, San Francisco CA 94103',
+        amount=1250.0,
+    ))
+    session.commit()
+    session.close()
+
+    expected_banner = (
+        'Live review checks run for name, email, phone, date, amount, and address edits. '
+        'Invalid name, email, phone, date, and amount values are rejected; address problems '
+        'are surfaced as warnings. Campaign fields are not dynamically revalidated on this screen.'
+    )
+    server, flask_thread, base_url = start_flask_server(flask_app)
+    try:
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page(viewport={'width': 1440, 'height': 900})
+            await page.goto(f'{base_url}/imports/{batch_id}/validation')
+            banner = page.locator('[data-testid="validation-scope-banner"]')
+            assert (await banner.inner_text()).strip() == expected_banner
+            assert await banner.get_attribute('data-dynamic-fields') == 'name,email,phone,date,amount,address'
+            assert await banner.get_attribute('data-import-stage-fields') is None
+
+            for field, width in (('date', '100px'), ('email', '220px'), ('address', '260px')):
+                input_locator = page.locator(f'input[data-field="{field}"]').first
+                assert await input_locator.evaluate('(element) => getComputedStyle(element).width') == width
+                assert await input_locator.evaluate('(element) => element.scrollWidth <= element.clientWidth'), field
+
+            await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_issue_filter_only_shows_matching_rows_and_preserves_data(e2e_database_and_app):
+    """Filtering Missing Required Field hides unrelated rows without persistence."""
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = 'issue-filter-regression'
+    session.add(ImportBatch(
+        id=batch_id, filename='issue-filter.csv', upload_timestamp=datetime.now(timezone.utc),
+        status='pending_review', raw_row_count=2,
+    ))
+    session.flush()
+    rows = []
+    for index, values in enumerate((
+        {'name': '', 'email': 'jordan@example.com', 'phone': '4155552671', 'address': '1 Main St'},
+        {'name': 'Jordan Lee', 'email': 'jordan.lee@com', 'phone': '4155552671', 'address': '2 Main St'},
+    ), start=1):
+        row = RawImportRow(batch_id=batch_id, row_index=index, raw_csv_data=values)
+        session.add(row)
+        session.flush()
+        contact = ImportContact(
+            batch_id=batch_id, raw_import_row_id=row.id, first_name='Jordan', last_name='Lee',
+            email=values['email'], phone=values['phone'], address_line1=values['address'],
+        )
+        session.add(contact)
+        session.flush()
+        item = ReviewItem(
+            batch_id=batch_id, item_type='validation', status='pending',
+            payload_json=(
+                {'field': 'name', 'reason': 'missing', 'description': 'Missing Required Field', 'severity': 'error'}
+                if index == 1 else
+                {'field': 'email', 'reason': 'format', 'description': 'Invalid email format', 'severity': 'error'}
+            ),
+        )
+        session.add(item)
+        session.flush()
+        session.add(ReviewItemSubject(review_item_id=item.id, subject_type='import_contact_snapshot', subject_id=contact.id))
+        rows.append(row)
+    session.commit()
+    row_ids = [row.id for row in rows]
+    session.close()
+
+    server, flask_thread, base_url = start_flask_server(flask_app)
+    try:
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(f'{base_url}/imports/{batch_id}/validation')
+            await page.wait_for_selector('tr.validation-row')
+            issue_filter = page.locator('#issue-filter')
+            await issue_filter.select_option('missing-required')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 1
+            assert await page.locator(f'tr[data-raw-id="{row_ids[0]}"]').is_visible()
+            assert not await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
+            await issue_filter.select_option('format-invalid')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 1
+            assert await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
+            await issue_filter.select_option('')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 2
+
+            session = Session()
+            assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
+            session.close()
+            await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
 
 
 @pytest.mark.e2e
@@ -1034,15 +1296,16 @@ async def test_validation_error_preserves_review_status_dropdown(
                     # Select the defer option
                     await dropdown.select_option(defer_value)
 
-                    # Wait for dropdown to change (value should update)
+                    # Selection opens the save modal while the saved dropdown state remains unchanged.
                     await page.wait_for_function(
-                        f"() => document.querySelector('select.row-status-dropdown')?.value === '{defer_value}'",
+                        "() => document.querySelector('#record-modal')?.classList.contains('show')",
                         timeout=5000
                     )
 
                     new_value = await dropdown.input_value()
-                    assert new_value == defer_value, f"B6 FAILED: Dropdown value should be '{defer_value}', got: '{new_value}'"
-                    print(f"✓ B6: Dropdown selection works, value changed to: '{new_value}'")
+                    assert new_value == initial_value, f"B6 FAILED: Unsaved selection should not change saved dropdown, got: '{new_value}'"
+                    assert await page.locator('#record-modal .reviewer-name-field').count() == 1
+                    print(f"✓ B6: Selection opened save modal and preserved saved value: '{new_value}'")
                 else:
                     print(f"  (Skipping dropdown selection test - 'Defer' option not found)")
 
@@ -1240,17 +1503,16 @@ async def test_details_modal_displays_read_only_controls(
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify that the Details modal is read-only and no longer duplicates
-    row decision controls.
+    GOAL: Verify that the Details modal combines issue readout with review save controls.
 
     Flow:
     1. Seed database with a test row
     2. Load validation page
     3. Click "Details" button to open modal
-    4. Verify modal shows full record details
-    5. Verify modal does not contain a duplicate decision dropdown
-    6. Verify modal does not contain a duplicate Record Decision button
-    7. Re-open modal and verify the read-only state remains unchanged
+    4. Verify modal shows identity, issues, current review, and history
+    5. Verify the reviewer-save controls are present
+    6. Verify Cancel closes without saving
+    7. Re-open modal and verify the same content remains available
     """
     from playwright.async_api import async_playwright
 
@@ -1344,27 +1606,29 @@ async def test_details_modal_displays_read_only_controls(
                 # ===== PART 2: Verify Modal Controls =====
                 print(f"\n=== PART 2: Verify Modal Controls ===")
 
-                # Verify the modal is read-only and does not duplicate row decision controls
-                decision_dropdown = await page.query_selector('#record-modal select[id^="row-decision-"]')
-                assert decision_dropdown is None, "P2 FAILED: Details modal should not contain a decision dropdown"
-                print("✓ P2: No duplicate decision dropdown present")
+                modal_text = await (await page.query_selector('#modal-record-content')).inner_text()
+                assert 'RECORD NUMBER' in modal_text
+                assert 'Current issues' in modal_text
+                assert 'Current review' in modal_text
+                assert 'Previous decisions and notes' in modal_text
+                assert 'Correct record values in the validation table.' in modal_text
+                print("✓ P2: Approved Details content is present")
 
-                # Verify Record Decision button is absent from the details modal
-                record_btn = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
-                assert record_btn is None, "P3 FAILED: Details modal should not contain a Record Decision button"
-                print("✓ P3: No duplicate Record Decision button present")
-
-                # Verify notes textarea is absent from the details modal
+                decision_dropdown = await page.query_selector('#record-modal select[id^="row-review-decision-"]')
+                assert decision_dropdown is not None, "P3 FAILED: Details modal should contain the review decision field"
+                reviewer_field = await page.query_selector('#record-modal .reviewer-name-field')
+                assert reviewer_field is not None
                 notes_field = await page.query_selector('#record-modal textarea[id^="followup-notes-"]')
-                assert notes_field is None, "P4 FAILED: Details modal should not contain a follow-up notes field"
-                print("✓ P4: No follow-up notes field present in details mode")
+                assert notes_field is not None, "P4 FAILED: Details modal should contain the notes field"
+                assert await page.query_selector('#record-modal button:has-text("Save review")') is not None
+                print("✓ P3/P4: Review fields and Save review are present")
 
                 # ===== PART 3: Re-open Details Modal and Verify =====
                 print(f"\n=== PART 3: Re-open Details Modal ===")
 
-                close_btn = await page.query_selector('#record-modal button.btn.btn-secondary')
-                assert close_btn is not None, "Close button should exist in details modal"
-                await close_btn.click()
+                cancel_btn = await page.query_selector('#record-modal button:has-text("Cancel")')
+                assert cancel_btn is not None, "Cancel button should exist in details modal"
+                await cancel_btn.click()
                 await page.wait_for_function(
                     "() => !document.getElementById('record-modal')?.classList.contains('show')",
                     timeout=5000,
@@ -1381,12 +1645,10 @@ async def test_details_modal_displays_read_only_controls(
                 await page.wait_for_selector('#record-modal', timeout=5000)
                 print("✓ P6: Details modal re-opened successfully")
 
-                # Verify modal remains read-only on reopen
-                decision_dropdown_2 = await page.query_selector('#record-modal select[id^="row-decision-"]')
-                assert decision_dropdown_2 is None, "P6 FAILED: Details modal should remain read-only on reopen"
-                record_btn_2 = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
-                assert record_btn_2 is None, "P7 FAILED: Details modal should not show a Record Decision button on reopen"
-                print("✓ P7: Details modal remains read-only on reopen")
+                decision_dropdown_2 = await page.query_selector('#record-modal select[id^="row-review-decision-"]')
+                assert decision_dropdown_2 is not None, "P6 FAILED: Details modal should retain the review decision field"
+                assert await page.query_selector('#record-modal button:has-text("Save review")') is not None
+                print("✓ P7: Details modal review controls remain available on reopen")
 
                 print(f"\n=== ALL DETAILS MODAL CONTROL TESTS PASSED ===")
 
@@ -1477,6 +1739,33 @@ async def test_needs_follow_up_notes_required_workflow(
         session.add(import_contact)
         session.commit()
 
+        prior_decision = ReviewDecision(
+            batch_id='followup-e2e-batch',
+            raw_import_row_id=raw_row_id,
+            decision='row_status:defer',
+            reviewed_values={
+                'notes': 'prior saved state',
+                'interaction_sequence': 1,
+            },
+            reviewer='Prior Reviewer',
+        )
+        session.add(prior_decision)
+        session.flush()
+        session.add(AuditLogRecord(
+            batch_id='followup-e2e-batch',
+            action_type='decision_recorded',
+            decision_id=prior_decision.id,
+            actor='Prior Reviewer',
+            details={'notes': 'prior saved state', 'interaction_sequence': 1},
+        ))
+        session.commit()
+        baseline_decisions = session.query(ReviewDecision).filter_by(
+            batch_id='followup-e2e-batch', raw_import_row_id=raw_row_id,
+        ).count()
+        baseline_audits = session.query(AuditLogRecord).filter_by(
+            batch_id='followup-e2e-batch', decision_id=prior_decision.id,
+        ).count()
+
         batch_id = 'followup-e2e-batch'
         server, flask_thread, base_url = start_flask_server(flask_app)
         wait_for_flask_ready(base_url, batch_id)
@@ -1515,27 +1804,40 @@ async def test_needs_follow_up_notes_required_workflow(
 
                 # Verify "Notes required" message appears
                 notes_req_msg = await page.query_selector('div[id^="followup-notes-requirement-"]')
-                if notes_req_msg:
-                    display = await notes_req_msg.evaluate("el => window.getComputedStyle(el).display")
-                    if display != 'none':
-                        print("✓ A4: 'Notes required' message visible")
-                    else:
-                        print("! A4: 'Notes required' message exists but not visible yet")
+                assert notes_req_msg is not None, "Notes requirement message should exist"
 
                 # Verify Save Follow-up button exists
                 record_btn = await page.query_selector('button[id^="save-followup-notes-"]')
                 assert record_btn is not None, "Save Follow-up button should exist"
                 print("✓ A5: Save Follow-up button exists and enabled")
 
-                # Try to submit without notes - should trigger frontend validation
+                await enter_reviewer_name(page)
+
+                # Try blank Notes: client-side validation must reject without persistence.
+                await notes_field.fill('')
                 await record_btn.click()
-                # Wait for alert (frontend validation)
+                assert await notes_req_msg.evaluate("el => window.getComputedStyle(el).display") != 'none'
+
+                # Try whitespace-only Notes: client-side validation must reject again.
+                await notes_field.fill('   \n\t')
+                await record_btn.click()
+                assert await notes_req_msg.evaluate("el => window.getComputedStyle(el).display") != 'none'
+
+                unchanged_session = Session()
                 try:
-                    await page.wait_for_event('dialog', timeout=2000)
-                    print("✓ A6: Frontend validation prevents submission without notes")
-                    await page.context.pages[0].evaluate("() => window.lastAlert")
-                except:
-                    print("ℹ A6: Frontend may have prevented submit (no alert)")
+                    assert unchanged_session.query(ReviewDecision).filter_by(
+                        batch_id=batch_id, raw_import_row_id=raw_row_id,
+                    ).count() == baseline_decisions
+                    assert unchanged_session.query(AuditLogRecord).filter_by(
+                        batch_id=batch_id, decision_id=prior_decision.id,
+                    ).count() == baseline_audits
+                    unchanged_prior = unchanged_session.query(ReviewDecision).filter_by(
+                        id=prior_decision.id,
+                    ).one()
+                    assert unchanged_prior.decision == 'row_status:defer'
+                    assert unchanged_prior.reviewed_values['notes'] == 'prior saved state'
+                finally:
+                    unchanged_session.close()
 
                 # Enter notes
                 await notes_field.fill('Need to verify donor intent')
@@ -1666,19 +1968,19 @@ async def test_defer_workflow_notes_optional(
                 await decision_dropdown.select_option('defer')
                 print("✓ B1: Selected 'Defer' option in the row dropdown")
 
-                # Verify no notes modal opened
-                modal_visible = await page.query_selector('#record-modal')
-                if modal_visible:
-                    is_visible = await modal_visible.is_visible()
-                    assert not is_visible, "Notes modal should not open for Defer"
-                print("✓ B2: No notes modal opened for Defer")
+                # Every decision now opens the review-save modal.
+                await page.wait_for_selector('#record-modal', state='visible', timeout=5000)
+                await enter_reviewer_name(page)
+                await page.locator('#record-modal button[id^="save-followup-notes-"]').click()
+                await page.wait_for_selector('#record-modal', state='hidden', timeout=5000)
+                print("✓ B2: Review-save modal opened and saved Defer")
 
                 # Verify the dropdown reflects the decision
                 first_option = await decision_dropdown.query_selector('option:first-child')
                 status_text = await first_option.inner_text()
-                assert 'defer' in status_text.lower() or 'deferred' in status_text.lower(), \
-                    f"Status should reflect Defer decision, got: {status_text}"
-                print(f"✓ B3: Row status updated to: {status_text}")
+                assert await decision_dropdown.input_value() == 'defer', \
+                    f"Decision should remain Defer after save, got: {await decision_dropdown.input_value()}"
+                print(f"✓ B3: Defer decision saved; row status label is: {status_text}")
 
                 # Verify row status updated
                 await page.wait_for_selector('select.row-status-dropdown', timeout=5000)
@@ -1707,18 +2009,16 @@ async def test_details_modal_controls_comprehensive(
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify the Details modal is read-only and remains functional.
+    GOAL: Verify the Details modal review readout and save controls remain functional.
 
     Flow:
     1. Seed database with test row
     2. Open Details modal
-    3. Verify full record details are visible
-    4. Verify no duplicate decision dropdown exists
-    5. Verify no duplicate Record Decision button exists
-    6. Verify Close button exists
-    7. Close modal
-    8. Reopen modal
-    9. Verify the modal remains read-only
+    3. Verify identity, issue guidance, and review fields are visible
+    4. Verify Save review and Cancel are available
+    5. Cancel modal
+    6. Reopen modal
+    7. Verify the same review controls remain available
     """
     from playwright.async_api import async_playwright
 
@@ -1796,25 +2096,24 @@ async def test_details_modal_controls_comprehensive(
                 # Verify modal shows the record content and no duplicate decision controls
                 modal_body = await page.query_selector('#modal-record-content')
                 modal_text = await modal_body.inner_text()
-                assert 'Record #' in modal_text, "Modal should show record details"
-                assert 'Current Issues' in modal_text, "Modal should show current issues"
+                assert 'RECORD NUMBER' in modal_text, "Modal should show record details"
+                assert 'Current issues' in modal_text, "Modal should show current issues"
+                assert 'Current review' in modal_text
+                assert 'Previous decisions and notes' in modal_text
                 print("✓ E2: Details modal shows the record content")
 
-                decision_dropdown = await page.query_selector('#record-modal select[id^="row-decision-"]')
-                assert decision_dropdown is None, "Details modal should not contain a decision dropdown"
-                print("✓ E3: No duplicate decision dropdown exists")
+                decision_dropdown = await page.query_selector('#record-modal select[id^="row-review-decision-"]')
+                assert decision_dropdown is not None
+                assert await page.query_selector('#record-modal .reviewer-name-field') is not None
+                assert await page.query_selector('#record-modal textarea[id^="followup-notes-"]') is not None
+                assert await page.query_selector('#record-modal button:has-text("Save review")') is not None
+                print("✓ E3/E4: Review form and Save review are present")
 
-                record_btn = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
-                assert record_btn is None, "Details modal should not contain a Record Decision button"
-                print("✓ E4: No duplicate Record Decision button exists")
+                cancel_btn = await page.query_selector('#modal-record-footer button:has-text("Cancel")')
+                assert cancel_btn is not None, "Cancel button should exist in details modal"
+                print("✓ E5: Cancel button exists")
 
-                # Verify Close button exists in the modal footer
-                close_btn = await page.query_selector('#modal-record-footer button:has-text("Close")')
-                assert close_btn is not None, "Close button should exist in details modal"
-                print("✓ E5: Close button exists")
-
-                # Click Close to close modal
-                await close_btn.click()
+                await cancel_btn.click()
 
                 # Wait for modal to close (show class removed)
                 await page.wait_for_function(
@@ -1831,12 +2130,10 @@ async def test_details_modal_controls_comprehensive(
                 await page.wait_for_selector('#record-modal', timeout=5000)
                 print("✓ E7: Details modal reopened (second time)")
 
-                # Verify controls remain read-only on reopen
-                decision_dropdown = await page.query_selector('#record-modal select[id^="row-decision-"]')
-                assert decision_dropdown is None, "Details modal should remain read-only after reopen"
-                record_btn = await page.query_selector('#record-modal button[id^="record-row-decision-"]')
-                assert record_btn is None, "Details modal should not regain a Record Decision button"
-                print("✓ E8: Details modal remains read-only after reopen")
+                decision_dropdown = await page.query_selector('#record-modal select[id^="row-review-decision-"]')
+                assert decision_dropdown is not None
+                assert await page.query_selector('#record-modal button:has-text("Save review")') is not None
+                print("✓ E8: Details modal review controls remain available after reopen")
 
                 print(f"\n=== DETAILS MODAL CONTROLS E2E PASSED ===")
 
@@ -2123,19 +2420,26 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
 
                 await dropdown.select_option('defer')
                 await page.wait_for_function(
-                    "() => document.querySelector('select.row-status-dropdown')?.value === 'defer'",
+                    "() => document.querySelector('#record-modal')?.classList.contains('show')",
                     timeout=5000,
                 )
+                await enter_reviewer_name(page)
+                await page.locator('#record-modal button[id^="save-followup-notes-"]').click()
+                await page.wait_for_selector('#record-modal', state='hidden', timeout=5000)
 
                 await dropdown.select_option('accept_as_is')
+                await page.wait_for_selector('#record-modal', state='visible', timeout=5000)
+                await enter_reviewer_name(page)
+                await page.locator('#record-modal button[id^="save-followup-notes-"]').click()
                 await pending_accept_ready.wait()
 
                 await dropdown.select_option('reject_row')
-
                 await page.wait_for_function(
-                    "() => document.querySelector('select.row-status-dropdown')?.value === 'reject_row'",
+                    "() => document.querySelector('#record-modal')?.classList.contains('show')",
                     timeout=5000,
                 )
+                await enter_reviewer_name(page)
+                await page.locator('#record-modal button[id^="save-followup-notes-"]').click()
                 upstream_response = await pending_accept_route.fetch()
                 await pending_accept_route.fulfill(response=upstream_response)
                 pending_accept_route = None
@@ -2143,8 +2447,8 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                 await asyncio.sleep(0.8)
 
                 first_option_text = await page.locator('select.row-status-dropdown option').nth(0).inner_text()
-                assert 'reject' in first_option_text.lower(), \
-                    f"Latest visible row decision should remain reject_row, got: {first_option_text}"
+                assert await dropdown.input_value() == 'reject_row', \
+                    f"Latest visible row decision should remain reject_row, got value={await dropdown.input_value()}, label={first_option_text}"
 
                 def row_counts():
                     count_session = Session()
@@ -2187,6 +2491,7 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                             body: JSON.stringify({
                                 raw_import_row_id: rawId,
                                 decision: 'reject_row',
+                                reviewer_name: 'UAT Reviewer',
                                 interaction_sequence: 3,
                             }),
                         });
@@ -2222,6 +2527,7 @@ async def test_row_status_dropdown_ignores_stale_response_and_deduplicates_exact
                             body: JSON.stringify({
                                 raw_import_row_id: rawId,
                                 decision: 'accept_as_is',
+                                reviewer_name: 'UAT Reviewer',
                                 interaction_sequence: 4,
                             }),
                         });
@@ -2530,27 +2836,27 @@ async def test_follow_up_status_selection_defaults_modal(e2e_database_and_app):
                 assert modal is not None, "F3 FAILED: Modal should open when Follow-up is selected"
                 print("✓ F3: Follow-up notes modal opened after selection")
 
-                # F4: Verify modal is notes-focused, not decision-focused
-                modal_status_dropdown = await page.query_selector('select[id^="row-decision-"]')
-                assert modal_status_dropdown is None, "F4 FAILED: Follow-up modal should not contain a status dropdown"
-                print("✓ F4: Follow-up modal is notes-focused")
+                # F4: The shared modal contains the decision and notes fields.
+                modal_status_dropdown = await page.query_selector('select[id^="row-review-decision-"]')
+                assert modal_status_dropdown is not None, "F4 FAILED: Review modal should contain a decision dropdown"
+                print("✓ F4: Shared review modal contains decision and notes fields")
 
                 # F5: Verify Notes textarea is focused
                 notes_field = await page.query_selector('textarea[id^="followup-notes-"]')
                 assert notes_field is not None, "F5 FAILED: Notes textarea not found"
                 focused_element = await page.evaluate("() => document.activeElement.id")
                 notes_id = await notes_field.get_attribute('id')
-                assert focused_element == notes_id, \
-                    f"F5 FAILED: Notes field should be focused, focused element: {focused_element}"
-                print("✓ F5: Notes textarea is focused (ready for input)")
+                assert focused_element in {notes_id, await modal_status_dropdown.get_attribute('id')}, \
+                    f"F5 FAILED: Review modal should focus a review field, focused element: {focused_element}"
+                print("✓ F5: Review modal field is focused (ready for input)")
 
                 # F6: Verify Notes requirement message is visible
                 notes_requirement = await page.query_selector('div[id^="followup-notes-requirement-"]')
                 assert notes_requirement is not None, "F6 FAILED: Notes requirement div not found"
                 visibility = await notes_requirement.evaluate("el => window.getComputedStyle(el).display")
-                assert visibility != 'none', \
-                    f"F6 FAILED: Notes requirement should be visible, got display: {visibility}"
-                print("✓ F6: Notes requirement message is visible")
+                assert visibility == 'none', \
+                    f"F6 FAILED: Notes requirement should remain hidden until Save, got display: {visibility}"
+                print("✓ F6: Notes requirement message is deferred until Save")
 
                 # F7: Verify row data is displayed in modal
                 modal_body = await page.query_selector('#modal-record-content')
@@ -3671,12 +3977,12 @@ async def test_validation_review_decision_appears_in_audit_display(e2e_database_
                 await row_dropdown.select_option('defer')
                 print("✓ Selected 'Defer' decision in the row dropdown")
 
-                # Step 3: Verify no notes modal is required for Defer
-                modal = await page.query_selector('#record-modal')
-                if modal:
-                    is_visible = await modal.is_visible()
-                    assert not is_visible, "Notes modal should not open for Defer"
-                print("✓ No notes modal opened for Defer")
+                # Step 3: Every decision uses the review-save modal.
+                await page.wait_for_selector('#record-modal', state='visible', timeout=5000)
+                await enter_reviewer_name(page)
+                await page.locator('#record-modal button[id^="save-followup-notes-"]').click()
+                await page.wait_for_selector('#record-modal', state='hidden', timeout=5000)
+                print("✓ Review-save modal opened and saved Defer")
 
                 # Step 4: Navigate to audit page
                 # Look for audit link or navigate directly
@@ -3820,6 +4126,8 @@ async def test_validation_review_follow_up_appears_in_cross_screen_audit_trail(e
                 assert notes_field is not None, "Notes field should exist"
                 await notes_field.fill(unique_notes)
                 print(f"✓ Entered notes: {unique_notes[:60]}...")
+
+                await enter_reviewer_name(page)
 
                 # Submit decision
                 record_btn = await page.query_selector('#record-modal button[id^="save-followup-notes-"]')
@@ -3991,6 +4299,7 @@ async def test_validation_review_golden_path_audit_export_journey(e2e_database_a
                 notes_field = await page.query_selector('#record-modal textarea[id^="followup-notes-"]')
                 assert notes_field is not None, "Notes field should exist"
                 await notes_field.fill(unique_notes)
+                await enter_reviewer_name(page)
 
                 print(f"✓ Selected Follow Up with notes: {unique_notes[:60]}...")
 

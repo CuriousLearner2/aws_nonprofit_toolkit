@@ -314,7 +314,7 @@ def test_csv_header_matches_contract(mock_preview_ready, sample_export_row):
     header = lines[0]
 
     expected_fields = [
-        'source_row_index', 'transaction_id', 'first_name', 'last_name', 'email', 'phone',
+        'source_row_index', 'transaction_id', 'date', 'first_name', 'last_name', 'email', 'phone',
         'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'amount',
         'validation_status', 'validation_issues', 'normalized_fields', 'normalization_warnings',
         'duplicate_group_id', 'duplicate_decision', 'duplicate_warnings',
@@ -347,8 +347,8 @@ def test_csv_normalized_fields_applied(sample_export_row):
     reader = csv.reader([data_row])
     values = next(reader)
 
-    # normalized_fields is at index 14
-    assert values[14] == "email"
+    # normalized_fields is at index 15
+    assert values[15] == "email"
 
 
 def test_csv_none_values_rendered_as_empty_string(sample_export_row):
@@ -360,8 +360,8 @@ def test_csv_none_values_rendered_as_empty_string(sample_export_row):
     reader = csv.reader([data_row])
     values = next(reader)
 
-    # address_line2 is None, should be empty (index 7)
-    assert values[7] == ""
+    # address_line2 is None, should be empty (index 8)
+    assert values[8] == ""
 
 
 # File Operation Tests
@@ -641,7 +641,7 @@ def test_csv_golden_file_with_reviewed_normalization():
     reader = csv.reader([header])
     actual_fields = next(reader)
     expected_fields = [
-        'source_row_index', 'transaction_id', 'first_name', 'last_name', 'email', 'phone',
+        'source_row_index', 'transaction_id', 'date', 'first_name', 'last_name', 'email', 'phone',
         'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'amount',
         'validation_status', 'validation_issues', 'normalized_fields', 'normalization_warnings',
         'duplicate_group_id', 'duplicate_decision', 'duplicate_warnings',
@@ -656,17 +656,17 @@ def test_csv_golden_file_with_reviewed_normalization():
     values = next(reader)
 
     # Verify the reviewed email value appears in the correct position
-    assert values[4] == "john.smith@example.com", "Email should be in position 4 (fifth column)"
+    assert values[5] == "john.smith@example.com", "Email should be in position 5 (sixth column)"
     assert values[0] == "1", "source_row_index should be 1"
     assert values[1] == "TXN-001", "transaction_id should be TXN-001"
-    assert values[2] == "John", "first_name should be John"
-    assert values[3] == "Smith", "last_name should be Smith"
-    assert values[14] == "email", "normalized_fields should mark email as normalized (position 14)"
+    assert values[3] == "John", "first_name should be John"
+    assert values[4] == "Smith", "last_name should be Smith"
+    assert values[15] == "email", "normalized_fields should mark email as normalized (position 15)"
 
     # Verify no blockers/warnings
-    assert values[12] == "accepted", "validation_status should be accepted"
-    assert values[13] == "", "validation_issues should be empty"
-    assert values[15] == "", "normalization_warnings should be empty"
+    assert values[13] == "accepted", "validation_status should be accepted"
+    assert values[14] == "", "validation_issues should be empty"
+    assert values[16] == "", "normalization_warnings should be empty"
 
     # Verify row count
     assert len(lines) == 2, "Should have 1 header + 1 data row"
@@ -790,7 +790,7 @@ def test_csv_golden_file_multirow_preserves_order():
     header = lines[0]
     reader = csv.reader([header])
     actual_fields = next(reader)
-    assert len(actual_fields) == 25, "Header should have 25 fields"
+    assert len(actual_fields) == 26, "Header should have 26 fields"
 
     # Verify each row's values are in correct positions and order is preserved
     for row_idx, expected_row in enumerate(rows, start=1):
@@ -801,11 +801,11 @@ def test_csv_golden_file_multirow_preserves_order():
         # Verify source_row_index matches expected (verifies ordering)
         assert values[0] == str(expected_row.source_row_index), f"Row {row_idx}: source_row_index mismatch"
         assert values[1] == expected_row.transaction_id, f"Row {row_idx}: transaction_id mismatch"
-        assert values[2] == expected_row.first_name, f"Row {row_idx}: first_name mismatch"
-        assert values[3] == expected_row.last_name, f"Row {row_idx}: last_name mismatch"
-        assert values[4] == expected_row.email, f"Row {row_idx}: email mismatch"
-        assert values[5] == expected_row.phone, f"Row {row_idx}: phone mismatch"
-        assert values[11] == expected_row.amount, f"Row {row_idx}: amount mismatch"
+        assert values[3] == expected_row.first_name, f"Row {row_idx}: first_name mismatch"
+        assert values[4] == expected_row.last_name, f"Row {row_idx}: last_name mismatch"
+        assert values[5] == expected_row.email, f"Row {row_idx}: email mismatch"
+        assert values[6] == expected_row.phone, f"Row {row_idx}: phone mismatch"
+        assert values[12] == expected_row.amount, f"Row {row_idx}: amount mismatch"
 
 
 def test_csv_golden_file_mixed_decisions_effective_values():
@@ -932,31 +932,31 @@ def test_csv_golden_file_mixed_decisions_effective_values():
     values = next(reader)
     assert values[0] == "1", "Row 1: source_row_index"
     assert values[1] == "TXN-RAW-001", "Row 1: transaction_id"
-    assert values[4] == "alice.raw@example.com", "Row 1: raw email"
-    assert values[14] == "", "Row 1: no normalized_fields"
-    assert values[17] == "", "Row 1: no duplicate_decision"
+    assert values[5] == "alice.raw@example.com", "Row 1: raw email"
+    assert values[15] == "", "Row 1: no normalized_fields"
+    assert values[18] == "", "Row 1: no duplicate_decision"
 
     # Verify Row 2: Reviewed values (decisions applied)
     reader = csv.reader([lines[2]])
     values = next(reader)
     assert values[0] == "2", "Row 2: source_row_index"
     assert values[1] == "TXN-REV-001", "Row 2: transaction_id"
-    assert values[4] == "bob.reviewed@example.com", "Row 2: effective email"
-    assert values[5] == "555-2222", "Row 2: effective phone"
-    assert values[14] == "email;phone", "Row 2: normalized_fields marked"
-    assert values[17] == "same_person", "Row 2: duplicate decision applied"
-    assert values[22] == "confirmed", "Row 2: household decision applied"
+    assert values[5] == "bob.reviewed@example.com", "Row 2: effective email"
+    assert values[6] == "555-2222", "Row 2: effective phone"
+    assert values[15] == "email;phone", "Row 2: normalized_fields marked"
+    assert values[18] == "same_person", "Row 2: duplicate decision applied"
+    assert values[23] == "confirmed", "Row 2: household decision applied"
 
     # Verify Row 3: Deferred decisions
     reader = csv.reader([lines[3]])
     values = next(reader)
     assert values[0] == "3", "Row 3: source_row_index"
     assert values[1] == "TXN-DEF-001", "Row 3: transaction_id"
-    assert values[12] == "deferred", "Row 3: validation_status is deferred"
-    assert values[17] == "deferred", "Row 3: duplicate_decision is deferred"
-    assert values[22] == "deferred", "Row 3: household_decision is deferred"
-    assert "Email validation deferred" in values[15], "Row 3: normalization_warnings"
-    assert "Duplicate resolution deferred" in values[18], "Row 3: duplicate_warnings"
+    assert values[13] == "deferred", "Row 3: validation_status is deferred"
+    assert values[18] == "deferred", "Row 3: duplicate_decision is deferred"
+    assert values[23] == "deferred", "Row 3: household_decision is deferred"
+    assert "Email validation deferred" in values[16], "Row 3: normalization_warnings"
+    assert "Duplicate resolution deferred" in values[19], "Row 3: duplicate_warnings"
 
 
 # Filename Tests

@@ -21,6 +21,14 @@ from sqlalchemy.orm import sessionmaker
 from scripts.householder.database_models import create_db_engine
 
 
+def _link_validation_item(session, review_item_id, contact_id):
+    session.add(ReviewItemSubject(
+        review_item_id=review_item_id,
+        subject_type='import_contact_snapshot',
+        subject_id=contact_id,
+    ))
+
+
 @pytest.fixture
 def temp_db():
     """Create temporary SQLite database for testing."""
@@ -302,6 +310,7 @@ class TestExportPreviewValidationDecisions:
         )
         session.add(val_item)
         session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
 
         decision = ReviewDecision(
             batch_id=batch_id,
@@ -332,6 +341,7 @@ class TestExportPreviewValidationDecisions:
         )
         session.add(val_item)
         session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
 
         decision = ReviewDecision(
             batch_id=batch_id,
@@ -362,6 +372,7 @@ class TestExportPreviewValidationDecisions:
         )
         session.add(val_item)
         session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
 
         decision = ReviewDecision(
             batch_id=batch_id,
@@ -391,6 +402,8 @@ class TestExportPreviewValidationDecisions:
             payload_json={'issue_type': 'missing_email'},
         )
         session.add(val_item)
+        session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
         session.commit()
         session.close()
 
@@ -401,8 +414,8 @@ class TestExportPreviewValidationDecisions:
         assert row.export_blocked
         assert len(result.blockers) > 0
 
-    def test_pending_advisory_validation_creates_warning(self, seeded_batch, temp_db):
-        """Test that pending advisory validation creates warning."""
+    def test_pending_advisory_validation_requires_row_disposition(self, seeded_batch, temp_db):
+        """A warning also blocks export until the row has a disposition."""
         database_url, contact_id, batch_id = seeded_batch
 
         Session = sessionmaker(bind=temp_db[1])
@@ -414,6 +427,8 @@ class TestExportPreviewValidationDecisions:
             payload_json={'issue_type': 'suspicious_pattern'},
         )
         session.add(val_item)
+        session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
         session.commit()
         session.close()
 
@@ -421,7 +436,8 @@ class TestExportPreviewValidationDecisions:
         row = result.export_rows[0]
 
         assert row.validation_status == 'pending'
-        assert not row.export_blocked
+        assert row.export_blocked
+        assert 'Reviewer disposition required' in result.blockers
         assert any('unresolved' in w.lower() for w in row.export_warnings)
 
 
@@ -638,6 +654,8 @@ class TestExportPreviewReadiness:
             payload_json={'issue_type': 'missing_email'},
         )
         session.add(val_item)
+        session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
         session.commit()
         session.close()
 
@@ -658,6 +676,8 @@ class TestExportPreviewReadiness:
             payload_json={'issue_type': 'suspicious_pattern'},
         )
         session.add(val_item)
+        session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
         session.commit()
         session.close()
 
@@ -678,6 +698,8 @@ class TestExportPreviewReadiness:
             payload_json={'issue_type': 'missing_email'},
         )
         session.add(val_item)
+        session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
         session.commit()
         session.close()
 
@@ -908,6 +930,8 @@ class TestExportPreviewValidationPayloadFormats:
             },
         )
         session.add(val_item)
+        session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
         session.commit()
         session.close()
 
@@ -937,6 +961,7 @@ class TestExportPreviewValidationPayloadFormats:
         )
         session.add(val_item)
         session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
 
         # Accept the issue
         decision = ReviewDecision(
@@ -968,6 +993,8 @@ class TestExportPreviewValidationPayloadFormats:
             payload_json={'issue_type': 'invalid_email'},  # Legacy format
         )
         session.add(val_item)
+        session.flush()
+        _link_validation_item(session, val_item.id, contact_id)
         session.commit()
         session.close()
 

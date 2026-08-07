@@ -52,6 +52,8 @@ def flask_client_with_batch(temp_db, monkeypatch):
     database_url, engine = temp_db
 
     app.config['TESTING'] = True
+    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+    monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', database_url)
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
 
     # Seed database
@@ -345,21 +347,27 @@ class TestExistingIssueInteraction:
     def test_new_validation_error_does_not_duplicate_existing_issue(
         self, flask_client_with_batch
     ):
-        """If email already has ReviewItem, new validation doesn't add duplicate."""
+        """A generic email issue is suppressed while distinct actionable reasons remain."""
         client, database_url, engine, Session, rows = flask_client_with_batch
         raw_id = rows[0]
 
-        # Create existing ReviewItem for email
+        # Reproduce the invalid-value case with one specific, one generic, and
+        # one genuinely distinct email reason at the same severity.
         session = Session()
         try:
+            raw_row = session.query(RawImportRow).filter_by(id=raw_id).one()
+            raw_data = dict(raw_row.raw_csv_data or {})
+            raw_data['email'] = 'jordan.lee@com'
+            raw_row.raw_csv_data = raw_data
+
             issue = ReviewItem(
                 batch_id='edge-test-batch',
                 item_type='validation',
                 payload_json={
                     'field': 'email',
-                    'reason': 'possible_typo',
-                    'description': 'Possible typo in email',
-                    'severity': 'warning'
+                    'reason': 'format',
+                    'description': 'Invalid email format',
+                    'severity': 'error'
                 }
             )
             session.add(issue)
@@ -371,9 +379,44 @@ class TestExistingIssueInteraction:
                 subject_id=raw_id
             )
             session.add(subject)
+
+            for description, reason in (
+                ('Issue with email', 'format'),
+                ('Email domain is not accepted', 'domain'),
+            ):
+                additional_issue = ReviewItem(
+                    batch_id='edge-test-batch',
+                    item_type='validation',
+                    payload_json={
+                        'field': 'email',
+                        'reason': reason,
+                        'description': description,
+                        'severity': 'error',
+                    }
+                )
+                session.add(additional_issue)
+                session.flush()
+                session.add(ReviewItemSubject(
+                    review_item_id=additional_issue.id,
+                    subject_type='import_raw_row',
+                    subject_id=raw_id,
+                ))
             session.commit()
         finally:
             session.close()
+
+        from scripts.householder.issue_recalculation_service import recalculate_row_issues
+        recalculated = recalculate_row_issues(
+            'edge-test-batch', raw_id, database_url=database_url,
+        )
+        recalculated_descriptions = [
+            (issue.get('description') or '').strip().casefold()
+            for issue in recalculated if issue.get('field') == 'email'
+        ]
+        assert 'invalid email format' in recalculated_descriptions
+        assert 'email domain is not accepted' in recalculated_descriptions
+        assert 'issue with email' not in recalculated_descriptions
+        assert len(recalculated_descriptions) == 2
 
         # Now try to autosave with invalid email
         response = client.post(
@@ -387,11 +430,13 @@ class TestExistingIssueInteraction:
         assert response.status_code == 400
         data = response.get_json()
 
-        # Should have issues, but not duplicated
-        # Count email issues
         email_issues = [i for i in data['issues'] if i.get('field') == 'email']
-        # Should have only one email issue (the existing ReviewItem, not duplicate new one)
-        assert len(email_issues) <= 2  # Existing + new, or just one
+        email_descriptions = [
+            (issue.get('reason') or '').strip().casefold()
+            for issue in email_issues
+        ]
+        assert any('email domain is not accepted' in description for description in email_descriptions), email_descriptions
+        assert not any(description == 'issue with email' for description in email_descriptions)
 
 
 class TestEmailValidationRule:
