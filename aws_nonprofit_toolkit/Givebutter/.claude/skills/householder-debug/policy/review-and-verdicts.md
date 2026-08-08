@@ -38,7 +38,7 @@ Exact verdicts:
 - `VERDICT=REQUEST_CHANGES`
 - `VERDICT=REJECT`
 
-Non-accept verdicts are terminal and require a new human-authorized remediation task.
+Non-accept verdicts stop the current review. One focused repair/re-review is allowed when the finding is concrete, in-scope, and authorized by the current task contract or human; otherwise stop.
 
 ## Breaker
 
@@ -105,9 +105,28 @@ Exact verdicts:
 
 QA never replaces Reviewer or Breaker and never authorizes implementation, commit, or push.
 
+
+## Publication Boundary
+
+Reviewer, Breaker, and QA never publish remotely. Any `push` or `push readiness`
+language in role outputs means readiness for the trusted host-publisher handoff.
+Remote success must be independently verified by the host publisher against the exact
+commit SHA.
+
 ## Product UX Gatekeeper
 
 Use only for unresolved product choices: labels, statuses, warnings, approval/export behavior, notes, navigation, hiding/disabling controls, confirmation behavior, or similar UX semantics.
 
 It does not resolve technical uncertainty, failed gates, root cause, commit, or push.
 When multiple presentation patterns are reasonable for a browser-visible P1, Product UX Gatekeeper is required before choosing the final visual treatment or stress-shape expectation.
+
+## Simplified review rule
+
+- Reviewer is required for implementation changes.
+- Reviewer success is exactly `VERDICT=ACCEPT`.
+- Breaker is required only for concrete P0/P1 invariant or process-integrity risk.
+- QA is required only when explicitly required by the task contract.
+- One substantive Reviewer cycle is the default, with one focused repair/re-review for a concrete finding.
+- A transport, truncation, or result-capture failure is an orchestration failure, not a substantive Reviewer rejection.
+- Do not invoke Breaker merely to manufacture a receipt.
+- Reviewer may accept `BASELINE_DEBT_VERIFIED` when an untouched baseline comparison proves the current diff introduces no new failing identities.

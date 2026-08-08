@@ -19,10 +19,12 @@ Acceptance must prove:
 
 The task contract must explicitly separate:
 
-- local readiness to create/push the exact commit;
+- local readiness to create the exact commit and prepare the trusted host-publisher handoff;
 - production acceptance after a live GitHub Actions run on that exact SHA.
 
 Local checkout evidence alone cannot produce production acceptance.
+Host publication evidence must identify the exact published SHA, and GitHub Actions
+acceptance must run against that exact SHA.
 A rerun of an older workflow definition does not validate a newer commit.
 
 When live access is unavailable, report a live-verification blocker.

@@ -8,8 +8,8 @@
 - `deep-bug-analysis.md` — trace-first root-cause proof and runtime-path verification.
 - `e2e-evidence.md` — E2E stages, real-path evidence, timeouts, reliability, harness stabilization.
 - `review-and-verdicts.md` — Reviewer/Breaker/QA responsibilities, exact tokens, handoffs, terminal verdicts.
-- `commit-readiness.md` — readiness packet, fingerprints, commit/push gates.
-- `github-workflow-acceptance.md` — clean-runner and live GitHub Actions requirements.
+- `commit-readiness.md` — readiness packet, fingerprints, commit and host-publication gates.
+- `github-workflow-acceptance.md` — clean-runner, host-publication, and live GitHub Actions requirements.
 
 Precedence:
 

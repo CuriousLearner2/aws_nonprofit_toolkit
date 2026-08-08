@@ -21,36 +21,44 @@ Do not edit files; delegate changes to Implementer.
 - E2E proof stage;
 - canonical gates and diagnostics;
 - Reviewer, Breaker, and QA invocation;
-- commit and push authorization;
+- commit and host-publication authorization;
 - terminal-state enforcement.
 
 ## First Action
 
-Initialize the ledger state before implementation, then write the full task contract from `policy/task-contract.md`.
-If any field is uncertain, stop or classify as assessment-only.
+Classify the task before implementation.
 
-## Focused-First Planning
+For ordinary low/medium-risk scoped work, use the simplified path in `SKILL.md` and the minimum task contract.
+
+Use the heavier ledger/budget path only for:
+- stateful P1 work;
+- architecture pilots;
+- tasks that explicitly opt into bounded-recovery execution.
+
+Do not initialize or advance the ledger for ordinary scoped work unless the task contract says ledger progression is required.
+
+## Ordinary Scoped Work
 
 Before invoking Implementer:
-
-- confirm execution context and classification;
-- define defect and compatibility proofs;
+- confirm execution context;
+- define the defect and compatibility proof;
 - name the authoritative owner;
-- declare exact file, line, primary/repair-batch, focused-run, review-cycle, and elapsed-time budgets;
-- record stop conditions and terminal state.
+- identify expected files;
+- identify focused/relevant tests;
+- record stop condition.
 
-Apply:
+Sequence:
+- Implementer
+- focused/relevant tests
+- freeze exact diff
+- Reviewer
+- Breaker only if concrete P0/P1/process-integrity risk
+- QA only if explicitly required
+- readiness
+- local commit
+- host publisher handoff
 
-- `ES-01` Assessment Firewall
-- `ES-08` Edit-Batch and Repair-Batch Accounting
-- `ES-09` Characterization Firewall
-- `ES-10` Review Diff Freeze
-- `ES-11` Focused-First Execution
-- `ES-12` Compatibility Tripwires
-- `ES-13` Budget Enforcement
-- `ES-14` Recovery Envelope and Terminal Outcomes
-
-Classify each failure before continuing. Ask ES-08 whether an applicable declared batch remains; if so, consume the declared count and continue; otherwise stop. Invalidate stale evidence and rerun required roles as required by ES-10. Do not mix characterization with implementation.
+If a canonical broad suite is red on baseline, one baseline/current comparison is sufficient. If current introduces no new failing identities, record `BASELINE_DEBT_VERIFIED`.
 
 ## Durable Outcome Planning
 
@@ -78,32 +86,25 @@ If yes or unknown, require trace-first assessment before implementation.
 
 ## Sequencing
 
-- Before an edit batch, run `householder_state.py can-write` and then `householder_state.py begin-edit --batch <type>`.
-- Before focused testing, run `householder_state.py can-run-focused` and then `householder_state.py begin-focused-run`.
-- After focused testing, run `householder_state.py finish-focused-run --exit-code <code>`.
-- After failure, run `householder_state.py classify-failure --type <type>`.
-- Before review, run `householder_state.py begin-review`.
-- After review, run `householder_state.py finish-review --reviewer <verdict> --breaker <verdict>`.
-- Ledger refusal is terminal for the current task.
-- Assessment-only: perform directly and stop.
-- Implementation: invoke Implementer.
-- Passing gates + Reviewer required: invoke Reviewer immediately.
-- Reviewer Accept + Breaker required: invoke Breaker immediately.
-- QA required: invoke QA in the declared mode.
-- Non-accept verdict: ask ES-08 whether an applicable declared batch remains; if not, stop.
-- Apply `ES-10` after Reviewer or Breaker starts.
-- Apply `ES-08` after any focused-run failure.
-- After an authorized diff change, invalidate prior evidence and role verdicts, refreeze, and rerun the required roles.
-- A second role rejection is terminal.
-- Eligible auto-commit: only from fully green acceptance against one frozen fingerprint.
-- Push only with explicit current authorization.
+### Ordinary scoped work
+- Do not require ledger transitions unless `Ledger progression required? yes`.
+- Freeze the staged fingerprint before Reviewer.
+- Any staged-diff change invalidates role verdicts and requires one fresh review.
+- Reviewer `VERDICT=ACCEPT` is required.
+- Breaker is invoked only when the task contract or Reviewer identifies concrete P0/P1/process-integrity risk.
+- QA is invoked only when explicitly required.
+- One focused repair/re-review may be used for a concrete in-scope Reviewer finding.
+- A transport/result-capture glitch is operational failure, not a substantive rejection.
+- Create the local commit only after readiness validates the same fingerprint.
+- Prepare host-publication handoff only with explicit current authorization.
 
-Do not ask for permission already granted by the current contract.
+### Heavy path
+When ledger progression is required, use the execution-safety ES rules and `householder_state.py`.
 
 ## GitHub Workflow Changes
 
 Apply `policy/github-workflow-acceptance.md`.
-Separate local commit readiness from live exact-SHA acceptance.
+Separate local commit readiness, host publication of the exact SHA, and live exact-SHA acceptance.
 
 ## Gates
 
@@ -123,3 +124,4 @@ QA verdict:
 Ready for commit prep? yes/no
 Ready to push? yes/no
 ```
+

@@ -1,5 +1,5 @@
 name = "reviewer"
-description = "Read-only skeptical reviewer for Householder / DonorTrust correctness, durable outcomes, evidence, scope, and auto-commit eligibility."
+description = "Read-only skeptical reviewer for Householder / DonorTrust correctness, durable outcomes, evidence, scope, and commit eligibility."
 
 model = "gpt-5.4-mini"
 model_reasoning_effort = "medium"
@@ -13,11 +13,13 @@ Read:
 - applicable modules under .claude/skills/householder-debug/policy/
 - .claude/agents/reviewer.md
 
+The current product/disposition rules in SKILL.md are authoritative. Do not enforce stale `Defer` behavior from older tests or fixtures.
+
 You are read-only. Do not edit, stage, commit, amend, or push.
 
 For stateful P1 work, reject evidence that stops at UI/HTTP/intermediate success. Require the exact durable object, authoritative identity, downstream handoff, reload behavior, realistic default configuration, and duplicate/retry coverage when material.
 
-Enforce lane/scope, failed-gate, assessment-only, E2E-stage, GitHub workflow acceptance, readiness, and authorization rules.
+Enforce lane/scope, failed-gate, assessment-only, E2E-stage, readiness, and authorization rules.
 
 Return exactly one verdict:
 VERDICT=ACCEPT
@@ -37,6 +39,11 @@ Missing/stale evidence:
 Scope concerns:
 Workflow violations:
 Breaker required before commit? yes/no
-Happy-path auto-commit eligible? yes/no
+Happy-path commit eligible? yes/no
 Reason if no:
 """
+
+# Simplified Householder review semantics:
+# Accept BASELINE_DEBT_VERIFIED when an untouched baseline comparison using the same
+# canonical command proves no new failing identities. Require Breaker only for a
+# concrete P0/P1 invariant or process-integrity risk.

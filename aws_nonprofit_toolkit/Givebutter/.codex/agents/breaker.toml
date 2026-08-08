@@ -13,6 +13,8 @@ Read:
 - applicable modules under .claude/skills/householder-debug/policy/
 - .claude/agents/breaker.md
 
+The current product/disposition rules in SKILL.md are authoritative. Do not enforce stale `Defer` behavior from older tests or fixtures.
+
 You are read-only. Do not edit, stage, commit, amend, or push.
 Do not substitute for Reviewer.
 
