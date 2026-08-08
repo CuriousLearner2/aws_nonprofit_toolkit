@@ -18,34 +18,22 @@ def _assert_order(text: str, snippets: list[str]) -> None:
         cursor = next_pos + len(snippet)
 
 
-def test_orchestrator_requires_ledger_sequence():
+def test_orchestrator_makes_ledger_sequence_conditional():
     text = ORCHESTRATOR.read_text(encoding="utf-8")
-    _assert_order(
-        text,
-        [
-            "can-write",
-            "begin-edit --batch <type>",
-            "can-run-focused",
-            "begin-focused-run",
-            "finish-focused-run --exit-code <code>",
-            "classify-failure --type <type>",
-            "begin-review",
-            "finish-review --reviewer <verdict> --breaker <verdict>",
-        ],
-    )
-    assert "Ledger refusal is terminal for the current task." in text
-    assert "ledger sequencing and refusal handling" in text
+    assert "Use the heavier ledger/budget path only for:" in text
+    assert "Do not initialize or advance the ledger for ordinary scoped work unless the task contract says ledger progression is required." in text
+    assert "Do not require ledger transitions unless `Ledger progression required? yes`." in text
+    assert "When ledger progression is required, use the execution-safety ES rules and `householder_state.py`." in text
 
 
-def test_implementer_and_policy_docs_name_ledger_owner():
+def test_policy_docs_scope_ledger_owner_to_heavy_path():
     implementer = IMPLEMENTER.read_text(encoding="utf-8")
     safety = EXECUTION_SAFETY.read_text(encoding="utf-8")
     contract = TASK_CONTRACT.read_text(encoding="utf-8")
 
-    assert "householder_state.py can-write" in implementer
-    assert "finish-focused-run --exit-code <code>" in implementer
+    assert "Ready for reviewer? yes/no" in implementer
+    assert "ES-08/ES-13 ledger, batch, and budget machinery is mandatory only when the task contract sets `Ledger progression required? yes`" in safety
     assert "executable owner" in safety
     assert "Raw prose counters or inferred readiness do not override ledger state" in safety
-    assert "Ledger executable owner:" in contract
     assert "Ledger progression required? yes/no" in contract
-    assert "Ledger refusal terminal? yes/no" in contract
+    assert "Ordinary low/medium-risk scoped work normally sets `Ledger progression required? no`." in contract

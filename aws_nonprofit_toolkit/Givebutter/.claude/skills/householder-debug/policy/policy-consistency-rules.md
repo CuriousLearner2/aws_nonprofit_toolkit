@@ -10,10 +10,10 @@ Future `scripts/ci/check_policy_consistency.py` should enforce:
 6. Policy precedence appears exactly once.
 7. Duplicate authoritative headings or conflicting rule IDs fail.
 8. Generic correction budgets, ad hoc retry authority, or unclassified correction language fail.
-9. Bounded recovery requires explicit counts for primary, implementation-repair, test-harness-repair, and review-repair batches.
-10. Every edit batch must have one declared focused run.
-11. A failed focused run may continue only through an applicable preauthorized repair batch under ES-08.
+9. When `Ledger progression required? yes`, bounded recovery requires explicit counts for primary, implementation-repair, test-harness-repair, and review-repair batches.
+10. When `Ledger progression required? yes`, every edit batch must have one declared focused run.
+11. When `Ledger progression required? yes`, a failed focused run may continue only through an applicable preauthorized repair batch under ES-08.
 12. Reviewer/Breaker after an authorized diff change requires fingerprint invalidation, refreeze, and rerun of the required roles against the new fingerprint.
 13. More than two review cycles fails unless a new authorization explicitly narrows and reauthorizes the task.
-14. Auto-commit is valid only from fully green acceptance against one frozen fingerprint.
+14. Auto-commit is valid only when all required acceptance evidence is satisfied against one frozen fingerprint. A canonical broad-suite gate may be satisfied by either `PASS` or valid `BASELINE_DEBT_VERIFIED`.
 15. Deferred features may not be used as rejection grounds when role scope explicitly excludes them.

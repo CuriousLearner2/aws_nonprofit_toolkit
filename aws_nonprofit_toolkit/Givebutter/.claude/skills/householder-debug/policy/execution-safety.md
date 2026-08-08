@@ -11,6 +11,24 @@
 
 A lower-precedence source may narrow behavior but may not broaden authority or redefine a higher-precedence rule.
 
+
+## Remote Publication Boundary
+
+For the current Householder local-development workflow, Codex-side agents do not
+contact GitHub. They may prepare a validated local commit and, when the task contract
+authorizes publication, prepare the trusted host SSH publisher handoff.
+
+The host publisher independently owns remote fetch, expected-ref verification,
+lease-protected push, refetch, target-ref verification, and unchanged-`main`
+verification. A Codex-side task must not infer remote success from a local handoff.
+
+
+## Applicability
+
+The ES-08/ES-13 ledger, batch, and budget machinery is mandatory only when the task contract sets `Ledger progression required? yes`, including stateful P1 work, architecture pilots, or explicitly opted-in bounded-recovery tasks.
+
+For ordinary low/medium-risk scoped work with `Ledger progression required? no`, use the simplified normal-change path below. ES-10 exact-diff freeze, scope safety, and role requirements still apply.
+
 ## Rule Registry
 
 - `ES-01` Assessment-to-Implementation Firewall
@@ -123,11 +141,11 @@ If a gate or server cannot be confirmed stopped, stop. Do not continue with gate
 ## ES-07 Restart and Resume
 
 Do not infer authority from prior conversation, generated ZIPs, dirty files, local commits, or earlier recommendations.
-A current task contract is required before editing, testing, staging, committing, or pushing.
+A current task contract is required before implementation or commit-capable work; ordinary scoped work may use the simplified minimum contract.
 
 ## ES-08 Edit-Batch, Repair-Batch, and Focused-Run Accounting
 
-These rules are authoritative whenever a task contract allows implementation or repair work.
+These rules are authoritative whenever the task contract sets `Ledger progression required? yes`.
 
 ### Definitions
 
@@ -246,7 +264,7 @@ For an authorized implementation:
 4. focused test file;
 5. affected integration or browser files;
 6. canonical broad gates;
-7. Reviewer, Breaker, QA, readiness, commit, push, exact-SHA CI, and live acceptance.
+7. Reviewer, Breaker, QA, readiness, commit, host-publication handoff, exact-SHA CI, and live acceptance.
 
 Do not use broad gates to discover whether an implementation approach is viable.
 Run broad gates only after focused proof is green and the diff is stable.
@@ -255,7 +273,7 @@ Rerun only evidence materially invalidated by a later edit.
 
 ### ES-13 Budget Enforcement
 
-Every implementation task must declare exact cumulative limits for:
+Every task using the heavy ledger/budget path must declare exact cumulative limits for:
 
 - authorized files;
 - implementation and test lines;
@@ -334,3 +352,26 @@ helpers, and gate commands.
 
 Record desirable but nonessential cleanup in a deferred list. Do not implement
 "while here" refactors inside the current task.
+
+
+## Simplified normal-change path
+
+For ordinary low/medium-risk scoped work with `Ledger progression required? no`:
+
+`focused/relevant tests → exact diff freeze → Reviewer → Breaker only if warranted → readiness → local commit → host publisher`
+
+Rules:
+- do not require edit-batch counters, repair-batch counters, or ledger transitions;
+- do not repeat broad suites if existing evidence remains valid;
+- one substantive Reviewer pass is the default;
+- one focused repair/re-review is allowed for a concrete in-scope finding;
+- orchestration/result-capture failures do not count as substantive rejection.
+
+### Baseline debt
+
+When a canonical broad suite is already red on the untouched baseline:
+- run the same command/environment on baseline and current;
+- record baseline SHA, current staged fingerprint, command, counts, and failing identities;
+- if current introduces no new failing identities, classify as `BASELINE_DEBT_VERIFIED`;
+- `BASELINE_DEBT_VERIFIED` is acceptable evidence, not an exception;
+- any new failure remains blocking.
