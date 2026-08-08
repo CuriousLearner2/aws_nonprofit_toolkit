@@ -53,8 +53,8 @@ def flask_client_with_rows(temp_db, monkeypatch):
     database_url, engine = temp_db
 
     app.config['TESTING'] = True
-    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', database_url)
+    monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
     monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
 
     # Seed database
@@ -114,6 +114,7 @@ class TestRowDecisionReset:
             batch_id='reset-test-batch',
             raw_import_row_id=raw_id,
             decision='accept_as_is',
+            notes='Reviewed and accepted',
             database_url=database_url
         )
 
@@ -160,14 +161,15 @@ class TestRowDecisionReset:
         record_row_decision(
             batch_id='reset-test-batch',
             raw_import_row_id=raw_id,
-            decision='defer',
+            decision='needs_follow_up',
+            notes='Review later',
             database_url=database_url
         )
 
         # Verify decision exists
         decision = get_row_decision('reset-test-batch', raw_id, database_url)
         assert decision is not None
-        assert decision['decision'] == 'defer'
+        assert decision['decision'] == 'needs_follow_up'
 
         # Reset via POST
         response = client.post(
@@ -231,6 +233,7 @@ class TestRowDecisionReset:
             batch_id='reset-test-batch',
             raw_import_row_id=raw_id,
             decision='accept_as_is',
+            notes='Reviewed and accepted',
             database_url=database_url
         )
 
@@ -246,13 +249,14 @@ class TestRowDecisionReset:
         record_row_decision(
             batch_id='reset-test-batch',
             raw_import_row_id=raw_id,
-            decision='defer',
+            decision='needs_follow_up',
+            notes='Review later',
             database_url=database_url
         )
 
         # Get current decision - should be defer
         decision = get_row_decision('reset-test-batch', raw_id, database_url)
-        assert decision['decision'] == 'defer'
+        assert decision['decision'] == 'needs_follow_up'
 
         # Reset again
         record_row_decision(
@@ -307,13 +311,15 @@ class TestRowDecisionReset:
             batch_id='reset-test-batch',
             raw_import_row_id=row_1,
             decision='accept_as_is',
+            notes='Reviewed and accepted',
             database_url=database_url
         )
 
         record_row_decision(
             batch_id='reset-test-batch',
             raw_import_row_id=row_2,
-            decision='defer',
+            decision='needs_follow_up',
+            notes='Review later',
             database_url=database_url
         )
 
@@ -339,7 +345,7 @@ class TestRowDecisionReset:
 
         # Rows 2 and 3 should be unchanged
         decision_2 = get_row_decision('reset-test-batch', row_2, database_url)
-        assert decision_2['decision'] == 'defer'
+        assert decision_2['decision'] == 'needs_follow_up'
 
         decision_3 = get_row_decision('reset-test-batch', row_3, database_url)
         assert decision_3['decision'] == 'needs_follow_up'
@@ -350,10 +356,9 @@ class TestRowDecisionReset:
         raw_id = rows[0]
 
         decision_types = [
-            ('accept_as_is', None),
+            ('accept_as_is', 'Reviewed and accepted'),
             ('needs_follow_up', 'Check this'),
-            ('defer', None),
-            ('reject_row', None),
+            ('reject_row', 'Rejected by reviewer'),
         ]
 
         for decision_type, notes in decision_types:

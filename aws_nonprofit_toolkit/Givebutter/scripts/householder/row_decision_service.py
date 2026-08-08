@@ -1,13 +1,12 @@
 """
 Row-Level Review Status Decision Service
 
-Handles reviewer decisions on row status (Accept, Follow-up, Defer, Reject, Clear).
+Handles reviewer decisions on row status (Accept, Follow-up, Reject, Clear).
 These are stored as ReviewDecision records with decision type tracking the reviewer's choice.
 
 Decision types:
 - 'accept_as_is': Row acceptable without changes
 - 'needs_follow_up': Requires follow-up, notes mandatory
-- 'defer': Defer review to later, optional notes
 - 'reject_row': Reject this row entirely
 - 'clear_decision': Remove reviewer decision, return to system-derived status
 """
@@ -19,14 +18,35 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from .database_models import ReviewDecision, ImportBatch, RawImportRow, AuditLogRecord
-from .row_decision_policy import (
-    normalize_row_decision_notes,
-    normalize_interaction_sequence,
-)
 
 
 _ROW_DECISION_LOCKS = {}
 _ROW_DECISION_LOCKS_MUTEX = threading.Lock()
+
+
+def _normalize_row_decision_notes(notes: Optional[str]) -> Optional[str]:
+    if notes is None:
+        return None
+
+    normalized = notes.strip()
+    return normalized or None
+
+
+def _normalize_interaction_sequence(interaction_sequence: Optional[Any]) -> Optional[int]:
+    if interaction_sequence is None:
+        return None
+
+    try:
+        normalized = int(interaction_sequence)
+    except (TypeError, ValueError):
+        raise ValueError("Row decision requires a valid interaction_sequence")
+
+    if normalized < 1:
+        raise ValueError("Row decision requires interaction_sequence >= 1")
+
+    return normalized
+
+
 def _row_decision_lock_key(batch_id: str, raw_import_row_id: int) -> str:
     return f"{batch_id}:{raw_import_row_id}"
 
@@ -67,7 +87,7 @@ def _extract_row_status_decision_state(review_decision):
 
     return (
         decision_type,
-        normalize_row_decision_notes(reviewed_values.get('notes')),
+        _normalize_row_decision_notes(reviewed_values.get('notes')),
         interaction_sequence,
     )
 
@@ -106,7 +126,7 @@ def record_row_decision(
     Args:
         batch_id: Import batch ID
         raw_import_row_id: RawImportRow.id
-        decision: One of: 'accept_as_is', 'needs_follow_up', 'defer', 'reject_row', 'clear_decision'
+        decision: One of: 'accept_as_is', 'needs_follow_up', 'reject_row', 'clear_decision'
         notes: Optional reviewer notes (required for 'needs_follow_up')
         interaction_sequence: Monotonic per-row interaction order number
         reviewer_name: Required manually entered reviewer name
@@ -135,7 +155,6 @@ def record_row_decision(
     valid_decisions = {
         'accept_as_is',
         'needs_follow_up',
-        'defer',
         'reject_row',
         'clear_decision'
     }
@@ -148,7 +167,7 @@ def record_row_decision(
     if decision == 'needs_follow_up' and not (notes and notes.strip()):
         raise ValueError('Notes required for Follow-up decision')
 
-    normalized_sequence = normalize_interaction_sequence(interaction_sequence)
+    normalized_sequence = _normalize_interaction_sequence(interaction_sequence)
     use_sequence_guard = normalized_sequence is not None
 
     lock = _get_row_decision_lock(batch_id, raw_import_row_id) if use_sequence_guard else None
@@ -190,7 +209,7 @@ def record_row_decision(
                     'Reason / notes required for Accept as-is when validation issues exist'
                 )
 
-        normalized_notes = normalize_row_decision_notes(notes)
+        normalized_notes = _normalize_row_decision_notes(notes)
         latest_row_decision = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
         latest_decision_type, latest_notes, latest_sequence = _extract_row_status_decision_state(latest_row_decision)
 

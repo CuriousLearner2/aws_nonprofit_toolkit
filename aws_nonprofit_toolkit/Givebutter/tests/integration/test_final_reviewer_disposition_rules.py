@@ -23,6 +23,8 @@ from scripts.householder.database_models import (
 )
 from scripts.householder.export_preview_service import build_export_preview
 from scripts.householder.row_decision_service import get_row_decision_state
+from scripts.householder.row_decision_service import record_row_decision
+from scripts.householder.issue_recalculation_service import recalculate_row_issues
 
 
 @pytest.fixture
@@ -218,3 +220,87 @@ def test_clear_is_only_saved_human_revision_and_restores_issue_default(
         assert session.query(AuditLogRecord).filter_by(batch_id=batch_id).count() == 2
     finally:
         session.close()
+
+
+def test_follow_up_and_reject_are_excluded_and_dashboard_recovers_them(
+    disposition_db, monkeypatch
+):
+    database_url, _, batch_id, clean_raw_id, issue_raw_id = disposition_db
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+    from scripts.uploader.app import app
+
+    app.config['TESTING'] = True
+    app.config['GIVEBUTTER_DATABASE_URL'] = database_url
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
+    record_row_decision(
+        batch_id, issue_raw_id, 'needs_follow_up', 'Need donor confirmation',
+        interaction_sequence=1, reviewer_name='Reviewer', database_url=database_url,
+    )
+    record_row_decision(
+        batch_id, clean_raw_id, 'reject_row', 'Duplicate source row',
+        interaction_sequence=1, reviewer_name='Reviewer', database_url=database_url,
+    )
+
+    preview = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+    assert preview.is_export_ready is True
+    assert preview.exported_count == 0
+    assert preview.needs_follow_up_count == 1
+    assert preview.rejected_count == 1
+    assert preview.export_rows == ()
+
+    with app.test_client() as client:
+        dashboard = client.get(f'/imports/{batch_id}/dashboard')
+        assert dashboard.status_code == 200
+        body = dashboard.get_data(as_text=True)
+        assert 'Needs follow-up: 1' in body
+        assert f'/imports/{batch_id}/validation?disposition=needs_follow_up' in body
+
+        filtered = client.get(f'/imports/{batch_id}/validation?disposition=needs_follow_up')
+        assert filtered.status_code == 200
+        filtered_body = filtered.get_data(as_text=True)
+        assert 'Issue Row' in filtered_body
+        assert 'Clean Row' not in filtered_body
+
+
+def test_defer_is_not_a_row_disposition_and_new_notes_are_blank(monkeypatch):
+    from scripts.householder.row_decision_service import record_row_decision
+
+    with pytest.raises(ValueError, match="Invalid decision 'defer'"):
+        record_row_decision(
+            'missing-batch', 1, 'defer', database_url='sqlite:///:memory:',
+            reviewer_name='Reviewer', interaction_sequence=1,
+        )
+
+    template = Path(__file__).resolve().parents[2] / 'scripts/uploader/templates/imports/validation.html'
+    html = template.read_text()
+    assert 'value="defer"' not in html
+    assert "['defer', 'Defer']" not in html
+    assert 'class="edit-row-review"' not in html
+    assert 'box-sizing: border-box;">${escapeHtml(currentNotes)}</textarea>' not in html
+
+
+def test_missing_address_source_does_not_synthesize_warning(disposition_db):
+    database_url, Session, batch_id, _, _ = disposition_db
+    session = Session()
+    raw = RawImportRow(
+        batch_id=batch_id,
+        row_index=3,
+        raw_csv_data={'name': 'No Address Source', 'email': 'source@example.com'},
+    )
+    session.add(raw)
+    session.flush()
+    session.add(ImportContact(
+        batch_id=batch_id,
+        raw_import_row_id=raw.id,
+        first_name='No',
+        last_name='Address Source',
+        email='source@example.com',
+        amount=30.0,
+        address_line1=None,
+    ))
+    session.commit()
+    raw_id = raw.id
+    session.close()
+
+    issues = recalculate_row_issues(batch_id, raw_id, database_url)
+    assert not any(issue.get('field') == 'address' for issue in issues)

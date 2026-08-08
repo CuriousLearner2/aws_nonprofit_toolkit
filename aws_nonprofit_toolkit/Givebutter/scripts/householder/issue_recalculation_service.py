@@ -16,18 +16,13 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import (
     ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewItemSubject
 )
-from .effective_value_resolution import get_effective_values
-from .autosave_service import validate_name_correction
+from .autosave_service import get_effective_values, validate_name_correction
 from .amount_validation_service import validate_review_amount
 from .email_validation_service import validate_review_email
 from .date_validation_service import validate_review_date
 from .phone_validation_service import is_valid_phone, validate_review_phone
 from .issue_identity import normalize_validation_issue_field
 from .issue_reconciliation import reconcile_missing_address_issues
-from .recalculation_input_policy import (
-    prepare_recalculation_input,
-    value_for_validation_field,
-)
 import os
 
 # Top 30 recognized email domains - strict validation applied to these
@@ -71,6 +66,21 @@ COMMON_TYPO_DOMAINS = {
     'hotmial.com': 'hotmail.com',  # letter swap
     'hotmal.com': 'hotmail.com',   # missing i
 }
+
+
+def _validation_issue_value_for_field(values: Dict[str, Any], field: Any) -> Any:
+    canonical_field = normalize_validation_issue_field(field)
+    if canonical_field:
+        blank_match = None
+        for key, value in values.items():
+            if normalize_validation_issue_field(key) == canonical_field:
+                if value is not None and str(value).strip():
+                    return value
+                if blank_match is None:
+                    blank_match = value
+        if blank_match is not None:
+            return blank_match
+    return values.get(field)
 
 
 def recalculate_row_issues(
@@ -121,10 +131,17 @@ def recalculate_row_issues(
 
         # Get effective values (raw + corrections)
         # If proposed_values provided, merge them in (for validation of unsaved corrections)
-        effective_values = prepare_recalculation_input(
-            get_effective_values(batch_id, raw_import_row_id, database_url),
-            proposed_values,
-        )
+        effective_values = get_effective_values(batch_id, raw_import_row_id, database_url)
+        if proposed_values:
+            effective_values.update(proposed_values)
+        # CSV headers are preserved in raw storage (for example, ``Email``),
+        # while corrections use canonical field names (for example, ``email``).
+        # Validation must operate on one canonical view so a correction
+        # overrides the corresponding imported value.
+        effective_values = {
+            normalize_validation_issue_field(key) or key: value
+            for key, value in effective_values.items()
+        }
         # Get raw data for comparison
         raw_data = {
             normalize_validation_issue_field(key) or key: value
@@ -164,8 +181,8 @@ def recalculate_row_issues(
 
             # Get the corrected value for this field (if any)
             if normalized_field == 'address':
-                effective_value = value_for_validation_field(effective_values, issue_field)
-                raw_value = value_for_validation_field(raw_data, issue_field)
+                effective_value = _validation_issue_value_for_field(effective_values, issue_field)
+                raw_value = _validation_issue_value_for_field(raw_data, issue_field)
             else:
                 effective_value = effective_values.get(normalized_field)
                 raw_value = raw_data.get(normalized_field)
@@ -270,13 +287,13 @@ def recalculate_row_issues(
         # authoritative address source (raw row or contact snapshot).
         # The reconciliation boundary below deduplicates this against any
         # existing persisted missing-address issue.
-        address_issue = _validate_address(value_for_validation_field(effective_values, 'address'))
+        address_issue = _validate_address(_validation_issue_value_for_field(effective_values, 'address'))
+        # A blank address is actionable only when the import actually carried
+        # an address field/source. Rows with no address source must not acquire
+        # a synthesized warning merely because the contact projection is blank.
         has_authoritative_address = (
-            value_for_validation_field(raw_data, 'address') is not None
-            or any(
-                getattr(contact, attribute, None) is not None
-                for attribute in ('address_line1', 'address_line2', 'city', 'state', 'postal_code')
-            )
+            'address' in raw_data
+            or (contact is not None and contact.address_line1 is not None)
         )
         if address_issue and has_authoritative_address:
             new_address_issues.append(address_issue)
@@ -297,6 +314,7 @@ def recalculate_row_issues(
         )
 
         projected = _suppress_redundant_generic_issues(current_issues, effective_values)
+        projected = _deduplicate_exact_issues(projected, effective_values)
         deduped = []
         seen_address_warnings = set()
         for issue in projected:
@@ -355,7 +373,6 @@ def _suppress_redundant_generic_issues(
             specific_keys.add((field, severity, _issue_value_key(effective_values, field)))
 
     filtered = []
-    seen_exact = set()
     for issue in issues:
         field = normalize_validation_issue_field(issue.get('field')) or str(issue.get('field') or '').strip().lower()
         severity = str(issue.get('severity') or '').strip().lower()
@@ -363,16 +380,36 @@ def _suppress_redundant_generic_issues(
         key = (field, severity, _issue_value_key(effective_values, field))
         if _is_generic_field_issue(description, field) and key in specific_keys:
             continue
-        exact_key = (field, severity, _issue_value_key(effective_values, field), description.casefold())
-        if exact_key in seen_exact:
-            continue
-        seen_exact.add(exact_key)
         filtered.append(issue)
     return filtered
 
 
+def _deduplicate_exact_issues(
+    issues: List[Dict[str, Any]],
+    effective_values: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Keep one projected issue for each exact field/value/severity/reason."""
+    deduped: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for issue in issues:
+        field = normalize_validation_issue_field(issue.get('field')) or str(
+            issue.get('field') or ''
+        ).strip().lower()
+        key = (
+            field,
+            _issue_value_key(effective_values, field),
+            str(issue.get('severity') or '').strip().lower(),
+            str(issue.get('reason') or '').strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(issue)
+    return deduped
+
+
 def _issue_value_key(values: Dict[str, Any], field: str) -> str:
-    value = value_for_validation_field(values, field)
+    value = _validation_issue_value_for_field(values, field)
     return str(value).strip() if value is not None else ''
 
 

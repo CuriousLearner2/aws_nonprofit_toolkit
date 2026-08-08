@@ -16,9 +16,34 @@ from sqlalchemy.orm import sessionmaker
 from .database_models import (
     ImportBatch, RawImportRow, ReviewItem, ReviewItemSubject, AuditLogRecord
 )
-from .approval_override_policy import canonical_override_field
-from .approval_remaining_issues_policy import project_remaining_issues
 import os
+
+
+def _canonical_override_field(issues: Optional[List[Dict[str, Any]]]) -> Optional[str]:
+    """
+    Derive a stable field name for an override entry when the approval payload
+    clearly targets a single field.
+
+    Returns None for ambiguous or empty issue lists so we fail closed on
+    multi-field approvals instead of inventing a misleading canonical field.
+    """
+    if not issues:
+        return None
+
+    fields = []
+    for issue in issues:
+        field = issue.get('field')
+        if not field:
+            continue
+
+        normalized_field = str(field).strip().lower()
+        if normalized_field and normalized_field not in fields:
+            fields.append(normalized_field)
+
+    if len(fields) == 1:
+        return fields[0]
+
+    return None
 
 
 def approve_batch(
@@ -124,7 +149,7 @@ def approve_batch(
                     'row_index': row_index,
                     'issues': issues  # List of {field, reason} dicts
                 }
-                canonical_field = canonical_override_field(issues)
+                canonical_field = _canonical_override_field(issues)
                 if canonical_field:
                     override_entry['field'] = canonical_field
                 overrides.append(override_entry)
@@ -255,7 +280,7 @@ def check_batch_remaining_issues(
     """
     from .row_status_service import derive_row_status
     from .issue_recalculation_service import recalculate_row_issues
-    from .row_decision_service import get_rows_with_follow_up, get_rows_with_defer, get_row_decision_state
+    from .row_decision_service import get_rows_with_follow_up, get_row_decision_state
 
     if database_url is None:
         database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
@@ -271,60 +296,63 @@ def check_batch_remaining_issues(
 
         # Get rows with pending decisions
         follow_up_rows = set(get_rows_with_follow_up(batch_id=batch_id, database_url=database_url))
-        defer_rows = set(get_rows_with_defer(batch_id=batch_id, database_url=database_url))
 
         # Get all raw rows in batch
         rows = session.query(RawImportRow).filter_by(batch_id=batch_id).all()
 
-        issues_by_row = {}
-        status_by_row = {}
-        disposition_by_row = {}
+        remaining_issues_by_row = []
         for row in rows:
-            issues_by_row[row.id] = recalculate_row_issues(
+            issues = recalculate_row_issues(
                 batch_id=batch_id,
                 raw_import_row_id=row.id,
                 database_url=database_url
             )
-            status_by_row[row.id] = derive_row_status(
+            blocking_issues = [
+                issue for issue in issues
+                if issue.get('severity', 'warning') == 'error'
+            ]
+            row_status = derive_row_status(
                 batch_id=batch_id,
                 raw_import_row_id=row.id,
                 database_url=database_url
             )
-            disposition_by_row[row.id] = get_row_decision_state(
+
+            decision_state = get_row_decision_state(
                 batch_id=batch_id,
                 raw_import_row_id=row.id,
                 database_url=database_url,
-            ).get('has_decision', False)
+            )
+            has_human_disposition = decision_state.get('has_decision', False)
+            if issues and not has_human_disposition:
+                remaining_issues_by_row.append({
+                    'raw_import_row_id': row.id,
+                    'row_index': row.row_index,
+                    'issues': issues,
+                    'row_status': row_status,
+                    'decision_warning': 'disposition_required',
+                })
+                continue
 
-        projected = project_remaining_issues(
-            rows=rows,
-            issues_by_row=issues_by_row,
-            status_by_row=status_by_row,
-            follow_up_rows=follow_up_rows,
-            defer_rows=defer_rows,
-        )
-        projected = [
-            entry for entry in projected
-            if not disposition_by_row.get(entry['raw_import_row_id'], False)
-        ]
-        for row in rows:
-            if issues_by_row[row.id] and not disposition_by_row[row.id]:
-                existing = next(
-                    (entry for entry in projected if entry['raw_import_row_id'] == row.id),
-                    None,
-                )
-                if existing is None:
-                    projected.append({
-                        'raw_import_row_id': row.id,
-                        'row_index': row.row_index,
-                        'issues': issues_by_row[row.id],
-                        'row_status': status_by_row[row.id],
-                        'decision_warning': 'disposition_required',
-                    })
-                else:
-                    existing['issues'] = issues_by_row[row.id]
-                    existing['decision_warning'] = 'disposition_required'
-        return sorted(projected, key=lambda entry: entry['row_index'])
+            # Include row only if it has blocking validation issues.
+            # Warning-only rows may remain non-blocking during approval.
+            if blocking_issues and not has_human_disposition:
+                remaining_issues_by_row.append({
+                    'raw_import_row_id': row.id,
+                    'row_index': row.row_index,
+                    'issues': blocking_issues,
+                    'row_status': row_status
+                })
+            # Or include if it has a pending follow-up decision
+            elif row.id in follow_up_rows:
+                remaining_issues_by_row.append({
+                    'raw_import_row_id': row.id,
+                    'row_index': row.row_index,
+                    'issues': [{'field': 'row_decision', 'reason': 'Marked as Needs follow-up'}],
+                    'row_status': row_status,
+                    'decision_warning': 'needs_follow_up'
+                })
+
+        return remaining_issues_by_row
 
     finally:
         session.close()

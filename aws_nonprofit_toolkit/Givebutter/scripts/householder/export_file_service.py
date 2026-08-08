@@ -6,8 +6,10 @@ Does NOT mutate source data or call external systems.
 """
 
 import os
+import csv
 import json
 import logging
+from io import StringIO
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Optional, Mapping, Any
@@ -18,10 +20,6 @@ from sqlalchemy.orm import sessionmaker
 
 from .database_models import AuditLogRecord
 from .export_preview_service import build_export_preview
-from .export_csv_policy import encode_csv_field as _encode_csv_field
-from .export_csv_policy import generate_csv_content as _generate_csv_content
-from .export_filename_policy import sanitize_filename as _sanitize_filename
-from .export_filename_policy import generate_safe_filename as _generate_safe_filename
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +101,24 @@ class ExportFileResult:
         }
 
 
+def _sanitize_filename(filename: str) -> str:
+    """Prevent directory traversal and invalid characters."""
+    # Remove path separators
+    filename = filename.replace('/', '').replace('\\', '')
+    # Remove leading dots
+    filename = filename.lstrip('.')
+    # Limit to alphanumeric, hyphen, underscore, dot
+    filename = ''.join(c for c in filename if c.isalnum() or c in '-_.')
+    return filename
+
+
+def _generate_safe_filename(import_id: str, timestamp: datetime) -> str:
+    """Generate safe export filename with collision avoidance."""
+    sanitized_id = _sanitize_filename(import_id)
+    ts = timestamp.strftime('%Y%m%d_%H%M%S')
+    return f"{sanitized_id}_export_{ts}.csv"
+
+
 def _ensure_output_dir(output_dir: str) -> None:
     """Ensure output directory exists and is writable."""
     try:
@@ -127,6 +143,75 @@ def _get_safe_file_path(output_dir: str, filename: str) -> str:
             return collision_path
 
     raise ExportIOError(f"Cannot find available filename for {filename}")
+
+
+def _encode_csv_field(value: Any) -> str:
+    """Encode value for CSV field."""
+    if value is None:
+        return ""
+
+    if isinstance(value, bool):
+        return "true" if value else "false"
+
+    if isinstance(value, (list, tuple)):
+        # Semicolon-separated string for list/tuple fields
+        return ";".join(str(v) for v in value if v is not None)
+
+    return str(value)
+
+
+def _generate_csv_content(export_rows: tuple) -> str:
+    """Generate CSV content from export rows."""
+    # Define header order exactly as specified
+    header = [
+        'source_row_index', 'transaction_id', 'date', 'first_name', 'last_name', 'email', 'phone',
+        'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'amount',
+        'validation_status', 'validation_issues', 'normalized_fields', 'normalization_warnings',
+        'duplicate_group_id', 'duplicate_decision', 'duplicate_warnings',
+        'household_group_id', 'household_group_label', 'household_members', 'household_decision', 'household_warnings',
+        'export_warnings'
+    ]
+
+    # Use StringIO to generate CSV in memory
+    output = StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow(header)
+
+    # Write rows
+    for row in export_rows:
+        csv_row = [
+            _encode_csv_field(row.source_row_index),
+            _encode_csv_field(row.transaction_id),
+            _encode_csv_field(row.date),
+            _encode_csv_field(row.first_name),
+            _encode_csv_field(row.last_name),
+            _encode_csv_field(row.email),
+            _encode_csv_field(row.phone),
+            _encode_csv_field(row.address_line1),
+            _encode_csv_field(row.address_line2),
+            _encode_csv_field(row.city),
+            _encode_csv_field(row.state),
+            _encode_csv_field(row.postal_code),
+            _encode_csv_field(row.amount),
+            _encode_csv_field(row.validation_status),
+            _encode_csv_field(row.validation_issues),
+            _encode_csv_field(row.normalized_fields),
+            _encode_csv_field(row.normalization_warnings),
+            _encode_csv_field(row.duplicate_group_id),
+            _encode_csv_field(row.duplicate_decision),
+            _encode_csv_field(row.duplicate_warnings),
+            _encode_csv_field(row.household_group_id),
+            _encode_csv_field(row.household_group_label),
+            _encode_csv_field(row.household_members),
+            _encode_csv_field(row.household_decision),
+            _encode_csv_field(row.household_warnings),
+            _encode_csv_field(row.export_warnings),
+        ]
+        writer.writerow(csv_row)
+
+    return output.getvalue()
 
 
 def _write_csv_file(file_path: str, content: str) -> None:

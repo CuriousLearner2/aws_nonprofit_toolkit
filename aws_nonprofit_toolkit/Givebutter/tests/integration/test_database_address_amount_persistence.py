@@ -226,7 +226,7 @@ def test_amount_error_correction_reload_readiness_preview_csv(client_with_databa
     target_after = _review_row(after, "Amount Target")
     assert target_after["amount"] == "1250.50"
     assert {issue["field"]: issue["severity"] for issue in target_after["issues"]} == {"address": "warning"}
-    assert _review_row(after, "Amount Control")["amount"] == "200.00"
+    assert _review_row(after, "Amount Control")["amount"] == "$200.00"
     effective = get_effective_values(batch_id, target.id, database_url)
     assert effective["amount"] == "1250.50"
     disposition = client_with_database.post(

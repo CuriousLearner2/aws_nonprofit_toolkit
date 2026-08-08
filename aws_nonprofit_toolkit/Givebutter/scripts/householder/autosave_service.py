@@ -11,14 +11,18 @@ from datetime import datetime, timezone
 
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
-from .editable_field_validation import validate_editable_field_values as _validate_editable_field_values
-from .editable_field_validation import validate_name_correction as _validate_name_correction
-from .effective_value_resolution import get_effective_values as _get_effective_values
 
 
 def validate_name_correction(value: Any) -> Optional[str]:
-    """Compatibility wrapper for the shared reviewed-name policy."""
-    return _validate_name_correction(value)
+    """Return a blocking error for an invalid reviewed name."""
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return "Name field is empty"
+    if len(text) < 2:
+        return "Name is too short"
+    if len(text) > 100:
+        return "Name is too long"
+    return None
 
 
 def autosave_row_corrections(
@@ -150,7 +154,51 @@ def get_effective_values(
     Raises:
         ValueError: If batch or row not found
     """
-    return _get_effective_values(batch_id, raw_import_row_id, database_url)
+    from .database_models import (
+        RawImportRow, ReviewDecision, get_session, create_db_engine
+    )
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import os
+
+    if database_url is None:
+        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
+
+    engine = create_engine(database_url, echo=False)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+
+    try:
+        # Get raw row
+        raw_row = session.query(RawImportRow).filter_by(
+            id=raw_import_row_id
+        ).first()
+        if not raw_row:
+            raise ValueError(f"Raw import row {raw_import_row_id} not found")
+
+        # Start with raw values
+        effective_values = dict(raw_row.raw_csv_data) if raw_row.raw_csv_data else {}
+
+        # Accumulate corrections from ALL ReviewDecisions for this row
+        # Each autosave creates a new decision with reviewed_values for one or more fields
+        # We need to merge them all in chronological order (later decisions override earlier)
+        decisions = session.query(ReviewDecision).filter_by(
+            batch_id=batch_id,
+            raw_import_row_id=raw_import_row_id
+        ).order_by(
+            ReviewDecision.created_at.asc(),  # Earliest first
+            ReviewDecision.id.asc()
+        ).all()
+
+        # Merge corrections: iterate in chronological order, later overrides earlier
+        for decision in decisions:
+            if decision.reviewed_values:
+                effective_values.update(decision.reviewed_values)
+
+        return effective_values
+
+    finally:
+        session.close()
 
 
 def validate_corrected_values(
@@ -170,17 +218,57 @@ def validate_corrected_values(
         - If valid: (True, None)
         - If invalid: (False, {'field': 'error message', ...})
     """
-    non_name_values = {
-        field: value for field, value in corrected_values.items() if field != 'name'
-    }
-    is_valid, errors = _validate_editable_field_values(non_name_values)
-    if 'name' in corrected_values:
-        name_error = validate_name_correction(corrected_values['name'])
-        if name_error:
-            errors = dict(errors or {})
-            errors['name'] = name_error
-            is_valid = False
-    return is_valid, errors
+    from .phone_validation_service import validate_review_phone
+    from .date_validation_service import validate_review_date
+    from .amount_validation_service import validate_review_amount
+    from .email_validation_service import validate_review_email
+
+    errors = {}
+
+    for field, value in corrected_values.items():
+        if field == 'name':
+            name_error = validate_name_correction(value)
+            if name_error:
+                errors['name'] = name_error
+            continue
+
+        # Amount must be validated even if 0 (falsy) or empty string
+        if field == 'amount':
+            amount_result = validate_review_amount(value, allow_blank=False)
+            if not amount_result.valid:
+                errors['amount'] = amount_result.blocking_error or 'Invalid amount format'
+            continue
+
+        if field == 'date':
+            date_result = validate_review_date(value, allow_blank=True)
+            if not date_result.valid:
+                errors['date'] = date_result.blocking_error or 'Invalid date format'
+            continue
+
+        if field == 'email':
+            email_result = validate_review_email(value, allow_blank=False)
+            if not email_result.valid:
+                errors['email'] = email_result.blocking_error or 'Invalid email format'
+            continue
+
+        # For other fields, skip if empty/falsy (might be clearing a field)
+        if not value or not isinstance(value, str):
+            continue
+
+        value_str = value.strip()
+        if not value_str:
+            continue
+
+        # Validate phone field
+        if field == 'phone':
+            phone_result = validate_review_phone(value_str, allow_blank=False, default_region='US')
+            if not phone_result.valid:
+                errors['phone'] = phone_result.blocking_error or 'Invalid phone format'
+
+    if errors:
+        return False, errors
+    else:
+        return True, None
 
 
 def build_fixture_autosave_response(

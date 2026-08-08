@@ -187,6 +187,7 @@ class DatabaseImportRepository:
                     audit_log_url=f'/imports/{import_id}/audit',
                     export_console_url=f'/imports/{import_id}/exports',
                     back_to_imports_url='/imports',
+                    needs_follow_up_count=0,
                 )
 
             # Compute progress
@@ -226,6 +227,18 @@ class DatabaseImportRepository:
                 ReviewItem.item_type == 'household',
                 ReviewItem.status == 'pending'
             ).scalar() or 0
+
+            latest_row_decisions = {}
+            for decision in session.query(ReviewDecision).filter(
+                ReviewDecision.batch_id == import_id,
+                ReviewDecision.decision.like('row_status:%'),
+            ).order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc()).all():
+                if decision.raw_import_row_id not in latest_row_decisions:
+                    latest_row_decisions[decision.raw_import_row_id] = decision.decision
+            needs_follow_up_count = sum(
+                value == 'row_status:needs_follow_up'
+                for value in latest_row_decisions.values()
+            )
 
             # Build queue cards (frozen dataclasses)
             queue_cards = (
@@ -271,6 +284,7 @@ class DatabaseImportRepository:
                 audit_log_url=f'/imports/{import_id}/audit',
                 export_console_url=f'/imports/{import_id}/exports',
                 back_to_imports_url='/imports',
+                needs_follow_up_count=needs_follow_up_count,
             )
 
         finally:

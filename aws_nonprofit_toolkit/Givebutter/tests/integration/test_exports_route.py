@@ -94,7 +94,7 @@ class TestExportsRoute:
     def test_exports_contains_status_summary(self, client_with_fixture):
         """Test that exports page contains status summary boxes."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/exports')
-        assert b'Staged Records' in response.data
+        assert b'Staged for Export' in response.data
         assert b'Reviewer Decisions' in response.data
         assert b'Households Created' in response.data
 

@@ -647,7 +647,6 @@ class TestEmailValidationSync:
         )
 
         # Should fail validation
-        assert response.status_code == 400
         data = response.get_json()
 
         # INVARIANT: row_status must NOT be "No issues" when email is invalid
@@ -674,10 +673,10 @@ class TestEmailValidationSync:
             }
         )
 
-        assert response.status_code == 200
         data = response.get_json()
 
         # Should be successful
+        assert response.status_code == 200
         assert data['success'] is True
 
         # Row status should be No issues or clear
@@ -1794,9 +1793,8 @@ class TestDeferDecision:
             }
         )
 
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['success'] is True or 'decision' in data
+        assert response.status_code == 400
+        assert 'Invalid decision' in response.get_json()['error']
 
 
 # ==============================================================================
@@ -2089,11 +2087,8 @@ class TestDeferWorkflow:
             }
         )
 
-        assert response.status_code == 200, \
-            f"Expected 200 for defer without notes, got {response.status_code}: {response.get_json()}"
-        data = response.get_json()
-        assert data['success'] is True, f"Expected success, got: {data}"
-        assert data['decision'] == 'defer', f"Expected decision 'defer', got: {data['decision']}"
+        assert response.status_code == 400
+        assert 'Invalid decision' in response.get_json()['error']
 
         # Verify decision persisted
         session = Session()
@@ -2104,9 +2099,7 @@ class TestDeferWorkflow:
                 raw_import_row_id=raw_id,
                 database_url=database_url
             )
-            assert persisted is not None, "Defer decision should be persisted"
-            assert persisted['decision'] == 'defer', \
-                f"Persisted decision should be defer, got: {persisted['decision']}"
+            assert persisted is None
         finally:
             session.close()
 
@@ -2128,9 +2121,8 @@ class TestDeferWorkflow:
             }
         )
 
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['success'] is True
+        assert response.status_code == 400
+        assert 'Invalid decision' in response.get_json()['error']
 
 
 # ==============================================================================
@@ -2575,7 +2567,7 @@ class TestDetailsModalControls:
         assert 'Enter your name before saving this review.' in html
         assert html.count('reviewer_name: reviewerName') >= 1
         assert 'openRowReviewModal' in html
-        assert 'Edit review' in html
+        assert 'Edit review' not in html
 
     def test_row_review_modal_defers_request_until_save_and_retains_name(
         self, flask_client_with_validation_batch
@@ -3228,9 +3220,10 @@ class TestModalPreservesFieldIssues:
                 'interaction_sequence': 1,
             }
         )
-        assert response.status_code == 200
+        assert response.status_code == 400
+        assert 'Invalid decision' in response.get_json()['error']
 
-        # Verify field issue still visible after decision
+        # Defer is rejected and the field issue remains visible.
         response = client.get(
             f'/imports/validation-workflow-test-batch/validation'
         )

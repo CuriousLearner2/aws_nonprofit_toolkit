@@ -1378,16 +1378,17 @@ def import_validation(import_id):
     ).lower()
     database_url = _get_runtime_database_url()
 
+    disposition_filter = request.args.get('disposition')
     if config_database_url or repository_mode == 'database':
         data = validation_service.get_validation_review(
             import_id,
             config={
                 'HOUSEHOLDER_REPOSITORY': 'database',
                 'GIVEBUTTER_DATABASE_URL': database_url,
-            },
+            }, disposition_filter=disposition_filter,
         )
     else:
-        data = validation_service.get_validation_review(import_id)
+        data = validation_service.get_validation_review(import_id, disposition_filter=disposition_filter)
     return render_template('imports/validation.html', **data)
 
 @app.route('/imports/<import_id>/normalizations')
@@ -1739,7 +1740,7 @@ def autosave_row_corrections(import_id):
 
 @app.route('/imports/<import_id>/row-decision', methods=['POST'])
 def record_row_decision(import_id):
-    """Record a reviewer's row-level status decision (Accept, Follow-up, Defer, Reject, Clear).
+    """Record a reviewer's row-level status decision (Accept, Follow-up, Reject, Clear).
 
     Stores decision in ReviewDecision with reviewed_status and optional notes.
     Does not mutate raw data - stored as audit trail only.
@@ -1747,8 +1748,8 @@ def record_row_decision(import_id):
     Expected JSON:
     {
         'raw_import_row_id': int,
-        'decision': 'accept_as_is' | 'needs_follow_up' | 'defer' | 'reject_row' | 'clear_decision',
-        'notes': str (required for 'needs_follow_up', optional for 'defer')
+        'decision': 'accept_as_is' | 'needs_follow_up' | 'reject_row' | 'clear_decision',
+        'notes': str (required for 'needs_follow_up')
         'reviewer_name': str (required for every saved review event)
     }
 

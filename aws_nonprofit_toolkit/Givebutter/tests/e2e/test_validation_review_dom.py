@@ -359,9 +359,9 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
 
                 await email_input.fill('invalid-no-at-symbol')  # Invalid: missing @
                 await email_input.evaluate("el => el.blur()")  # Trigger autosave
-                # Wait for row status dropdown to update with 'Blocking' status
+                # Wait for the read-only validation status to update to 'Blocking'.
                 await page.wait_for_function(
-                    "() => document.querySelector('select.row-status-dropdown option:first-child')?.textContent?.trim() === 'Blocking'",
+                    "() => document.querySelector('.validation-status-label')?.textContent?.trim() === 'Blocking'",
                     timeout=5000
                 )
 
@@ -376,15 +376,14 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 assert is_red, f"A1 FAILED: Email should have red border, got: {border_color}"
                 print("✓ A1: Email field shows red error border")
 
-                # A2 & A3: Row Status dropdown shows 'Blocking' (not 'No issues')
+                # A2: Reviewer disposition control remains separate from validation status.
                 dropdown = await page.query_selector('select.row-status-dropdown')
                 assert dropdown is not None, "A2 FAILED: Status dropdown should exist"
 
-                first_option = await dropdown.query_selector('option:first-child')
-                dropdown_text = await first_option.inner_text()
-                assert dropdown_text == 'Blocking', f"A3 FAILED: Status should be 'Blocking', got: {dropdown_text}"
                 print(f"✓ A2: Review Status dropdown exists")
-                print(f"✓ A3: Review Status is 'Blocking' (not 'No issues')")
+                validation_status = await page.locator('.validation-status-label').inner_text()
+                assert validation_status == 'Blocking', f"A3 FAILED: Validation status should be 'Blocking', got: {validation_status}"
+                print(f"✓ A3: Validation status is 'Blocking' (not 'No issues')")
 
                 # A4: Issues show email error
                 issues_cell = await page.query_selector('td.issues-cell')
@@ -403,9 +402,9 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
 
                 await email_input.fill('john@example.com')  # Valid
                 await email_input.evaluate("el => el.blur()")  # Trigger autosave
-                # Wait for row status to change from 'Blocking' (error cleared)
+                # Wait for validation status to change from 'Blocking' (error cleared)
                 await page.wait_for_function(
-                    "() => document.querySelector('select.row-status-dropdown option:first-child')?.textContent?.trim() !== 'Blocking'",
+                    "() => document.querySelector('.validation-status-label')?.textContent?.trim() !== 'Blocking'",
                     timeout=5000
                 )
 
@@ -420,11 +419,10 @@ async def test_invalid_email_updates_visible_row_status_and_issues(
                 assert not is_red_after, f"A5 FAILED: Error border should clear, got: {border_color_after}"
                 print(f"✓ A5: Email error styling cleared")
 
-                # A6: Status dropdown recalculates (no longer 'Blocking')
+                # A6: Read-only validation status recalculates (no longer 'Blocking')
                 dropdown_final = await page.query_selector('select.row-status-dropdown')
                 assert dropdown_final is not None, "A6 FAILED: Dropdown should still exist"
-                first_option_final = await dropdown_final.query_selector('option:first-child')
-                final_status = await first_option_final.inner_text()
+                final_status = await page.locator('.validation-status-label').inner_text()
                 assert final_status != 'Blocking', f"A6 FAILED: Status should change from Blocking, got: {final_status}"
 
                 print(f"✓ A6: Review Status recalculated to '{final_status}' after correction")
@@ -1880,23 +1878,23 @@ async def test_needs_follow_up_notes_required_workflow(
 
 
 # ==============================================================================
-# WORKFLOW B E2E: Defer - Inline row decision, no notes modal required
+# WORKFLOW B E2E: Current row dispositions exclude Defer
 # ==============================================================================
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_defer_workflow_notes_optional(
+async def test_defer_is_absent_and_current_dispositions_are_available(
     e2e_database_and_app,
 ):
     """
-    GOAL: Verify Defer workflow can be recorded inline without opening the
-    notes modal.
+    GOAL: Verify the removed Defer disposition is absent and the current
+    reviewer dispositions remain available.
 
     Flow:
     1. Seed database with clean row
-    2. Select "Defer" in the row dropdown
-    3. Verify the notes modal does not open
-    4. Verify the row status updates
+    2. Open the validation page
+    3. Verify Defer is absent from the row dropdown
+    4. Verify the current dispositions remain available
     """
     from playwright.async_api import async_playwright
 
@@ -1963,33 +1961,15 @@ async def test_defer_workflow_notes_optional(
                 await page.goto(f'{base_url}/imports/{batch_id}/validation', timeout=5000)
                 await page.wait_for_selector('table', timeout=5000)
 
-                # Select "Defer" directly in the row dropdown
+                # Defer is removed; current reviewer dispositions remain available.
                 decision_dropdown = await page.query_selector('select.row-status-dropdown')
-                await decision_dropdown.select_option('defer')
-                print("✓ B1: Selected 'Defer' option in the row dropdown")
-
-                # Every decision now opens the review-save modal.
-                await page.wait_for_selector('#record-modal', state='visible', timeout=5000)
-                await enter_reviewer_name(page)
-                await page.locator('#record-modal button[id^="save-followup-notes-"]').click()
-                await page.wait_for_selector('#record-modal', state='hidden', timeout=5000)
-                print("✓ B2: Review-save modal opened and saved Defer")
-
-                # Verify the dropdown reflects the decision
-                first_option = await decision_dropdown.query_selector('option:first-child')
-                status_text = await first_option.inner_text()
-                assert await decision_dropdown.input_value() == 'defer', \
-                    f"Decision should remain Defer after save, got: {await decision_dropdown.input_value()}"
-                print(f"✓ B3: Defer decision saved; row status label is: {status_text}")
-
-                # Verify row status updated
-                await page.wait_for_selector('select.row-status-dropdown', timeout=5000)
-                table_dropdown = await page.query_selector('select.row-status-dropdown')
-                first_option = await table_dropdown.query_selector('option:first-child')
-                status_text = await first_option.inner_text()
-                print(f"✓ B5: Row status updated to: {status_text}")
-
-                print(f"\n=== DEFER WORKFLOW E2E PASSED ===")
+                assert decision_dropdown is not None, 'Reviewer disposition dropdown should render'
+                option_values = await decision_dropdown.evaluate(
+                    "select => Array.from(select.options).map(option => option.value)"
+                )
+                assert 'defer' not in option_values
+                assert {'accept_as_is', 'needs_follow_up', 'reject_row'}.issubset(option_values)
+                print("✓ Defer is absent; current reviewer dispositions are available")
 
             finally:
                 await browser.close()
@@ -8339,16 +8319,16 @@ async def test_sticky_action_bar_with_approval_modal(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_approval_overrides_produce_export_ready_readiness_after_reload(
+async def test_approval_overrides_preserve_blocked_readiness_after_reload(
     e2e_database_and_app,
 ):
     """
     Verify browser approval with overrides persists the approval transaction and
-    makes the batch export-ready after reload.
+    preserves the unresolved issue as a readiness blocker after reload.
 
     This proves the durable chain:
     user action -> approval route -> service persistence -> batch approval state
-    -> readiness view model -> browser-visible export-ready state -> reload.
+    -> readiness view model -> browser-visible blocked state -> reload.
     """
     from playwright.async_api import async_playwright
 
@@ -8443,7 +8423,7 @@ async def test_approval_overrides_produce_export_ready_readiness_after_reload(
 
                 await page.goto(f'{base_url}/imports/{batch_id}/readiness')
                 await page.wait_for_selector('h1', timeout=5000)
-                await page.locator('h2', has_text='Export Ready').wait_for(
+                await page.locator('h2', has_text='Export Blocked').wait_for(
                     state='visible',
                     timeout=5000,
                 )
@@ -8453,15 +8433,15 @@ async def test_approval_overrides_produce_export_ready_readiness_after_reload(
                 )
                 assert await related_export_link.count() == 1
                 assert await related_export_link.first.inner_text() == 'Export Console'
-                assert await page.locator('a[href$="/exports"]', has_text='Open Export Console').count() >= 1
+                assert await page.locator('a[href$="/exports"]', has_text='Open Export Console').count() == 0
 
                 await page.reload()
                 await page.wait_for_selector('h1', timeout=5000)
-                await page.locator('h2', has_text='Export Ready').wait_for(
+                await page.locator('h2', has_text='Export Blocked').wait_for(
                     state='visible',
                     timeout=5000,
                 )
-                assert 'Export Ready' in await page.inner_text('body')
+                assert 'Export Blocked' in await page.inner_text('body')
 
             finally:
                 await browser.close()

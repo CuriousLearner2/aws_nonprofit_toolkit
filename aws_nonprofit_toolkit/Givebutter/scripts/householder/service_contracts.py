@@ -68,6 +68,7 @@ class ImportDashboardViewModel:
     audit_log_url: str
     export_console_url: str
     back_to_imports_url: str
+    needs_follow_up_count: int = 0
 
     def to_template_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -82,6 +83,7 @@ class ImportDashboardViewModel:
                 "validation_issues": self.queues[1].pending_count if len(self.queues) > 1 else 0,
                 "normalizations_pending": self.queues[2].pending_count if len(self.queues) > 2 else 0,
                 "households_pending": self.queues[3].pending_count if len(self.queues) > 3 else 0,
+                "needs_follow_up": self.needs_follow_up_count,
             },
         }
 
@@ -570,6 +572,9 @@ class ExportPreviewResult:
     deferred_duplicate_count: int = 0
     deferred_validation_count: int = 0
     deferred_normalization_count: int = 0
+    exported_count: int = 0
+    needs_follow_up_count: int = 0
+    rejected_count: int = 0
 
     def to_template_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -588,4 +593,7 @@ class ExportPreviewResult:
             "deferred_duplicate_count": self.deferred_duplicate_count,
             "deferred_validation_count": self.deferred_validation_count,
             "deferred_normalization_count": self.deferred_normalization_count,
+            "exported_count": self.exported_count,
+            "needs_follow_up_count": self.needs_follow_up_count,
+            "rejected_count": self.rejected_count,
         }

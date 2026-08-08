@@ -234,9 +234,9 @@ class TestValidationDecisionUI:
         assert 'row-status-dropdown' in html
         assert 'Accept as-is' in html or 'accept_as_is' in html
         assert 'Needs follow-up' in html or 'needs_follow_up' in html
-        assert 'Defer' in html
+        assert 'Defer' not in html
         assert 'Reject row' in html
-        assert 'Return to system status' in html
+        assert 'Clear decision' in html
         assert 'Record Details' in html
         assert 'IMP-2025-0101-A' in html
 
@@ -430,7 +430,7 @@ class TestValidationDecisionUI:
         # Verify row-level decision types in form
         assert 'accept_as_is' in html
         assert 'needs_follow_up' in html
-        assert 'defer' in html
+        assert 'defer' not in html
         assert 'reject_row' in html
         assert 'clear_decision' in html
 

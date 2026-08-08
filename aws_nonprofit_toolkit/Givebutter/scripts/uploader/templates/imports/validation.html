@@ -190,12 +190,9 @@
                         <option value="">No disposition</option>
                         <option value="accept_as_is">Accept as-is</option>
                         <option value="needs_follow_up">Needs follow-up</option>
-                        <option value="defer">Defer</option>
                         <option value="reject_row">Reject row</option>
-                            <option value="return_to_system" class="reset-option" style="display: none;">Return to system status</option>
+                            <option value="clear_decision" class="reset-option" style="display: none;">Clear decision</option>
                         </select>
-                    <button type="button" class="edit-row-review" data-raw-id="{{ record.raw_import_row_id }}" data-record-id="{{ record.id }}"
-                            style="display: none; margin-top: 4px; padding: 3px 6px; border: 1px solid #9ca3af; border-radius: 3px; background: white; color: #374151; cursor: pointer; font-size: 11px;">Edit review</button>
                 </td>
 
                 <!-- Read-only: Issues -->
@@ -1262,7 +1259,6 @@ function formatRowDecisionLabel(decision) {
     const labels = {
         accept_as_is: 'Accept as-is',
         needs_follow_up: 'Needs follow-up',
-        defer: 'Defer',
         reject_row: 'Reject row',
         clear_decision: 'Clear decision',
     };
@@ -1320,7 +1316,6 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
         ['', 'No disposition'],
         ['accept_as_is', 'Accept as-is'],
         ['needs_follow_up', 'Needs follow-up'],
-        ['defer', 'Defer'],
         ['reject_row', 'Reject row'],
         ...(decisionData?.has_decision ? [['clear_decision', 'Clear decision']] : []),
     ].map(([value, label]) => `<option value="${value}" ${selectedDecision === value ? 'selected' : ''}>${label}</option>`).join('');
@@ -1341,7 +1336,7 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
             <p style="margin: 0 0 8px; color: #6b7280; font-size: 12px;">Update the reviewer disposition or reason / notes for this record.</p>
             <div data-testid="row-review-save-form" style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 4px; background: #f9fafb;">
                 <div style="margin-bottom: 10px;"><label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name</label><input class="reviewer-name-field" id="row-review-reviewer-${recordId}" type="text" autocomplete="off" value="${escapeHtml(reviewerNameForSession)}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;"><div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Required when saving a decision or notes. Entered manually and not authenticated.</div><div class="reviewer-name-error" role="alert" style="display: none; font-size: 12px; color: #b91c1c; margin-top: 4px;">Enter your name before saving this review.</div></div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"><div><label for="row-review-decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer disposition</label><select id="row-review-decision-${recordId}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">${decisionOptions}</select></div><div><label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes</label><textarea id="followup-notes-${recordId}" placeholder="Add a reason or notes for this disposition..." style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;">${escapeHtml(decisionData?.notes || '')}</textarea><div id="followup-notes-requirement-${recordId}" class="notes-requirement" role="alert" style="display: none; font-size: 12px; color: #ef4444; margin-top: 4px;">Notes required for Follow-up decision</div></div></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"><div><label for="row-review-decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer disposition</label><select id="row-review-decision-${recordId}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">${decisionOptions}</select></div><div><label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes</label><textarea id="followup-notes-${recordId}" placeholder="Add a reason or notes for this disposition..." style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;"></textarea><div id="followup-notes-requirement-${recordId}" class="notes-requirement" role="alert" style="display: none; font-size: 12px; color: #ef4444; margin-top: 4px;">Notes required for Follow-up decision</div></div></div>
             </div>
         </section>
         <section>
@@ -1646,7 +1641,6 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
     const decisionOptions = [
         ['accept_as_is', 'Accept as-is'],
         ['needs_follow_up', 'Needs follow-up'],
-        ['defer', 'Defer'],
         ['reject_row', 'Reject row'],
         ...(dropdown.dataset.hasDecision === 'true' ? [['clear_decision', 'Clear decision']] : []),
     ];
@@ -1673,7 +1667,7 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
             <div>
                 <label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes</label>
                 <textarea id="followup-notes-${recordId}" placeholder="Add notes for this review..."
-                          style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;">${escapeHtml(currentNotes)}</textarea>
+                          style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;"></textarea>
                 <div id="followup-notes-requirement-${recordId}" class="notes-requirement" role="alert" style="display: none; font-size: 12px; color: #ef4444; margin-top: 4px;">Notes required for Follow-up decision</div>
             </div>
         </div>
@@ -1787,7 +1781,7 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
             return;
         }
 
-        if (requestedDecision === 'return_to_system' && !confirm(
+        if (requestedDecision === 'clear_decision' && !confirm(
             'This will remove the reviewer decision and show the current system status for this row. Raw data and issues will not be changed.\\n\\nContinue?'
         )) {
             this.value = this.dataset.currentDecision || '';
@@ -1805,7 +1799,7 @@ document.querySelectorAll('.row-status-dropdown').forEach(dropdown => {
         await openRowReviewModal(
             row.getAttribute('data-record-id'),
             this,
-            requestedDecision === 'return_to_system' ? 'clear_decision' : requestedDecision
+            requestedDecision
         );
     });
 });

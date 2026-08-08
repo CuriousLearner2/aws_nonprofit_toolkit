@@ -17,7 +17,7 @@ from .row_status_service import derive_row_status
 from .row_status_policy import derive_row_status as _derive_row_status
 
 
-def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None, disposition_filter: Optional[str] = None) -> Dict[str, Any]:
     """
     Get validation review page data for a specific import.
 
@@ -118,5 +118,16 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
             # No issue in this record
             record['row_status'] = 'No issues'
             record['issues'] = []
+
+    if disposition_filter == 'needs_follow_up':
+        from .row_decision_service import get_row_decision_state
+        filtered = []
+        for record in result.get('validation_issues', []):
+            raw_id = record.get('raw_import_row_id')
+            if raw_id and database_url:
+                state = get_row_decision_state(import_id, raw_id, database_url)
+                if state.get('decision') == 'needs_follow_up':
+                    filtered.append(record)
+        result['validation_issues'] = filtered
 
     return result

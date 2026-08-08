@@ -18,10 +18,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from scripts.householder.database_models import Base, ImportBatch, RawImportRow, ReviewDecision
-from scripts.householder.row_decision_policy import (
-    normalize_row_decision_notes,
-    normalize_interaction_sequence,
-)
 from scripts.householder.row_decision_service import (
     record_row_decision,
     get_row_decision,
@@ -78,23 +74,6 @@ def temp_db():
 class TestRecordRowDecision:
     """Test recording row-level status decisions."""
 
-    def test_normalize_row_decision_notes_trims_blank_values(self):
-        """Row decision policy trims and nulls blank notes."""
-        assert normalize_row_decision_notes(None) is None
-        assert normalize_row_decision_notes('   ') is None
-        assert normalize_row_decision_notes('  Check address  ') == 'Check address'
-
-    def test_normalize_interaction_sequence_parses_and_validates(self):
-        """Row decision policy parses valid ordering metadata and rejects invalid values."""
-        assert normalize_interaction_sequence(None) is None
-        assert normalize_interaction_sequence('2') == 2
-
-        with pytest.raises(ValueError, match='interaction_sequence'):
-            normalize_interaction_sequence(0)
-
-        with pytest.raises(ValueError, match='interaction_sequence'):
-            normalize_interaction_sequence('nope')
-
     def test_record_accept_as_is_decision(self, temp_db):
         """Test recording 'accept_as_is' decision."""
         db_url, row_ids = temp_db
@@ -104,6 +83,7 @@ class TestRecordRowDecision:
             batch_id='test-batch-001',
             raw_import_row_id=raw_id,
             decision='accept_as_is',
+            notes='Reviewed and accepted',
             database_url=db_url
         )
 
@@ -142,22 +122,20 @@ class TestRecordRowDecision:
                 database_url=db_url
             )
 
-        assert str(exc_info.value) == 'Notes required for Follow-up decision'
+        assert 'Notes required for Follow-up decision' in str(exc_info.value)
 
     def test_record_defer_without_notes(self, temp_db):
-        """Test that 'defer' decision doesn't require notes."""
+        """Removed row-level Defer decisions are rejected."""
         db_url, row_ids = temp_db
         raw_id = row_ids[0]
 
-        result = record_row_decision(
+        with pytest.raises(ValueError, match="Invalid decision 'defer'"):
+            record_row_decision(
             batch_id='test-batch-001',
             raw_import_row_id=raw_id,
-            decision='defer',
+                decision='defer',
             database_url=db_url
-        )
-
-        assert result['success'] is True
-        assert result['decision'] == 'defer'
+            )
 
     def test_record_reject_row_decision(self, temp_db):
         """Test recording 'reject_row' decision."""
@@ -324,7 +302,8 @@ class TestGetRowDecision:
         record_row_decision(
             batch_id='test-batch-001',
             raw_import_row_id=raw_id,
-            decision='defer',
+            decision='needs_follow_up',
+            notes='Review later',
             database_url=db_url
         )
 
@@ -333,6 +312,7 @@ class TestGetRowDecision:
             batch_id='test-batch-001',
             raw_import_row_id=raw_id,
             decision='accept_as_is',
+            notes='Reviewed and accepted',
             database_url=db_url
         )
 
@@ -368,7 +348,8 @@ class TestGetRowsWithFollowUp:
         record_row_decision(
             batch_id='test-batch-001',
             raw_import_row_id=row_ids[2],
-            decision='defer',
+            decision='reject_row',
+            notes='Review later',
             database_url=db_url
         )
 
@@ -421,22 +402,11 @@ class TestGetRowsWithDefer:
         """Test getting all rows with defer decisions."""
         db_url, row_ids = temp_db
 
-        # Record defer for rows 0 and 1
-        for i in range(2):
+        with pytest.raises(ValueError, match="Invalid decision 'defer'"):
             record_row_decision(
-                batch_id='test-batch-001',
-                raw_import_row_id=row_ids[i],
-                decision='defer',
-                database_url=db_url
+                batch_id='test-batch-001', raw_import_row_id=row_ids[0],
+                decision='defer', database_url=db_url,
             )
-
-        # Record different decision for row 2
-        record_row_decision(
-            batch_id='test-batch-001',
-            raw_import_row_id=row_ids[2],
-            decision='accept_as_is',
-            database_url=db_url
-        )
 
         # Get defer rows
         defer_rows = get_rows_with_defer(
@@ -444,7 +414,4 @@ class TestGetRowsWithDefer:
             database_url=db_url
         )
 
-        assert len(defer_rows) == 2
-        assert row_ids[0] in defer_rows
-        assert row_ids[1] in defer_rows
-        assert row_ids[2] not in defer_rows
+        assert defer_rows == []

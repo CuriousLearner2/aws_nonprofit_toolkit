@@ -253,29 +253,24 @@ class TestCheckBatchRemainingIssues:
             database_url=db_url
         )
 
-        assert issues == []
+        assert len(issues) == 1
+        assert issues[0]['raw_import_row_id'] == row_ids[0]
+        assert issues[0]['decision_warning'] == 'needs_follow_up'
 
-    def test_includes_rows_with_defer_decisions(self, temp_db):
-        """Test that rows with defer decisions are included in remaining issues."""
+    def test_defer_decisions_are_rejected(self, temp_db):
+        """Test that the removed defer decision is rejected."""
         db_url, row_ids = temp_db
 
-        # Record a defer decision on first row
-        record_row_decision(
-            batch_id='test-batch-001',
-            raw_import_row_id=row_ids[0],
-            decision='defer',
-            database_url=db_url
-        )
+        with pytest.raises(ValueError, match="Invalid decision 'defer'"):
+            record_row_decision(
+                batch_id='test-batch-001',
+                raw_import_row_id=row_ids[0],
+                decision='defer',
+                database_url=db_url
+            )
 
-        issues = check_batch_remaining_issues(
-            batch_id='test-batch-001',
-            database_url=db_url
-        )
-
-        assert issues == []
-
-    def test_includes_multiple_rows_with_decisions(self, temp_db):
-        """Test that multiple rows with different decisions are all included."""
+    def test_multiple_rows_with_supported_decisions(self, temp_db):
+        """Test that supported decisions preserve the remaining follow-up row."""
         db_url, row_ids = temp_db
 
         # Record follow-up for row 0
@@ -287,11 +282,11 @@ class TestCheckBatchRemainingIssues:
             database_url=db_url
         )
 
-        # Record defer for row 1
+        # Reject row 1; rejected rows are excluded from remaining issues.
         record_row_decision(
             batch_id='test-batch-001',
             raw_import_row_id=row_ids[1],
-            decision='defer',
+            decision='reject_row',
             database_url=db_url
         )
 
@@ -300,7 +295,9 @@ class TestCheckBatchRemainingIssues:
             database_url=db_url
         )
 
-        assert issues == []
+        assert len(issues) == 1
+        assert issues[0]['raw_import_row_id'] == row_ids[0]
+        assert issues[0]['decision_warning'] == 'needs_follow_up'
 
     def test_cleared_decisions_not_included(self, temp_db):
         """Test that rows with cleared decisions are not included."""

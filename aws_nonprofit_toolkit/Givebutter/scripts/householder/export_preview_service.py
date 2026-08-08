@@ -25,7 +25,54 @@ from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .issue_recalculation_service import recalculate_row_issues
 from .service_contracts import ExportRow, ExportPreviewResult
-from .export_preview_policy import validation_issue_field, validation_issue_type
+
+
+def _get_validation_issue_type(payload):
+    """
+    Get issue type from validation payload, supporting both real and legacy formats.
+
+    Real ingestion creates payloads with 'issue' field.
+    Tests/legacy payloads use 'issue_type' field.
+    This function normalizes the lookup to support both.
+
+    Args:
+        payload: Validation review item payload (dict or None)
+
+    Returns:
+        Issue type string or 'unknown' if field not found
+    """
+    if not payload:
+        return 'unknown'
+
+    # Real ingestion format
+    if 'issue' in payload:
+        return payload.get('issue')
+
+    # Legacy/test format
+    return payload.get('issue_type', 'unknown')
+
+
+def _get_validation_issue_field(payload, issue_type=None):
+    """
+    Resolve the affected field for a validation payload.
+
+    Real payloads usually provide an explicit `field`. When they do not, infer
+    the field from the issue type so that reviewer decisions can still suppress
+    the corresponding blocker for the same row.
+    """
+    if not payload:
+        return None
+
+    field = payload.get('field')
+    if field:
+        return str(field).strip().lower()
+
+    issue_type_lower = str(issue_type or '').lower()
+    for candidate in ('date', 'amount', 'email', 'phone'):
+        if candidate in issue_type_lower:
+            return candidate
+
+    return None
 
 
 def _batch_row_is_approved_with_overrides(batch, raw_import_row_id):
@@ -159,7 +206,9 @@ def build_export_preview(
                 if decision.decision.startswith('row_status:'):
                     disposition = decision.decision.replace('row_status:', '', 1)
                     row_human_dispositions[raw_row_id] = (
-                        None if disposition == 'clear_decision' else disposition
+                        disposition if disposition in {
+                            'accept_as_is', 'needs_follow_up', 'reject_row'
+                        } else None
                     )
                     continue
                 if raw_row_id not in row_level_autosave_decisions:
@@ -248,6 +297,8 @@ def build_export_preview(
         rows = []
         blockers = []
         warnings = []
+        needs_follow_up_count = 0
+        rejected_count = 0
 
         for contact in contacts:
             row_blockers = []
@@ -438,11 +489,11 @@ def build_export_preview(
                 payload = val_item.payload_json or {}
                 if isinstance(payload, str):
                     payload = json.loads(payload)
-                issue_type = validation_issue_type(payload)
+                issue_type = _get_validation_issue_type(payload)
                 issue_field = payload.get('field')
                 issue_reason = payload.get('reason')
                 issue_severity = str(payload.get('severity', 'warning')).lower()
-                resolved_issue_field = validation_issue_field(payload, issue_type)
+                resolved_issue_field = _get_validation_issue_field(payload, issue_type)
 
                 if val_decision:
                     if resolved_issue_field:
@@ -596,6 +647,16 @@ def build_export_preview(
 
             # Compile export warnings
             row_blockers = list(dict.fromkeys(row_blockers))
+
+            # Follow-up and rejected rows remain in the batch, but are not part
+            # of the current export. Their dispositions resolve review gating
+            # without changing validation status or raw data.
+            if row_human_disposition == 'needs_follow_up':
+                needs_follow_up_count += 1
+                continue
+            if row_human_disposition == 'reject_row':
+                rejected_count += 1
+                continue
             row_warnings = list(dict.fromkeys(row_warnings))
             validation_issues = list(dict.fromkeys(validation_issues))
             export_warnings = list(dict.fromkeys(
@@ -676,6 +737,9 @@ def build_export_preview(
             deferred_duplicate_count=deferred_duplicate_count,
             deferred_validation_count=deferred_validation_count,
             deferred_normalization_count=deferred_normalization_count,
+            exported_count=len(rows),
+            needs_follow_up_count=needs_follow_up_count,
+            rejected_count=rejected_count,
         )
 
         return result
