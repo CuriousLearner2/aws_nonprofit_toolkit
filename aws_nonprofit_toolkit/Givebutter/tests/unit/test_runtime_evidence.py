@@ -21,6 +21,11 @@ FAKE_DIFF = b"fake-diff"
 FAKE_FINGERPRINT = hashlib.sha256(FAKE_DIFF).hexdigest()
 
 
+@pytest.fixture(autouse=True)
+def workflow_lane(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOUSEHOLDER_LANE", "workflow-ci")
+
+
 def _result(returncode: int = 0, stdout: str = "", stderr: str = "") -> SimpleNamespace:
     return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
@@ -253,7 +258,7 @@ def test_generate_runtime_evidence_writes_expected_record(monkeypatch, tmp_path)
     assert packet["qa_verdict"] == "QA=PASS"
     assert packet["reviewed_head"] == head
     assert packet["reviewed_diff_sha256"] == fingerprint
-    assert pre_commit_gate.validate_readiness_packet(packet, {"HOUSEHOLDER_TASK_ID": TASK_ID}) == []
+    assert pre_commit_gate.validate_readiness_packet(packet, {"HOUSEHOLDER_TASK_ID": TASK_ID, "HOUSEHOLDER_LANE": "workflow-ci"}) == []
     assert commands[:5] == [
         (str(runtime_evidence.venv_python()), "scripts/ci/householder_state.py", "status", "--task-id", TASK_ID),
         ("git", "rev-parse", "HEAD"),

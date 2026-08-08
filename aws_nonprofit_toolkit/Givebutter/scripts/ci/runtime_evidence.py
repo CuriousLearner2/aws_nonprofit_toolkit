@@ -15,6 +15,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+try:
+    from lane_routing import lane_guard_spec, resolve_declared_lane
+except ModuleNotFoundError:  # package import from staged-tree integrity checks
+    from scripts.ci.lane_routing import lane_guard_spec, resolve_declared_lane
+
 TASK_ID_ENV = "HOUSEHOLDER_TASK_ID"
 SCHEMA_VERSION = 1
 QA_VERDICT = "not_required"
@@ -28,12 +33,21 @@ MANUAL_REVIEWER_PROVENANCE = "manual reviewer criteria"
 MANUAL_BREAKER_PROVENANCE = "manual breaker criteria"
 EVIDENCE_SUFFIX = ".runtime-evidence.json"
 READINESS_SUFFIX = "commit-readiness.json"
-READINESS_GATE_SPECS = (
+CANONICAL_READINESS_GATE_SPECS = (
     {"label": "check_no_artifacts", "gate_id": "check_no_artifacts", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_no_artifacts.py"},
     {"label": "check_task_untracked", "gate_id": "check_task_untracked", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_task_untracked.py"},
     {"label": "check_staged_tree_integrity", "gate_id": "check_staged_tree_integrity", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_staged_tree_integrity.py"},
-    {"label": "workflow_ci_lane_guard", "gate_id": "workflow_ci_lane_guard", "group": "scope", "command": "./.venv/bin/python scripts/ci/check_lane_scope.py --lane workflow-ci --verbose"},
 )
+
+
+def readiness_gate_specs(lane: str) -> tuple[dict[str, Any], ...]:
+    gate_id, guard_lane = lane_guard_spec(lane)
+    return CANONICAL_READINESS_GATE_SPECS + ({
+        "label": gate_id,
+        "gate_id": gate_id,
+        "group": "scope",
+        "command": f"./.venv/bin/python scripts/ci/check_lane_scope.py --lane {guard_lane} --verbose",
+    },)
 
 
 def repo_root() -> Path:
@@ -355,21 +369,22 @@ def _validate_receipt(
     return normalized
 
 
-def _required_gate_commands() -> list[tuple[str, list[str], bool]]:
+def _required_gate_commands(lane: str) -> list[tuple[str, list[str], bool]]:
     python = str(venv_python())
+    gate_id, guard_lane = lane_guard_spec(lane)
     return [
         ("check_no_artifacts", [python, "scripts/ci/check_no_artifacts.py"], True),
         ("check_task_untracked", [python, "scripts/ci/check_task_untracked.py"], True),
         ("check_staged_tree_integrity", [python, "scripts/ci/check_staged_tree_integrity.py"], True),
-        ("workflow_ci_lane_guard", [python, "scripts/ci/check_lane_scope.py", "--lane", "workflow-ci", "--verbose"], True),
+        (gate_id, [python, "scripts/ci/check_lane_scope.py", "--lane", guard_lane, "--verbose"], True),
         ("full_unit_integration_gate", [python, "-m", "pytest", "-q"], True),
     ]
 
 
-def _readiness_gate_records(gate_records: Sequence[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+def _readiness_gate_records(gate_records: Sequence[Mapping[str, Any]], lane: str) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     by_label = {record["label"]: dict(record) for record in gate_records}
     readiness_records: list[dict[str, Any]] = []
-    for spec in READINESS_GATE_SPECS:
+    for spec in readiness_gate_specs(lane):
         record = by_label[spec["label"]]
         normalized = {
             "gate_id": spec["gate_id"],
@@ -421,10 +436,10 @@ def _build_commit_readiness_packet(
     return packet
 
 
-def _run_required_gates() -> list[dict[str, Any]]:
+def _run_required_gates(lane: str) -> list[dict[str, Any]]:
     env = build_env()
     records: list[dict[str, Any]] = []
-    for label, argv, required in _required_gate_commands():
+    for label, argv, required in _required_gate_commands(lane):
         record, result = _record_command(label, argv, cwd=givebutter_dir(), env=env)
         record["required"] = required
         records.append(record)
@@ -462,6 +477,7 @@ def generate_runtime_evidence(
     readiness_output_path: Path | None = None,
 ) -> dict[str, Any]:
     task_id = _validate_task_id(task_id)
+    lane = resolve_declared_lane()
 
     ledger = _ledger_status(task_id)
     head = current_head()
@@ -506,7 +522,7 @@ def generate_runtime_evidence(
         reviewer = _validate_receipt(reviewer_receipt, role="Reviewer", task_id=task_id, head=head, fingerprint=fingerprint)
         breaker = _validate_receipt(breaker_receipt, role="Breaker", task_id=task_id, head=head, fingerprint=fingerprint)
 
-    gate_records = _run_required_gates()
+    gate_records = _run_required_gates(lane)
     gate_ids = {record["label"] for record in gate_records}
     authorized_exceptions: list[dict[str, Any]] = []
     for receipt, label in ((reviewer, "Reviewer"), (breaker, "Breaker")):
@@ -514,7 +530,7 @@ def generate_runtime_evidence(
             normalized = _validate_exception(exception, gate_ids, fingerprint, f"{label} receipt authorized_exceptions[{index}]")
             authorized_exceptions.append(normalized)
 
-    readiness_records, _ = _readiness_gate_records(gate_records)
+    readiness_records, _ = _readiness_gate_records(gate_records, lane)
     evidence = {
         "schema_version": SCHEMA_VERSION,
         "task_id": task_id,
@@ -525,6 +541,7 @@ def generate_runtime_evidence(
             "git_user_name": _git_text("config", "--get", "user.name").strip() or None,
             "git_user_email": _git_text("config", "--get", "user.email").strip() or None,
         },
+        "lane": lane,
         "git": {
             "head": head,
             "staged_diff_sha256": fingerprint,

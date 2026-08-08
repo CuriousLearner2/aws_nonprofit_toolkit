@@ -13,6 +13,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+try:
+    from lane_routing import lane_guard_spec, resolve_declared_lane
+except ModuleNotFoundError:  # package import from staged-tree integrity checks
+    from scripts.ci.lane_routing import lane_guard_spec, resolve_declared_lane
+
 BLOCKED_PATTERNS = (
     ".DS_Store", "scheduled_tasks.lock", "screenshots/", "traces/", "videos/",
     "__pycache__", "*.pyc", "*.pyo", ".pytest_cache", "givebutter.db", "listings.db",
@@ -28,7 +33,7 @@ REQUIRED_PACKET_FIELDS = {
 ALLOWED_GATE_GROUPS = {"canonical", "scope"}
 ALLOWED_GATE_STATUSES = {"passed", "failed", "not_run"}
 ALLOWED_EXCEPTION_TYPES = {"mixed_scope_exception"}
-EXPECTED_GATE_SPECS = {
+CANONICAL_GATE_SPECS = {
     "check_no_artifacts": {
         "group": "canonical",
         "command": "./.venv/bin/python scripts/ci/check_no_artifacts.py",
@@ -41,11 +46,27 @@ EXPECTED_GATE_SPECS = {
         "group": "canonical",
         "command": "./.venv/bin/python scripts/ci/check_staged_tree_integrity.py",
     },
+}
+
+EXPECTED_GATE_SPECS = {
+    **CANONICAL_GATE_SPECS,
     "workflow_ci_lane_guard": {
         "group": "scope",
         "command": "./.venv/bin/python scripts/ci/check_lane_scope.py --lane workflow-ci --verbose",
     },
 }
+
+
+def expected_gate_specs(env: dict[str, str]) -> dict[str, dict[str, str]]:
+    lane = resolve_declared_lane(env)
+    gate_id, guard_lane = lane_guard_spec(lane)
+    return {
+        **CANONICAL_GATE_SPECS,
+        gate_id: {
+            "group": "scope",
+            "command": f"./.venv/bin/python scripts/ci/check_lane_scope.py --lane {guard_lane} --verbose",
+        },
+    }
 
 
 def get_repo_root() -> Path:
@@ -155,6 +176,7 @@ def _validate_gate_record(
     index: int,
     errors: list[str],
     gate_ids: set[str],
+    expected_specs: dict[str, dict[str, str]],
 ) -> dict[str, Any] | None:
     if not isinstance(gate, dict):
         errors.append(f"gate_results[{index}] must be a JSON object")
@@ -177,14 +199,14 @@ def _validate_gate_record(
         errors.append(f"gate_results[{index}].gate_id must be a non-empty string")
     elif gate_id in gate_ids:
         errors.append(f"gate_results[{index}].gate_id must be unique")
-    elif gate_id not in EXPECTED_GATE_SPECS:
+    elif gate_id not in expected_specs:
         errors.append(
-            f"gate_results[{index}].gate_id must be one of: {', '.join(sorted(EXPECTED_GATE_SPECS))}"
+            f"gate_results[{index}].gate_id must be one of: {', '.join(sorted(expected_specs))}"
         )
     else:
         gate_ids.add(gate_id)
 
-    expected_spec = EXPECTED_GATE_SPECS.get(gate_id) if _is_nonempty_string(gate_id) else None
+    expected_spec = expected_specs.get(gate_id) if _is_nonempty_string(gate_id) else None
     if expected_spec is not None:
         expected_group = expected_spec["group"]
         expected_command = expected_spec["command"]
@@ -354,6 +376,23 @@ def run_workflow_ci_lane_guard() -> subprocess.CompletedProcess[Any] | None:
     return run_guard([str(get_venv_python()), "scripts/ci/check_lane_scope.py", "--lane", "workflow-ci", "--verbose"])
 
 
+def run_product_lane_guard() -> subprocess.CompletedProcess[Any] | None:
+    return run_guard([str(get_venv_python()), "scripts/ci/check_lane_scope.py", "--lane", "product", "--verbose"])
+
+
+def run_test_only_lane_guard() -> subprocess.CompletedProcess[Any] | None:
+    return run_guard([str(get_venv_python()), "scripts/ci/check_lane_scope.py", "--lane", "test-only", "--verbose"])
+
+
+def run_declared_lane_guard(env: dict[str, str]) -> subprocess.CompletedProcess[Any] | None:
+    lane = resolve_declared_lane(env)
+    if lane == "workflow-ci":
+        return run_workflow_ci_lane_guard()
+    if lane == "product":
+        return run_product_lane_guard()
+    return run_test_only_lane_guard()
+
+
 def run_guard(command: list[str]) -> subprocess.CompletedProcess[Any] | None:
     try:
         return subprocess.run(
@@ -393,6 +432,11 @@ def load_readiness_packet(path: Path | None = None) -> dict[str, Any]:
 
 def validate_readiness_packet(packet: dict[str, Any], env: dict[str, str]) -> list[str]:
     errors: list[str] = []
+    try:
+        selected_gate_specs = expected_gate_specs(env)
+    except ValueError as exc:
+        errors.append(str(exc))
+        selected_gate_specs = {}
     missing = sorted(REQUIRED_PACKET_FIELDS - packet.keys())
     if missing:
         errors.append(f"missing required packet fields: {', '.join(missing)}")
@@ -439,7 +483,7 @@ def validate_readiness_packet(packet: dict[str, Any], env: dict[str, str]) -> li
     canonical_required_statuses: list[str] = []
     scope_required_statuses: list[str] = []
     for index, gate in enumerate(gate_results):
-        normalized = _validate_gate_record(gate, index, errors, seen_gate_ids)
+        normalized = _validate_gate_record(gate, index, errors, seen_gate_ids, selected_gate_specs)
         if normalized is None:
             continue
         gate_id = normalized["gate_id"]
@@ -455,7 +499,7 @@ def validate_readiness_packet(packet: dict[str, Any], env: dict[str, str]) -> li
     if not gates_by_id:
         errors.append("gate_results must contain at least one valid gate record")
     else:
-        expected_gate_ids = set(EXPECTED_GATE_SPECS)
+        expected_gate_ids = set(selected_gate_specs)
         seen_expected_gate_ids = set(gates_by_id)
         missing_gate_ids = sorted(expected_gate_ids - seen_expected_gate_ids)
         unexpected_gate_ids = sorted(seen_expected_gate_ids - expected_gate_ids)
@@ -472,21 +516,24 @@ def validate_readiness_packet(packet: dict[str, Any], env: dict[str, str]) -> li
         packet["authorized_exceptions"], gates_by_id, errors
     )
 
-    lane_guard_result = run_workflow_ci_lane_guard()
+    try:
+        lane_guard_result = run_declared_lane_guard(env)
+    except ValueError:
+        lane_guard_result = None
     if lane_guard_result is None:
-        errors.append("workflow-ci lane guard could not be executed")
+        errors.append("declared lane guard could not be executed")
     elif authorized_failed_gate_ids:
         if lane_guard_result.returncode == 0:
             errors.append(
-                "mixed-scope exceptions require an independently verified workflow-ci lane conflict"
+                "mixed-scope exceptions require an independently verified declared-lane conflict"
             )
         elif lane_guard_result.returncode != 1:
             errors.append(
-                "workflow-ci lane guard must exit 1 to authorize a mixed-scope exception"
+                "declared lane guard must exit 1 to authorize a mixed-scope exception"
             )
     elif lane_guard_result.returncode != 0:
         errors.append(
-            "workflow-ci lane guard must pass for packets without an authorized mixed-scope exception"
+            "declared lane guard must pass for packets without an authorized mixed-scope exception"
         )
 
     for gate_id, gate in gates_by_id.items():

@@ -102,7 +102,7 @@ def readiness_context(monkeypatch):
     monkeypatch.setattr("pre_commit_gate.get_current_head", lambda: "deadbeef")
     monkeypatch.setattr("pre_commit_gate.staged_diff_sha256", lambda: "abc")
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: SimpleNamespace(returncode=0))
-    return {"HOUSEHOLDER_TASK_ID": "TASK-1"}
+    return {"HOUSEHOLDER_TASK_ID": "TASK-1", "HOUSEHOLDER_LANE": "workflow-ci"}
 
 
 def test_build_env_prepends_givebutter_venv_bin(monkeypatch):
