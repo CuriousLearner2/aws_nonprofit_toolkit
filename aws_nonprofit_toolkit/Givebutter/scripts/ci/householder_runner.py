@@ -26,6 +26,7 @@ SCHEMA_VERSION = 1
 TASK_BRANCH_PREFIX = "codex/"
 STATE_DIR = Path("Givebutter/.artifacts")
 ALLOWED_RUNTIME_ROOTS = ("Givebutter/.artifacts/", "Givebutter/exports_uat/", ".DS_Store")
+INTEGRATION_BASELINE_ENV = "HOUSEHOLDER_INTEGRATION_BASELINE"
 
 
 def repo_root() -> Path:
@@ -67,9 +68,22 @@ def _resolve_app_root(base: Path) -> Path:
 
 
 def run_git(args: list[str], *, cwd: Path | None = None, binary: bool = False) -> subprocess.CompletedProcess[Any]:
+    effective_cwd = cwd or repo_root()
+    env = os.environ.copy()
+    for key in (
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "PYTEST_ADDOPTS",
+    ):
+        env.pop(key, None)
     return subprocess.run(
         ["git", *args],
-        cwd=cwd or repo_root(),
+        cwd=effective_cwd,
+        env=env,
         capture_output=True,
         text=not binary,
         check=False,
@@ -128,7 +142,7 @@ def _is_clean_worktree(cwd: Path) -> bool:
 
 def _worktree_python(worktree: Path) -> Path:
     app_root = _resolve_app_root(worktree)
-    candidate = app_root / "Givebutter" / "venv" / "bin" / "python"
+    candidate = app_root / "Givebutter" / ".venv" / "bin" / "python"
     return candidate if candidate.exists() else Path(sys.executable)
 
 
@@ -139,7 +153,18 @@ def _ledger_script(worktree: Path) -> Path:
 
 def run_householder_state(worktree: Path, args: list[str], *, json_output: bool = True) -> Any:
     command = [str(_worktree_python(worktree)), str(_ledger_script(worktree)), *args]
-    result = subprocess.run(command, cwd=worktree, capture_output=True, text=True, shell=False, check=False)
+    env = os.environ.copy()
+    for key in (
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "PYTEST_ADDOPTS",
+    ):
+        env.pop(key, None)
+    result = subprocess.run(command, cwd=worktree, env=env, capture_output=True, text=True, shell=False, check=False)
     if result.returncode != 0:
         raise ValueError(result.stderr.strip() or result.stdout.strip() or "householder_state command failed")
     if not json_output:
@@ -151,14 +176,19 @@ def run_householder_state(worktree: Path, args: list[str], *, json_output: bool 
 
 def _main_status(report_root: Path, base_sha: str) -> dict[str, Any]:
     head = _git_output(["rev-parse", "HEAD"], cwd=report_root).strip()
-    origin_main = _git_output(["rev-parse", "origin/main"], cwd=report_root).strip()
+    baseline_ref = os.environ.get(INTEGRATION_BASELINE_ENV, "").strip()
+    if not baseline_ref:
+        raise ValueError("declared integration baseline is required")
+    baseline_sha = _git_output(["rev-parse", baseline_ref], cwd=report_root).strip()
     tracked_clean = run_git(["status", "--short", "--untracked-files=no"], cwd=report_root).stdout.strip() == ""
     return {
         "head": head,
-        "origin_main": origin_main,
+        "baseline_ref": baseline_ref,
+        "baseline_sha": baseline_sha,
+        "origin_main": baseline_sha if baseline_ref == "origin/main" else None,
         "base_sha": base_sha,
         "tracked_clean": tracked_clean,
-        "main_unchanged": head == origin_main == base_sha and tracked_clean,
+        "main_unchanged": head == baseline_sha == base_sha and tracked_clean,
     }
 
 
@@ -291,9 +321,12 @@ def _worktree_is_clean(worktree: Path) -> bool:
 
 
 def _branch_ahead_count(branch: str) -> int:
-    result = run_git(["rev-list", "--count", f"origin/main..{branch}"], cwd=repo_root())
+    baseline_ref = os.environ.get(INTEGRATION_BASELINE_ENV, "").strip()
+    if not baseline_ref:
+        raise ValueError("declared integration baseline is required")
+    result = run_git(["rev-list", "--count", f"{baseline_ref}..{branch}"], cwd=repo_root())
     if result.returncode != 0:
-        raise ValueError("unable to compare branch with origin/main")
+        raise ValueError("unable to compare branch with declared integration baseline")
     return int(result.stdout.strip() or "0")
 
 
@@ -517,9 +550,12 @@ def create(task_id: str, worktree_parent: Path | str) -> dict[str, Any]:
     worktree_path = (parent / task_id).resolve()
     with _record_lock(task_id):
         base_sha = _git_output(["rev-parse", "HEAD"], cwd=repo_root()).strip()
-        origin_main = _git_output(["rev-parse", "origin/main"], cwd=repo_root()).strip()
-        if base_sha != origin_main:
-            raise ValueError("HEAD and origin/main must match")
+        baseline_ref = os.environ.get(INTEGRATION_BASELINE_ENV, "").strip()
+        if not baseline_ref:
+            raise ValueError("declared integration baseline is required")
+        baseline_sha = _git_output(["rev-parse", baseline_ref], cwd=repo_root()).strip()
+        if base_sha != baseline_sha:
+            raise ValueError("HEAD and declared integration baseline must match")
         _ensure_main_ready(base_sha)
         _ensure_worktree_parent_allowed(parent)
         _ensure_no_duplicates(task_id, worktree_path, branch)

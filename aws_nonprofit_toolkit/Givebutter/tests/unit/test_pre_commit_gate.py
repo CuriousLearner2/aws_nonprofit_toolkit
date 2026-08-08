@@ -27,11 +27,12 @@ from pre_commit_gate import (  # noqa: E402
     resolve_command,
     run_staged_tree_integrity_guard,
     run_task_untracked_guard,
-    run_pytest_gate,
     staged_diff_sha256,
     validate_readiness_packet,
     verify_venv_commands,
 )
+
+BASELINE_SHA = "a" * 40
 
 
 def gate_result(
@@ -86,10 +87,12 @@ def valid_packet(diff_hash: str = "abc", head: str = "deadbeef", task_id: str = 
         "reviewed_at": "2026-07-23T12:00:00Z",
         "informational_notes": ["future hardening only"],
         "required_changes": [],
+        "required_roles": ["Breaker", "QA", "Reviewer"],
         "gate_results": [
             gate_result("check_no_artifacts", "canonical"),
             gate_result("check_task_untracked", "canonical"),
             gate_result("check_staged_tree_integrity", "canonical"),
+            gate_result("full_unit_integration_gate", "canonical"),
             gate_result("workflow_ci_lane_guard", "scope"),
         ],
         "authorized_exceptions": [],
@@ -102,12 +105,28 @@ def readiness_context(monkeypatch):
     monkeypatch.setattr("pre_commit_gate.get_current_head", lambda: "deadbeef")
     monkeypatch.setattr("pre_commit_gate.staged_diff_sha256", lambda: "abc")
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: SimpleNamespace(returncode=0))
-    return {"HOUSEHOLDER_TASK_ID": "TASK-1", "HOUSEHOLDER_LANE": "workflow-ci"}
+    return {
+        "HOUSEHOLDER_TASK_ID": "TASK-1",
+        "HOUSEHOLDER_LANE": "workflow-ci",
+        "HOUSEHOLDER_INTEGRATION_BASELINE": BASELINE_SHA,
+    }
 
 
 def test_build_env_prepends_givebutter_venv_bin(monkeypatch):
     monkeypatch.setenv("PATH", "/usr/local/bin")
     assert build_env()["PATH"].startswith(f"{get_givebutter_dir() / '.venv/bin'}:")
+
+
+def test_build_env_clears_transient_hook_environment(monkeypatch):
+    monkeypatch.setenv("GIT_DIR", "/wrong/.git")
+    monkeypatch.setenv("GIT_WORK_TREE", "/wrong")
+    monkeypatch.setenv("GIT_INDEX_FILE", "index.lock")
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-k unrelated")
+    env = build_env()
+    assert "GIT_DIR" not in env
+    assert "GIT_WORK_TREE" not in env
+    assert "PYTEST_ADDOPTS" not in env
+    assert "GIT_INDEX_FILE" not in env
 
 
 def test_resolve_command_finds_project_venv_bins():
@@ -122,7 +141,7 @@ def test_venv_python_can_import_email_validator():
         cwd=get_givebutter_dir(), env=build_env(), capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0
-    assert str(get_venv_python()) in result.stdout
+    assert Path(result.stdout.strip()).resolve() == get_venv_python().resolve()
 
 
 def test_is_blocked_artifact_detects_known_patterns():
@@ -144,11 +163,6 @@ def test_verify_venv_commands_fails_when_commands_missing(monkeypatch, capsys):
     assert "virtualenv" in capsys.readouterr().err
 
 
-def test_run_pytest_gate_preserves_failure_exit_code(monkeypatch):
-    monkeypatch.setattr("pre_commit_gate.subprocess.run", lambda *args, **kwargs: MagicMock(returncode=7))
-    assert run_pytest_gate(build_env()) == 7
-
-
 def test_staged_diff_hashes_exact_bytes(monkeypatch):
     payload = b"diff --git a/x b/x\n"
     monkeypatch.setattr("pre_commit_gate.get_staged_diff_bytes", lambda: payload)
@@ -157,6 +171,129 @@ def test_staged_diff_hashes_exact_bytes(monkeypatch):
 
 def test_exact_accept_pass_pass_succeeds(readiness_context):
     assert validate_readiness_packet(valid_packet(), readiness_context) == []
+
+
+def test_reviewer_required_breaker_not_required_succeeds(readiness_context):
+    packet = valid_packet()
+    packet["required_roles"] = ["Reviewer"]
+    packet["breaker_verdict"] = "NOT_REQUIRED"
+    packet["qa_verdict"] = "NOT_REQUIRED"
+    assert validate_readiness_packet(packet, readiness_context) == []
+
+
+def test_breaker_required_pass_succeeds(readiness_context):
+    packet = valid_packet()
+    packet["required_roles"] = ["Breaker", "Reviewer"]
+    packet["qa_verdict"] = "NOT_REQUIRED"
+    assert validate_readiness_packet(packet, readiness_context) == []
+
+
+@pytest.mark.parametrize(
+    ("roles", "breaker", "qa", "message"),
+    [
+        (["Breaker", "Reviewer"], "NOT_REQUIRED", "NOT_REQUIRED", "breaker_verdict"),
+        (["QA", "Reviewer"], "NOT_REQUIRED", None, "qa_verdict"),
+        (["Reviewer", "Unknown"], "NOT_REQUIRED", "NOT_REQUIRED", "required_roles"),
+        (["Reviewer", "Reviewer"], "NOT_REQUIRED", "NOT_REQUIRED", "required_roles"),
+        (["Breaker"], "NOT_REQUIRED", "NOT_REQUIRED", "Reviewer is always required"),
+        (None, "NOT_REQUIRED", "NOT_REQUIRED", "required_roles"),
+        ([" Reviewer "], "NOT_REQUIRED", "NOT_REQUIRED", "unknown roles"),
+        (["Reviewer "], "NOT_REQUIRED", "NOT_REQUIRED", "unknown roles"),
+        (["\tReviewer\n"], "NOT_REQUIRED", "NOT_REQUIRED", "unknown roles"),
+        ([123], "NOT_REQUIRED", "NOT_REQUIRED", "role names"),
+    ],
+)
+def test_required_role_state_fails_closed(readiness_context, roles, breaker, qa, message):
+    packet = valid_packet()
+    packet["required_roles"] = roles
+    packet["breaker_verdict"] = breaker
+    packet["qa_verdict"] = qa
+    errors = validate_readiness_packet(packet, readiness_context)
+    assert any(message in error for error in errors)
+
+
+def baseline_debt_packet() -> dict:
+    packet = valid_packet()
+    packet["gate_results"][3].update(
+        {
+            "status": "baseline_debt_verified",
+            "exit_code": 1,
+            "evidence": {
+                "baseline_sha": BASELINE_SHA,
+                "current_staged_fingerprint": "abc",
+                "command": "./.venv/bin/python -m pytest -q",
+                "baseline_command": "./.venv/bin/python -m pytest -q",
+                "current_command": "./.venv/bin/python -m pytest -q",
+                "baseline_result": {"total": 1, "passed": 0, "failed": 1, "skipped": 0},
+                "current_result": {"total": 1, "passed": 0, "failed": 1, "skipped": 0},
+                "new_result": {"total": 0, "passed": 0, "failed": 0, "skipped": 0},
+                "baseline_failing_identities": ["tests/unit/test_old.py::test_old"],
+                "current_failing_identities": ["tests/unit/test_old.py::test_old"],
+                "new_failing_identities": [],
+                "no_new_failing_identities": True,
+                "reviewed_head": "deadbeef",
+                "reviewed_staged_fingerprint": "abc",
+            },
+        }
+    )
+    return packet
+
+
+def test_valid_baseline_debt_evidence_is_accepted(readiness_context):
+    packet = baseline_debt_packet()
+    assert validate_readiness_packet(packet, readiness_context) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda e: e.update(current_staged_fingerprint="wrong"), "staged fingerprint"),
+        (lambda e: e.update(baseline_sha="wrong"), "baseline_sha"),
+        (lambda e: e.update(command="wrong"), "command"),
+        (lambda e: e.update(new_failing_identities="not-a-list"), "new_failing_identities"),
+        (lambda e: e.update(new_failing_identities=None), "new_failing_identities"),
+        (lambda e: e.update(new_failing_identities={}), "new_failing_identities"),
+        (lambda e: e.update(new_failing_identities=[["tests/unit/test_new.py::test_new"]]), "new_failing_identities"),
+        (lambda e: e.update(new_failing_identities=[""]), "new_failing_identities"),
+        (lambda e: e.update(baseline_failing_identities=["tests/unit/test_old.py::test_old", "tests/unit/test_old.py::test_old"]), "duplicate"),
+        (lambda e: e.update(current_failing_identities=["tests/unit/test_old.py::test_old", "tests/unit/test_new.py::test_new"], new_failing_identities=["tests/unit/test_new.py::test_new"], no_new_failing_identities=False, current_result={"total": 2, "passed": 0, "failed": 2, "skipped": 0}), "current-only"),
+        (lambda e: e.pop("baseline_failing_identities"), "missing"),
+        (lambda e: e.update(baseline_failing_identities=[123]), "valid normalized"),
+        (lambda e: e.update(baseline_result={"total": 2, "passed": 0, "failed": 2, "skipped": 0}), "failed"),
+        (lambda e: e.update(current_result={"total": 2, "passed": 0, "failed": 2, "skipped": 0}), "failed"),
+        (lambda e: e.update(new_result={"total": 1, "passed": 0, "failed": 1, "skipped": 0}), "new_result"),
+        (lambda e: e.update(baseline_result={"total": 3, "passed": 0, "failed": 1, "skipped": 0}), "sum"),
+        (lambda e: e.update(reviewed_head="stale"), "reviewed_head"),
+        (lambda e: e.update(reviewed_staged_fingerprint="stale"), "reviewed fingerprint"),
+    ],
+)
+def test_baseline_debt_evidence_fails_closed(readiness_context, mutation, message):
+    packet = baseline_debt_packet()
+    mutation(packet["gate_results"][3]["evidence"])
+    errors = validate_readiness_packet(packet, readiness_context)
+    assert any(message in error for error in errors)
+
+
+@pytest.mark.parametrize("missing_key", ["total", "passed", "failed", "skipped"])
+def test_baseline_debt_rejects_incomplete_result_counts(readiness_context, missing_key):
+    packet = baseline_debt_packet()
+    packet["gate_results"][3]["evidence"]["current_result"].pop(missing_key)
+    errors = validate_readiness_packet(packet, readiness_context)
+    assert any("current_result is missing required counts" in error for error in errors)
+
+
+def test_baseline_debt_rejects_unknown_evidence_fields(readiness_context):
+    packet = baseline_debt_packet()
+    packet["gate_results"][3]["evidence"]["unexpected"] = True
+    errors = validate_readiness_packet(packet, readiness_context)
+    assert any("unknown fields" in error for error in errors)
+
+
+def test_baseline_debt_rejects_unknown_result_count(readiness_context):
+    packet = baseline_debt_packet()
+    packet["gate_results"][3]["evidence"]["current_result"]["errors"] = 0
+    errors = validate_readiness_packet(packet, readiness_context)
+    assert any("unknown counts" in error for error in errors)
 
 
 def test_schema_version_two_required(readiness_context):
@@ -168,9 +305,9 @@ def test_schema_version_two_required(readiness_context):
 def test_malformed_gate_ledger_values_return_structured_errors(monkeypatch, readiness_context):
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: MagicMock(returncode=1))
     packet = valid_packet()
-    packet["gate_results"][3]["status"] = "failed"
-    packet["gate_results"][3]["exit_code"] = 1
-    packet["gate_results"][3]["exception_id"] = "mixed-scope-1"
+    packet["gate_results"][4]["status"] = "failed"
+    packet["gate_results"][4]["exit_code"] = 1
+    packet["gate_results"][4]["exception_id"] = "mixed-scope-1"
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = True
@@ -254,10 +391,10 @@ def test_failed_scope_gate_requires_structured_exception(readiness_context):
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = False
-    packet["gate_results"][3]["status"] = "failed"
-    packet["gate_results"][3]["exit_code"] = 1
+    packet["gate_results"][4]["status"] = "failed"
+    packet["gate_results"][4]["exit_code"] = 1
     errors = validate_readiness_packet(packet, readiness_context)
-    assert any("authorized exception" in e for e in errors)
+    assert any("authorized" in e for e in errors)
     assert any("commit_authorized" in e for e in errors)
 
 
@@ -266,9 +403,9 @@ def test_failed_scope_gate_with_matching_exception_passes(monkeypatch, readiness
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = True
-    packet["gate_results"][3]["status"] = "failed"
-    packet["gate_results"][3]["exit_code"] = 1
-    packet["gate_results"][3]["exception_id"] = "mixed-scope-1"
+    packet["gate_results"][4]["status"] = "failed"
+    packet["gate_results"][4]["exit_code"] = 1
+    packet["gate_results"][4]["exception_id"] = "mixed-scope-1"
     packet["authorized_exceptions"] = [gate_exception("mixed-scope-1", "workflow_ci_lane_guard")]
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: SimpleNamespace(returncode=1))
     assert validate_readiness_packet(packet, readiness_context) == []
@@ -279,9 +416,9 @@ def test_failed_scope_gate_with_lane_guard_crash_fails_closed(monkeypatch, readi
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = True
-    packet["gate_results"][3]["status"] = "failed"
-    packet["gate_results"][3]["exit_code"] = 1
-    packet["gate_results"][3]["exception_id"] = "mixed-scope-1"
+    packet["gate_results"][4]["status"] = "failed"
+    packet["gate_results"][4]["exit_code"] = 1
+    packet["gate_results"][4]["exception_id"] = "mixed-scope-1"
     packet["authorized_exceptions"] = [gate_exception("mixed-scope-1", "workflow_ci_lane_guard")]
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: None)
     errors = validate_readiness_packet(packet, readiness_context)
@@ -293,9 +430,9 @@ def test_failed_scope_gate_with_nonstandard_lane_exit_fails_closed(monkeypatch, 
     packet["canonical_gates_passed"] = True
     packet["scope_guard_passed"] = False
     packet["commit_authorized"] = True
-    packet["gate_results"][3]["status"] = "failed"
-    packet["gate_results"][3]["exit_code"] = 1
-    packet["gate_results"][3]["exception_id"] = "mixed-scope-1"
+    packet["gate_results"][4]["status"] = "failed"
+    packet["gate_results"][4]["exit_code"] = 1
+    packet["gate_results"][4]["exception_id"] = "mixed-scope-1"
     packet["authorized_exceptions"] = [gate_exception("mixed-scope-1", "workflow_ci_lane_guard")]
     monkeypatch.setattr("pre_commit_gate.run_workflow_ci_lane_guard", lambda: SimpleNamespace(returncode=2))
     errors = validate_readiness_packet(packet, readiness_context)
@@ -412,8 +549,7 @@ def test_main_runs_new_integrity_guards_before_readiness(monkeypatch, capsys):
     )
     monkeypatch.setattr("pre_commit_gate.check_blocked_artifacts", lambda: calls.append("artifacts") or 0)
     monkeypatch.setattr("pre_commit_gate.check_commit_readiness", lambda env: calls.append("readiness") or 0)
-    monkeypatch.setattr("pre_commit_gate.run_pytest_gate", lambda env: calls.append("tests") or 0)
 
     assert pre_commit_gate.main() == 0
-    assert calls == ["verify", "task", "staged", "artifacts", "readiness", "tests"]
+    assert calls == ["verify", "task", "staged", "artifacts", "readiness"]
     assert "Pre-commit" in capsys.readouterr().out

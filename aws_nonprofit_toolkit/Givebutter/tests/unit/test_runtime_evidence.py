@@ -159,6 +159,46 @@ def test_resolve_task_id_rejects_conflicting_identities():
         runtime_evidence._resolve_task_id(TASK_ID, {"HOUSEHOLDER_TASK_ID": OLD_TASK_ID})
 
 
+def test_required_roles_exact_canonical_tokens_are_accepted():
+    assert runtime_evidence._validate_required_roles_input(["Reviewer", "Breaker", "QA"], explicit=True) == [
+        "Breaker", "QA", "Reviewer"
+    ]
+    assert runtime_evidence._validate_required_roles_input(None, explicit=False) == ["Reviewer"]
+
+
+@pytest.mark.parametrize(
+    "roles",
+    [
+        [" Reviewer"],
+        ["Reviewer "],
+        [" Reviewer "],
+        ["\tReviewer"],
+        ["Reviewer\n"],
+        [""],
+        ["Reviewer", "Reviewer"],
+        ["reviewer"],
+        ["Unknown"],
+        [123],
+    ],
+)
+def test_required_roles_explicit_malformed_input_fails_closed(roles):
+    with pytest.raises(ValueError, match="required_roles|Reviewer"):
+        runtime_evidence._validate_required_roles_input(roles, explicit=True)
+
+
+def test_broad_suite_pass_evidence_is_bound_without_running_pytest(monkeypatch):
+    head = "b" * 40
+    fingerprint = "c" * 64
+    monkeypatch.setattr(runtime_evidence, "current_head", lambda: head)
+    evidence = {
+        "status": "PASS",
+        "command": "./.venv/bin/python -m pytest -q",
+        "reviewed_head": head,
+        "current_staged_fingerprint": fingerprint,
+    }
+    assert runtime_evidence._validate_broad_suite_evidence(evidence, fingerprint=fingerprint) == evidence
+
+
 def test_generate_runtime_evidence_cli_manual_mode_writes_expected_record(monkeypatch, tmp_path):
     fingerprint = FAKE_FINGERPRINT
     head = "deadbeef"
@@ -192,6 +232,8 @@ def test_generate_runtime_evidence_cli_manual_mode_writes_expected_record(monkey
             "ACCEPT",
             "--manual-breaker-criteria",
             "PASS",
+            "--required-roles",
+            "Reviewer,Breaker",
             "--output",
             str(output),
         ]
@@ -204,7 +246,7 @@ def test_generate_runtime_evidence_cli_manual_mode_writes_expected_record(monkey
     assert written["breaker_receipt"]["provenance"] == "manual breaker criteria"
     assert written["reviewer_receipt"]["criteria"] == "ACCEPT"
     assert written["breaker_receipt"]["criteria"] == "PASS"
-    assert packet["qa_verdict"] == "QA=PASS"
+    assert packet["qa_verdict"] == "NOT_REQUIRED"
     assert commands[:5] == [
         (str(runtime_evidence.venv_python()), "scripts/ci/householder_state.py", "status", "--task-id", TASK_ID),
         ("git", "rev-parse", "HEAD"),
@@ -241,6 +283,7 @@ def test_generate_runtime_evidence_writes_expected_record(monkeypatch, tmp_path)
         TASK_ID,
         reviewer,
         breaker,
+        required_roles=["Breaker", "Reviewer"],
         output_path=output,
         readiness_output_path=readiness,
     )
@@ -255,7 +298,7 @@ def test_generate_runtime_evidence_writes_expected_record(monkeypatch, tmp_path)
     assert written["git"]["staged_diff_sha256"] == fingerprint
     assert written["reviewer_receipt"]["verdict"] == "VERDICT=ACCEPT"
     assert written["breaker_receipt"]["verdict"] == "BREAKER=PASS"
-    assert packet["qa_verdict"] == "QA=PASS"
+    assert packet["qa_verdict"] == "NOT_REQUIRED"
     assert packet["reviewed_head"] == head
     assert packet["reviewed_diff_sha256"] == fingerprint
     assert pre_commit_gate.validate_readiness_packet(packet, {"HOUSEHOLDER_TASK_ID": TASK_ID, "HOUSEHOLDER_LANE": "workflow-ci"}) == []

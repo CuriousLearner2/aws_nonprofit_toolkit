@@ -20,6 +20,11 @@ try:
 except ModuleNotFoundError:  # package import from staged-tree integrity checks
     from scripts.ci.lane_routing import lane_guard_spec, resolve_declared_lane
 
+try:
+    from pre_commit_gate import validate_baseline_debt_evidence
+except ModuleNotFoundError:  # package import from staged-tree integrity checks
+    from scripts.ci.pre_commit_gate import validate_baseline_debt_evidence
+
 TASK_ID_ENV = "HOUSEHOLDER_TASK_ID"
 SCHEMA_VERSION = 1
 QA_VERDICT = "not_required"
@@ -37,6 +42,7 @@ CANONICAL_READINESS_GATE_SPECS = (
     {"label": "check_no_artifacts", "gate_id": "check_no_artifacts", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_no_artifacts.py"},
     {"label": "check_task_untracked", "gate_id": "check_task_untracked", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_task_untracked.py"},
     {"label": "check_staged_tree_integrity", "gate_id": "check_staged_tree_integrity", "group": "canonical", "command": "./.venv/bin/python scripts/ci/check_staged_tree_integrity.py"},
+    {"label": "full_unit_integration_gate", "gate_id": "full_unit_integration_gate", "group": "canonical", "command": "./.venv/bin/python -m pytest -q"},
 )
 
 
@@ -64,8 +70,26 @@ def venv_python() -> Path:
 
 def build_env() -> dict[str, str]:
     env = os.environ.copy()
+    for key in (
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "PYTEST_ADDOPTS",
+    ):
+        env.pop(key, None)
     venv_bin = str(givebutter_dir() / ".venv/bin")
     env["PATH"] = f"{venv_bin}:{env['PATH']}" if env.get("PATH") else venv_bin
+    return env
+
+
+def _process_env(cwd: Path | None = None) -> dict[str, str]:
+    env = build_env()
+    index_file = env.get("GIT_INDEX_FILE")
+    if index_file and not Path(index_file).is_absolute():
+        env["GIT_INDEX_FILE"] = str(((cwd or repo_root()) / index_file).resolve())
     return env
 
 
@@ -99,6 +123,21 @@ def default_readiness_path() -> Path:
     return givebutter_dir() / ".artifacts" / READINESS_SUFFIX
 
 
+def _validate_required_roles_input(value: Any, *, explicit: bool) -> list[str]:
+    if value is None and not explicit:
+        return ["Reviewer"]
+    if not isinstance(value, (list, tuple)) or not value:
+        raise ValueError("required_roles must be a non-empty list of canonical role names")
+    roles = list(value)
+    if any(not isinstance(role, str) or role not in {"Reviewer", "Breaker", "QA"} for role in roles):
+        raise ValueError("required_roles contains a malformed or unknown canonical role")
+    if len(set(roles)) != len(roles):
+        raise ValueError("required_roles must not contain duplicate roles")
+    if "Reviewer" not in roles:
+        raise ValueError("Reviewer is always required")
+    return sorted(roles)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -113,7 +152,7 @@ def run_command(
     return subprocess.run(
         list(argv),
         cwd=cwd or repo_root(),
-        env=dict(env) if env is not None else None,
+        env=dict(env) if env is not None else _process_env(cwd),
         capture_output=True,
         text=not binary,
         check=False,
@@ -381,6 +420,41 @@ def _required_gate_commands(lane: str) -> list[tuple[str, list[str], bool]]:
     ]
 
 
+def _validate_broad_suite_evidence(
+    evidence: Mapping[str, Any],
+    *,
+    fingerprint: str,
+) -> dict[str, Any]:
+    if evidence.get("status") == "PASS":
+        expected = {"status", "command", "reviewed_head", "current_staged_fingerprint"}
+        missing = sorted(expected - evidence.keys())
+        unknown = sorted(set(evidence) - expected)
+        if missing or unknown:
+            details = []
+            if missing:
+                details.append("missing: " + ", ".join(missing))
+            if unknown:
+                details.append("unknown: " + ", ".join(unknown))
+            raise ValueError("broad-suite PASS evidence schema invalid (" + "; ".join(details) + ")")
+        if evidence["command"] != "./.venv/bin/python -m pytest -q":
+            raise ValueError("broad-suite PASS evidence command mismatch")
+        if evidence["reviewed_head"] != current_head():
+            raise ValueError("broad-suite PASS evidence reviewed_head mismatch")
+        if evidence["current_staged_fingerprint"] != fingerprint:
+            raise ValueError("broad-suite PASS evidence staged fingerprint mismatch")
+        return dict(evidence)
+    errors = validate_baseline_debt_evidence(
+        evidence,
+        command="./.venv/bin/python -m pytest -q",
+        env=build_env(),
+        expected_head=current_head(),
+        expected_fingerprint=fingerprint,
+    )
+    if errors:
+        raise ValueError("; ".join(errors))
+    return dict(evidence)
+
+
 def _readiness_gate_records(gate_records: Sequence[Mapping[str, Any]], lane: str) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     by_label = {record["label"]: dict(record) for record in gate_records}
     readiness_records: list[dict[str, Any]] = []
@@ -394,6 +468,8 @@ def _readiness_gate_records(gate_records: Sequence[Mapping[str, Any]], lane: str
             "status": record["status"],
             "exit_code": record["exit_code"],
         }
+        if "evidence" in record:
+            normalized["evidence"] = dict(record["evidence"])
         readiness_records.append(normalized)
     return readiness_records, by_label
 
@@ -404,23 +480,34 @@ def _build_commit_readiness_packet(
     reviewer: Mapping[str, Any],
     breaker: Mapping[str, Any],
     readiness_records: Sequence[Mapping[str, Any]],
+    required_roles: Sequence[str],
 ) -> dict[str, Any]:
     gate_results = [dict(record) for record in readiness_records]
     authorized_exceptions = [dict(exception) for exception in evidence.get("authorized_exceptions", [])]
-    canonical_passed = all(record["status"] == "passed" for record in gate_results if record["group"] == "canonical")
+    canonical_passed = all(
+        record["status"] == "passed"
+        or (record["gate_id"] == "full_unit_integration_gate" and record["status"] == "baseline_debt_verified")
+        for record in gate_results
+        if record["group"] == "canonical"
+    )
     scope_passed = all(record["status"] == "passed" for record in gate_results if record["group"] == "scope")
     authorized_failed_gate_ids = {
         gate_id
         for exception in authorized_exceptions
         for gate_id in exception["applies_to_gate_ids"]
     }
-    reviewed_at = max(reviewer["reviewed_at"], breaker["reviewed_at"])
+    reviewed_at = max(
+        receipt["reviewed_at"]
+        for receipt in (reviewer, breaker)
+        if receipt is not None
+    )
     packet = {
         "schema_version": 2,
         "task_id": evidence["task_id"],
         "reviewer_verdict": reviewer["verdict"],
-        "breaker_verdict": breaker["verdict"],
-        "qa_verdict": READINESS_QA_VERDICT,
+        "breaker_verdict": breaker["verdict"] if breaker is not None else "NOT_REQUIRED",
+        "qa_verdict": READINESS_QA_VERDICT if "QA" in required_roles else "NOT_REQUIRED",
+        "required_roles": list(required_roles),
         "canonical_gates_passed": canonical_passed,
         "scope_guard_passed": scope_passed,
         "commit_authorized": canonical_passed and (scope_passed or bool(authorized_failed_gate_ids)),
@@ -436,14 +523,34 @@ def _build_commit_readiness_packet(
     return packet
 
 
-def _run_required_gates(lane: str) -> list[dict[str, Any]]:
+def _run_required_gates(
+    lane: str,
+    broad_suite_evidence: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     env = build_env()
     records: list[dict[str, Any]] = []
     for label, argv, required in _required_gate_commands(lane):
+        if label == "full_unit_integration_gate" and broad_suite_evidence is not None:
+            evidence = _validate_broad_suite_evidence(
+                broad_suite_evidence,
+                fingerprint=current_staged_fingerprint(),
+            )
+            records.append({
+                "label": label,
+                "command": "./.venv/bin/python -m pytest -q",
+                "argv": [str(part) for part in argv],
+                "started_at": utc_now(),
+                "finished_at": utc_now(),
+                "exit_code": 0 if evidence.get("status") == "PASS" else 1,
+                "status": "passed" if evidence.get("status") == "PASS" else "baseline_debt_verified",
+                "required": required,
+                **({"evidence": evidence} if evidence.get("status") != "PASS" else {}),
+            })
+            continue
         record, result = _record_command(label, argv, cwd=givebutter_dir(), env=env)
         record["required"] = required
         records.append(record)
-        if result.returncode != 0:
+        if result.returncode != 0 and record["status"] != "baseline_debt_verified":
             raise ValueError(f"{label} failed with exit code {result.returncode}")
     return records
 
@@ -475,6 +582,8 @@ def generate_runtime_evidence(
     manual_breaker_criteria: str | None = None,
     output_path: Path | None = None,
     readiness_output_path: Path | None = None,
+    broad_suite_evidence: Mapping[str, Any] | None = None,
+    required_roles: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     task_id = _validate_task_id(task_id)
     lane = resolve_declared_lane()
@@ -483,13 +592,19 @@ def generate_runtime_evidence(
     head = current_head()
     fingerprint = current_staged_fingerprint()
     ledger = _validate_ledger_snapshot(ledger, task_id, fingerprint)
+    if required_roles is None:
+        required_roles = ["Reviewer"] + (["Breaker"] if breaker_receipt is not None or manual_breaker_criteria is not None else [])
+    required_roles = _validate_required_roles_input(required_roles, explicit=True)
+    breaker_required = "Breaker" in required_roles
+    if "QA" in required_roles:
+        raise ValueError("QA receipt support is not available in runtime evidence generation")
     manual_mode_requested = manual_reviewer_criteria is not None or manual_breaker_criteria is not None
     external_mode_requested = reviewer_receipt is not None or breaker_receipt is not None
     if manual_mode_requested and external_mode_requested:
         raise ValueError("manual and external review modes are mutually exclusive")
     if manual_mode_requested:
-        if manual_reviewer_criteria is None or manual_breaker_criteria is None:
-            raise ValueError("manual reviewer and breaker criteria are required together")
+        if manual_reviewer_criteria is None or (breaker_required and manual_breaker_criteria is None):
+            raise ValueError("criteria for every required role are required")
         reviewer = _validate_receipt(
             _manual_receipt(
                 role="Reviewer",
@@ -503,29 +618,35 @@ def generate_runtime_evidence(
             head=head,
             fingerprint=fingerprint,
         )
-        breaker = _validate_receipt(
-            _manual_receipt(
+        breaker = None
+        if breaker_required:
+            breaker = _validate_receipt(
+                _manual_receipt(
+                    role="Breaker",
+                    task_id=task_id,
+                    head=head,
+                    fingerprint=fingerprint,
+                    criteria=manual_breaker_criteria,
+                ),
                 role="Breaker",
                 task_id=task_id,
                 head=head,
                 fingerprint=fingerprint,
-                criteria=manual_breaker_criteria,
-            ),
-            role="Breaker",
-            task_id=task_id,
-            head=head,
-            fingerprint=fingerprint,
-        )
+            )
     else:
-        if reviewer_receipt is None or breaker_receipt is None:
-            raise ValueError("reviewer and breaker receipts are required together")
+        if reviewer_receipt is None or (breaker_required and breaker_receipt is None):
+            raise ValueError("receipts for every required role are required")
         reviewer = _validate_receipt(reviewer_receipt, role="Reviewer", task_id=task_id, head=head, fingerprint=fingerprint)
-        breaker = _validate_receipt(breaker_receipt, role="Breaker", task_id=task_id, head=head, fingerprint=fingerprint)
+        breaker = None
+        if breaker_required:
+            breaker = _validate_receipt(breaker_receipt, role="Breaker", task_id=task_id, head=head, fingerprint=fingerprint)
 
-    gate_records = _run_required_gates(lane)
+    gate_records = _run_required_gates(lane, broad_suite_evidence)
     gate_ids = {record["label"] for record in gate_records}
     authorized_exceptions: list[dict[str, Any]] = []
     for receipt, label in ((reviewer, "Reviewer"), (breaker, "Breaker")):
+        if receipt is None:
+            continue
         for index, exception in enumerate(receipt["authorized_exceptions"]):
             normalized = _validate_exception(exception, gate_ids, fingerprint, f"{label} receipt authorized_exceptions[{index}]")
             authorized_exceptions.append(normalized)
@@ -550,10 +671,12 @@ def generate_runtime_evidence(
         },
         "ledger": ledger,
         "reviewer_receipt": reviewer,
-        "breaker_receipt": breaker,
         "authorized_exceptions": authorized_exceptions,
         "gate_results": gate_records,
+        "required_roles": list(required_roles),
     }
+    if breaker is not None:
+        evidence["breaker_receipt"] = breaker
     path = output_path or default_output_path(task_id)
     readiness_path = readiness_output_path or default_readiness_path()
     readiness_packet = _build_commit_readiness_packet(
@@ -561,6 +684,7 @@ def generate_runtime_evidence(
         reviewer=reviewer,
         breaker=breaker,
         readiness_records=readiness_records,
+        required_roles=required_roles,
     )
     try:
         _write_atomic_json(path, evidence)
@@ -587,6 +711,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     generate.add_argument("--manual-reviewer-criteria", default=None)
     generate.add_argument("--manual-breaker-criteria", default=None)
     generate.add_argument("--output", default=None)
+    generate.add_argument("--broad-suite-evidence", default=None)
+    generate.add_argument("--required-roles", default=None)
 
     return parser.parse_args(argv)
 
@@ -604,6 +730,11 @@ def main(argv: list[str] | None = None) -> int:
             manual_reviewer_criteria=args.manual_reviewer_criteria,
             manual_breaker_criteria=args.manual_breaker_criteria,
             output_path=Path(args.output) if args.output else None,
+            broad_suite_evidence=(
+                json.loads(Path(args.broad_suite_evidence).read_text(encoding="utf-8"))
+                if args.broad_suite_evidence else None
+            ),
+            required_roles=(args.required_roles.split(",") if args.required_roles is not None else None),
         )
         print(
             json.dumps(

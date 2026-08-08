@@ -38,6 +38,7 @@ def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
 
 @pytest.fixture(autouse=True)
 def isolate_git_repo_selection_env(monkeypatch):
+    monkeypatch.setenv(householder_runner.INTEGRATION_BASELINE_ENV, "origin/main")
     original_run = subprocess.run
 
     def sanitized_run(*args, **kwargs):
@@ -167,8 +168,21 @@ def test_create_rejects_diverged_main(monkeypatch, tmp_path):
     bind(monkeypatch, repo)
     monkeypatch.chdir(repo)
 
-    with pytest.raises(ValueError, match="HEAD and origin/main"):
+    with pytest.raises(ValueError, match="HEAD and .* baseline must match"):
         householder_runner.create(TASK_ID, parent)
+
+
+def test_create_uses_declared_integration_baseline(monkeypatch, tmp_path):
+    repo, _ = make_repo(tmp_path)
+    parent = tmp_path / "external-worktrees"
+    extra = repo / "integration-tip.txt"
+    extra.write_text("integration\n", encoding="utf-8")
+    git(repo, "add", "integration-tip.txt")
+    git(repo, "commit", "-m", "integration tip")
+    declared = git(repo, "rev-parse", "HEAD").stdout.strip()
+    monkeypatch.setenv(householder_runner.INTEGRATION_BASELINE_ENV, declared)
+    report = create_campaign(monkeypatch, repo, parent)
+    assert report["base_sha"] == declared
 
 
 def test_create_rejects_duplicate_task_id(monkeypatch, tmp_path):

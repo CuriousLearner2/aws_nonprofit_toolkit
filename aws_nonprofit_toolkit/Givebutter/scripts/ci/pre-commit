@@ -4,6 +4,9 @@ set -euo pipefail
 GIVEBUTTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV_PYTHON="$GIVEBUTTER_DIR/.venv/bin/python"
 
+cd "$GIVEBUTTER_DIR"
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES PYTEST_ADDOPTS
+
 if [[ ! -x "$VENV_PYTHON" ]]; then
   echo "Error: Givebutter virtualenv python not found at $VENV_PYTHON" >&2
   exit 1

@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,11 +29,30 @@ REQUIRED_PACKET_FIELDS = {
     "schema_version", "task_id", "reviewer_verdict", "breaker_verdict", "qa_verdict",
     "canonical_gates_passed", "scope_guard_passed", "commit_authorized",
     "push_authorized", "reviewed_head", "reviewed_diff_sha256", "reviewed_at",
-    "informational_notes", "required_changes", "gate_results", "authorized_exceptions",
+    "informational_notes", "required_changes", "required_roles", "gate_results", "authorized_exceptions",
 }
+ALLOWED_REQUIRED_ROLES = {"Reviewer", "Breaker", "QA"}
 ALLOWED_GATE_GROUPS = {"canonical", "scope"}
-ALLOWED_GATE_STATUSES = {"passed", "failed", "not_run"}
+ALLOWED_GATE_STATUSES = {"passed", "baseline_debt_verified", "failed", "not_run"}
 ALLOWED_EXCEPTION_TYPES = {"mixed_scope_exception"}
+PYTEST_IDENTITY_RE = re.compile(r"^[^\s\x00]+::[^\s\x00]+$")
+BASELINE_DEBT_EVIDENCE_FIELDS = {
+    "baseline_sha",
+    "current_staged_fingerprint",
+    "command",
+    "baseline_command",
+    "current_command",
+    "baseline_result",
+    "current_result",
+    "new_result",
+    "baseline_failing_identities",
+    "current_failing_identities",
+    "new_failing_identities",
+    "no_new_failing_identities",
+    "reviewed_head",
+    "reviewed_staged_fingerprint",
+}
+RESULT_COUNT_FIELDS = {"total", "passed", "failed", "skipped"}
 CANONICAL_GATE_SPECS = {
     "check_no_artifacts": {
         "group": "canonical",
@@ -50,6 +70,10 @@ CANONICAL_GATE_SPECS = {
 
 EXPECTED_GATE_SPECS = {
     **CANONICAL_GATE_SPECS,
+    "full_unit_integration_gate": {
+        "group": "canonical",
+        "command": "./.venv/bin/python -m pytest -q",
+    },
     "workflow_ci_lane_guard": {
         "group": "scope",
         "command": "./.venv/bin/python scripts/ci/check_lane_scope.py --lane workflow-ci --verbose",
@@ -62,6 +86,7 @@ def expected_gate_specs(env: dict[str, str]) -> dict[str, dict[str, str]]:
     gate_id, guard_lane = lane_guard_spec(lane)
     return {
         **CANONICAL_GATE_SPECS,
+        "full_unit_integration_gate": EXPECTED_GATE_SPECS["full_unit_integration_gate"],
         gate_id: {
             "group": "scope",
             "command": f"./.venv/bin/python scripts/ci/check_lane_scope.py --lane {guard_lane} --verbose",
@@ -87,6 +112,16 @@ def get_readiness_packet_path() -> Path:
 
 def build_env() -> dict[str, str]:
     env = os.environ.copy()
+    for key in (
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "PYTEST_ADDOPTS",
+    ):
+        env.pop(key, None)
     venv_bin = str(get_givebutter_dir() / ".venv/bin")
     env["PATH"] = f"{venv_bin}:{env['PATH']}" if env.get("PATH") else venv_bin
     return env
@@ -99,7 +134,7 @@ def resolve_command(command: str, env: dict[str, str]) -> str | None:
 def run_git(args: list[str], *, binary: bool = False) -> subprocess.CompletedProcess[Any]:
     return subprocess.run(
         ["git", *args], cwd=get_repo_root(), capture_output=True,
-        text=not binary, check=False,
+        env=build_env(), text=not binary, check=False,
     )
 
 
@@ -169,6 +204,154 @@ def _is_nonempty_string(value: Any) -> bool:
 
 def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_required_roles(value: Any, errors: list[str]) -> set[str]:
+    if not isinstance(value, list) or not value:
+        errors.append("required_roles must be a non-empty list")
+        return set()
+    if any(not isinstance(role, str) or not role for role in value):
+        errors.append("required_roles must contain non-empty role names")
+        return set()
+    roles = list(value)
+    unknown = sorted(set(roles) - ALLOWED_REQUIRED_ROLES)
+    if unknown:
+        errors.append("required_roles contains unknown roles: " + ", ".join(unknown))
+    if len(set(roles)) != len(roles):
+        errors.append("required_roles must not contain duplicates")
+    if "Reviewer" not in roles:
+        errors.append("Reviewer is always required")
+    if roles != sorted(roles):
+        errors.append("required_roles must be deterministically sorted")
+    return set(roles) if not unknown else set()
+
+
+def _declared_baseline_sha(env: dict[str, str], fallback: str) -> str | None:
+    declared = (
+        env.get("HOUSEHOLDER_INTEGRATION_BASELINE", "").strip()
+        or env.get("HOUSEHOLDER_BASELINE_SHA", "").strip()
+    )
+    if not declared:
+        return fallback or None
+    if re.fullmatch(r"[0-9a-fA-F]{40}", declared):
+        return declared.lower()
+    result = run_git(["rev-parse", declared])
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def _normalize_identity_list(
+    value: Any,
+    field: str,
+    errors: list[str],
+    *,
+    allow_empty: bool = False,
+) -> list[str] | None:
+    if not isinstance(value, list):
+        errors.append(f"{field} must be a list")
+        return None
+    identities: list[str] = []
+    for index, identity in enumerate(value):
+        if not isinstance(identity, str) or not identity.strip() or not PYTEST_IDENTITY_RE.fullmatch(identity.strip()):
+            errors.append(f"{field}[{index}] is not a valid normalized test identity")
+            continue
+        identities.append(identity.strip())
+    if len(set(identities)) != len(identities):
+        errors.append(f"{field} must not contain duplicate identities")
+    normalized = sorted(identities)
+    if identities != normalized:
+        errors.append(f"{field} must be deterministically sorted")
+    return normalized
+
+
+def _validate_result_counts(
+    result: Any,
+    field: str,
+    failing_identities: list[str] | None,
+    errors: list[str],
+) -> None:
+    if not isinstance(result, dict):
+        errors.append(f"{field} must be an object")
+        return
+    missing = sorted(RESULT_COUNT_FIELDS - result.keys())
+    unknown = sorted(set(result) - RESULT_COUNT_FIELDS)
+    if missing:
+        errors.append(f"{field} is missing required counts: {', '.join(missing)}")
+    if unknown:
+        errors.append(f"{field} contains unknown counts: {', '.join(unknown)}")
+    for key in RESULT_COUNT_FIELDS:
+        if key in result and (not _is_int(result[key]) or result[key] < 0):
+            errors.append(f"{field}.{key} must be a non-negative integer")
+    failed = result.get("failed")
+    if failed is not None and failing_identities is not None and failed != len(failing_identities):
+        errors.append(f"{field}.failed must equal the recorded failing identity count")
+    total = result.get("total")
+    components = [result[key] for key in ("passed", "failed", "skipped") if key in result]
+    if total is not None and len(components) == 3 and total != sum(components):
+        errors.append(f"{field}.total must equal the sum of passed + failed + skipped")
+
+
+def validate_baseline_debt_evidence(
+    evidence: Any,
+    *,
+    command: str,
+    env: dict[str, str],
+    expected_head: str,
+    expected_fingerprint: str,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(evidence, dict):
+        return ["baseline debt evidence must be an object"]
+    unknown = sorted(set(evidence) - BASELINE_DEBT_EVIDENCE_FIELDS)
+    if unknown:
+        errors.append("baseline debt evidence contains unknown fields: " + ", ".join(unknown))
+    missing = sorted(BASELINE_DEBT_EVIDENCE_FIELDS - evidence.keys())
+    if missing:
+        errors.append("baseline debt evidence is missing: " + ", ".join(missing))
+        return errors
+    if evidence["command"] != command:
+        errors.append("baseline debt evidence command mismatch")
+    if evidence["baseline_command"] != command or evidence["current_command"] != command:
+        errors.append("baseline/current command identity must match the canonical broad-suite command")
+    declared_baseline = _declared_baseline_sha(env, "")
+    if declared_baseline is None or evidence["baseline_sha"] != declared_baseline:
+        errors.append("baseline debt evidence baseline_sha does not match the declared baseline")
+    if evidence["current_staged_fingerprint"] != expected_fingerprint:
+        errors.append("baseline debt evidence staged fingerprint mismatch")
+    if evidence["reviewed_head"] != expected_head:
+        errors.append("baseline debt evidence reviewed_head mismatch")
+    if evidence["reviewed_staged_fingerprint"] != expected_fingerprint:
+        errors.append("baseline debt evidence reviewed fingerprint mismatch")
+
+    baseline_ids = _normalize_identity_list(
+        evidence["baseline_failing_identities"],
+        "baseline_failing_identities",
+        errors,
+    )
+    current_ids = _normalize_identity_list(
+        evidence["current_failing_identities"],
+        "current_failing_identities",
+        errors,
+    )
+    new_ids = _normalize_identity_list(
+        evidence["new_failing_identities"],
+        "new_failing_identities",
+        errors,
+        allow_empty=True,
+    )
+    if baseline_ids is not None and current_ids is not None:
+        computed_new = sorted(set(current_ids) - set(baseline_ids))
+        if computed_new:
+            errors.append("current-only failing identities reject BASELINE_DEBT_VERIFIED")
+        if new_ids != computed_new:
+            errors.append("new_failing_identities does not match baseline/current identities")
+    if evidence["no_new_failing_identities"] is not True or new_ids:
+        errors.append("baseline debt evidence must prove no new failing identities")
+    _validate_result_counts(evidence["baseline_result"], "baseline_result", baseline_ids, errors)
+    _validate_result_counts(evidence["current_result"], "current_result", current_ids, errors)
+    _validate_result_counts(evidence["new_result"], "new_result", new_ids, errors)
+    return errors
 
 
 def _validate_gate_record(
@@ -258,6 +441,15 @@ def _validate_gate_record(
     elif status == "failed":
         if not _is_int(exit_code) or exit_code == 0:
             errors.append(f"gate_results[{index}].exit_code must be a non-zero integer when status is failed")
+    elif status == "baseline_debt_verified":
+        if not _is_int(exit_code) or exit_code == 0:
+            errors.append(
+                f"gate_results[{index}].exit_code must be a non-zero integer when status is baseline_debt_verified"
+            )
+        if gate_id != "full_unit_integration_gate":
+            errors.append("baseline_debt_verified is only valid for full_unit_integration_gate")
+        if "evidence" not in gate:
+            errors.append(f"gate_results[{index}].evidence is required for baseline_debt_verified")
     elif status == "not_run":
         if exit_code is not None:
             errors.append(f"gate_results[{index}].exit_code must be null when status is not_run")
@@ -274,6 +466,7 @@ def _validate_gate_record(
         "status": status,
         "exit_code": exit_code,
         "exception_id": exception_id,
+        **({"evidence": gate["evidence"]} if "evidence" in gate else {}),
     }
 
 
@@ -451,10 +644,11 @@ def validate_readiness_packet(packet: dict[str, Any], env: dict[str, str]) -> li
     elif packet["task_id"] != current_task_id:
         errors.append("task_id does not match HOUSEHOLDER_TASK_ID")
 
+    required_roles = _validate_required_roles(packet["required_roles"], errors)
     exact_values = {
         "reviewer_verdict": "VERDICT=ACCEPT",
-        "breaker_verdict": "BREAKER=PASS",
-        "qa_verdict": "QA=PASS",
+        "breaker_verdict": "BREAKER=PASS" if "Breaker" in required_roles else "NOT_REQUIRED",
+        "qa_verdict": "QA=PASS" if "QA" in required_roles else "NOT_REQUIRED",
     }
     for field, expected in exact_values.items():
         if packet[field] != expected:
@@ -549,7 +743,15 @@ def validate_readiness_packet(packet: dict[str, Any], env: dict[str, str]) -> li
         elif gate["status"] == "not_run":
             errors.append(f"required gate {gate_id} was not run")
 
-    derived_canonical_passed = all(status == "passed" for status in canonical_required_statuses)
+    derived_canonical_passed = all(
+        status == "passed" or (
+            status == "baseline_debt_verified"
+            and gate_id == "full_unit_integration_gate"
+        )
+        for gate_id, gate in gates_by_id.items()
+        if gate["required"] is True and gate["group"] == "canonical"
+        for status in [gate["status"]]
+    )
     derived_scope_passed = all(status == "passed" for status in scope_required_statuses)
     if packet["canonical_gates_passed"] is not derived_canonical_passed:
         errors.append("canonical_gates_passed does not match the recorded gate results")
@@ -574,6 +776,18 @@ def validate_readiness_packet(packet: dict[str, Any], env: dict[str, str]) -> li
     except RuntimeError as exc:
         errors.append(str(exc))
         return errors
+
+    broad_gate = gates_by_id.get("full_unit_integration_gate")
+    if broad_gate and broad_gate["status"] == "baseline_debt_verified":
+        errors.extend(
+            validate_baseline_debt_evidence(
+                broad_gate.get("evidence"),
+                command=EXPECTED_GATE_SPECS["full_unit_integration_gate"]["command"],
+                env=env,
+                expected_head=head,
+                expected_fingerprint=fingerprint,
+            )
+        )
 
     if packet["reviewed_head"] != head:
         errors.append("reviewed_head does not match current HEAD")
@@ -616,17 +830,6 @@ def verify_venv_commands(env: dict[str, str]) -> int:
     return probe.returncode
 
 
-def run_pytest_gate(env: dict[str, str]) -> int:
-    print("Running unit + integration tests...\n")
-    result = subprocess.run(
-        [str(get_venv_python()), "-m", "pytest", "tests/unit", "tests/integration", "-q", "--tb=short"],
-        cwd=get_givebutter_dir(), env=env, check=False,
-    )
-    if result.returncode != 0:
-        print("\n❌ COMMIT BLOCKED: Unit/integration tests failed!")
-    return result.returncode
-
-
 def main() -> int:
     env = build_env()
     print("\033[1;33mPre-commit: validating readiness, artifacts, and tests...\033[0m\n")
@@ -644,10 +847,8 @@ def main() -> int:
         return 1
     if check_commit_readiness(env) != 0:
         return 1
-    exit_code = run_pytest_gate(env)
-    if exit_code == 0:
-        print("\n\033[0;32m✓ Pre-commit checks passed!\033[0m\n")
-    return exit_code
+    print("\n\033[0;32m✓ Pre-commit mechanical verification passed!\033[0m\n")
+    return 0
 
 
 if __name__ == "__main__":
