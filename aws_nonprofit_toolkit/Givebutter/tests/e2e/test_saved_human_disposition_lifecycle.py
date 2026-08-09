@@ -466,3 +466,219 @@ async def test_mixed_row_readiness_and_export_recompute_after_last_issue_is_fixe
     finally:
         stop_flask_server(server, flask_thread)
         session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_autosave_failure_then_retry_recomputes_persisted_state(e2e_database_and_app):
+    """A rejected correction is transient; a valid retry updates all persisted projections."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "p1-autosave-retry"
+    server = flask_thread = None
+
+    try:
+        raw = _seed_clean(session, batch_id)
+        original_email = raw.raw_csv_data["email"]
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                row = page.locator("tr.validation-row").first
+                await row.wait_for()
+                email = row.locator('input[data-field="email"]')
+
+                await email.fill("retry-invalid")
+                await email.evaluate("element => element.blur()")
+                await page.wait_for_function(
+                    "() => document.querySelector('.validation-status-label')?.textContent.trim() === 'Blocking'",
+                    timeout=5000,
+                )
+                assert await row.locator(".row-status-dropdown").input_value() == ""
+                assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
+                assert session.query(RawImportRow).filter_by(id=raw.id).one().raw_csv_data["email"] == original_email
+
+                await email.fill("retry-success@example.com")
+                await email.evaluate("element => element.blur()")
+                await page.wait_for_function(
+                    "() => document.querySelector('.validation-status-label')?.textContent.trim() === 'No issues'",
+                    timeout=5000,
+                )
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert preview.is_export_ready is True
+                assert preview.blocked_count == 0
+                await page.reload()
+                row = page.locator("tr.validation-row").first
+                await row.wait_for()
+                assert await row.locator('input[data-field="email"]').input_value() == "retry-success@example.com"
+                assert await row.locator(".validation-status-label").inner_text() == "No issues"
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_validation_readiness_and_export_share_human_accept_state(e2e_database_and_app):
+    """A saved human acceptance is represented consistently by UI, readiness, and preview."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "p1-surface-consistency"
+    server = flask_thread = None
+
+    try:
+        raw = _seed_issue(session, batch_id)
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                await _save_human_accept(page)
+                row = page.locator("tr.validation-row").first
+                assert await row.locator(".validation-status-label").inner_text() == "Blocking"
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert preview.is_export_ready is True
+                assert preview.blocked_count == 0
+                assert len(preview.export_rows) == 1
+                await page.goto(f"{base_url}/imports/{batch_id}/readiness")
+                assert "Export Blocked" not in await page.inner_text("body")
+                session.expire_all()
+                assert session.query(ReviewDecision).filter_by(
+                    batch_id=batch_id,
+                    raw_import_row_id=raw.id,
+                    decision="row_status:accept_as_is",
+                ).count() == 1
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_last_blocking_row_stays_blocked_until_successful_correction(e2e_database_and_app):
+    """The final unresolved row blocks until a valid correction is persisted."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "p1-last-blocker-recovery"
+    server = flask_thread = None
+
+    try:
+        raw = _seed_issue(session, batch_id)
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                row = page.locator("tr.validation-row").first
+                email = row.locator('input[data-field="email"]')
+                await email.fill("still-invalid")
+                await email.evaluate("element => element.blur()")
+                await page.wait_for_function(
+                    "() => document.querySelector('.validation-status-label')?.textContent.trim() === 'Blocking'",
+                    timeout=5000,
+                )
+                blocked = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert blocked.is_export_ready is False
+                assert blocked.blocked_count == 1
+
+                await email.fill("last-blocker-fixed@example.com")
+                await email.evaluate("element => element.blur()")
+                await page.wait_for_function(
+                    "() => document.querySelector('.validation-status-label')?.textContent.trim() === 'No issues'",
+                    timeout=5000,
+                )
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                ready = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert ready.is_export_ready is True
+                assert ready.blocked_count == 0
+                await page.goto(f"{base_url}/imports/{batch_id}/readiness")
+                assert "Export Blocked" not in await page.inner_text("body")
+                session.expire_all()
+                assert session.query(ImportBatch).filter_by(id=batch_id).one() is not None
+                assert session.query(RawImportRow).filter_by(id=raw.id).one().raw_csv_data["email"] == "bad-email"
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_reload_preserves_material_validation_disposition_and_export_state(e2e_database_and_app):
+    """Reload does not change a saved issue disposition or its export projection."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "p1-reload-consistency"
+    server = flask_thread = None
+
+    try:
+        raw = _seed_issue(session, batch_id)
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                await _save_human_accept(page)
+                before = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert before.is_export_ready is True
+                assert before.blocked_count == 0
+
+                await page.reload()
+                row = page.locator("tr.validation-row").first
+                await row.wait_for()
+                assert await row.locator(".validation-status-label").inner_text() == "Blocking"
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                after = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert after.is_export_ready is True
+                assert after.blocked_count == 0
+                assert len(after.export_rows) == 1
+                await page.goto(f"{base_url}/imports/{batch_id}/readiness")
+                assert "Export Blocked" not in await page.inner_text("body")
+                session.expire_all()
+                assert session.query(ReviewDecision).filter_by(
+                    batch_id=batch_id,
+                    raw_import_row_id=raw.id,
+                    decision="row_status:accept_as_is",
+                ).count() == 1
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
