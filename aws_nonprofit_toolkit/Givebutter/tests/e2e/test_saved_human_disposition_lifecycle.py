@@ -89,6 +89,44 @@ def _seed_issue(session, batch_id):
     return raw
 
 
+def _seed_clean(session, batch_id):
+    session.add(ImportBatch(
+        id=batch_id,
+        filename=f"{batch_id}.csv",
+        upload_timestamp=datetime.now(timezone.utc),
+        status="pending_review",
+        raw_row_count=1,
+    ))
+    session.flush()
+    raw = RawImportRow(
+        batch_id=batch_id,
+        row_index=1,
+        raw_csv_data={
+            "Transaction ID": "p1-contract-clean-1",
+            "name": "Clean Donor",
+            "date": "2026-08-08",
+            "email": "clean@example.com",
+            "phone": "4155552671",
+            "amount": "100.00",
+            "address": "1 Main St",
+        },
+    )
+    session.add(raw)
+    session.flush()
+    session.add(ImportContact(
+        batch_id=batch_id,
+        raw_import_row_id=raw.id,
+        first_name="Clean",
+        last_name="Donor",
+        email="clean@example.com",
+        phone="4155552671",
+        address_line1="1 Main St",
+        amount=100.0,
+    ))
+    session.commit()
+    return raw
+
+
 async def _save_human_accept(page):
     row = page.locator("tr.validation-row").first
     await row.locator("select.row-status-dropdown").select_option("accept_as_is")
@@ -197,6 +235,70 @@ async def test_saved_human_disposition_survives_validation_changes(e2e_database_
                     decision="row_status:accept_as_is",
                 ).count() == 1
                 assert session.query(AuditLogRecord).filter_by(batch_id=batch_id).count() >= audit_count_after_save
+                preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert preview.blocked_count == 0
+                assert len(preview.export_rows) == 1
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_transient_invalid_edit_restores_persisted_clean_projection(e2e_database_and_app):
+    """Invalid browser edits block transiently but cannot change persisted clean state."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "p1-transient-invalid-clean"
+    server = flask_thread = None
+
+    try:
+        raw = _seed_clean(session, batch_id)
+        original_email = raw.raw_csv_data["email"]
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                row = page.locator("tr.validation-row").first
+                await row.wait_for()
+                assert await row.locator(".validation-status-label").inner_text() == "No issues"
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
+
+                email = row.locator('input[data-field="email"]')
+                await email.fill("transient-invalid")
+                await email.evaluate("element => element.blur()")
+                await page.wait_for_function(
+                    "() => document.querySelector('tr.validation-row .validation-status-label')?.textContent.trim() === 'Blocking'",
+                    timeout=5000,
+                )
+                assert await row.locator(".row-status-dropdown").input_value() == ""
+                assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
+
+                # The rejected invalid correction is not part of persisted export/readiness state.
+                session.expire_all()
+                assert session.query(RawImportRow).filter_by(id=raw.id).one().raw_csv_data["email"] == original_email
+                preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert preview.blocked_count == 0
+                assert len(preview.export_rows) == 1
+
+                await page.reload()
+                row = page.locator("tr.validation-row").first
+                await row.wait_for()
+                assert await row.locator('input[data-field="email"]').input_value() == original_email
+                assert await row.locator(".validation-status-label").inner_text() == "No issues"
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
                 preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
                 assert preview.blocked_count == 0
                 assert len(preview.export_rows) == 1
