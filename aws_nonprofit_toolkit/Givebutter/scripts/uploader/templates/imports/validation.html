@@ -682,6 +682,8 @@ async function loadRowDecisions() {
                         resetOption.style.display = 'block';
                         // Store decision status in element for later use
                         tableDropdown.setAttribute('data-has-decision', 'true');
+                        tableDropdown.dataset.currentDecision = data.decision || '';
+                        tableDropdown.dataset.systemDisposition = 'false';
                         tableDropdown.value = data.decision || '';
                         tableDropdown.style.backgroundColor = '#fef3c7';
                         if (editReviewButton) editReviewButton.style.display = 'inline-block';
