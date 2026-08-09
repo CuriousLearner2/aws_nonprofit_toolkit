@@ -23,6 +23,7 @@ BLOCKED_PATTERNS = (
     ".DS_Store", "scheduled_tasks.lock", "screenshots/", "traces/", "videos/",
     "__pycache__", "*.pyc", "*.pyo", ".pytest_cache", "givebutter.db", "listings.db",
 )
+COMMIT_MODE_ENV = "HOUSEHOLDER_COMMIT_MODE"
 PACKET_RELATIVE_TO_GIVEBUTTER = Path(".artifacts/commit-readiness.json")
 PACKET_REPO_PATH = "Givebutter/.artifacts/commit-readiness.json"
 REQUIRED_PACKET_FIELDS = {
@@ -586,6 +587,13 @@ def run_declared_lane_guard(env: dict[str, str]) -> subprocess.CompletedProcess[
     return run_test_only_lane_guard()
 
 
+def commit_mode(env: dict[str, str]) -> str:
+    mode = env.get(COMMIT_MODE_ENV, "normal")
+    if mode not in {"normal", "heavy"}:
+        raise ValueError(f"{COMMIT_MODE_ENV} must be normal or heavy")
+    return mode
+
+
 def run_guard(command: list[str]) -> subprocess.CompletedProcess[Any] | None:
     try:
         return subprocess.run(
@@ -832,6 +840,11 @@ def verify_venv_commands(env: dict[str, str]) -> int:
 
 def main() -> int:
     env = build_env()
+    try:
+        mode = commit_mode(env)
+    except ValueError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 1
     print("\033[1;33mPre-commit: validating readiness, artifacts, and tests...\033[0m\n")
     if verify_venv_commands(env) != 0:
         return 1
@@ -845,8 +858,14 @@ def main() -> int:
         return 1
     if check_blocked_artifacts() != 0:
         return 1
-    if check_commit_readiness(env) != 0:
+    lane_guard = run_declared_lane_guard(env)
+    if lane_guard is None or lane_guard.returncode != 0:
+        print("\n❌ COMMIT BLOCKED: Declared lane scope guard failed.")
         return 1
+    if mode == "heavy" and check_commit_readiness(env) != 0:
+        return 1
+    if mode == "normal":
+        print("✓ Normal commit mode: readiness ledger and packet checks are opt-in\n")
     print("\n\033[0;32m✓ Pre-commit mechanical verification passed!\033[0m\n")
     return 0
 

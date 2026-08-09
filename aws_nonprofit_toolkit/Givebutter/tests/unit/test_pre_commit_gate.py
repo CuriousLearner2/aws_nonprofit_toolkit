@@ -28,6 +28,7 @@ from pre_commit_gate import (  # noqa: E402
     run_staged_tree_integrity_guard,
     run_task_untracked_guard,
     staged_diff_sha256,
+    commit_mode,
     validate_readiness_packet,
     verify_venv_commands,
 )
@@ -127,6 +128,16 @@ def test_build_env_clears_transient_hook_environment(monkeypatch):
     assert "GIT_WORK_TREE" not in env
     assert "PYTEST_ADDOPTS" not in env
     assert "GIT_INDEX_FILE" not in env
+
+
+def test_commit_mode_defaults_to_normal_and_accepts_explicit_heavy():
+    assert commit_mode({}) == "normal"
+    assert commit_mode({"HOUSEHOLDER_COMMIT_MODE": "heavy"}) == "heavy"
+
+
+def test_commit_mode_rejects_unknown_mode():
+    with pytest.raises(ValueError, match="must be normal or heavy"):
+        commit_mode({"HOUSEHOLDER_COMMIT_MODE": "bypass"})
 
 
 def test_resolve_command_finds_project_venv_bins():
@@ -535,7 +546,7 @@ def test_run_staged_tree_integrity_guard_preserves_failure_exit_code(monkeypatch
     assert run_staged_tree_integrity_guard().returncode == 6
 
 
-def test_main_runs_new_integrity_guards_before_readiness(monkeypatch, capsys):
+def test_main_normal_mode_skips_readiness_but_keeps_scope_guards(monkeypatch, capsys):
     calls: list[str] = []
 
     monkeypatch.setattr("pre_commit_gate.verify_venv_commands", lambda env: calls.append("verify") or 0)
@@ -548,8 +559,22 @@ def test_main_runs_new_integrity_guards_before_readiness(monkeypatch, capsys):
         lambda: calls.append("staged") or SimpleNamespace(returncode=0),
     )
     monkeypatch.setattr("pre_commit_gate.check_blocked_artifacts", lambda: calls.append("artifacts") or 0)
+    monkeypatch.setattr("pre_commit_gate.run_declared_lane_guard", lambda env: calls.append("lane") or SimpleNamespace(returncode=0))
     monkeypatch.setattr("pre_commit_gate.check_commit_readiness", lambda env: calls.append("readiness") or 0)
 
     assert pre_commit_gate.main() == 0
-    assert calls == ["verify", "task", "staged", "artifacts", "readiness"]
+    assert calls == ["verify", "task", "staged", "artifacts", "lane"]
     assert "Pre-commit" in capsys.readouterr().out
+
+
+def test_main_heavy_mode_runs_readiness(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setenv("HOUSEHOLDER_COMMIT_MODE", "heavy")
+    monkeypatch.setattr("pre_commit_gate.verify_venv_commands", lambda env: 0)
+    monkeypatch.setattr("pre_commit_gate.run_task_untracked_guard", lambda: SimpleNamespace(returncode=0))
+    monkeypatch.setattr("pre_commit_gate.run_staged_tree_integrity_guard", lambda: SimpleNamespace(returncode=0))
+    monkeypatch.setattr("pre_commit_gate.check_blocked_artifacts", lambda: 0)
+    monkeypatch.setattr("pre_commit_gate.run_declared_lane_guard", lambda env: SimpleNamespace(returncode=0))
+    monkeypatch.setattr("pre_commit_gate.check_commit_readiness", lambda env: calls.append("readiness") or 0)
+    assert pre_commit_gate.main() == 0
+    assert calls == ["readiness"]
