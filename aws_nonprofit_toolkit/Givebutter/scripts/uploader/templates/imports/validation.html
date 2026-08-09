@@ -622,7 +622,18 @@ function updateRowStatusFromIssues(row, allIssues) {
     row.setAttribute('data-row-status', rowStatus);
     const dropdown = row.querySelector('.row-status-dropdown');
     if (dropdown) {
-        dropdown.value = dropdown.dataset.currentDecision || '';
+        if (dropdown.dataset.hasDecision === 'true') {
+            // Preserve an explicitly saved human disposition while the
+            // validation status is refreshed independently.
+            dropdown.value = dropdown.dataset.currentDecision || '';
+        } else {
+            // System projection: clean rows are implicitly accepted; rows
+            // with issues remain unresolved until a human disposition exists.
+            const clean = rowStatus === 'No issues';
+            dropdown.value = clean ? 'accept_as_is' : '';
+            dropdown.dataset.systemDisposition = clean ? 'true' : 'false';
+            dropdown.dataset.currentDecision = '';
+        }
     }
 }
 
