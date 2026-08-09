@@ -151,6 +151,18 @@ class TestValidationRoute:
         else:
             assert 'data-testid="validation-status-filter-overridden"' not in html
 
+    def test_issue_filter_is_labeled_and_constrained(self, client_with_fixture):
+        """Issue filtering remains discoverable and cannot overflow the page."""
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
+        html = response.data.decode('utf-8', errors='ignore')
+
+        assert '<label for="issue-filter"' in html
+        assert '>Filter by issue</label>' in html
+        assert 'aria-label="Filter by issue"' in html
+        assert 'width: 220px' in html
+        assert 'max-width: 100%' in html
+        assert "row.hidden = !matches;" in html
+
     def test_validation_contains_action_column(self, client_with_fixture):
         """Test that validation table contains action links."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')

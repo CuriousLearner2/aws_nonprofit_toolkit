@@ -20,7 +20,8 @@
 
 <!-- Filter & Export -->
 <div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">
-    <select id="action-filter" style="padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+    <label for="action-filter" style="font-size: 12px; font-weight: 600; color: #374151;">Filter by action</label>
+    <select id="action-filter" aria-label="Filter by action" style="width: 220px; max-width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
         <option value="">All Actions</option>
         <option value="marked-duplicate">Marked as Duplicate</option>
         <option value="marked-different">Marked as Different</option>
@@ -29,7 +30,7 @@
         <option value="household-confirmed">Household Confirmed</option>
         <option value="record-deferred">Record Deferred</option>
     </select>
-    <button class="btn btn-secondary" style="margin-left: auto;">Export Audit Log</button>
+    <button id="export-audit-log" type="button" class="btn btn-secondary" style="margin-left: auto;">Export Audit Log</button>
 </div>
 
 <!-- Audit Log Table -->
@@ -103,6 +104,26 @@ document.addEventListener('DOMContentLoaded', function () {
     const actionFilter = document.getElementById('action-filter');
     const rows = Array.from(document.querySelectorAll('[data-audit-row]'));
     const emptyState = document.getElementById('audit-empty-state');
+    const exportButton = document.getElementById('export-audit-log');
+
+    function csvCell(value) {
+        return '"' + String(value ?? '').replace(/"/g, '""') + '"';
+    }
+
+    exportButton?.addEventListener('click', function () {
+        const csvRows = [['Timestamp', 'Action', 'Details', 'Reviewer']];
+        rows.forEach(function (row) {
+            csvRows.push(Array.from(row.cells).map(function (cell) {
+                return csvCell(cell.textContent.trim());
+            }));
+        });
+        const blob = new Blob([csvRows.map(function (row) { return row.join(','); }).join('\n') + '\n'], { type: 'text/csv;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = '{{ batch.id }}-audit.csv';
+        link.click();
+        URL.revokeObjectURL(link.href);
+    });
 
     if (!actionFilter || rows.length === 0) {
         return;

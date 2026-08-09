@@ -92,6 +92,19 @@ class TestAuditRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
         assert b'action-filter' in response.data
 
+    def test_audit_filter_and_export_controls_are_wired(self, client_with_fixture):
+        """Audit filtering is labeled and the export control produces CSV client-side."""
+        response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')
+        html = response.data.decode('utf-8', errors='ignore')
+
+        assert '<label for="action-filter"' in html
+        assert '>Filter by action</label>' in html
+        assert 'aria-label="Filter by action"' in html
+        assert 'id="export-audit-log"' in html
+        assert 'new Blob' in html
+        assert 'download = \'IMP-2025-0101-A-audit.csv\'' in html
+        assert 'data-audit-row' in html
+
     def test_audit_action_filter_wiring_is_rendered(self, client_with_fixture):
         """Test that audit rows expose client-side filter hooks."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/audit')

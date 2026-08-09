@@ -87,9 +87,10 @@
     </div>
 
     <!-- Filter & Controls -->
-    <div style="display: flex; gap: 12px; margin-bottom: 24px; align-items: center;">
-        <input type="text" id="search-records" placeholder="Search by name, email, phone..." style="flex: 1; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
-        <select id="issue-filter" style="padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+    <div style="display: flex; width: 100%; max-width: calc(100vw - 102px); box-sizing: border-box; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; align-items: center;">
+        <input type="text" id="search-records" placeholder="Search by name, email, phone..." style="min-width: 0; flex: 1 1 0; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
+        <label for="issue-filter" style="font-size: 12px; font-weight: 600; color: #374151;">Filter by issue</label>
+        <select id="issue-filter" aria-label="Filter by issue" style="width: 220px; max-width: 100%; flex: 0 1 220px; box-sizing: border-box; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
             <option value="">All Issues</option>
             <option value="missing-required">Missing Required Field</option>
             <option value="format-invalid">Invalid Format</option>
