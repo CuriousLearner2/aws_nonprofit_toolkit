@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
+from .row_status_policy import derive_row_status
 
 
 def validate_name_correction(value: Any) -> Optional[str]:
@@ -127,8 +128,6 @@ def autosave_row_corrections(
 
     finally:
         session.close()
-
-
 def get_effective_values(
     batch_id: str,
     raw_import_row_id: int,
@@ -343,7 +342,7 @@ def build_fixture_autosave_response(
             for field, error_msg in errors.items()
         ]
         issues = _merge_issues(validation_issues + current_issues)
-        row_status = _derive_row_status_from_issues(issues)
+        row_status = derive_row_status(issues)
 
         return {
             "status_code": 400,
@@ -365,7 +364,7 @@ def build_fixture_autosave_response(
     ]
     new_validation_issues = _validate_effective_values(effective_values)
     issues = _merge_issues(remaining_current_issues + new_validation_issues)
-    row_status = _derive_row_status_from_issues(issues)
+    row_status = derive_row_status(issues)
 
     return {
         "status_code": 200,
@@ -393,13 +392,3 @@ def _merge_issues(issues: list[dict]) -> list[dict]:
             fallback_index += 1
 
     return list(merged.values())
-
-
-def _derive_row_status_from_issues(issues: list[dict]) -> str:
-    """Derive row status from issue severities without requiring a database."""
-    has_error = any(issue.get("severity") == "error" for issue in issues)
-    if has_error:
-        return "Blocking"
-    if issues:
-        return "Warning"
-    return "No issues"

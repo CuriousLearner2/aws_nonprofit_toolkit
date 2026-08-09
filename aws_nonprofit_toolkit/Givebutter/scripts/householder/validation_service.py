@@ -14,7 +14,7 @@ import os
 from .repository_provider import get_import_repository
 from .issue_recalculation_service import recalculate_row_issues, _validate_effective_values
 from .row_status_service import derive_row_status
-from .row_status_policy import derive_row_status as _derive_row_status
+from .row_status_policy import derive_row_status as derive_row_status_from_issues
 
 
 def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None, disposition_filter: Optional[str] = None) -> Dict[str, Any]:
@@ -113,7 +113,7 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
 
                 # Set row_status by delegating to the canonical row-status policy.
                 if not record.get('row_status'):
-                    record['row_status'] = _derive_row_status(record.get('issues', []))
+                    record['row_status'] = derive_row_status_from_issues(record.get('issues', []))
         else:
             # No issue in this record
             record['row_status'] = 'No issues'

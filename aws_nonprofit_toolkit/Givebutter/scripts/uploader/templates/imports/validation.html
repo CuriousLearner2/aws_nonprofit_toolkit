@@ -1141,17 +1141,6 @@ async function autosaveField(input) {
                         addActiveError(parseInt(rawId), field, validationError.reason, validationError.severity);
                     }
 
-                    // Update read-only validation status (preserve reviewer disposition)
-                    const dropdown = row.querySelector('.row-status-dropdown');
-                    if (dropdown && errorData.row_status) {
-                        const statusLabel = row.querySelector('.validation-status-label');
-                        if (statusLabel) {
-                            statusLabel.textContent = errorData.row_status || 'No issues';
-                        }
-                        row.setAttribute('data-row-status', errorData.row_status || 'No issues');
-                        dropdown.value = dropdown.dataset.currentDecision || '';
-                    }
-
                     // Update Issues display: persisted issues + active errors combined and deduplicated
                     const issuesCell = row.querySelector('.issues-cell');
                     if (issuesCell && errorData.issues !== undefined) {
