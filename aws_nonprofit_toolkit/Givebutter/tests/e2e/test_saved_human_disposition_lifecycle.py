@@ -144,6 +144,22 @@ async def _save_human_accept(page):
     )
 
 
+async def _save_disposition(page, row_index, value, notes):
+    row = page.locator("tr.validation-row").nth(row_index)
+    await row.locator("select.row-status-dropdown").select_option(value)
+    modal = page.locator("#record-modal")
+    await modal.wait_for(state="visible", timeout=5000)
+    await modal.locator(".reviewer-name-field").fill("Mixed Batch Reviewer")
+    await modal.locator('textarea[id^="followup-notes-"]').fill(notes)
+    await modal.locator('button[id^="save-followup-notes-"]').click()
+    await modal.wait_for(state="hidden", timeout=5000)
+    await page.wait_for_function(
+        "([index, expected]) => document.querySelectorAll('select.row-status-dropdown')[index]?.value === expected",
+        arg=[row_index, value],
+        timeout=5000,
+    )
+
+
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_saved_human_disposition_survives_validation_changes(e2e_database_and_app):
@@ -302,6 +318,149 @@ async def test_transient_invalid_edit_restores_persisted_clean_projection(e2e_da
                 preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
                 assert preview.blocked_count == 0
                 assert len(preview.export_rows) == 1
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_mixed_row_readiness_and_export_recompute_after_last_issue_is_fixed(e2e_database_and_app):
+    """Only the unresolved issue blocks; resolving it exports exactly eligible rows."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "p1-mixed-row-readiness"
+    server = flask_thread = None
+
+    try:
+        session.add(ImportBatch(
+            id=batch_id,
+            filename=f"{batch_id}.csv",
+            upload_timestamp=datetime.now(timezone.utc),
+            status="pending_review",
+            raw_row_count=4,
+        ))
+        session.flush()
+        seeded = []
+        for index, email in enumerate(
+            ["clean@example.com", "bad-email", "followup@example.com", "reject@example.com"],
+            start=1,
+        ):
+            raw = RawImportRow(
+                batch_id=batch_id,
+                row_index=index,
+                raw_csv_data={
+                    "transaction_id": f"mixed-{index}",
+                    "name": f"Mixed Donor {index}",
+                    "date": "2026-08-08",
+                    "email": email,
+                    "phone": "4155552671",
+                    "amount": "100.00",
+                    "address": f"{index} Main St",
+                },
+            )
+            session.add(raw)
+            session.flush()
+            contact = ImportContact(
+                batch_id=batch_id,
+                raw_import_row_id=raw.id,
+                first_name="Mixed",
+                last_name=f"Donor {index}",
+                email=email,
+                phone="4155552671",
+                address_line1=f"{index} Main St",
+                amount=100.0,
+            )
+            session.add(contact)
+            session.flush()
+            seeded.append(raw)
+            if index == 2:
+                issue = ReviewItem(
+                    batch_id=batch_id,
+                    item_type="validation",
+                    confidence=1.0,
+                    payload_json={
+                        "field": "email",
+                        "reason": "invalid",
+                        "description": "Invalid email address",
+                        "severity": "error",
+                        "issue": "invalid_email",
+                        "validation_tier": "critical",
+                    },
+                )
+                session.add(issue)
+                session.flush()
+                session.add(ReviewItemSubject(
+                    review_item_id=issue.id,
+                    subject_type="import_contact_snapshot",
+                    subject_id=contact.id,
+                    role="primary",
+                ))
+        session.commit()
+
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                rows = page.locator("tr.validation-row")
+                await rows.nth(3).wait_for()
+                assert await rows.nth(0).locator(".validation-status-label").inner_text() == "No issues"
+                assert await rows.nth(0).locator(".row-status-dropdown").input_value() == "accept_as_is"
+                assert await rows.nth(1).locator(".validation-status-label").inner_text() == "Blocking"
+                assert await rows.nth(1).locator(".row-status-dropdown").input_value() == ""
+
+                await _save_disposition(page, 2, "needs_follow_up", "Review this row later.")
+                await _save_disposition(page, 3, "reject_row", "Exclude this row from export.")
+
+                preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert preview.is_export_ready is False
+                assert preview.blocked_count == 1
+                assert [row.transaction_id for row in preview.export_rows if row.export_blocked] == ["mixed-2"]
+                assert [row.transaction_id for row in preview.export_rows if not row.export_blocked] == ["mixed-1"]
+                assert session.query(ImportBatch).filter_by(id=batch_id).one() is not None
+                await page.goto(f"{base_url}/imports/{batch_id}/readiness")
+                assert "Export Blocked" in await page.inner_text("body")
+
+                # Fix the final blocking issue; the correction is persisted as an effective value.
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                row = page.locator("tr.validation-row").nth(1)
+                email = row.locator('input[data-field="email"]')
+                await email.fill("resolved@example.com")
+                await email.evaluate("element => element.blur()")
+                await page.wait_for_function(
+                    "() => document.querySelectorAll('tr.validation-row')[1]?.querySelector('.validation-status-label')?.textContent.trim() === 'No issues'",
+                    timeout=5000,
+                )
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+
+                preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert preview.is_export_ready is True
+                assert preview.blocked_count == 0
+                assert [row.transaction_id for row in preview.export_rows] == ["mixed-1", "mixed-2"]
+                await page.goto(f"{base_url}/imports/{batch_id}/readiness")
+                assert "Export Blocked" not in await page.inner_text("body")
+
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                rows = page.locator("tr.validation-row")
+                await rows.nth(3).wait_for()
+                assert await rows.nth(0).locator(".row-status-dropdown").input_value() == "accept_as_is"
+                assert await rows.nth(1).locator(".validation-status-label").inner_text() == "No issues"
+                assert await rows.nth(1).locator(".row-status-dropdown").input_value() == "accept_as_is"
+                assert await rows.nth(2).locator(".row-status-dropdown").input_value() == "needs_follow_up"
+                assert await rows.nth(3).locator(".row-status-dropdown").input_value() == "reject_row"
+                preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
+                assert preview.is_export_ready is True
+                assert [row.transaction_id for row in preview.export_rows] == ["mixed-1", "mixed-2"]
             finally:
                 await browser.close()
     finally:
