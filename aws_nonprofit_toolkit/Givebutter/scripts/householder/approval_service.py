@@ -280,7 +280,10 @@ def check_batch_remaining_issues(
     """
     from .row_status_service import derive_row_status
     from .issue_recalculation_service import recalculate_row_issues
-    from .row_decision_service import get_row_decision_state
+    from .row_decision_service import (
+        get_row_decision_state,
+        project_effective_disposition,
+    )
     from .approval_remaining_issues_policy import project_row_gating
 
     if database_url is None:
@@ -317,12 +320,16 @@ def check_batch_remaining_issues(
                 database_url=database_url,
             )
             human_disposition = decision_state.get('decision') if decision_state.get('has_decision') else None
+            effective_disposition = project_effective_disposition(
+                row_status=row_status,
+                human_disposition=human_disposition,
+            )
             projection = project_row_gating(
                 raw_import_row_id=row.id,
                 row_index=row.row_index,
                 row_status=row_status,
                 has_unresolved_validation=bool(issues),
-                human_disposition=human_disposition,
+                human_disposition=effective_disposition,
             )
             if projection.export_blocked:
                 remaining_issues_by_row.append({

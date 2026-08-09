@@ -23,6 +23,23 @@ from .database_models import ReviewDecision, ImportBatch, RawImportRow, AuditLog
 _ROW_DECISION_LOCKS = {}
 _ROW_DECISION_LOCKS_MUTEX = threading.Lock()
 
+ROW_HUMAN_DISPOSITIONS = frozenset({
+    'accept_as_is',
+    'needs_follow_up',
+    'reject_row',
+})
+
+
+def project_effective_disposition(
+    *,
+    row_status: str,
+    human_disposition: Optional[str],
+) -> Optional[str]:
+    """Project the effective disposition without creating persistence state."""
+    if human_disposition in ROW_HUMAN_DISPOSITIONS:
+        return human_disposition
+    return 'accept_as_is' if row_status == 'No issues' else None
+
 
 def _normalize_row_decision_notes(notes: Optional[str]) -> Optional[str]:
     if notes is None:
@@ -369,7 +386,7 @@ def get_row_decision_state(
             }
 
         decision_type, notes, sequence = _extract_row_status_decision_state(latest)
-        has_decision = decision_type not in (None, 'clear_decision')
+        has_decision = decision_type in ROW_HUMAN_DISPOSITIONS
 
         return {
             'has_decision': has_decision,

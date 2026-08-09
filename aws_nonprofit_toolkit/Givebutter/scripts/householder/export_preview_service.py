@@ -25,6 +25,7 @@ from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .issue_recalculation_service import recalculate_row_issues
 from .approval_remaining_issues_policy import project_row_gating
+from .row_decision_service import ROW_HUMAN_DISPOSITIONS, project_effective_disposition
 from .service_contracts import ExportRow, ExportPreviewResult
 
 
@@ -207,9 +208,7 @@ def build_export_preview(
                 if decision.decision.startswith('row_status:'):
                     disposition = decision.decision.replace('row_status:', '', 1)
                     row_human_dispositions[raw_row_id] = (
-                        disposition if disposition in {
-                            'accept_as_is', 'needs_follow_up', 'reject_row'
-                        } else None
+                        disposition if disposition in ROW_HUMAN_DISPOSITIONS else None
                     )
                     continue
                 if raw_row_id not in row_level_autosave_decisions:
@@ -654,7 +653,10 @@ def build_export_preview(
                 row_index=row_index,
                 row_status=validation_status,
                 has_unresolved_validation=row_has_unresolved_validation,
-                human_disposition=row_human_disposition,
+                human_disposition=project_effective_disposition(
+                    row_status=validation_status,
+                    human_disposition=row_human_disposition,
+                ),
                 base_blockers=row_blockers,
             )
 

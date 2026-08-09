@@ -589,6 +589,16 @@ function calculateRowStatus(allIssues) {
     return 'No issues';
 }
 
+const HUMAN_ROW_DISPOSITIONS = new Set(['accept_as_is', 'needs_follow_up', 'reject_row']);
+
+// Keep the UI projection aligned with the backend effective-disposition rule.
+function projectEffectiveDisposition(rowStatus, hasHumanDecision, humanDecision) {
+    if (hasHumanDecision && HUMAN_ROW_DISPOSITIONS.has(humanDecision)) {
+        return humanDecision;
+    }
+    return rowStatus === 'No issues' ? 'accept_as_is' : '';
+}
+
 // Render Issues cell with grouped summary while preserving the complete issue list for Details.
 function renderIssuesCell(issuesCell, persistedIssues, updateRowStatus = true) {
     const rawId = issuesCell.closest('tr').getAttribute('data-raw-id');
@@ -629,9 +639,9 @@ function updateRowStatusFromIssues(row, allIssues) {
         } else {
             // System projection: clean rows are implicitly accepted; rows
             // with issues remain unresolved until a human disposition exists.
-            const clean = rowStatus === 'No issues';
-            dropdown.value = clean ? 'accept_as_is' : '';
-            dropdown.dataset.systemDisposition = clean ? 'true' : 'false';
+            const projected = projectEffectiveDisposition(rowStatus, false, '');
+            dropdown.value = projected;
+            dropdown.dataset.systemDisposition = projected ? 'true' : 'false';
             dropdown.dataset.currentDecision = '';
         }
     }
@@ -678,7 +688,7 @@ async function loadRowDecisions() {
                     tableDropdown.dataset.currentNotes = data.notes || '';
                     const resetOption = tableDropdown.querySelector('.reset-option');
                     const editReviewButton = tableDropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
-                    if (data.has_decision) {
+                    if (data.has_decision && HUMAN_ROW_DISPOSITIONS.has(data.decision)) {
                         resetOption.style.display = 'block';
                         // Store decision status in element for later use
                         tableDropdown.setAttribute('data-has-decision', 'true');
@@ -690,8 +700,9 @@ async function loadRowDecisions() {
                     } else {
                         resetOption.style.display = 'none';
                         tableDropdown.setAttribute('data-has-decision', 'false');
-                        tableDropdown.dataset.systemDisposition = getRowStatusLabel(row) === 'No issues' ? 'true' : 'false';
-                        tableDropdown.value = getRowStatusLabel(row) === 'No issues' ? 'accept_as_is' : '';
+                        const projected = projectEffectiveDisposition(getRowStatusLabel(row), false, '');
+                        tableDropdown.dataset.systemDisposition = projected ? 'true' : 'false';
+                        tableDropdown.value = projected;
                         tableDropdown.style.backgroundColor = '';
                         if (editReviewButton) editReviewButton.style.display = 'none';
                     }
@@ -1322,9 +1333,11 @@ function buildRecordHistoryHtml(history) {
 
 function buildRecordSummaryHtml(row, recordId, decisionData) {
     const transactionId = escapeHtml(row.querySelector('td:nth-child(1)')?.textContent?.trim() || '');
-    const selectedDecision = decisionData?.has_decision
-        ? decisionData.decision
-        : getRowStatusLabel(row) === 'No issues' ? 'accept_as_is' : '';
+    const selectedDecision = projectEffectiveDisposition(
+        getRowStatusLabel(row),
+        Boolean(decisionData?.has_decision),
+        decisionData?.decision || '',
+    );
     const decisionOptions = [
         ['', 'No disposition'],
         ['accept_as_is', 'Accept as-is'],
@@ -1607,9 +1620,10 @@ window.restoreRecordModalState = function(modal) {
 function applySavedRowDecision(dropdown, result, decision, notes) {
     if (decision === 'clear_decision') {
         const systemStatus = result.row_status || 'No issues';
-        setSavedRowReviewState(dropdown, systemStatus === 'No issues' ? 'accept_as_is' : '', systemStatus, '');
+        const projected = projectEffectiveDisposition(systemStatus, false, '');
+        setSavedRowReviewState(dropdown, projected, systemStatus, '');
         dropdown.dataset.hasDecision = 'false';
-        dropdown.dataset.systemDisposition = systemStatus === 'No issues' ? 'true' : 'false';
+        dropdown.dataset.systemDisposition = projected ? 'true' : 'false';
         dropdown.dataset.currentDecision = '';
         const resetOption = dropdown.querySelector('.reset-option');
         if (resetOption) resetOption.style.display = 'none';
@@ -1636,7 +1650,11 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
     const previousValue = dropdown.dataset.currentDecision || dropdown.dataset.previousValue || '';
     const previousLabel = dropdown.dataset.previousLabel || getRowStatusLabel(row) || 'No issues';
     const currentNotes = dropdown.dataset.currentNotes || '';
-    const selectedDecision = requestedDecision || previousValue;
+    const selectedDecision = requestedDecision || projectEffectiveDisposition(
+        getRowStatusLabel(row),
+        dropdown.dataset.hasDecision === 'true',
+        previousValue,
+    );
 
     setSavedRowReviewState(dropdown, previousValue, previousLabel, currentNotes);
     if (!modal) return;
