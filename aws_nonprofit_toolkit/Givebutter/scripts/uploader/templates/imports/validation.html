@@ -88,7 +88,8 @@
 
     <!-- Filter & Controls -->
     <div style="display: flex; width: 100%; max-width: calc(100vw - 102px); box-sizing: border-box; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; align-items: center;">
-        <input type="text" id="search-records" placeholder="Search by name, email, phone..." style="min-width: 0; flex: 1 1 0; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
+        <label for="search-records" style="font-size: 12px; font-weight: 600; color: #374151;">Search records</label>
+        <input type="text" id="search-records" aria-label="Search records" placeholder="Search by name, email, phone..." style="min-width: 0; flex: 1 1 0; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
         <label for="issue-filter" style="font-size: 12px; font-weight: 600; color: #374151;">Filter by issue</label>
         <select id="issue-filter" aria-label="Filter by issue" style="width: 220px; max-width: 100%; flex: 0 1 220px; box-sizing: border-box; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
             <option value="">All Issues</option>
@@ -767,6 +768,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 document.addEventListener('DOMContentLoaded', function() {
     const issueFilter = document.getElementById('issue-filter');
+    const searchInput = document.getElementById('search-records');
     const issueRows = Array.from(document.querySelectorAll('tr.validation-row[data-issues-json]'));
 
     if (issueFilter && issueRows.length) {
@@ -784,18 +786,41 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        function applyIssueFilter() {
+        window.householderValidationStatusFilter = window.householderValidationStatusFilter || 'all';
+
+        function matchesIssueAndSearch(row) {
             const selectedType = issueFilter.value;
-            issueRows.forEach(row => {
-                const matches = !selectedType || rowIssues(row).some(issue => {
-                    if (issue.issue_type === selectedType || issue.issueType === selectedType) return true;
-                    return issueTypeMatches[selectedType]?.(issue) || false;
-                });
-                row.hidden = !matches;
+            const searchTerm = (searchInput?.value || '').trim().toLowerCase();
+            const matchesIssue = !selectedType || rowIssues(row).some(issue => {
+                if (issue.issue_type === selectedType || issue.issueType === selectedType) return true;
+                return issueTypeMatches[selectedType]?.(issue) || false;
             });
+            const searchableValues = [
+                row.textContent,
+                ...Array.from(row.querySelectorAll('input, textarea, select')).map(field => field.value || field.textContent || ''),
+            ];
+            const matchesSearch = !searchTerm || searchableValues.some(value => value.toLowerCase().includes(searchTerm));
+            return matchesIssue && matchesSearch;
         }
 
+        function applyIssueFilter() {
+            const statusFilter = window.householderValidationStatusFilter || 'all';
+            const allRows = Array.from(document.querySelectorAll('tr.validation-row[data-issues-json]'));
+            allRows.forEach(row => {
+                const matchesStatus = statusFilter === 'all' || row.dataset.rowStatus === statusFilter;
+                row.hidden = !(matchesStatus && matchesIssueAndSearch(row));
+            });
+            const visibleCount = allRows.filter(row => !row.hidden).length;
+            const visibleRowCount = document.querySelector('[data-testid="validation-visible-row-count"]');
+            const emptyState = document.getElementById('validation-status-filter-empty-state');
+            if (visibleRowCount) visibleRowCount.textContent = `Showing ${visibleCount} of ${allRows.length} rows`;
+            if (emptyState) emptyState.hidden = visibleCount !== 0;
+        }
+
+        window.householderValidationMatchesIssueAndSearch = matchesIssueAndSearch;
+        window.householderValidationApplyIssueFilter = applyIssueFilter;
         issueFilter.addEventListener('change', applyIssueFilter);
+        searchInput?.addEventListener('input', applyIssueFilter);
         applyIssueFilter();
     }
 
@@ -828,15 +853,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function applyStatusFilter(statusValue) {
-        let visibleCount = 0;
+        window.householderValidationStatusFilter = statusValue;
+
+        if (window.householderValidationApplyIssueFilter) {
+            window.householderValidationApplyIssueFilter();
+        }
 
         rows.forEach(row => {
-            const matches = statusValue === 'all' || row.dataset.rowStatus === statusValue;
-            row.hidden = !matches;
-            if (matches) {
-                visibleCount += 1;
-            }
+            const matchesStatus = statusValue === 'all' || row.dataset.rowStatus === statusValue;
+            const matchesIssueSearch = !window.householderValidationMatchesIssueAndSearch
+                || window.householderValidationMatchesIssueAndSearch(row);
+            row.hidden = !(matchesStatus && matchesIssueSearch);
         });
+
+        const visibleCount = rows.filter(row => !row.hidden).length;
 
         if (emptyState) {
             emptyState.hidden = visibleCount !== 0;

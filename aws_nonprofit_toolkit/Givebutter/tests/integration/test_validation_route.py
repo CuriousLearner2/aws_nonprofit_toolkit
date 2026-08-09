@@ -142,7 +142,8 @@ class TestValidationRoute:
         assert 'data-testid="validation-status-filter-empty-state"' in html
         assert 'data-row-status="' in html
         assert 'applyStatusFilter(' in html
-        assert 'row.hidden = !matches;' in html
+        assert 'householderValidationMatchesIssueAndSearch' in html
+        assert 'row.hidden = !(matchesStatus && matchesIssueSearch);' in html
         assert 'Showing 5 of 5 rows' in html
 
         has_overridden_rows = 'data-row-status="Overridden"' in html
@@ -161,7 +162,8 @@ class TestValidationRoute:
         assert 'aria-label="Filter by issue"' in html
         assert 'width: 220px' in html
         assert 'max-width: 100%' in html
-        assert "row.hidden = !matches;" in html
+        assert 'householderValidationMatchesIssueAndSearch' in html
+        assert 'row.hidden = !(matchesStatus && matchesIssueAndSearch(row));' in html
 
     def test_validation_contains_action_column(self, client_with_fixture):
         """Test that validation table contains action links."""
