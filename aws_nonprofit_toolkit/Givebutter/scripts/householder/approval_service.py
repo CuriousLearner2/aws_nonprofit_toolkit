@@ -280,7 +280,8 @@ def check_batch_remaining_issues(
     """
     from .row_status_service import derive_row_status
     from .issue_recalculation_service import recalculate_row_issues
-    from .row_decision_service import get_rows_with_follow_up, get_row_decision_state
+    from .row_decision_service import get_row_decision_state
+    from .approval_remaining_issues_policy import project_row_gating
 
     if database_url is None:
         database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
@@ -294,9 +295,6 @@ def check_batch_remaining_issues(
         if not batch:
             raise ValueError(f"Import batch '{batch_id}' not found")
 
-        # Get rows with pending decisions
-        follow_up_rows = set(get_rows_with_follow_up(batch_id=batch_id, database_url=database_url))
-
         # Get all raw rows in batch
         rows = session.query(RawImportRow).filter_by(batch_id=batch_id).all()
 
@@ -307,10 +305,6 @@ def check_batch_remaining_issues(
                 raw_import_row_id=row.id,
                 database_url=database_url
             )
-            blocking_issues = [
-                issue for issue in issues
-                if issue.get('severity', 'warning') == 'error'
-            ]
             row_status = derive_row_status(
                 batch_id=batch_id,
                 raw_import_row_id=row.id,
@@ -322,8 +316,15 @@ def check_batch_remaining_issues(
                 raw_import_row_id=row.id,
                 database_url=database_url,
             )
-            has_human_disposition = decision_state.get('has_decision', False)
-            if issues and not has_human_disposition:
+            human_disposition = decision_state.get('decision') if decision_state.get('has_decision') else None
+            projection = project_row_gating(
+                raw_import_row_id=row.id,
+                row_index=row.row_index,
+                row_status=row_status,
+                has_unresolved_validation=bool(issues),
+                human_disposition=human_disposition,
+            )
+            if projection.export_blocked:
                 remaining_issues_by_row.append({
                     'raw_import_row_id': row.id,
                     'row_index': row.row_index,
@@ -332,18 +333,7 @@ def check_batch_remaining_issues(
                     'decision_warning': 'disposition_required',
                 })
                 continue
-
-            # Include row only if it has blocking validation issues.
-            # Warning-only rows may remain non-blocking during approval.
-            if blocking_issues and not has_human_disposition:
-                remaining_issues_by_row.append({
-                    'raw_import_row_id': row.id,
-                    'row_index': row.row_index,
-                    'issues': blocking_issues,
-                    'row_status': row_status
-                })
-            # Or include if it has a pending follow-up decision
-            elif row.id in follow_up_rows:
+            if projection.decision_warning == 'needs_follow_up':
                 remaining_issues_by_row.append({
                     'raw_import_row_id': row.id,
                     'row_index': row.row_index,

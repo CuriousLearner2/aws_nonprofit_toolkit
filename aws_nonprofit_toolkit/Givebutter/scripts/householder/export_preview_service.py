@@ -24,6 +24,7 @@ from .date_validation_service import validate_review_date
 from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .issue_recalculation_service import recalculate_row_issues
+from .approval_remaining_issues_policy import project_row_gating
 from .service_contracts import ExportRow, ExportPreviewResult
 
 
@@ -648,33 +649,29 @@ def build_export_preview(
             # Compile export warnings
             row_blockers = list(dict.fromkeys(row_blockers))
 
+            gating = project_row_gating(
+                raw_import_row_id=contact.raw_import_row_id,
+                row_index=row_index,
+                row_status=validation_status,
+                has_unresolved_validation=row_has_unresolved_validation,
+                human_disposition=row_human_disposition,
+                base_blockers=row_blockers,
+            )
+
             # Follow-up and rejected rows remain in the batch, but are not part
-            # of the current export. Their dispositions resolve review gating
-            # without changing validation status or raw data.
-            if row_human_disposition == 'needs_follow_up':
-                needs_follow_up_count += 1
+            # of the current export.
+            if not gating.export_included:
+                if gating.decision_warning == 'needs_follow_up':
+                    needs_follow_up_count += 1
+                else:
+                    rejected_count += 1
                 continue
-            if row_human_disposition == 'reject_row':
-                rejected_count += 1
-                continue
+            row_blockers = list(gating.blockers)
             row_warnings = list(dict.fromkeys(row_warnings))
             validation_issues = list(dict.fromkeys(validation_issues))
             export_warnings = list(dict.fromkeys(
                 list(row_warnings) + normalization_warnings + duplicate_warnings + household_warnings
             ))
-
-            # A clean row is system-accepted.  Every issue-bearing row needs a
-            # saved human disposition before it can be finalized or exported.
-            # A saved human disposition acknowledges the validation issue; the
-            # issue itself remains visible in the preview row.
-            if row_has_unresolved_validation and not row_human_disposition:
-                row_blockers.append('Reviewer disposition required')
-            elif row_human_disposition:
-                row_blockers = [
-                    blocker for blocker in row_blockers
-                    if not blocker.startswith('Unresolved validation:')
-                ]
-            row_blockers = list(dict.fromkeys(row_blockers))
 
             # Create export row
             export_row = ExportRow(
