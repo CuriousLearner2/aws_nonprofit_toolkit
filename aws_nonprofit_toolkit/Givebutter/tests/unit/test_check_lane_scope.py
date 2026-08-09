@@ -10,6 +10,7 @@ Tests verify:
 - Error handling and exit codes
 """
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "ci"))
 
 import check_lane_scope
+import pre_commit_gate
 
 
 class TestFileClassification:
@@ -351,6 +353,61 @@ class TestLaneRulesProduct:
         """Product lane allows schema files with --allow-schema."""
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('product', ['migrations/001.sql'], allow_schema=True)
         assert is_clean is True
+
+    def test_product_allows_householder_runtime_state(self):
+        """Product readiness may create only the known Householder runtime files."""
+        files = [
+            ('??', 'Givebutter/.artifacts/commit-readiness.json'),
+            ('??', 'Givebutter/.artifacts/householder-task-state.json'),
+            ('??', 'Givebutter/.artifacts/householder-task-state.json.lock'),
+            ('??', 'Givebutter/.artifacts/householder-task-state.20260731T123456000000Z.1234567890abcdef.archive.json'),
+        ]
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope('product', files)
+        assert is_clean is True
+        assert conflicts == []
+
+    @pytest.mark.parametrize(
+        'filepath',
+        [
+            'Givebutter/.artifacts/debug.json',
+            'Givebutter/.artifacts/commit-readiness.snapshot.json',
+            'Givebutter/.artifacts/householder-task-state.snapshot.json',
+        ],
+    )
+    def test_product_rejects_unlisted_householder_artifacts(self, filepath):
+        """Arbitrary or lookalike artifacts remain outside the product allowlist."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope('product', [('??', filepath)])
+        assert is_clean is False
+        assert any(category in {'other', 'runtime_output'} for category, _ in conflicts)
+
+    def test_product_rejects_tracked_householder_runtime_file(self):
+        """Tracked runtime files remain prohibited even when their names are allowlisted."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope(
+            'product', [(' M', 'Givebutter/.artifacts/householder-task-state.json')]
+        )
+        assert is_clean is False
+        assert any(category == 'other' for category, _ in conflicts)
+
+    def test_householder_allowlist_does_not_change_product_fingerprint(self, tmp_path, monkeypatch):
+        """Untracked Householder runtime files do not enter the staged product fingerprint."""
+        repo = tmp_path / 'repo'
+        repo.mkdir()
+        subprocess.run(['git', 'init', '-q'], cwd=repo, check=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@example.com'], cwd=repo, check=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=repo, check=True)
+        product = repo / 'product.txt'
+        product.write_text('before\n', encoding='utf-8')
+        subprocess.run(['git', 'add', 'product.txt'], cwd=repo, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'base'], cwd=repo, check=True)
+        product.write_text('after\n', encoding='utf-8')
+        subprocess.run(['git', 'add', 'product.txt'], cwd=repo, check=True)
+        monkeypatch.setattr(pre_commit_gate, 'get_repo_root', lambda: repo)
+        before = pre_commit_gate.staged_diff_sha256()
+        artifacts = repo / '.artifacts'
+        artifacts.mkdir()
+        (artifacts / 'commit-readiness.json').write_text('{}\n', encoding='utf-8')
+        (artifacts / 'householder-task-state.json.lock').write_text('', encoding='utf-8')
+        assert pre_commit_gate.staged_diff_sha256() == before
 
 
 class TestMixedLaneDetection:

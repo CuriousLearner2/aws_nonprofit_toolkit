@@ -254,6 +254,28 @@ def classify_file(filepath):
     return 'other'
 
 
+def is_householder_runtime_path(filepath):
+    """Return whether filepath is an allowlisted Householder runtime file."""
+    parts = [part for part in filepath.split('/') if part]
+    try:
+        artifact_index = parts.index(HOUSEHOLDER_ARTIFACT_DIR)
+    except ValueError:
+        return False
+    leaf = parts[artifact_index + 1:]
+    if artifact_index != 0 or len(parts) != 2:
+        return False
+    name = leaf[0]
+    return (
+        name == HOUSEHOLDER_READINESS_FILE
+        or name == HOUSEHOLDER_STATE_FILE
+        or name == HOUSEHOLDER_STATE_LOCK
+        or (
+            name.startswith(HOUSEHOLDER_STATE_ARCHIVE_PREFIX)
+            and name.endswith(HOUSEHOLDER_STATE_ARCHIVE_SUFFIX)
+        )
+    )
+
+
 def check_lane_scope(lane, changed_files, allow_schema=False, simulate=False, verbose=False):
     """
     Check if changed files conform to lane scope rules.
@@ -325,7 +347,8 @@ def check_lane_scope(lane, changed_files, allow_schema=False, simulate=False, ve
             elif category == 'schema' and not allow_schema:
                 conflicts.append(('schema', 'product does not allow schema/migration files without --allow-schema'))
             elif category == 'runtime_output':
-                conflicts.append(('runtime_output', 'product does not allow runtime output files; split into separate workflow-ci task'))
+                if not all(is_householder_runtime_path(filepath) for filepath in categorized[category]):
+                    conflicts.append(('runtime_output', 'product does not allow runtime output files; split into separate workflow-ci task'))
             elif category == 'other':
                 conflicts.append(('other', 'product does not allow miscellaneous files'))
 
