@@ -399,6 +399,55 @@ async def test_non_export_dispositions_exclude_row_but_keep_batch(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_reject_row_requires_reviewer_and_reason_without_persisting(e2e_database_and_app):
+    """Reject requires auditable identity/reason and failed saves create no decision."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "contract-reject-required-fields"
+    try:
+        [(raw_row, _)] = _seed_batch(
+            session,
+            batch_id=batch_id,
+            rows=[{"name": "Reject Me", "email": "reject@example.com"}],
+        )
+        session.commit()
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                row = page.locator("tr.validation-row").first
+                await row.locator("select.row-status-dropdown").select_option("reject_row")
+                modal = page.locator("#record-modal")
+                await modal.wait_for(state="visible")
+                await modal.locator(".reviewer-name-field").fill("UAT Reviewer")
+                await modal.locator('button[id^="save-followup-notes-"]').click()
+                assert await modal.is_visible()
+                assert "Reason / notes required for Reject row decision" in await modal.inner_text()
+
+                check = Session()
+                try:
+                    assert check.query(ReviewDecision).filter_by(
+                        batch_id=batch_id, raw_import_row_id=raw_row.id,
+                    ).count() == 0
+                finally:
+                    check.close()
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(locals().get("server"), locals().get("flask_thread"))
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_clearing_saved_human_dispositions_restores_system_defaults(e2e_database_and_app):
     """Clear decision returns clean/issue rows to their distinct authoritative defaults."""
     from playwright.async_api import async_playwright

@@ -153,7 +153,7 @@ def record_row_decision(
         Dict with decision_id, decision type, timestamp, and validation status
 
     Raises:
-        ValueError: If batch/row not found, invalid decision type, or notes missing for follow-up
+        ValueError: If batch/row not found, invalid decision type, or required notes are missing
     """
     import os
 
@@ -180,9 +180,12 @@ def record_row_decision(
             f"Invalid decision '{decision}'. Must be one of: {', '.join(valid_decisions)}"
         )
 
-    # Validate notes for follow-up
-    if decision == 'needs_follow_up' and not (notes and notes.strip()):
-        raise ValueError('Notes required for Follow-up decision')
+    # Reject and follow-up are explicit human dispositions and both require
+    # an auditable reason. Accept-as-is has its issue-specific requirement
+    # checked below after the row is loaded.
+    if decision in {'needs_follow_up', 'reject_row'} and not (notes and notes.strip()):
+        label = 'Follow-up' if decision == 'needs_follow_up' else 'Reject row'
+        raise ValueError(f'Reason / notes required for {label} decision')
 
     normalized_sequence = _normalize_interaction_sequence(interaction_sequence)
     use_sequence_guard = normalized_sequence is not None

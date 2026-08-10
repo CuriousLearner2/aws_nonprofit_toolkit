@@ -1494,14 +1494,16 @@ function attachRecordDetailsReviewHandlers(recordId, row, decisionData) {
 
         const decision = decisionField?.value || '';
         const notes = (notesField?.value || '').trim();
-        const requiresNotes = decision === 'needs_follow_up'
+        const requiresNotes = ['needs_follow_up', 'reject_row'].includes(decision)
             ? !notes
             : decision === 'accept_as_is' && getRowIssuesData(row).length > 0 && !notes;
         if (requiresNotes) {
             if (notesRequirement) {
                 notesRequirement.textContent = decision === 'needs_follow_up'
                     ? 'Notes required for Follow-up decision'
-                    : 'Reason / notes required for Accept as-is when validation issues exist';
+                    : decision === 'reject_row'
+                        ? 'Reason / notes required for Reject row decision'
+                        : 'Reason / notes required for Accept as-is when validation issues exist';
                 notesRequirement.style.display = 'block';
             }
             notesField?.focus();
@@ -1745,14 +1747,16 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
 
         const decision = decisionField?.value || '';
         const notes = (notesField?.value || '').trim();
-        const requiresNotes = decision === 'needs_follow_up'
+        const requiresNotes = ['needs_follow_up', 'reject_row'].includes(decision)
             ? !notes
             : decision === 'accept_as_is' && getRowIssuesData(row).length > 0 && !notes;
         if (requiresNotes) {
             if (notesRequirement) {
                 notesRequirement.textContent = decision === 'needs_follow_up'
                     ? 'Notes required for Follow-up decision'
-                    : 'Reason / notes required for Accept as-is when validation issues exist';
+                    : decision === 'reject_row'
+                        ? 'Reason / notes required for Reject row decision'
+                        : 'Reason / notes required for Accept as-is when validation issues exist';
                 notesRequirement.style.display = 'block';
             }
             notesField?.focus();

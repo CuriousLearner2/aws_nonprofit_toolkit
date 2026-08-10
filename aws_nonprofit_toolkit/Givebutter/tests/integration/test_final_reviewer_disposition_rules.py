@@ -189,6 +189,27 @@ def test_issue_row_requires_human_accept_notes_and_preserves_issue(
         session.close()
 
 
+def test_reject_row_requires_reason_and_does_not_persist_without_it(disposition_db, monkeypatch):
+    database_url, Session, batch_id, clean_raw_id, _ = disposition_db
+    monkeypatch.setenv('GIVEBUTTER_DATABASE_URL', database_url)
+    from scripts.uploader.app import app
+
+    app.config['TESTING'] = True
+    app.config['GIVEBUTTER_DATABASE_URL'] = database_url
+    monkeypatch.setenv('HOUSEHOLDER_REPOSITORY', 'database')
+    with app.test_client() as client:
+        rejected = _post_row_decision(client, batch_id, clean_raw_id, 'reject_row')
+        assert rejected.status_code == 400
+        assert 'Reason / notes required for Reject row' in rejected.get_json()['error']
+
+    session = Session()
+    try:
+        assert session.query(ReviewDecision).filter_by(raw_import_row_id=clean_raw_id).count() == 0
+        assert session.query(AuditLogRecord).filter_by(batch_id=batch_id).count() == 0
+    finally:
+        session.close()
+
+
 def test_clear_is_only_saved_human_revision_and_restores_issue_default(
     disposition_db, monkeypatch
 ):

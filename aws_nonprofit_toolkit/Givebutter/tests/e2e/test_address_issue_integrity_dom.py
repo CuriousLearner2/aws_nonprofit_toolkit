@@ -102,7 +102,7 @@ async def test_duplicate_missing_address_issue_is_deduped_in_browser_and_clears_
             issue_spans = issues_cell.locator("span")
             assert await issue_spans.count() == 1
             assert "Missing address" in await issue_spans.nth(0).inner_text()
-            assert (await row.locator("select.row-status-dropdown option:first-child").text_content() or "").strip() == "Warning"
+            assert await row.locator(".validation-status-label").inner_text() == "Warning"
 
             details_button = row.locator('a[data-action="inspect-record"]')
             await details_button.click()
@@ -110,7 +110,7 @@ async def test_duplicate_missing_address_issue_is_deduped_in_browser_and_clears_
             modal_text = await page.locator("#modal-record-content").inner_text()
             assert modal_text.count("Missing address") == 1
             assert "Missing address" in modal_text
-            await page.locator("#record-modal button:has-text(\"Close\")").click()
+            await page.locator('#record-modal button[id^="cancel-record-review-"]').click()
             await page.wait_for_function(
                 "() => !document.querySelector('#record-modal')?.classList.contains('show')",
                 timeout=5000,
@@ -125,7 +125,7 @@ async def test_duplicate_missing_address_issue_is_deduped_in_browser_and_clears_
             reloaded_row = page.locator(f"#validation-row-{contact_id}")
             reloaded_issues = reloaded_row.locator('td[data-testid^="issues-cell-"]')
             assert (await reloaded_issues.inner_text() or "").strip() == "None"
-            assert (await reloaded_row.locator("select.row-status-dropdown option:first-child").text_content() or "").strip() == "No issues"
+            assert await reloaded_row.locator(".validation-status-label").inner_text() == "No issues"
 
             from sqlalchemy import create_engine
 
