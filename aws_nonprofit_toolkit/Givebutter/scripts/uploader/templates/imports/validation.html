@@ -11,7 +11,7 @@
          data-testid="validation-scope-banner"
          data-dynamic-fields="name,email,phone,date,amount,address"
          data-unsupported-fields="campaign">
-        Live review checks run for name, email, phone, date, amount, and address edits. Invalid name, email, phone, date, and amount values are rejected; address problems are surfaced as warnings. Campaign fields are not dynamically revalidated on this screen.
+        Live review checks run for name, email, phone, date, amount, and address edits. Invalid name, email, phone, date, and amount values are rejected; address problems are surfaced as warnings. International phone numbers should include a country code. Campaign fields are not dynamically revalidated on this screen.
     </div>
 
     <div class="issue-severity-legend" data-testid="issue-severity-legend" style="display: flex; gap: 10px; align-items: center; margin: 10px 0 18px 0; font-size: 12px; color: #6b7280;">
@@ -651,7 +651,25 @@ function updateRowStatusFromIssues(row, allIssues) {
 
 // Phone number auto-formatting
 function formatPhoneNumber(value) {
-    // Strip all non-digit characters
+    const trimmed = String(value || '').trim();
+    if (trimmed.startsWith('+')) {
+        const digits = trimmed.replace(/\D/g, '');
+        if (digits.startsWith('1') && digits.length === 11) {
+            return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+        }
+        if (digits.startsWith('44') && digits.length === 12) {
+            return `+44 ${digits.slice(2, 4)} ${digits.slice(4, 8)} ${digits.slice(8)}`;
+        }
+        if (digits.startsWith('91') && digits.length === 12) {
+            return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+        }
+        if (digits.startsWith('61') && digits.length === 11) {
+            return `+61 ${digits.slice(2, 3)} ${digits.slice(3, 7)} ${digits.slice(7)}`;
+        }
+        return trimmed;
+    }
+
+    // Strip all non-digit characters for NANP numbers.
     const digits = value.replace(/\D/g, '');
 
     // If less than 10 digits, return as-is for user to complete
@@ -718,6 +736,13 @@ async function loadRowDecisions() {
 
 // Load decisions when page loads
 document.addEventListener('DOMContentLoaded', loadRowDecisions);
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.autosave-field[data-field="phone"]').forEach(input => {
+        if (input.value) {
+            input.value = formatPhoneNumber(input.value);
+        }
+    });
+});
 
 document.addEventListener('DOMContentLoaded', function() {
     const jumpLink = document.querySelector('.review-summary-strip a[href^="#validation-row-"]');

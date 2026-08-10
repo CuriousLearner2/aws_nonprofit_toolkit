@@ -167,7 +167,7 @@ class TestValidationDecisionUI:
 
         assert 'data-testid="validation-scope-banner"' in html
         assert 'data-dynamic-fields="name,email,phone,date,amount,address"' in html
-        assert 'Live review checks run for name, email, phone, date, amount, and address edits. Invalid name, email, phone, date, and amount values are rejected; address problems are surfaced as warnings. Campaign fields are not dynamically revalidated on this screen.' in html
+        assert 'Live review checks run for name, email, phone, date, amount, and address edits. Invalid name, email, phone, date, and amount values are rejected; address problems are surfaced as warnings. International phone numbers should include a country code. Campaign fields are not dynamically revalidated on this screen.' in html
         assert 'data-import-stage-fields=' not in html
         assert 'data-unsupported-fields="campaign"' in html
 

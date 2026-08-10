@@ -99,6 +99,12 @@ def autosave_row_corrections(
         # Row-level autosave doesn't link to a specific ReviewItem
         # Instead, creates a row-level decision with reviewed_values
         reviewed_values = dict(corrected_values)
+        phone_value = reviewed_values.get('phone')
+        if phone_value is not None:
+            from .phone_validation_service import validate_review_phone
+            phone_result = validate_review_phone(phone_value, allow_blank=False, default_region='US')
+            if phone_result.valid:
+                reviewed_values['phone'] = phone_result.formatted or phone_result.normalized_value
         amount_value = reviewed_values.get('amount')
         if amount_value is not None:
             from decimal import Decimal

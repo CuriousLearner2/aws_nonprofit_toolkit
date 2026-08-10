@@ -14,6 +14,7 @@ from .phone_format_policy import format_type_for
 DEFAULT_PHONE_REGION = "US"
 PHONE_REQUIRED_ERROR = "Phone number is empty"
 PHONE_FORMAT_ERROR = "Invalid phone format"
+PHONE_COUNTRY_CODE_WARNING = "International numbers should include a country code."
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,8 @@ def validate_review_phone(
     - +1 / leading 1 domestic formats are accepted
     - explicit international country codes are validated against that country
     - domestic parsing defaults to US, while valid NANP regions are accepted
+    - country-less numbers that cannot be safely classified are retained with
+      guidance rather than silently coerced to +1
     - parse failures, missing digits, extra digits, and extensions are blocking
     - whitespace is trimmed for validation only
     - the reviewed string itself is preserved by callers
@@ -70,16 +73,28 @@ def validate_review_phone(
     has_explicit_country_code = text.startswith('+') or text.startswith('00')
     if not phonenumbers.is_possible_number(parsed):
         return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
-    if not has_explicit_country_code and (
-        parsed.country_code != 1 or len(str(parsed.national_number)) != 10
-    ):
-        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
-    if has_explicit_country_code and not phonenumbers.is_valid_number(parsed):
-        return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
+    if not has_explicit_country_code:
+        national_digits = str(parsed.national_number)
+        if parsed.country_code != 1 or len(national_digits) != 10:
+            # Without a country code there is no reliable way to interpret a
+            # plausible international number using the US default region.
+            # Keep it visible for review and require explicit country context
+            # rather than silently treating it as +1.
+            if 10 <= len(national_digits) <= 15 and national_digits.isdigit():
+                return PhoneValidationResult(
+                    valid=True,
+                    normalized_value=text,
+                    warnings=(PHONE_COUNTRY_CODE_WARNING,),
+                )
+            return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
+    if has_explicit_country_code:
+        if not phonenumbers.is_valid_number(parsed):
+            return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
 
     return PhoneValidationResult(
         valid=True,
-        normalized_value=text,
+        normalized_value=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164),
+        warnings=(PHONE_COUNTRY_CODE_WARNING,) if not has_explicit_country_code else (),
         formatted=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164),
         national=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.NATIONAL),
         international=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL),
@@ -110,6 +125,8 @@ def validate_phone(
         payload["error"] = result.blocking_error or PHONE_FORMAT_ERROR
     else:
         payload["normalized_value"] = result.normalized_value
+        if result.warnings:
+            payload["warnings"] = list(result.warnings)
     return payload
 
 
@@ -134,6 +151,8 @@ def format_phone(
     """
     result = validate_review_phone(phone_number, allow_blank=False, default_region=country)
     if not result.valid:
+        return None
+    if result.warnings and not result.formatted:
         return None
 
     try:

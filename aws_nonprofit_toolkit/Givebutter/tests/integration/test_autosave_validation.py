@@ -452,7 +452,37 @@ class TestAutosaveValidation:
                 raw_import_row_id=raw_row_id
             ).first()
             assert decision is not None
-            assert decision.reviewed_values['phone'] == '(415) 555-1234'
+            assert decision.reviewed_values['phone'] == '+14155551234'
+        finally:
+            session.close()
+
+    def test_autosave_international_phone_is_e164_and_survives_reload(self, client_with_db):
+        """Explicit international phone values persist canonically without mutating raw data."""
+        client, database_url = client_with_db
+        batch_id, raw_row_id = setup_validation_batch(database_url)
+        SessionLocal = sessionmaker(bind=create_db_engine(database_url))
+        session = SessionLocal()
+        try:
+            raw_before = session.query(RawImportRow).filter_by(id=raw_row_id).one().raw_csv_data.copy()
+        finally:
+            session.close()
+
+        response = client.post(
+            f'/imports/{batch_id}/autosave',
+            json={
+                'raw_import_row_id': raw_row_id,
+                'corrected_values': {'phone': '+44 20 7946 0958'},
+            },
+        )
+        assert response.status_code == 200
+        assert response.get_json()['effective_values']['phone'] == '+44 20 7946 0958'
+        assert get_effective_values(batch_id, raw_row_id, database_url)['phone'] == '+442079460958'
+
+        session = SessionLocal()
+        try:
+            assert session.query(RawImportRow).filter_by(id=raw_row_id).one().raw_csv_data == raw_before
+            decision = session.query(ReviewDecision).filter_by(raw_import_row_id=raw_row_id).first()
+            assert decision.reviewed_values['phone'] == '+442079460958'
         finally:
             session.close()
 

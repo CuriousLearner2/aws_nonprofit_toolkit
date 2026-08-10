@@ -5,6 +5,7 @@ from householder.phone_validation_service import (
     validate_phone,
     is_valid_phone,
     format_phone,
+    PHONE_COUNTRY_CODE_WARNING,
 )
 
 
@@ -37,9 +38,10 @@ class TestPhoneValidationService:
 
     def test_validate_international_gb(self):
         """Test validation of UK phone number."""
-        result = validate_phone('2079460958', 'GB')
-        assert result['valid'] is False
-        assert 'error' in result
+        result = validate_phone('+44 20 7946 0958', 'US')
+        assert result['valid'] is True
+        assert result['formatted'] == '+442079460958'
+        assert result['international'] == '+44 20 7946 0958'
 
     def test_validate_international_fr(self):
         """Test validation of French phone number."""
@@ -85,7 +87,7 @@ class TestPhoneValidationService:
         """Test whitespace is trimmed before validation."""
         result = validate_review_phone('  (415) 555-2671  ', allow_blank=False)
         assert result.valid is True
-        assert result.normalized_value == '(415) 555-2671'
+        assert result.normalized_value == '+14155552671'
 
     def test_validate_review_phone_rejects_short_domestic_number(self):
         """Test 7-digit domestic numbers are rejected under the strict 10-digit policy."""
@@ -160,9 +162,9 @@ class TestPhoneValidationService:
 
     def test_uk_phone_with_uk_country_code(self):
         """Test UK phone number with GB country code."""
-        result = validate_phone('2079460958', 'GB')
-        assert result['valid'] is False
-        assert 'error' in result
+        result = validate_phone('+442079460958', 'US')
+        assert result['valid'] is True
+        assert result['formatted'] == '+442079460958'
 
     def test_canadian_phone(self):
         """Test Canadian phone number."""
@@ -173,9 +175,45 @@ class TestPhoneValidationService:
 
     def test_australian_phone(self):
         """Test Australian phone number."""
-        result = validate_phone('291234567', 'AU')
-        assert result['valid'] is False
-        assert 'error' in result
+        result = validate_phone('+61293744000', 'US')
+        assert result['valid'] is True
+        assert result['formatted'] == '+61293744000'
+
+    @pytest.mark.parametrize(
+        ('value', 'expected_e164', 'region'),
+        [
+            ('+14155552671', '+14155552671', 'US'),
+            ('+16135551234', '+16135551234', 'CA'),
+            ('+18765551234', '+18765551234', 'JM'),
+            ('+442079460958', '+442079460958', 'GB'),
+            ('+919876543210', '+919876543210', 'IN'),
+            ('+61293744000', '+61293744000', 'AU'),
+        ],
+    )
+    def test_explicit_international_numbers_normalize_to_e164(self, value, expected_e164, region):
+        result = validate_review_phone(value)
+        assert result.valid is True
+        assert result.normalized_value == expected_e164
+        assert result.formatted == expected_e164
+        assert result.region == region
+        assert result.international
+
+    def test_ambiguous_countryless_number_warns_without_blocking(self):
+        result = validate_review_phone('2079460958')
+        assert result.valid is True
+        assert PHONE_COUNTRY_CODE_WARNING in result.warnings
+        assert result.formatted == '+12079460958'
+
+    @pytest.mark.parametrize('value', ['+999123456789', '+44 abc', '+91 123'])
+    def test_malformed_international_number_is_blocking(self, value):
+        result = validate_review_phone(value)
+        assert result.valid is False
+        assert result.blocking_error == 'Invalid phone format'
+
+    def test_invalid_explicit_nanp_number_is_blocking(self):
+        result = validate_review_phone('+15551234567')
+        assert result.valid is False
+        assert result.blocking_error == 'Invalid phone format'
 
     # ===== Edge cases =====
 

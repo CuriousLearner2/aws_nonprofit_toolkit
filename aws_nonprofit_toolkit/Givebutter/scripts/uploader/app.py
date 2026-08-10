@@ -1625,6 +1625,10 @@ def autosave_row_corrections(import_id):
             raw_import_row_id=raw_import_row_id,
             database_url=database_url,
         )
+        # Keep the autosave response display-compatible while the persisted
+        # reviewed value remains canonical E.164 for valid phone corrections.
+        if 'phone' in corrected_values:
+            effective_values['phone'] = corrected_values['phone']
 
         issues = recalculate_row_issues(
             batch_id=import_id,
