@@ -19,6 +19,8 @@ from scripts.householder.ingestion_service import (
     extract_digits_from_phone,
     parse_amount,
     ingest_processed_csv,
+    normalize_ingestion_scalar,
+    build_header_mapping_for_ingestion,
 )
 
 
@@ -120,6 +122,18 @@ class TestNameSplitting:
         first, last = split_name("")
         assert first is None
         assert last is None
+
+    def test_nan_name_returns_none_none(self):
+        """A pandas-style missing scalar is treated as a blank name."""
+        first, last = split_name(float("nan"))
+        assert first is None
+        assert last is None
+
+    def test_scalar_normalization_preserves_numbers(self):
+        assert normalize_ingestion_scalar(None) == ""
+        assert normalize_ingestion_scalar(float("nan")) == ""
+        assert normalize_ingestion_scalar("100") == "100"
+        assert normalize_ingestion_scalar(100) == 100
 
     def test_whitespace_only_name_returns_none_none(self):
         """'   ' → first=None, last=None."""
@@ -245,6 +259,14 @@ class TestCSVValidation:
         with pytest.raises(IngestionValidationError) as exc:
             ingest_processed_csv(str(csv_file), "test.csv", "sqlite:///:memory:")
         assert "Suggested_Modifications" in str(exc.value)
+
+    def test_generic_address_header_maps_to_address_line_one(self):
+        mapping = build_header_mapping_for_ingestion(["Name", "Address"])
+        assert mapping["address_1"] == "Address"
+
+    def test_explicit_address_one_wins_over_generic_address(self):
+        mapping = build_header_mapping_for_ingestion(["Address", "Address 1"])
+        assert mapping["address_1"] == "Address 1"
 
 
 class TestIngestionIntegration:

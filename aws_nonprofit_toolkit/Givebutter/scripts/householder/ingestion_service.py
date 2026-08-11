@@ -36,7 +36,12 @@ from .database_models import (
     ReviewItemSubject,
     AuditLogRecord,
 )
-from .ingestion_value_policy import extract_digits_from_phone, parse_amount, split_name
+from .ingestion_value_policy import (
+    extract_digits_from_phone,
+    normalize_ingestion_scalar,
+    parse_amount,
+    split_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +244,10 @@ def validate_processed_csv(csv_path: str) -> pd.DataFrame:
     try:
         # Read CSV
         df = pd.read_csv(str(csv_path), dtype=str)
+        # pandas represents blank cells as NaN even with dtype=str. Normalize
+        # at the ingestion boundary so missing values become empty strings,
+        # while non-missing scalar values retain their original type/value.
+        df = df.apply(lambda column: column.map(normalize_ingestion_scalar))
     except Exception as e:
         raise IngestionIOError(f"Failed to read CSV: {str(e)}")
 
@@ -291,7 +300,7 @@ def build_header_mapping_for_ingestion(df_columns: List[str]) -> Dict[str, str]:
         "name": ["Full Name", "Donor Name", "Donor", "donor_name", "full_name"],
         "email": ["Email Address", "Primary Email", "email_address"],
         "phone": ["Phone Number", "contact_phone", "phone_number"],
-        "address_1": ["Street Address", "Address Line 1", "street_address"],
+        "address_1": ["Street Address", "Address Line 1", "Address", "street_address"],
         "address_2": ["Address Line 2", "address_line_2"],
         "city": ["City Name"],
         "state": ["State Code"],

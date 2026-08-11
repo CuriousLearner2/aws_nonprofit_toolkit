@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import datetime
 
 from scripts.householder.ingestion_service import ingest_processed_csv
+from scripts.householder.ingestion_service import build_header_mapping_for_ingestion
 from scripts.householder.database_models import (
     init_db,
     get_session,
@@ -81,6 +82,37 @@ class TestIngestionDatabaseIntegration:
             assert audit is not None
             assert audit.action_type == "batch_imported"
 
+        finally:
+            session.close()
+
+    def test_blank_text_fields_complete_ingestion_and_create_validation_items(self, tmp_path):
+        """Blank name/email/phone/address values must not abort a batch."""
+        csv_file = tmp_path / "blank_fields.csv"
+        csv_file.write_text(
+            "Donation ID,Date,Donor Name,Email,Phone,Address,Amount,Validation_Tier,Issues,Suggested_Modifications\n"
+            "GB1,2026-06-12,,,,,100.00,FAIL,Name: missing; Email: missing; Phone: missing; Address: missing,Review fields\n"
+        )
+        db_path = tmp_path / "blank_fields.db"
+        db_url = f"sqlite:///{db_path}"
+        init_db(db_url)
+
+        result = ingest_processed_csv(str(csv_file), "blank_fields.csv", db_url)
+        assert result.status == "success"
+
+        session = get_session(init_db(db_url))
+        try:
+            raw = session.query(RawImportRow).filter_by(batch_id=result.batch_id).one()
+            contact = session.query(ImportContact).filter_by(batch_id=result.batch_id).one()
+            assert raw.raw_csv_data["Donor Name"] == ""
+            assert raw.raw_csv_data["Email"] == ""
+            assert raw.raw_csv_data["Phone"] == ""
+            assert raw.raw_csv_data["Address"] == ""
+            assert contact.first_name is None
+            assert contact.last_name is None
+            assert contact.email == ""
+            assert contact.phone == ""
+            assert contact.address_line1 == ""
+            assert session.query(ReviewItem).filter_by(batch_id=result.batch_id).count() >= 1
         finally:
             session.close()
 
