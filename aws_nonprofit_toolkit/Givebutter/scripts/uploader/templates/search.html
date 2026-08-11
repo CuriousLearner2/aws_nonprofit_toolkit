@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Search all imports — DonorTrust v1{% endblock %}
+
+{% block content %}
+<h1>Search all imports</h1>
+<p class="page-description">Search the existing imported records. Results are an index view; raw imports remain in their original batches.</p>
+
+<form method="get" action="/search" data-testid="global-search-form" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 0 0 20px 0;">
+    <div><label for="global-search">Search</label><input id="global-search" name="q" value="{{ query }}" placeholder="Name, email, phone, Transaction ID" aria-label="Search all imports"></div>
+    <div><label for="global-disposition">Disposition</label><select id="global-disposition" name="disposition"><option value="all" {% if disposition == 'all' %}selected{% endif %}>All</option><option value="none" {% if disposition == 'none' %}selected{% endif %}>No disposition</option><option value="accept_as_is" {% if disposition == 'accept_as_is' %}selected{% endif %}>Accept as-is</option><option value="needs_follow_up" {% if disposition == 'needs_follow_up' %}selected{% endif %}>Needs follow-up</option><option value="reject_row" {% if disposition == 'reject_row' %}selected{% endif %}>Reject row</option></select></div>
+    <div><label for="global-status">Issue/status</label><select id="global-status" name="status"><option value="all" {% if status == 'all' %}selected{% endif %}>All statuses</option><option value="Blocking" {% if status == 'Blocking' %}selected{% endif %}>Blocking</option><option value="Warning" {% if status == 'Warning' %}selected{% endif %}>Warning</option><option value="No issues" {% if status == 'No issues' %}selected{% endif %}>No issues</option></select></div>
+    <div><label for="global-reviewer">Reviewer</label><input id="global-reviewer" name="reviewer" value="{{ reviewer }}"></div>
+    <div><label for="global-batch">Import</label><select id="global-batch" name="batch"><option value="all">All imports</option>{% for batch in batches %}<option value="{{ batch.id }}" {% if batch_id == batch.id %}selected{% endif %}>{{ batch.filename }} ({{ batch.id }})</option>{% endfor %}</select></div>
+    <div><label for="global-date-from">Uploaded from</label><input id="global-date-from" type="date" name="date_from" value="{{ date_from }}"></div>
+    <div><label for="global-date-to">Uploaded through</label><input id="global-date-to" type="date" name="date_to" value="{{ date_to }}"></div>
+    <button type="submit">Search</button>
+</form>
+
+{% if not database_available %}
+<p data-testid="global-search-unavailable">Cross-import search requires the database-backed runtime.</p>
+{% elif not results %}
+<p data-testid="global-search-empty">No matching imported rows.</p>
+{% else %}
+<div data-testid="global-search-result-count">{{ results|length }} result{% if results|length != 1 %}s{% endif %}</div>
+<div class="table-container">
+<table data-testid="global-search-results">
+    <thead><tr><th>Import</th><th>Transaction ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th>Disposition</th><th>Reviewer / reason / timestamp</th><th></th></tr></thead>
+    <tbody>
+    {% for result in results %}
+    <tr data-testid="global-search-result-{{ result.batch_id }}-{{ result.row_id }}">
+        <td>{{ result.filename }}<br><small>{{ result.batch_id }} · {{ result.uploaded }}</small></td>
+        <td>{{ result.transaction_id }}</td><td>{{ result.name }}</td><td>{{ result.email }}</td><td>{{ result.phone }}</td>
+        <td>{{ result.status }}{% if result.issue_count %} ({{ result.issue_count }} issues){% endif %}</td><td>{{ result.disposition_label }}</td>
+        <td>{{ result.reviewer }}{% if result.reason %} · {{ result.reason }}{% endif %}{% if result.timestamp %} · {{ result.timestamp }}{% endif %}</td>
+        <td><a href="{{ result.validation_url }}">Open original row</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

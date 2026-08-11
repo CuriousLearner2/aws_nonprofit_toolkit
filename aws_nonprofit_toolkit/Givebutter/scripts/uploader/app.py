@@ -93,6 +93,7 @@ try:
         duplicate_decision_service,
         audit_service,
         exports_service,
+        retrieval_service,
     )
 except ImportError:
     # Fallback for direct script execution
@@ -110,6 +111,7 @@ except ImportError:
         duplicate_decision_service,
         audit_service,
         exports_service,
+        retrieval_service,
     )
 
 app = Flask(__name__)
@@ -1331,6 +1333,26 @@ def imports_list():
     """List all imports with status through service boundary."""
     imports = import_service.get_imports()
     return render_template('imports/list.html', imports=imports)
+
+@app.route('/search')
+@require_auth
+def global_import_search():
+    """Read-only cross-import retrieval over the existing import records."""
+    try:
+        data = retrieval_service.search_import_rows(
+            config=_get_runtime_repository_config(),
+            query=request.args.get('q', ''),
+            disposition=request.args.get('disposition', 'all'),
+            status=request.args.get('status', 'all'),
+            reviewer=request.args.get('reviewer', ''),
+            batch_id=request.args.get('batch', 'all'),
+            date_from=request.args.get('date_from', ''),
+            date_to=request.args.get('date_to', ''),
+        )
+        return render_template('search.html', **data)
+    except Exception as e:
+        logger.exception("Cross-import search failed")
+        return jsonify({'error': 'Unable to search imports'}), 500
 
 @app.route('/imports/<import_id>/dashboard')
 def import_dashboard(import_id):
