@@ -2543,9 +2543,9 @@ class TestDetailsModalControls:
         assert 'Record Details' in html, "Modal title should describe the details view"
         assert 'Current issues' in html
         assert 'Reviewer disposition' in html
-        assert 'Previous reviewer dispositions and reasons / notes' in html
+        assert 'Review history' in html
         assert 'Correct record values in the validation table.' in html
-        assert 'Update the reviewer disposition or reason / notes for this record.' in html
+        assert 'Choose the disposition that best explains what should happen next.' in html
         assert 'No new history entry is created if the decision and notes are unchanged.' in html
         assert 'Save review' in html
         assert 'row-review-decision-' in html
@@ -2563,7 +2563,7 @@ class TestDetailsModalControls:
 
         assert 'data-testid="reviewer-entry"' not in html
         assert 'reviewer-name-field' in html
-        assert 'Required when saving a decision or notes. Entered manually and not authenticated.' in html
+        assert 'Your name identifies who made this decision in the audit history.' in html
         assert 'Enter your name before saving this review.' in html
         assert html.count('reviewer_name: reviewerName') >= 1
         assert 'openRowReviewModal' in html

@@ -892,6 +892,26 @@
             uploadStatus.style.display = 'block';
         }
 
+        function showUploadSuccess(data, originalFilename) {
+            uploadStatus.className = 'status-message success';
+            uploadStatus.replaceChildren();
+
+            const heading = document.createElement('strong');
+            heading.textContent = 'Upload complete';
+
+            const body = document.createElement('div');
+            body.style.marginTop = '4px';
+            const filename = data.filename || originalFilename || 'your CSV';
+            const batchContext = data.batch_id
+                ? `Import batch ${data.batch_id} was created and is ready for review.`
+                : 'A new import batch was created and is ready for review.';
+            body.textContent = `${filename} uploaded successfully. ${batchContext}`;
+
+            uploadStatus.appendChild(heading);
+            uploadStatus.appendChild(body);
+            uploadStatus.style.display = 'block';
+        }
+
         function isCsvFile(file) {
             return !!file && typeof file.name === 'string' && file.name.toLowerCase().endsWith('.csv');
         }
@@ -1189,13 +1209,13 @@
                 if (data.batch_id) {
                     setTopNavigationHrefs(`/imports/${data.batch_id}/validation`);
                 }
+                showUploadSuccess(data, file.name);
                 clearQueueRefreshTimer();
                 queueRefreshTimer = setTimeout(() => {
                     queueRefreshTimer = null;
                     loadQueue();
                 }, 500);
                 fileInput.value = '';
-                clearUploadStatus();
             } catch (err) {
                 console.error('Upload error:', err);
                 clearQueueRefreshTimer();

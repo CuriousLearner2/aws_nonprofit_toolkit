@@ -55,6 +55,14 @@
     </div>
 
     <style>
+        .validation-review-container .safety-strip {
+            max-width: 100%;
+            box-sizing: border-box;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            line-height: 1.5;
+        }
+
         .validation-row {
             scroll-margin-top: 96px;
         }
@@ -95,7 +103,6 @@
             <option value="">All Issues</option>
             <option value="missing-required">Missing Required Field</option>
             <option value="format-invalid">Invalid Format</option>
-            <option value="length-exceeded">Length Exceeded</option>
         </select>
     </div>
 
@@ -259,7 +266,7 @@
 
 <style>
     #record-modal .modal-content {
-        max-width: 850px;
+        max-width: 640px;
         max-height: calc(100vh - 40px);
         padding: 0;
         display: flex;
@@ -273,7 +280,7 @@
     }
     #record-modal .modal-body {
         margin-bottom: 0;
-        padding: 16px 24px 18px;
+        padding: 14px 20px 16px;
         overflow: auto;
         flex: 1 1 auto;
     }
@@ -1383,6 +1390,8 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
         Boolean(decisionData?.has_decision),
         decisionData?.decision || '',
     );
+    const notesRequired = ['needs_follow_up', 'reject_row'].includes(selectedDecision)
+        || (selectedDecision === 'accept_as_is' && getRowStatusLabel(row) !== 'No issues');
     const decisionOptions = [
         ['', 'No disposition'],
         ['accept_as_is', 'Accept as-is'],
@@ -1404,14 +1413,14 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
         </section>
         <section style="margin-bottom: 15px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><h3 style="margin: 0; font-size: 14px;">Reviewer disposition</h3></div>
-            <p style="margin: 0 0 8px; color: #6b7280; font-size: 12px;">Update the reviewer disposition or reason / notes for this record.</p>
+            <p data-testid="review-save-guidance" style="margin: 0 0 8px; color: #6b7280; font-size: 12px;">Choose the disposition that best explains what should happen next. Your name and reason are saved with the decision for audit history.</p>
             <div data-testid="row-review-save-form" style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 4px; background: #f9fafb;">
-                <div style="margin-bottom: 10px;"><label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name</label><input class="reviewer-name-field" id="row-review-reviewer-${recordId}" type="text" autocomplete="off" value="${escapeHtml(reviewerNameForSession)}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;"><div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Required when saving a decision or notes. Entered manually and not authenticated.</div><div class="reviewer-name-error" role="alert" style="display: none; font-size: 12px; color: #b91c1c; margin-top: 4px;">Enter your name before saving this review.</div></div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"><div><label for="row-review-decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer disposition</label><select id="row-review-decision-${recordId}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">${decisionOptions}</select></div><div><label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes</label><textarea id="followup-notes-${recordId}" placeholder="Add a reason or notes for this disposition..." style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;"></textarea><div id="followup-notes-requirement-${recordId}" class="notes-requirement" role="alert" style="display: none; font-size: 12px; color: #ef4444; margin-top: 4px;">Notes required for Follow-up decision</div></div></div>
+                <div style="margin-bottom: 10px;"><label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name <span aria-hidden="true" style="color: #b91c1c;">*</span></label><input class="reviewer-name-field" id="row-review-reviewer-${recordId}" type="text" autocomplete="off" aria-required="true" value="${escapeHtml(reviewerNameForSession)}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;"><div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Your name identifies who made this decision in the audit history.</div><div class="reviewer-name-error" role="alert" style="display: none; font-size: 12px; color: #b91c1c; margin-top: 4px;">Enter your name before saving this review.</div></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"><div><label for="row-review-decision-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer disposition</label><select id="row-review-decision-${recordId}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">${decisionOptions}</select></div><div><label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes <span class="notes-required-marker" aria-hidden="true" style="display: ${notesRequired ? '' : 'none'}; color: #b91c1c;">*</span><span class="notes-optional-marker" style="display: ${notesRequired ? 'none' : ''}; color: #6b7280;">(optional)</span></label><textarea id="followup-notes-${recordId}" aria-required="${notesRequired ? 'true' : 'false'}" placeholder="Explain why this disposition is appropriate..." style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;"></textarea><div id="followup-notes-requirement-${recordId}" class="notes-requirement" role="alert" style="display: none; font-size: 12px; color: #ef4444; margin-top: 4px;">Notes required for this disposition</div></div></div>
             </div>
         </section>
         <section>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><h3 style="margin: 0; font-size: 14px;">Previous reviewer dispositions and reasons / notes</h3><span style="color: #6b7280; font-size: 12px;">Newest first</span></div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><h3 style="margin: 0; font-size: 14px;">Review history</h3><span style="color: #6b7280; font-size: 12px;">Saved decisions and reasons · newest first</span></div>
             <div>${buildRecordHistoryHtml(decisionData?.history || [])}</div>
         </section>
     `;
@@ -1501,6 +1510,18 @@ async function openRecordDetailsModal(recordId) {
     openModal('record-modal');
 }
 
+function syncReviewNotesRequirement(modal, row, decision) {
+    const required = ['needs_follow_up', 'reject_row'].includes(decision)
+        || (decision === 'accept_as_is' && getRowIssuesData(row).length > 0);
+    const notesField = modal?.querySelector('textarea[id^="followup-notes-"]');
+    const label = notesField?.closest('div')?.querySelector('label');
+    const requiredMarker = label?.querySelector('.notes-required-marker');
+    const optionalMarker = label?.querySelector('.notes-optional-marker');
+    if (requiredMarker) requiredMarker.style.display = required ? '' : 'none';
+    if (optionalMarker) optionalMarker.style.display = required ? 'none' : '';
+    if (notesField) notesField.setAttribute('aria-required', required ? 'true' : 'false');
+}
+
 function attachRecordDetailsReviewHandlers(recordId, row, decisionData) {
     const modal = document.getElementById('record-modal');
     const rawId = parseInt(row.getAttribute('data-raw-id'));
@@ -1510,6 +1531,10 @@ function attachRecordDetailsReviewHandlers(recordId, row, decisionData) {
     const decisionField = document.getElementById(`row-review-decision-${recordId}`);
     const notesField = document.getElementById(`followup-notes-${recordId}`);
     const notesRequirement = modal?.querySelector('.notes-requirement');
+
+    decisionField?.addEventListener('change', () => {
+        syncReviewNotesRequirement(modal, row, decisionField.value || '');
+    });
 
     saveBtn?.addEventListener('click', async function() {
         if (saveBtn.disabled) return;
@@ -1702,6 +1727,8 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
         dropdown.dataset.hasDecision === 'true',
         previousValue,
     );
+    const notesRequired = ['needs_follow_up', 'reject_row'].includes(selectedDecision)
+        || (selectedDecision === 'accept_as_is' && getRowStatusLabel(row) !== 'No issues');
 
     setSavedRowReviewState(dropdown, previousValue, previousLabel, currentNotes);
     if (!modal) return;
@@ -1728,12 +1755,14 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
 
     modalBody.innerHTML = `
         <div data-testid="row-review-save-form">
+            <p data-testid="review-save-guidance" style="margin: 0 0 14px; color: #4b5563; font-size: 12px; line-height: 1.5;">Your disposition guides what happens next. The reviewer name and reason are saved with the decision for audit history.</p>
             <div style="margin-bottom: 14px;">
-                <label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name</label>
+                <label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name <span aria-hidden="true" style="color: #b91c1c;">*</span></label>
                 <input class="reviewer-name-field" id="row-review-reviewer-${recordId}" type="text" autocomplete="off"
+                       aria-required="true"
                        value="${escapeHtml(reviewerNameForSession)}"
                        style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
-                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Required when saving a decision or notes. Entered manually and not authenticated.</div>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Your name identifies who made this decision in the audit history.</div>
                 <div class="reviewer-name-error" role="alert" style="display: none; font-size: 12px; color: #b91c1c; margin-top: 4px;">Enter your name before saving this review.</div>
             </div>
             <div style="margin-bottom: 14px;">
@@ -1743,8 +1772,8 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
                 </select>
             </div>
             <div>
-                <label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes</label>
-                <textarea id="followup-notes-${recordId}" placeholder="Add notes for this review..."
+                <label for="row-review-notes-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reason / notes <span class="notes-required-marker" aria-hidden="true" style="display: ${notesRequired ? '' : 'none'}; color: #b91c1c;">*</span><span class="notes-optional-marker" style="display: ${notesRequired ? 'none' : ''}; color: #6b7280;">(optional)</span></label>
+                <textarea id="followup-notes-${recordId}" aria-required="${notesRequired ? 'true' : 'false'}" placeholder="Explain why this disposition is appropriate..."
                           style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; font-family: inherit; box-sizing: border-box;"></textarea>
                 <div id="followup-notes-requirement-${recordId}" class="notes-requirement" role="alert" style="display: none; font-size: 12px; color: #ef4444; margin-top: 4px;">Notes required for Follow-up decision</div>
             </div>
@@ -1762,6 +1791,10 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
     const notesRequirement = modal.querySelector('.notes-requirement');
     const saveBtn = document.getElementById(`save-followup-notes-${recordId}`);
     const cancelBtn = document.getElementById(`cancel-row-review-${recordId}`);
+
+    decisionField?.addEventListener('change', () => {
+        syncReviewNotesRequirement(modal, row, decisionField.value || '');
+    });
 
     decisionField?.focus();
     saveBtn?.addEventListener('click', async function() {
