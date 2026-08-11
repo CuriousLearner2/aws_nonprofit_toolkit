@@ -339,7 +339,9 @@ def _specific_issue_description(field: Optional[str], value: Any) -> Optional[st
     """Return a validator reason, or None when the current value is valid."""
     if field == 'phone':
         result = validate_review_phone(value, allow_blank=False, default_region='US')
-        return result.blocking_error if not result.valid else None
+        if not result.valid:
+            return result.blocking_error or 'Invalid phone format'
+        return result.warnings[0] if result.warnings else None
     if field == 'email':
         result = validate_review_email(value, allow_blank=False)
         if not result.valid:
@@ -460,7 +462,8 @@ def is_issue_resolved(
         return bool(effective_str) and effective_str != raw_str
 
     if field == 'phone':
-        if not is_valid_phone(effective_str) or raw_value is None:
+        phone_result = validate_review_phone(effective_str, allow_blank=False, default_region='US')
+        if not phone_result.valid or phone_result.warnings or raw_value is None:
             return False
         raw_str = str(raw_value).strip() if raw_value else ''
         return bool(effective_str) and effective_str != raw_str
@@ -505,7 +508,8 @@ def is_issue_resolved(
         if field == 'phone':
             # Phone issue resolved if it's valid per phonenumbers library
             # Supports 131+ countries with intelligent parsing of various formats
-            return is_valid_phone(effective_str)
+            phone_result = validate_review_phone(effective_str, allow_blank=False, default_region='US')
+            return phone_result.valid and not phone_result.warnings
         elif field == 'amount':
             if effective_str is None:
                 return True
@@ -596,13 +600,22 @@ def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[st
                 'severity': 'error',
                 'is_new': True
             })
-        elif not is_valid_phone(phone_str):
-            issues.append({
-                'field': 'phone',
-                'description': 'Invalid phone format',
-                'severity': 'error',
-                'is_new': True
-            })
+        else:
+            phone_result = validate_review_phone(phone_str, allow_blank=False, default_region='US')
+            if phone_result.warnings:
+                issues.append({
+                    'field': 'phone',
+                    'description': phone_result.warnings[0],
+                    'severity': 'warning',
+                    'is_new': True
+                })
+            elif not phone_result.valid:
+                issues.append({
+                    'field': 'phone',
+                    'description': phone_result.blocking_error or 'Invalid phone format',
+                    'severity': 'error',
+                    'is_new': True
+                })
 
     # Validate amount if present (must validate even if falsy like 0, "", etc.)
     if 'amount' in effective_values:

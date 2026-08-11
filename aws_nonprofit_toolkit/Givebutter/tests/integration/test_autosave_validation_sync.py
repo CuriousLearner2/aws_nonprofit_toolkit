@@ -149,9 +149,13 @@ class TestAutosaveValidationSync:
         raw_id = rows[0]
 
         policy_valid, policy_errors = validate_editable_field_values(corrected_values)
-        assert policy_valid is False
-        assert policy_errors is not None
-        assert expected_field in policy_errors
+        if expected_field == 'phone':
+            assert policy_valid is True
+            assert policy_errors is None
+        else:
+            assert policy_valid is False
+            assert policy_errors is not None
+            assert expected_field in policy_errors
 
         response = client.post(
             '/imports/sync-test-batch/autosave',
@@ -160,6 +164,17 @@ class TestAutosaveValidationSync:
                 'corrected_values': corrected_values,
             },
         )
+
+        if expected_field == 'phone':
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data['success'] is True
+            assert data['row_status'] == 'Warning'
+            assert any(
+                issue.get('field') == 'phone' and issue.get('severity') == 'warning'
+                for issue in data['issues']
+            )
+            return
 
         assert response.status_code == 400
         data = response.get_json()
@@ -195,6 +210,17 @@ class TestAutosaveValidationSync:
                 'corrected_values': corrected_values
             }
         )
+
+        if expected_field == 'phone':
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data['success'] is True
+            assert data['row_status'] == 'Warning'
+            assert any(
+                issue.get('field') == 'phone' and issue.get('severity') == 'warning'
+                for issue in data['issues']
+            )
+            return
 
         assert response.status_code == 400
         data = response.get_json()
@@ -431,8 +457,8 @@ class TestAutosaveValidationSync:
         email_issue = next((i for i in data['issues'] if i.get('field') == 'email'), None)
         assert email_issue is not None
 
-    def test_invalid_phone_format_updates_row_status(self, flask_client_with_batch):
-        """Invalid phone changes row status from 'No issues' to error status."""
+    def test_phone_like_uncertainty_saves_and_updates_warning_status(self, flask_client_with_batch):
+        """Phone-like uncertainty saves and changes row status to Warning."""
         client, database_url, engine, Session, rows = flask_client_with_batch
         raw_id = rows[0]
 
@@ -444,11 +470,75 @@ class TestAutosaveValidationSync:
             }
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 200
         data = response.get_json()
-        assert data['row_status'] != 'No issues'
+        assert data['success'] is True
+        assert data['row_status'] == 'Warning'
         assert len(data['issues']) > 0
         assert any(issue.get('field') == 'phone' for issue in data['issues'])
+
+    def test_phone_warning_persists_exact_value_and_reloads_as_warning(self, flask_client_with_batch, monkeypatch):
+        """Warning values remain unchanged in append-only corrections and reload state."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+        from scripts.uploader.app import app
+        monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', database_url)
+        monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+
+        response = client.post(
+            '/imports/sync-test-batch/autosave',
+            json={'raw_import_row_id': raw_id, 'corrected_values': {'phone': '123'}},
+        )
+        assert response.status_code == 200
+        assert response.get_json()['row_status'] == 'Warning'
+
+        from scripts.householder.autosave_service import get_effective_values
+        from scripts.householder.database_models import ReviewDecision
+
+        effective = get_effective_values('sync-test-batch', raw_id, database_url)
+        assert effective['phone'] == '123'
+        session = Session()
+        try:
+            decision = session.query(ReviewDecision).filter_by(
+                batch_id='sync-test-batch', raw_import_row_id=raw_id
+            ).order_by(ReviewDecision.id.desc()).first()
+            assert decision.reviewed_values['phone'] == '123'
+        finally:
+            session.close()
+
+    @pytest.mark.parametrize(
+        ('decision', 'notes'),
+        [('accept_as_is', 'Reviewed phone uncertainty'),
+         ('needs_follow_up', 'Confirm phone with donor'),
+         ('reject_row', 'Phone could not be confirmed')],
+    )
+    def test_phone_warning_supports_human_dispositions(
+        self, flask_client_with_batch, monkeypatch, decision, notes
+    ):
+        """A saved phone warning remains actionable through reviewer dispositions."""
+        client, database_url, engine, Session, rows = flask_client_with_batch
+        raw_id = rows[0]
+        from scripts.uploader.app import app
+        monkeypatch.setitem(app.config, 'GIVEBUTTER_DATABASE_URL', database_url)
+        monkeypatch.setitem(app.config, 'HOUSEHOLDER_REPOSITORY', 'database')
+
+        saved = client.post(
+            '/imports/sync-test-batch/autosave',
+            json={'raw_import_row_id': raw_id, 'corrected_values': {'phone': '123'}},
+        )
+        assert saved.status_code == 200
+        decision_response = client.post(
+            '/imports/sync-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': decision,
+                'notes': notes,
+                'reviewer_name': 'UAT Reviewer',
+                'interaction_sequence': 1,
+            },
+        )
+        assert decision_response.status_code == 200
+        assert decision_response.get_json()['decision'] == decision
 
     def test_correcting_invalid_email_clears_error(self, flask_client_with_batch):
         """Correcting invalid email to valid format clears the error."""
@@ -654,7 +744,7 @@ class TestAutosaveValidationSync:
         issues = data.get('issues', [])
         
         # INVARIANT: Both errors must be reported
-        assert len(issues) >= 2, f"Expected 2+ errors, got {len(issues)}: {issues}"
+        assert len(issues) >= 1, f"Expected amount error, got {len(issues)}: {issues}"
         
         # Amount error must be present (not skipped due to falsy 0)
         amount_error = next((i for i in issues if i.get('field') == 'amount'), None)
@@ -689,7 +779,7 @@ class TestAutosaveValidationSync:
         issues = data.get('issues', [])
         
         # INVARIANT: Both errors must be reported
-        assert len(issues) >= 2, f"Expected 2+ errors, got {len(issues)}: {issues}"
+        assert len(issues) >= 1, f"Expected amount error, got {len(issues)}: {issues}"
         
         # Amount error (required field)
         amount_error = next((i for i in issues if i.get('field') == 'amount'), None)
@@ -699,6 +789,7 @@ class TestAutosaveValidationSync:
             for phrase in ('required', 'invalid', 'empty')
         )
         
-        # Phone error
+        # A phone-like uncertain value is a warning only; the blocking amount
+        # error prevents this multi-field request from being saved.
         phone_error = next((i for i in issues if i.get('field') == 'phone'), None)
-        assert phone_error is not None
+        assert phone_error is None

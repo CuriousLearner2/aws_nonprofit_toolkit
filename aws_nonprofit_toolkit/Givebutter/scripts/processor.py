@@ -268,6 +268,8 @@ def validate_phone(record: Dict, header_map: Dict, rules: Dict) -> Tuple[str, Op
     validation = validate_review_phone(phone_str, allow_blank=False, default_region='US')
     if not validation.valid:
         return ('FAIL', validation.blocking_error or "Invalid phone format", "Please use a valid phone number")
+    if validation.warnings:
+        return ('WARNING', validation.warnings[0], "Review the phone number and add a country code if needed")
 
     return ('PASS', None, None)
 

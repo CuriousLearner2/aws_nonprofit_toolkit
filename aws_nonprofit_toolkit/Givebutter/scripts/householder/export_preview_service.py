@@ -473,12 +473,18 @@ def build_export_preview(
                 validation_issues.append(f"Email: {email_validation.warnings[0]}")
 
             phone_validation_issue = None
+            phone_validation_warning = None
             phone_value = field_values.get('phone')
             phone_str = '' if phone_value is None else str(phone_value).strip()
             if phone_str:
                 phone_validation = validate_review_phone(phone_str, allow_blank=False, default_region='US')
                 if not phone_validation.valid:
                     phone_validation_issue = f"Phone: {phone_validation.blocking_error}"
+                elif phone_validation.warnings:
+                    phone_validation_warning = f"Phone: {phone_validation.warnings[0]}"
+                    row_warnings.append(phone_validation_warning)
+                    validation_issues.append(phone_validation_warning)
+                    row_has_unresolved_validation = True
 
             for val_item in review_items.values():
                 if val_item.item_type != 'validation' or val_item.batch_id != import_id:

@@ -6,6 +6,7 @@ from householder.phone_validation_service import (
     is_valid_phone,
     format_phone,
     PHONE_COUNTRY_CODE_WARNING,
+    PHONE_REVIEW_WARNING,
 )
 
 
@@ -89,11 +90,12 @@ class TestPhoneValidationService:
         assert result.valid is True
         assert result.normalized_value == '+14155552671'
 
-    def test_validate_review_phone_rejects_short_domestic_number(self):
-        """Test 7-digit domestic numbers are rejected under the strict 10-digit policy."""
+    def test_validate_review_phone_warns_for_short_phone_like_number(self):
+        """Phone-like uncertainty is retained for reviewer disposition."""
         result = validate_review_phone('5612346', allow_blank=False)
-        assert result.valid is False
-        assert result.blocking_error == 'Invalid phone format'
+        assert result.valid is True
+        assert PHONE_REVIEW_WARNING in result.warnings
+        assert result.normalized_value == '5612346'
 
     def test_validate_returns_all_fields(self):
         """Test that validation returns all expected fields."""
@@ -204,16 +206,28 @@ class TestPhoneValidationService:
         assert PHONE_COUNTRY_CODE_WARNING in result.warnings
         assert result.formatted == '+12079460958'
 
-    @pytest.mark.parametrize('value', ['+999123456789', '+44 abc', '+91 123'])
-    def test_malformed_international_number_is_blocking(self, value):
+    @pytest.mark.parametrize('value', ['+999123456789', '+91 123'])
+    def test_malformed_phone_like_international_number_warns(self, value):
         result = validate_review_phone(value)
+        assert result.valid is True
+        assert PHONE_REVIEW_WARNING in result.warnings
+
+    def test_clearly_non_phone_text_is_blocking(self):
+        result = validate_review_phone('call me tomorrow')
         assert result.valid is False
         assert result.blocking_error == 'Invalid phone format'
 
-    def test_invalid_explicit_nanp_number_is_blocking(self):
+    @pytest.mark.parametrize('value', ['1234567890123456', '(415) 555-12--'])
+    def test_phone_like_too_long_or_malformed_value_warns(self, value):
+        result = validate_review_phone(value)
+        assert result.valid is True
+        assert PHONE_REVIEW_WARNING in result.warnings
+        assert result.normalized_value == value
+
+    def test_invalid_explicit_nanp_number_warns_for_reviewer(self):
         result = validate_review_phone('+15551234567')
-        assert result.valid is False
-        assert result.blocking_error == 'Invalid phone format'
+        assert result.valid is True
+        assert PHONE_REVIEW_WARNING in result.warnings
 
     # ===== Edge cases =====
 

@@ -69,7 +69,7 @@ def seeded_batch(temp_db):
         raw_csv_data={
             'Name': 'John Smith',
             'Email': 'john@example.com',
-            'Phone': '415-555-1234',
+            'Phone': '+1 415-555-1234',
             'Amount': '100.00',
             'Address': '123 Main St',
             'transaction_id': 'TXN-001'
@@ -85,7 +85,7 @@ def seeded_batch(temp_db):
         first_name='John',
         last_name='Smith',
         email='john@example.com',
-        phone='415-555-1234',
+        phone='+1 415-555-1234',
         address_line1='123 Main St',
         city='Springfield',
         state='IL',
@@ -141,7 +141,7 @@ class TestExportPreviewBasicStructure:
         assert row.first_name == 'John'
         assert row.last_name == 'Smith'
         assert row.email == 'john@example.com'
-        assert row.phone == '415-555-1234'
+        assert row.phone == '+1 415-555-1234'
         assert row.address_line1 == '123 Main St'
         assert row.city == 'Springfield'
         assert row.state == 'IL'
@@ -439,6 +439,25 @@ class TestExportPreviewValidationDecisions:
         assert row.export_blocked
         assert 'Reviewer disposition required' in result.blockers
         assert any('unresolved' in w.lower() for w in row.export_warnings)
+
+    def test_phone_warning_requires_row_disposition_and_is_export_visible(self, seeded_batch, temp_db):
+        """Phone-like uncertainty remains visible and gated until reviewed."""
+        database_url, contact_id, batch_id = seeded_batch
+
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+        session.get(ImportContact, contact_id).phone = '123'
+        session.commit()
+        session.close()
+
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        row = result.export_rows[0]
+
+        assert row.validation_status == 'pending'
+        assert row.export_blocked
+        assert 'Reviewer disposition required' in result.blockers
+        assert any('phone' in issue.lower() for issue in row.validation_issues)
+        assert any('phone' in warning.lower() for warning in row.export_warnings)
 
 
 class TestExportPreviewDuplicateDecisions:

@@ -185,11 +185,11 @@ class TestPhoneValidationEdgeCases:
             tier, reason, suggestion = validate_phone(record, header_map, rules)
             assert tier != 'FAIL', f"Phone '{phone}' should not fail, reason: {reason}"
 
-    def test_phone_short_domestic_number_is_rejected(self, header_map, rules):
-        """Verify 7-digit domestic numbers fail the canonical phone policy."""
+    def test_phone_short_domestic_number_is_warning(self, header_map, rules):
+        """Verify phone-like short numbers remain reviewable warnings."""
         record = {'Phone': '5612346'}
         tier, reason, suggestion = validate_phone(record, header_map, rules)
-        assert tier == 'FAIL', f"Phone '5612346' should fail, reason: {reason}"
+        assert tier == 'WARNING', f"Phone '5612346' should warn, reason: {reason}"
 
     def test_phone_possible_patterns_are_accepted(self, header_map, rules):
         """Verify structurally possible phone patterns remain accepted."""
@@ -204,12 +204,12 @@ class TestPhoneValidationEdgeCases:
             assert tier != 'FAIL', f"Phone '{phone}' should remain accepted, reason: {reason}"
 
     def test_phone_area_code_validation(self, header_map, rules):
-        """Verify the strict 10-digit policy rejects too-short area-code patterns."""
+        """Verify phone-like invalid area-code patterns remain reviewable warnings."""
         invalid_area_codes = ['0551234567']
         for phone in invalid_area_codes:
             record = {'Phone': phone}
             tier, reason, suggestion = validate_phone(record, header_map, rules)
-            assert tier == 'FAIL', f"Phone '{phone}' should fail, reason: {reason}"
+            assert tier == 'WARNING', f"Phone '{phone}' should warn, reason: {reason}"
 
         # Standard area codes should pass
         valid_area_codes = ['201', '415', '720', '206']
