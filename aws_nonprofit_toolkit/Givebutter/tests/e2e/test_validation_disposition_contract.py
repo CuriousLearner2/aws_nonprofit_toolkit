@@ -35,6 +35,7 @@ from scripts.householder.database_models import (
     create_db_engine,
 )
 from scripts.householder.export_preview_service import build_export_preview
+from scripts.householder.row_decision_service import requires_reason_for_row_decision
 
 from tests.e2e.test_validation_review_dom import (
     e2e_database_and_app,
@@ -45,7 +46,8 @@ from tests.e2e.test_validation_review_dom import (
 )
 
 
-def _seed_row(session, *, batch_id: str, row_index: int, email: str, name: str):
+def _seed_row(session, *, batch_id: str, row_index: int, email: str, name: str, address: str | None = None):
+    address = f"{row_index} Main St" if address is None else address
     raw_row = RawImportRow(
         batch_id=batch_id,
         row_index=row_index,
@@ -56,7 +58,7 @@ def _seed_row(session, *, batch_id: str, row_index: int, email: str, name: str):
             "email": email,
             "phone": "4155552671",
             "amount": "100.00",
-            "address": f"{row_index} Main St",
+            "address": address,
         },
     )
     session.add(raw_row)
@@ -70,7 +72,7 @@ def _seed_row(session, *, batch_id: str, row_index: int, email: str, name: str):
         last_name=last,
         email=email,
         phone="4155552671",
-        address_line1=f"{row_index} Main St",
+        address_line1=address,
         amount=100.0,
     )
     session.add(contact)
@@ -98,6 +100,7 @@ def _seed_batch(session, *, batch_id: str, rows: list[dict]):
             row_index=index,
             email=spec["email"],
             name=spec["name"],
+            address=spec.get("address"),
         )
         if spec.get("issue"):
             review_item = ReviewItem(
@@ -105,14 +108,14 @@ def _seed_batch(session, *, batch_id: str, rows: list[dict]):
                 item_type="validation",
                 confidence=1.0,
                 payload_json={
-                    "field": "email",
+                    "field": spec.get("field", "email"),
                     "reason": "invalid" if spec["email"] else "missing",
                     "description": spec["issue"],
-                    "severity": "error",
+                    "severity": spec.get("severity", "error"),
                     # Keep the ingestion-compatible keys too.  Current code has
                     # historically accepted both representations.
                     "issue": "invalid_email" if spec["email"] else "missing_email",
-                    "validation_tier": "critical",
+                    "validation_tier": "warning" if spec.get("severity") == "warning" else "critical",
                     "suggestion": None,
                 },
             )
@@ -184,6 +187,25 @@ async def test_clean_row_uses_system_accept_as_is_without_human_decision(e2e_dat
 
                 assert await row.locator(".validation-status-label").inner_text() == "No issues"
                 assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+
+                # Opening a human Accept-as-is review on a clean row keeps the
+                # reason optional; the system projection itself creates no review.
+                await page.evaluate(
+                    """async () => {
+                        const row = document.querySelector('tr.validation-row');
+                        await openRowReviewModal(
+                            row.dataset.recordId,
+                            row.querySelector('.row-status-dropdown'),
+                            'accept_as_is',
+                        );
+                    }"""
+                )
+                modal = page.locator("#record-modal")
+                await modal.wait_for(state="visible")
+                assert await modal.locator('textarea[id^="followup-notes-"]').get_attribute("aria-required") == "false"
+                assert await modal.locator(".notes-optional-marker").is_visible()
+                await modal.locator('button[id^="cancel-row-review-"]').click()
+                await modal.wait_for(state="hidden")
 
                 session.expire_all()
                 assert session.query(ReviewDecision).filter_by(
@@ -326,6 +348,134 @@ async def test_issue_accept_as_is_requires_reviewer_and_reason_and_preserves_iss
                 await row.wait_for()
                 assert await row.locator(".validation-status-label").inner_text() == "Blocking"
                 assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_warning_accept_as_is_requires_reviewer_and_reason(e2e_database_and_app):
+    """A warning is still an issue and requires an auditable Accept-as-is reason."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "contract-warning-accept"
+    server = flask_thread = None
+
+    try:
+        [(raw_row, _)] = _seed_batch(
+            session,
+            batch_id=batch_id,
+            rows=[{
+                "name": "Warning Accept",
+                "email": "warning@example.com",
+                "issue": "Address missing",
+                "severity": "warning",
+            }],
+        )
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                row = page.locator("tr.validation-row").first
+                assert await row.locator(".validation-status-label").inner_text() == "Warning"
+                await row.locator(".row-status-dropdown").select_option("accept_as_is")
+                modal = page.locator("#record-modal")
+                await modal.wait_for(state="visible")
+                notes = modal.locator('textarea[id^="followup-notes-"]')
+                assert await notes.get_attribute("aria-required") == "true"
+                assert await modal.locator(".notes-required-marker").is_visible()
+                await modal.locator(".reviewer-name-field").fill("Warning Reviewer")
+                await modal.locator('button[id^="save-followup-notes-"]').click()
+                assert await modal.is_visible()
+                assert "Reason / notes required for Accept as-is" in await modal.inner_text()
+                assert session.query(ReviewDecision).filter_by(
+                    batch_id=batch_id, raw_import_row_id=raw_row.id,
+                ).count() == 0
+            finally:
+                await browser.close()
+    finally:
+        stop_flask_server(server, flask_thread)
+        session.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_reason_requirement_frontend_backend_parity_matrix(e2e_database_and_app):
+    """Browser requirement state matches the backend rule for every row state."""
+    from playwright.async_api import async_playwright
+
+    database_url, _, flask_app = e2e_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    batch_id = "contract-reason-parity-matrix"
+    server = flask_thread = None
+    rows = [
+        {"name": "Clean", "email": "clean@example.com"},
+        {
+            "name": "Warning",
+            "email": "warning@example.com",
+            "address": "",
+            "field": "address",
+            "issue": "Address missing",
+            "severity": "warning",
+        },
+        {
+            "name": "Blocking",
+            "email": "not-an-email",
+            "field": "email",
+            "issue": "Invalid email",
+            "severity": "error",
+        },
+    ]
+    expected_states = {0: "clean", 1: "warning", 2: "blocking"}
+    decisions = [None, "accept_as_is", "needs_follow_up", "reject_row"]
+
+    try:
+        _seed_batch(session, batch_id=batch_id, rows=rows)
+        server, flask_thread, base_url = start_flask_server(flask_app)
+        wait_for_flask_ready(base_url, batch_id)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"{base_url}/imports/{batch_id}/validation")
+                all_rows = page.locator("tr.validation-row")
+                assert await all_rows.count() == 3
+
+                for row_index, state in expected_states.items():
+                    row = all_rows.nth(row_index)
+                    status = await row.locator(".validation-status-label").inner_text()
+                    assert status == {"clean": "No issues", "warning": "Warning", "blocking": "Blocking"}[state]
+                    for decision in decisions:
+                        has_active_issues = state != "clean"
+                        backend_required = requires_reason_for_row_decision(
+                            decision,
+                            has_active_issues=has_active_issues,
+                        )
+                        frontend_required = await page.evaluate(
+                            """([rowIndex, decision]) => {
+                                const row = document.querySelectorAll('tr.validation-row')[rowIndex];
+                                return requiresReviewNotes(decision, row);
+                            }""",
+                            arg=[row_index, decision or ""],
+                        )
+                        assert frontend_required is backend_required, (
+                            f"frontend/backend mismatch for {state}/{decision}: "
+                            f"frontend={frontend_required}, backend={backend_required}"
+                        )
             finally:
                 await browser.close()
     finally:

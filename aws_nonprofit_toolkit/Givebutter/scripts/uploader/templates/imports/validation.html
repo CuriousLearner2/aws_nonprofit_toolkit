@@ -617,6 +617,12 @@ function projectEffectiveDisposition(rowStatus, hasHumanDecision, humanDecision)
     return rowStatus === 'No issues' ? 'accept_as_is' : '';
 }
 
+// Keep the browser requirement aligned with the backend row-decision policy.
+function requiresReviewNotes(decision, row) {
+    return ['needs_follow_up', 'reject_row'].includes(decision)
+        || (decision === 'accept_as_is' && getRowIssuesData(row).length > 0);
+}
+
 // Render Issues cell with grouped summary while preserving the complete issue list for Details.
 function renderIssuesCell(issuesCell, persistedIssues, updateRowStatus = true) {
     const rawId = issuesCell.closest('tr').getAttribute('data-raw-id');
@@ -1420,8 +1426,7 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
         Boolean(decisionData?.has_decision),
         decisionData?.decision || '',
     );
-    const notesRequired = ['needs_follow_up', 'reject_row'].includes(selectedDecision)
-        || (selectedDecision === 'accept_as_is' && getRowStatusLabel(row) !== 'No issues');
+    const notesRequired = requiresReviewNotes(selectedDecision, row);
     const currentReviewHtml = decisionData?.has_decision
         ? `<div data-testid="current-review-details" style="margin: 8px 0 10px; padding: 8px; border: 1px solid #dbeafe; background: #eff6ff; border-radius: 3px; font-size: 12px;">Current saved review: <strong>${escapeHtml(formatRowDecisionLabel(decisionData.decision))}</strong><br>${escapeHtml(decisionData.reviewer || 'Reviewer not identified')} · ${escapeHtml(decisionData.notes || 'No notes')} · ${escapeHtml(decisionData.timestamp || '')}</div>`
         : '';
@@ -1545,8 +1550,7 @@ async function openRecordDetailsModal(recordId) {
 }
 
 function syncReviewNotesRequirement(modal, row, decision) {
-    const required = ['needs_follow_up', 'reject_row'].includes(decision)
-        || (decision === 'accept_as_is' && getRowIssuesData(row).length > 0);
+    const required = requiresReviewNotes(decision, row);
     const notesField = modal?.querySelector('textarea[id^="followup-notes-"]');
     const label = notesField?.closest('div')?.querySelector('label');
     const requiredMarker = label?.querySelector('.notes-required-marker');
@@ -1578,9 +1582,7 @@ function attachRecordDetailsReviewHandlers(recordId, row, decisionData) {
 
         const decision = decisionField?.value || '';
         const notes = (notesField?.value || '').trim();
-        const requiresNotes = ['needs_follow_up', 'reject_row'].includes(decision)
-            ? !notes
-            : decision === 'accept_as_is' && getRowIssuesData(row).length > 0 && !notes;
+        const requiresNotes = requiresReviewNotes(decision, row) && !notes;
         if (requiresNotes) {
             if (notesRequirement) {
                 notesRequirement.textContent = decision === 'needs_follow_up'
@@ -1769,8 +1771,7 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
         dropdown.dataset.hasDecision === 'true',
         previousValue,
     );
-    const notesRequired = ['needs_follow_up', 'reject_row'].includes(selectedDecision)
-        || (selectedDecision === 'accept_as_is' && getRowStatusLabel(row) !== 'No issues');
+    const notesRequired = requiresReviewNotes(selectedDecision, row);
 
     setSavedRowReviewState(dropdown, previousValue, previousLabel, currentNotes);
     if (!modal) return;
@@ -1847,9 +1848,7 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
 
         const decision = decisionField?.value || '';
         const notes = (notesField?.value || '').trim();
-        const requiresNotes = ['needs_follow_up', 'reject_row'].includes(decision)
-            ? !notes
-            : decision === 'accept_as_is' && getRowIssuesData(row).length > 0 && !notes;
+        const requiresNotes = requiresReviewNotes(decision, row) && !notes;
         if (requiresNotes) {
             if (notesRequirement) {
                 notesRequirement.textContent = decision === 'needs_follow_up'

@@ -30,6 +30,17 @@ ROW_HUMAN_DISPOSITIONS = frozenset({
 })
 
 
+def requires_reason_for_row_decision(
+    decision: str,
+    *,
+    has_active_issues: bool,
+) -> bool:
+    """Return whether a human row disposition needs an auditable reason."""
+    return decision in {'needs_follow_up', 'reject_row'} or (
+        decision == 'accept_as_is' and has_active_issues
+    )
+
+
 def project_effective_disposition(
     *,
     row_status: str,
@@ -183,9 +194,10 @@ def record_row_decision(
     # Reject and follow-up are explicit human dispositions and both require
     # an auditable reason. Accept-as-is has its issue-specific requirement
     # checked below after the row is loaded.
-    if decision in {'needs_follow_up', 'reject_row'} and not (notes and notes.strip()):
-        label = 'Follow-up' if decision == 'needs_follow_up' else 'Reject row'
-        raise ValueError(f'Reason / notes required for {label} decision')
+    if requires_reason_for_row_decision(decision, has_active_issues=False) and not (notes and notes.strip()):
+        if decision == 'needs_follow_up':
+            raise ValueError('Notes required for Follow-up decision')
+        raise ValueError('Reason / notes required for Reject row decision')
 
     normalized_sequence = _normalize_interaction_sequence(interaction_sequence)
     use_sequence_guard = normalized_sequence is not None
@@ -220,11 +232,12 @@ def record_row_decision(
         # never reach this persistence path.
         if decision == 'accept_as_is' and not (notes and notes.strip()):
             from .issue_recalculation_service import recalculate_row_issues
-            if recalculate_row_issues(
+            has_active_issues = bool(recalculate_row_issues(
                 batch_id=batch_id,
                 raw_import_row_id=raw_import_row_id,
                 database_url=database_url,
-            ):
+            ))
+            if requires_reason_for_row_decision(decision, has_active_issues=has_active_issues):
                 raise ValueError(
                     'Reason / notes required for Accept as-is when validation issues exist'
                 )

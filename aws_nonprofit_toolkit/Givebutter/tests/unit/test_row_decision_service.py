@@ -17,13 +17,46 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from scripts.householder.database_models import Base, ImportBatch, RawImportRow, ReviewDecision
+from scripts.householder.database_models import (
+    Base,
+    ImportBatch,
+    RawImportRow,
+    ReviewDecision,
+    ReviewItem,
+    ReviewItemSubject,
+)
 from scripts.householder.row_decision_service import (
     record_row_decision,
     get_row_decision,
     get_rows_with_follow_up,
     get_rows_with_defer,
+    requires_reason_for_row_decision,
 )
+
+
+@pytest.mark.parametrize(
+    ("row_state", "decision", "expected"),
+    [
+        ("clean", None, False),
+        ("clean", "accept_as_is", False),
+        ("clean", "needs_follow_up", True),
+        ("clean", "reject_row", True),
+        ("warning", None, False),
+        ("warning", "accept_as_is", True),
+        ("warning", "needs_follow_up", True),
+        ("warning", "reject_row", True),
+        ("blocking", None, False),
+        ("blocking", "accept_as_is", True),
+        ("blocking", "needs_follow_up", True),
+        ("blocking", "reject_row", True),
+    ],
+)
+def test_reason_requirement_matrix(row_state, decision, expected):
+    """The backend reason rule covers every validation/disposition combination."""
+    assert requires_reason_for_row_decision(
+        decision,
+        has_active_issues=row_state != "clean",
+    ) is expected
 
 
 @pytest.fixture
@@ -91,6 +124,63 @@ class TestRecordRowDecision:
         assert result['decision'] == 'accept_as_is'
         assert 'decision_id' in result
         assert 'timestamp' in result
+
+    def test_clean_accept_as_is_allows_blank_reason(self, temp_db):
+        """System-clean Accept as-is does not require human reason metadata."""
+        db_url, row_ids = temp_db
+        result = record_row_decision(
+            batch_id='test-batch-001',
+            raw_import_row_id=row_ids[0],
+            decision='accept_as_is',
+            notes=None,
+            database_url=db_url,
+        )
+        assert result['success'] is True
+
+    @pytest.mark.parametrize('severity', ['warning', 'error'])
+    def test_issue_accept_as_is_rejects_blank_reason_at_backend_boundary(self, temp_db, severity):
+        """Warning and blocking rows cannot bypass the human reason requirement."""
+        db_url, row_ids = temp_db
+        raw_id = row_ids[0]
+        engine = create_engine(db_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        row = session.query(RawImportRow).filter_by(id=raw_id).one()
+        row.raw_csv_data = {**row.raw_csv_data, 'email': 'not-an-email'}
+        item = ReviewItem(
+            batch_id='test-batch-001',
+            item_type='validation',
+            payload_json={
+                'field': 'email',
+                'reason': 'invalid',
+                'description': 'Invalid email',
+                'severity': severity,
+            },
+        )
+        session.add(item)
+        session.flush()
+        session.add(ReviewItemSubject(
+            review_item_id=item.id,
+            subject_type='import_raw_row',
+            subject_id=raw_id,
+        ))
+        session.commit()
+        session.close()
+
+        with pytest.raises(ValueError, match='Reason / notes required for Accept as-is'):
+            record_row_decision(
+                batch_id='test-batch-001',
+                raw_import_row_id=raw_id,
+                decision='accept_as_is',
+                notes=None,
+                database_url=db_url,
+            )
+
+        check = Session()
+        try:
+            assert check.query(ReviewDecision).filter_by(raw_import_row_id=raw_id).count() == 0
+        finally:
+            check.close()
 
     def test_record_needs_follow_up_with_notes(self, temp_db):
         """Test recording 'needs_follow_up' decision with notes."""
