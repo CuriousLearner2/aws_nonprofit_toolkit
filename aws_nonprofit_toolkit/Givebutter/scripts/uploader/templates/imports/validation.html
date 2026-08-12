@@ -1422,6 +1422,9 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
     );
     const notesRequired = ['needs_follow_up', 'reject_row'].includes(selectedDecision)
         || (selectedDecision === 'accept_as_is' && getRowStatusLabel(row) !== 'No issues');
+    const currentReviewHtml = decisionData?.has_decision
+        ? `<div data-testid="current-review-details" style="margin: 8px 0 10px; padding: 8px; border: 1px solid #dbeafe; background: #eff6ff; border-radius: 3px; font-size: 12px;">Current saved review: <strong>${escapeHtml(formatRowDecisionLabel(decisionData.decision))}</strong><br>${escapeHtml(decisionData.reviewer || 'Reviewer not identified')} · ${escapeHtml(decisionData.notes || 'No notes')} · ${escapeHtml(decisionData.timestamp || '')}</div>`
+        : '';
     const decisionOptions = [
         ['', 'No disposition'],
         ['accept_as_is', 'Accept as-is'],
@@ -1443,6 +1446,7 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
         </section>
         <section style="margin-bottom: 15px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><h3 style="margin: 0; font-size: 14px;">Reviewer disposition</h3></div>
+            ${currentReviewHtml}
             <p data-testid="review-save-guidance" style="margin: 0 0 8px; color: #6b7280; font-size: 12px;">Choose the disposition that best explains what should happen next. Your name and reason are saved with the decision for audit history.</p>
             <div data-testid="row-review-save-form" style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 4px; background: #f9fafb;">
                 <div style="margin-bottom: 10px;"><label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name <span aria-hidden="true" style="color: #b91c1c;">*</span></label><input class="reviewer-name-field" id="row-review-reviewer-${recordId}" type="text" autocomplete="off" aria-required="true" value="${escapeHtml(reviewerNameForSession)}" style="width: 100%; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;"><div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Your name identifies who made this decision in the audit history.</div><div class="reviewer-name-error" role="alert" style="display: none; font-size: 12px; color: #b91c1c; margin-top: 4px;">Enter your name before saving this review.</div></div>
@@ -1617,7 +1621,7 @@ function attachRecordDetailsReviewHandlers(recordId, row, decisionData) {
 
             if (response.ok) {
                 const result = await response.json();
-                applySavedRowDecision(dropdown, result, decision, notes);
+                applySavedRowDecision(dropdown, result, decision, notes, reviewerName);
                 clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                 closeModal('record-modal');
                 alert('Review saved.');
@@ -1719,7 +1723,7 @@ window.restoreRecordModalState = function(modal) {
     modal.dataset.reviewPreviousLabel = '';
 };
 
-function applySavedRowDecision(dropdown, result, decision, notes) {
+function applySavedRowDecision(dropdown, result, decision, notes, reviewerName) {
     if (decision === 'clear_decision') {
         const systemStatus = result.row_status || 'No issues';
         const projected = projectEffectiveDisposition(systemStatus, false, '');
@@ -1731,6 +1735,8 @@ function applySavedRowDecision(dropdown, result, decision, notes) {
         if (resetOption) resetOption.style.display = 'none';
         const editReviewButton = dropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
         if (editReviewButton) editReviewButton.style.display = 'none';
+        const dispositionMeta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
+        if (dispositionMeta) dispositionMeta.textContent = 'No saved reviewer decision';
         return;
     }
     setSavedRowReviewState(
@@ -1740,6 +1746,12 @@ function applySavedRowDecision(dropdown, result, decision, notes) {
         notes
     );
     dropdown.dataset.systemDisposition = 'false';
+    const dispositionMeta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
+    if (dispositionMeta) {
+        dispositionMeta.textContent = [reviewerName, notes, result.timestamp]
+            .filter(Boolean)
+            .join(' · ') || 'Saved reviewer disposition';
+    }
 }
 
 async function openRowReviewModal(recordId, dropdown, requestedDecision) {
@@ -1874,7 +1886,7 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
 
             if (response.ok) {
                 const result = await response.json();
-                applySavedRowDecision(dropdown, result, decision, notes);
+                applySavedRowDecision(dropdown, result, decision, notes, reviewerName);
                 clearRowDecisionRequest(rawId, rowDecisionRequest.token);
                 modal.dataset.reviewActive = 'false';
                 modal.dataset.reviewRawId = '';
