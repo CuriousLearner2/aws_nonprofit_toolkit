@@ -14,9 +14,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from .database_models import (
-    ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewItemSubject
+    ImportBatch, ImportContact, RawImportRow, ReviewItem, ReviewItemSubject,
 )
-from .autosave_service import get_effective_values, validate_name_correction
+from .autosave_service import (
+    get_effective_values,
+    has_explicit_reviewed_value,
+    validate_name_correction,
+)
 from .amount_validation_service import validate_review_amount
 from .email_validation_service import validate_review_email
 from .date_validation_service import validate_review_date
@@ -83,6 +87,14 @@ def _validation_issue_value_for_field(values: Dict[str, Any], field: Any) -> Any
     return values.get(field)
 
 
+def has_recognized_address_source(raw_data: Dict[str, Any]) -> bool:
+    """Return whether the imported row schema contains an address field."""
+    return any(
+        normalize_validation_issue_field(key) == 'address'
+        for key in (raw_data or {})
+    )
+
+
 def recalculate_row_issues(
     batch_id: str,
     raw_import_row_id: int,
@@ -147,6 +159,16 @@ def recalculate_row_issues(
             normalize_validation_issue_field(key) or key: value
             for key, value in (raw_row.raw_csv_data or {}).items()
         }
+        has_address_source = has_recognized_address_source(raw_data)
+        has_address_correction = has_explicit_reviewed_value(
+            batch_id,
+            raw_import_row_id,
+            'address',
+            database_url,
+        ) or any(
+            normalize_validation_issue_field(key) == 'address'
+            for key in (proposed_values or {})
+        )
         contact = session.query(ImportContact).filter_by(
             batch_id=batch_id,
             raw_import_row_id=raw_import_row_id,
@@ -156,7 +178,12 @@ def recalculate_row_issues(
         # when the raw source used a blank address alias.  Recalculate against
         # that same populated value so a stale missing-address warning clears
         # without mutating raw import data.
-        if contact and not str(_validation_issue_value_for_field(effective_values, 'address') or '').strip():
+        if (
+            has_address_source
+            and not has_address_correction
+            and contact
+            and not str(_validation_issue_value_for_field(effective_values, 'address') or '').strip()
+        ):
             if contact.address_line1 and str(contact.address_line1).strip():
                 effective_values['address'] = contact.address_line1
 
@@ -186,6 +213,8 @@ def recalculate_row_issues(
                 'error' if payload.get('validation_tier') == 'FAIL' else 'warning'
             )
             normalized_field = normalize_validation_issue_field(issue_field)
+            if normalized_field == 'address' and not has_address_source:
+                continue
 
             # Get the corrected value for this field (if any)
             if normalized_field == 'address':
@@ -286,6 +315,8 @@ def recalculate_row_issues(
         for new_issue in new_validation_issues:
             new_issue_field = str(new_issue.get('field')).strip().lower() if new_issue.get('field') else ''
             if new_issue_field == 'address':
+                if not has_address_source:
+                    continue
                 new_address_issues.append(new_issue)
                 continue
             if new_issue_field not in existing_fields:
@@ -299,11 +330,7 @@ def recalculate_row_issues(
         # A blank address is actionable only when the import actually carried
         # an address field/source. Rows with no address source must not acquire
         # a synthesized warning merely because the contact projection is blank.
-        has_authoritative_address = (
-            'address' in raw_data
-            or (contact is not None and contact.address_line1 is not None)
-        )
-        if address_issue and has_authoritative_address:
+        if address_issue and has_address_source:
             new_address_issues.append(address_issue)
 
         existing_address_issues = [

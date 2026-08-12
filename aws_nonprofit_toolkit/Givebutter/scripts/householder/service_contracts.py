@@ -103,6 +103,7 @@ class ValidationRow:
     phone: str
     amount: str
     address: str
+    address_visible: bool = True
     transaction_id: str = ""
     raw_import_row_id: Optional[int] = None
     issue_type: Optional[str] = None
@@ -122,6 +123,7 @@ class ValidationRow:
             "phone": self.phone,
             "amount": self.amount,
             "address": self.address,
+            "address_visible": self.address_visible,
             "raw_import_row_id": self.raw_import_row_id,
             "issue_type": self.issue_type,
             "issue_description": self.issue_description,
@@ -145,6 +147,7 @@ class ValidationPageViewModel:
     validation_rows: tuple  # Tuple of ValidationRow
     validation_issues_count: int
     total_records: int
+    address_visible: bool = True
 
     def to_template_dict(self) -> dict:
         """Convert to dictionary for template rendering."""
@@ -159,6 +162,7 @@ class ValidationPageViewModel:
                 "validation_issues": self.validation_issues_count,
             },
             "total_records": self.total_records,
+            "address_visible": self.address_visible,
         }
 
 

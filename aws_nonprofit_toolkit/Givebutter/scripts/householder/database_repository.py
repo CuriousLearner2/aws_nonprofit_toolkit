@@ -378,15 +378,18 @@ class DatabaseImportRepository:
                         }
 
             # Import effective values function and issue recalculation
-            from .autosave_service import get_effective_values
-            from .issue_recalculation_service import recalculate_row_issues
+            from .autosave_service import get_effective_values, has_explicit_reviewed_value
+            from .issue_recalculation_service import recalculate_row_issues, has_recognized_address_source
 
             # Build validation rows from contacts
             validation_rows = []
+            batch_address_visible = False
             for contact in contacts:
                 # Fetch transaction_id from raw import row
                 raw_row = session.query(RawImportRow).filter_by(id=contact.raw_import_row_id).first()
                 raw_csv_data = raw_row.raw_csv_data if raw_row else {}
+                address_visible = has_recognized_address_source(raw_csv_data)
+                batch_address_visible = batch_address_visible or address_visible
                 transaction_id = (
                     raw_csv_data.get('Transaction ID')
                     or raw_csv_data.get('transaction_id')
@@ -414,7 +417,12 @@ class DatabaseImportRepository:
 
                 # Use effective address, fall back to contact values if not in corrections
                 effective_address = effective.get('address', '')
-                if not effective_address:
+                if not effective_address and not has_explicit_reviewed_value(
+                    import_id,
+                    contact.raw_import_row_id,
+                    'address',
+                    self.database_url,
+                ) and address_visible:
                     address_parts = []
                     if contact.address_line1:
                         address_parts.append(contact.address_line1)
@@ -514,6 +522,7 @@ class DatabaseImportRepository:
                     phone=effective_phone,  # Effective phone (corrected or raw)
                     amount=amount_str,  # Effective amount (corrected or raw)
                     address=effective_address,  # Effective address (corrected or raw)
+                    address_visible=address_visible,
                     raw_import_row_id=contact.raw_import_row_id,
                     issue_type=issue_type,
                     issue_description=issue_description,
@@ -530,6 +539,7 @@ class DatabaseImportRepository:
                 validation_rows=tuple(validation_rows),
                 validation_issues_count=validation_issues_count,
                 total_records=len(contacts),
+                address_visible=batch_address_visible,
             )
 
         finally:

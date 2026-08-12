@@ -126,7 +126,7 @@
                 <th style="width: 110px;">Email</th>
                 <th style="width: 120px;">Phone</th>
                 <th style="width: 70px;">Amount</th>
-                <th style="width: 100px;">Address</th>
+                {% if address_visible %}<th style="width: 100px;">Address</th>{% endif %}
                 <th style="width: 100px;">Validation status</th>
                 <th style="width: 130px;">Reviewer disposition</th>
                 <th style="width: 150px;">Issues</th>
@@ -188,12 +188,12 @@
                 </td>
 
                 <!-- Editable: Address -->
-                <td>
+                {% if address_visible %}<td>
                     <input type="text" class="inline-edit-field autosave-field" data-field="address" data-raw-id="{{ record.raw_import_row_id }}"
                            value="{{ record.address or '' }}" placeholder="Street, City, State"
                            style="width: 260px; padding: 4px; border: 1px solid #d0d0d0; border-radius: 2px; font-size: 12px; box-sizing: border-box;">
                     <span class="autosave-status" style="display: none; font-size: 10px; color: #6b7280; margin-left: 4px;"></span>
-                </td>
+                </td>{% endif %}
 
                 <!-- System-derived validation status -->
                 <td class="validation-status-cell" data-testid="validation-status-cell-{{ record.id }}">

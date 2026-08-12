@@ -17,7 +17,9 @@ from scripts.householder.database_models import (
     RawImportRow,
     ReviewItem,
     ReviewItemSubject,
+    ReviewDecision,
 )
+from scripts.householder.database_repository import DatabaseImportRepository
 from scripts.householder.issue_recalculation_service import recalculate_row_issues
 
 
@@ -142,6 +144,91 @@ def test_populated_contact_address_clears_stale_raw_missing_warning():
         session.close()
 
         assert recalculate_row_issues(batch_id, raw_id, database_url) == []
+
+
+def test_explicit_blank_address_correction_keeps_source_capable_warning():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        database_url = f"sqlite:///{Path(tmpdir) / 'address-correction.db'}"
+        engine = create_engine(database_url)
+        Base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)()
+        batch = ImportBatch(
+            id='address-correction-batch', filename='address.csv',
+            upload_timestamp=datetime.now(timezone.utc), raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+        raw = RawImportRow(
+            batch_id=batch.id, row_index=1,
+            raw_csv_data={'Address 1': '123 Main St, Springfield, IL 62701'},
+        )
+        session.add(raw)
+        session.flush()
+        contact = ImportContact(
+            batch_id=batch.id, raw_import_row_id=raw.id,
+            first_name='Address', last_name='Correction',
+            address_line1='123 Main St, Springfield, IL 62701',
+        )
+        session.add(contact)
+        session.flush()
+        issue = ReviewItem(
+            batch_id=batch.id, item_type='validation', status='pending',
+            payload_json={'field': 'address', 'reason': 'missing',
+                          'severity': 'warning', 'description': 'Missing address'},
+        )
+        session.add(issue)
+        session.flush()
+        session.add(ReviewItemSubject(
+            review_item_id=issue.id, subject_type='import_raw_row',
+            subject_id=raw.id, role='primary',
+        ))
+        session.add(ReviewDecision(
+            batch_id=batch.id, raw_import_row_id=raw.id,
+            decision='accept_issue', reviewed_values={'address': ''},
+        ))
+        session.commit()
+        batch_id = batch.id
+        raw_id = raw.id
+        session.close()
+
+        issues = recalculate_row_issues(batch_id, raw_id, database_url)
+        assert len(issues) == 1
+        assert issues[0]['field'] == 'address'
+        assert issues[0]['description'] == 'Missing address'
+        assert issues[0]['severity'] == 'warning'
+
+
+def test_source_without_address_field_has_no_warning_and_hides_address():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        database_url = f"sqlite:///{Path(tmpdir) / 'address-absent.db'}"
+        engine = create_engine(database_url)
+        Base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)()
+        batch = ImportBatch(
+            id='address-absent-batch', filename='no-address.csv',
+            upload_timestamp=datetime.now(timezone.utc), raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+        raw = RawImportRow(
+            batch_id=batch.id, row_index=1,
+            raw_csv_data={'Name': 'No Address Source', 'Email': 'n@example.com'},
+        )
+        session.add(raw)
+        session.flush()
+        session.add(ImportContact(
+            batch_id=batch.id, raw_import_row_id=raw.id,
+            first_name='No', last_name='Address',
+            email='n@example.com', address_line1='Snapshot address',
+        ))
+        session.commit()
+        batch_id = batch.id
+        raw_id = raw.id
+        session.close()
+
+        assert recalculate_row_issues(batch_id, raw_id, database_url) == []
+        row = DatabaseImportRepository(database_url).get_validation(batch_id).validation_rows[0]
+        assert row.address_visible is False
 
 
 def _seed_batch_with_duplicate_address_issues(

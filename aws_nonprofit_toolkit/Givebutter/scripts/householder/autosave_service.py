@@ -8,6 +8,8 @@ Audit trail preserves full correction history.
 
 from typing import Optional, Mapping, Any
 from datetime import datetime, timezone
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
@@ -202,6 +204,37 @@ def get_effective_values(
 
         return effective_values
 
+    finally:
+        session.close()
+
+
+def has_explicit_reviewed_value(
+    batch_id: str,
+    raw_import_row_id: int,
+    field: str,
+    database_url: Optional[str] = None,
+) -> bool:
+    """Return whether any append-only correction explicitly reviewed ``field``."""
+    from .database_models import ReviewDecision
+    from .issue_identity import normalize_validation_issue_field
+    import os
+
+    if database_url is None:
+        database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
+
+    engine = create_engine(database_url, echo=False)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    try:
+        decisions = session.query(ReviewDecision).filter_by(
+            batch_id=batch_id,
+            raw_import_row_id=raw_import_row_id,
+        ).all()
+        target = normalize_validation_issue_field(field)
+        return any(
+            any(normalize_validation_issue_field(key) == target for key in (decision.reviewed_values or {}))
+            for decision in decisions
+        )
     finally:
         session.close()
 
