@@ -152,6 +152,14 @@ def recalculate_row_issues(
             raw_import_row_id=raw_import_row_id,
         ).first()
 
+        # The review projection may display the normalized contact snapshot
+        # when the raw source used a blank address alias.  Recalculate against
+        # that same populated value so a stale missing-address warning clears
+        # without mutating raw import data.
+        if contact and not str(_validation_issue_value_for_field(effective_values, 'address') or '').strip():
+            if contact.address_line1 and str(contact.address_line1).strip():
+                effective_values['address'] = contact.address_line1
+
         # Get all existing validation issues for this row
         # Check both import_raw_row (Phase 1B raw data) and import_contact_snapshot (demo data)
         existing_issues = session.query(ReviewItem).join(

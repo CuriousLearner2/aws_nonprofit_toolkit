@@ -137,10 +137,18 @@ def validate_review_phone(
                 )
             return PhoneValidationResult(valid=False, blocking_error=PHONE_FORMAT_ERROR)
 
+    # A number confidently parsed as NANP is a valid domestic number even
+    # when the reviewer entered it without a country prefix.  Do not infer
+    # international intent from ordinary US/Canada/Jamaica formatting.
+    country_code_warning = (
+        PHONE_COUNTRY_CODE_WARNING
+        if not has_explicit_country_code and parsed.country_code != 1
+        else ()
+    )
     return PhoneValidationResult(
         valid=True,
         normalized_value=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164),
-        warnings=(PHONE_COUNTRY_CODE_WARNING,) if not has_explicit_country_code else (),
+        warnings=(country_code_warning,) if country_code_warning else (),
         formatted=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164),
         national=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.NATIONAL),
         international=phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL),

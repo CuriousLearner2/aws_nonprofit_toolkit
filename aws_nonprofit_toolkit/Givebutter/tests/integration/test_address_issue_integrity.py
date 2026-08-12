@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from scripts.householder.autosave_service import autosave_row_corrections
 from scripts.householder.database_models import (
     Base,
+    ImportContact,
     ImportBatch,
     RawImportRow,
     ReviewItem,
@@ -102,6 +103,45 @@ def test_missing_address_is_single_issue_and_clears_on_valid_correction():
             assert raw_row.raw_csv_data["Address 1"] == ""
         finally:
             session.close()
+
+
+def test_populated_contact_address_clears_stale_raw_missing_warning():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        database_url = f"sqlite:///{Path(tmpdir) / 'address-contact.db'}"
+        engine = create_engine(database_url)
+        Base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)()
+        batch = ImportBatch(
+            id='address-contact-batch', filename='address.csv',
+            upload_timestamp=datetime.now(timezone.utc), raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+        raw = RawImportRow(batch_id=batch.id, row_index=1, raw_csv_data={'Address 1': ''})
+        session.add(raw)
+        session.flush()
+        session.add(ImportContact(
+            batch_id=batch.id, raw_import_row_id=raw.id,
+            first_name='Address', last_name='Contact',
+            address_line1='123 Main St, Springfield, IL 62701',
+        ))
+        issue = ReviewItem(
+            batch_id=batch.id, item_type='validation', status='pending',
+            payload_json={'field': 'address', 'reason': 'missing',
+                          'severity': 'warning', 'description': 'Missing address'},
+        )
+        session.add(issue)
+        session.flush()
+        session.add(ReviewItemSubject(
+            review_item_id=issue.id, subject_type='import_raw_row',
+            subject_id=raw.id, role='primary',
+        ))
+        session.commit()
+        batch_id = batch.id
+        raw_id = raw.id
+        session.close()
+
+        assert recalculate_row_issues(batch_id, raw_id, database_url) == []
 
 
 def _seed_batch_with_duplicate_address_issues(

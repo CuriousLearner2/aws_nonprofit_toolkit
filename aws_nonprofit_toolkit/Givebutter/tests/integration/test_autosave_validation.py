@@ -226,11 +226,10 @@ class TestAutosaveValidation:
         assert 'Invalid email format' in errors['email']
 
     def test_validate_corrected_values_invalid_phone(self):
-        """Unit test: validate_corrected_values rejects invalid phone."""
+        """Phone-like uncertainty is accepted for warning-first review."""
         is_valid, errors = validate_corrected_values({'phone': '555'})
-        assert is_valid is False
-        assert 'phone' in errors
-        assert 'Invalid phone' in errors['phone']
+        assert is_valid is True
+        assert errors is None
 
     def test_validate_corrected_values_valid_email(self):
         """Unit test: validate_corrected_values accepts valid email."""
@@ -354,8 +353,8 @@ class TestAutosaveValidation:
         finally:
             session.close()
 
-    def test_autosave_invalid_phone_not_saved(self, client_with_db):
-        """CRITICAL: Invalid phone correction is REJECTED and NOT saved."""
+    def test_autosave_phone_like_uncertainty_is_saved_as_warning(self, client_with_db):
+        """Phone-like uncertainty is saved exactly as entered with a warning."""
         client, database_url = client_with_db
         batch_id, raw_row_id = setup_validation_batch(database_url)
 
@@ -371,20 +370,20 @@ class TestAutosaveValidation:
         )
 
         # Should fail
-        assert response.status_code == 400
+        assert response.status_code == 200
         result = response.get_json()
-        assert result['success'] is False
-        assert 'validation_errors' in result
-        assert 'phone' in result['validation_errors']
-
-        # Verify NOT saved to database
+        assert result['success'] is True
+        assert result['row_status'] == 'Warning'
+        assert any(issue.get('field') == 'phone' for issue in result['issues'])
+        # Verify exact value is persisted for reviewer disposition.
         SessionLocal = sessionmaker(bind=create_db_engine(database_url))
         session = SessionLocal()
         try:
             decisions = session.query(ReviewDecision).filter_by(
                 raw_import_row_id=raw_row_id
             ).all()
-            assert len(decisions) == 0, f"Invalid phone was saved! {decisions}"
+            assert len(decisions) == 1
+            assert decisions[0].reviewed_values['phone'] == '555'
         finally:
             session.close()
 

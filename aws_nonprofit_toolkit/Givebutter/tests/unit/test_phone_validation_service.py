@@ -200,11 +200,16 @@ class TestPhoneValidationService:
         assert result.region == region
         assert result.international
 
-    def test_ambiguous_countryless_number_warns_without_blocking(self):
+    def test_valid_countryless_nanp_number_has_no_international_warning(self):
         result = validate_review_phone('2079460958')
         assert result.valid is True
-        assert PHONE_COUNTRY_CODE_WARNING in result.warnings
+        assert PHONE_COUNTRY_CODE_WARNING not in result.warnings
         assert result.formatted == '+12079460958'
+
+    def test_ambiguous_countryless_phone_like_value_warns_without_blocking(self):
+        result = validate_review_phone('1234567')
+        assert result.valid is True
+        assert PHONE_REVIEW_WARNING in result.warnings
 
     @pytest.mark.parametrize('value', ['+999123456789', '+91 123'])
     def test_malformed_phone_like_international_number_warns(self, value):
