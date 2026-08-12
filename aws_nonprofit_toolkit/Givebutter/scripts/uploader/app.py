@@ -1685,6 +1685,7 @@ def autosave_row_corrections(import_id):
             'row_status': row_status,
             'issues': formatted_issues,
             'saved_at': datetime.now(timezone.utc).isoformat(),
+            'disposition_invalidated': result.disposition_invalidated,
             'message': 'Autosave completed successfully'
         }), 200
     except ValueError as e:

@@ -102,6 +102,27 @@ def _get_latest_row_status_decision(session, batch_id: str, raw_import_row_id: i
     )
 
 
+def invalidate_human_disposition_after_edit(session, batch_id: str, raw_import_row_id: int) -> bool:
+    """Append a clear marker when a persisted edit supersedes a human decision."""
+    latest = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
+    decision_type, _, sequence = _extract_row_status_decision_state(latest)
+    if decision_type not in ROW_HUMAN_DISPOSITIONS:
+        return False
+
+    reviewed_values = {'invalidation_reason': 'persisted_edit'}
+    if sequence is not None:
+        reviewed_values['interaction_sequence'] = sequence
+    session.add(ReviewDecision(
+        batch_id=batch_id,
+        review_item_id=None,
+        raw_import_row_id=raw_import_row_id,
+        decision='row_status:clear_decision',
+        reviewed_values=reviewed_values,
+        reviewer=None,
+    ))
+    return True
+
+
 def _extract_row_status_decision_state(review_decision):
     if not review_decision:
         return None, None, None

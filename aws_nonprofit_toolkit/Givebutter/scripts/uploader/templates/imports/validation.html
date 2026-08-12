@@ -1309,6 +1309,31 @@ function updateRowFromAutosave(row, result, editedField) {
     if (issuesCell && result.issues !== undefined) {
         renderIssuesCell(issuesCell, result.issues);
     }
+
+    if (result.disposition_invalidated) {
+        resetRowDispositionAfterPersistedEdit(row);
+    }
+}
+
+function resetRowDispositionAfterPersistedEdit(row) {
+    const dropdown = row.querySelector('.row-status-dropdown');
+    if (!dropdown) return;
+    const rowStatus = getRowStatusLabel(row);
+    const projected = projectEffectiveDisposition(rowStatus, false, '');
+    row.dataset.disposition = '';
+    dropdown.dataset.hasDecision = 'false';
+    dropdown.dataset.currentDecision = '';
+    dropdown.dataset.currentNotes = '';
+    dropdown.dataset.systemDisposition = projected ? 'true' : 'false';
+    dropdown.value = projected;
+    dropdown.style.backgroundColor = '';
+    const resetOption = dropdown.querySelector('.reset-option');
+    if (resetOption) resetOption.style.display = 'none';
+    const editReviewButton = dropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
+    if (editReviewButton) editReviewButton.style.display = 'none';
+    const meta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
+    if (meta) meta.textContent = 'No saved reviewer decision';
+    window.householderValidationApplyIssueFilter?.();
 }
 
 function escapeHtml(value) {

@@ -19,6 +19,7 @@ class ValidationDecisionResult:
     effective_status: str
     audit_log_id: int
     timestamp: datetime
+    disposition_invalidated: bool = False
 
 
 class ValidationDecisionWriter(Protocol):

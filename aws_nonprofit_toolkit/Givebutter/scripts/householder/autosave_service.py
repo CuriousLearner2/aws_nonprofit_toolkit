@@ -58,6 +58,7 @@ def autosave_row_corrections(
         DatabaseError: If write transaction fails
     """
     from .database_models import ReviewDecision, get_session, create_db_engine
+    from .row_decision_service import invalidate_human_disposition_after_edit
     from .amount_validation_service import validate_review_amount
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -123,6 +124,9 @@ def autosave_row_corrections(
             reviewer=reviewer
         )
         session.add(decision)
+        disposition_invalidated = invalidate_human_disposition_after_edit(
+            session, batch_id, raw_import_row_id
+        )
         session.commit()
 
         return ValidationDecisionResult(
@@ -131,7 +135,8 @@ def autosave_row_corrections(
             decision='accept_issue',
             effective_status='accepted',
             audit_log_id=0,  # Placeholder
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
+            disposition_invalidated=disposition_invalidated,
         )
 
     finally:

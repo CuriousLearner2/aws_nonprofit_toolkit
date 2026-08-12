@@ -20,6 +20,7 @@ from scripts.householder.database_models import (  # noqa: E402
     create_db_engine,
 )
 from scripts.householder.export_preview_service import build_export_preview  # noqa: E402
+from scripts.householder.row_decision_service import get_row_decision_state  # noqa: E402
 from tests.e2e.test_validation_review_dom import (  # noqa: E402
     e2e_database_and_app,
     start_flask_server,
@@ -162,8 +163,8 @@ async def _save_disposition(page, row_index, value, notes):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_saved_human_disposition_survives_validation_changes(e2e_database_and_app):
-    """Human acceptance remains effective while validation status changes independently."""
+async def test_saved_human_disposition_is_invalidated_by_persisted_edits(e2e_database_and_app):
+    """A persisted edit supersedes the current human disposition, not its history."""
     from playwright.async_api import async_playwright
 
     database_url, _, flask_app = e2e_database_and_app
@@ -228,28 +229,37 @@ async def test_saved_human_disposition_survives_validation_changes(e2e_database_
                 await page.goto(f"{base_url}/imports/{batch_id}/readiness")
                 assert "Export Blocked" not in await page.inner_text("body")
 
-                # Reload preserves both the saved human projection and clean readiness.
+                # Reload preserves the clean system projection after the human decision is invalidated.
                 await page.goto(f"{base_url}/imports/{batch_id}/validation")
                 row = page.locator("tr.validation-row").first
                 await row.wait_for()
                 assert await row.locator(".validation-status-label").inner_text() == "No issues"
                 assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                assert "No saved reviewer decision" in await row.locator(".row-disposition-meta").inner_text()
 
-                # Reintroducing the issue changes validation only; the saved human disposition remains effective.
-                email = row.locator('input[data-field="email"]')
-                await email.fill("again-invalid")
-                await email.evaluate("element => element.blur()")
+                # Reintroducing a persisted address warning invalidates the human disposition.
+                address = row.locator('input[data-field="address"]')
+                await address.fill("")
+                await address.evaluate("element => element.blur()")
                 await page.wait_for_function(
-                    "() => document.querySelector('tr.validation-row .validation-status-label')?.textContent.trim() === 'Blocking'",
+                    "() => document.querySelector('tr.validation-row .validation-status-label')?.textContent.trim() === 'Warning'",
                     timeout=5000,
                 )
-                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                assert await row.locator(".row-status-dropdown").input_value() == ""
                 session.expire_all()
                 assert session.query(ReviewDecision).filter_by(
                     batch_id=batch_id,
                     raw_import_row_id=raw.id,
                     decision="row_status:accept_as_is",
                 ).count() == 1
+                assert session.query(ReviewDecision).filter_by(
+                    batch_id=batch_id,
+                    raw_import_row_id=raw.id,
+                    decision="row_status:clear_decision",
+                ).count() >= 1
+                state = get_row_decision_state(batch_id, raw.id, database_url)
+                assert state["has_decision"] is False
+                assert any(entry["decision"] == "accept_as_is" for entry in state["history"])
                 assert session.query(AuditLogRecord).filter_by(batch_id=batch_id).count() >= audit_count_after_save
                 preview = build_export_preview(batch_id, {"GIVEBUTTER_DATABASE_URL": database_url})
                 assert preview.blocked_count == 0
