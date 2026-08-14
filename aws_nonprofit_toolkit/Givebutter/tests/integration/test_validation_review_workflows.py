@@ -2593,10 +2593,10 @@ class TestDetailsModalControls:
         assert data['has_decision'] is True, \
             f"After recording decision, has_decision should be True, got: {data}"
 
-    def test_row_decision_get_returns_prior_history_newest_first_and_excludes_current(
+    def test_row_decision_get_returns_complete_history_newest_first(
         self, flask_client_with_validation_batch
     ):
-        """The Details response exposes only prior reviewer revisions."""
+        """The Details response exposes the complete append-only revision sequence."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
         raw_id = raw_rows[5]
         endpoint = f'/imports/validation-workflow-test-batch/row-decision/{raw_id}'
@@ -2640,10 +2640,11 @@ class TestDetailsModalControls:
         assert data['decision'] == 'needs_follow_up'
         assert data['notes'] == 'Updated note only'
         assert data['reviewer'] == 'Reviewer Two'
-        assert [entry['decision_id'] for entry in data['history']] == [first_id]
-        assert data['history'][0]['notes'] == 'Initial note'
-        assert data['history'][0]['reviewer'] is None
-        assert second_id not in [entry['decision_id'] for entry in data['history']]
+        assert [entry['decision_id'] for entry in data['history']] == [second_id, first_id]
+        assert data['history'][0]['notes'] == 'Updated note only'
+        assert data['history'][0]['reviewer'] == 'Reviewer Two'
+        assert data['history'][1]['notes'] == 'Initial note'
+        assert data['history'][1]['reviewer'] is None
 
     def test_unchanged_row_decision_with_new_sequence_creates_no_revision(
         self, flask_client_with_validation_batch

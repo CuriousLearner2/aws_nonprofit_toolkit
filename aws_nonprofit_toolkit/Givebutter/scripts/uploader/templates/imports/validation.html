@@ -1318,12 +1318,12 @@ async function getRowDecisionData(rawId) {
     try {
         const response = await fetch(`/imports/${batchId}/row-decision/${rawId}`);
         if (!response.ok) {
-            return { has_decision: false, decision: null, notes: null, timestamp: null, reviewer: null, interaction_sequence: 0, history: [] };
+            return { has_decision: false, decision: null, notes: null, timestamp: null, reviewer: null, interaction_sequence: 0, last_event: null, history: [] };
         }
         return await response.json();
     } catch (error) {
         console.error(`Error loading row decision for ${rawId}:`, error);
-        return { has_decision: false, decision: null, notes: null, timestamp: null, reviewer: null, interaction_sequence: 0, history: [] };
+        return { has_decision: false, decision: null, notes: null, timestamp: null, reviewer: null, interaction_sequence: 0, last_event: null, history: [] };
     }
 }
 
@@ -1439,10 +1439,7 @@ function buildRecordSummaryHtml(row, recordId, decisionData) {
         ...(decisionData?.has_decision ? [['', 'No disposition']] : []),
     ].map(([value, label]) => `<option value="${value}" ${selectedDecision === value ? 'selected' : ''}>${label}</option>`).join('');
 
-    const reviewHistory = [
-        ...(decisionData?.last_event ? [decisionData.last_event] : []),
-        ...(decisionData?.history || []),
-    ];
+    const reviewHistory = decisionData?.history || [];
 
     return `
         <div style="margin-bottom: 14px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 4px; background: #f9fafb; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">

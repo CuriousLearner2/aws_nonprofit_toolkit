@@ -439,7 +439,9 @@ def get_row_decision_state(
             'reviewer': latest.reviewer,
             'interaction_sequence': sequence or 0,
             'last_event': last_event,
-            'history': _serialize_row_decision_history(row_decisions[1:]),
+            # The history read model is the complete append-only sequence,
+            # including the active/latest event shown in the current summary.
+            'history': _serialize_row_decision_history(row_decisions),
         }
 
     finally:

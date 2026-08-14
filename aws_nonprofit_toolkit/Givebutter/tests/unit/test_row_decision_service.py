@@ -413,8 +413,32 @@ class TestGetRowDecision:
         assert state['has_decision'] is False
         assert state['decision'] is None
         assert state['last_event']['decision'] == 'clear_decision'
-        assert state['history'][0]['decision'] == 'needs_follow_up'
-        assert state['history'][0]['notes'] == 'Check data'
+        assert [event['decision'] for event in state['history']] == [
+            'clear_decision', 'needs_follow_up'
+        ]
+        assert state['history'][1]['notes'] == 'Check data'
+
+    def test_active_human_decision_is_in_complete_history(self, temp_db):
+        """The current human review is also the newest append-only history event."""
+        db_url, row_ids = temp_db
+        record_row_decision(
+            batch_id='test-batch-001',
+            raw_import_row_id=row_ids[0],
+            decision='reject_row',
+            notes='Keep this row out of export',
+            reviewer_name='Reviewer 025',
+            database_url=db_url,
+        )
+
+        state = get_row_decision_state(
+            batch_id='test-batch-001',
+            raw_import_row_id=row_ids[0],
+            database_url=db_url,
+        )
+        assert len(state['history']) == 1
+        assert state['history'][0]['decision'] == 'reject_row'
+        assert state['history'][0]['reviewer'] == 'Reviewer 025'
+        assert state['history'][0]['notes'] == 'Keep this row out of export'
 
     def test_multiple_decisions_returns_latest(self, temp_db):
         """Test that multiple decisions return the latest one."""
