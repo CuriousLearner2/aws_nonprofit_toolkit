@@ -236,7 +236,8 @@ class TestValidationDecisionUI:
         assert 'Needs follow-up' in html or 'needs_follow_up' in html
         assert 'Defer' not in html
         assert 'Reject row' in html
-        assert 'Clear decision' in html
+        assert 'Clear decision' not in html
+        assert 'value="clear_decision"' not in html
         assert 'Record Details' in html
         assert 'IMP-2025-0101-A' in html
 
@@ -432,7 +433,9 @@ class TestValidationDecisionUI:
         assert 'needs_follow_up' in html
         assert 'defer' not in html
         assert 'reject_row' in html
-        assert 'clear_decision' in html
+        assert 'Clear decision' not in html
+        assert 'reset-option' not in html
+        assert 'value="clear_decision"' not in html
 
         # Verify no other decision types (future proof)
         # These should not appear in the validation form

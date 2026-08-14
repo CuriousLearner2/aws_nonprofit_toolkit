@@ -28,6 +28,7 @@ from scripts.householder.database_models import (
 from scripts.householder.row_decision_service import (
     record_row_decision,
     get_row_decision,
+    get_row_decision_state,
     get_rows_with_follow_up,
     get_rows_with_defer,
     requires_reason_for_row_decision,
@@ -382,6 +383,38 @@ class TestGetRowDecision:
         )
 
         assert decision is None
+
+    def test_clear_decision_state_preserves_history_and_exposes_reset_context(self, temp_db):
+        """A reset is system state plus append-only history, not a disposition."""
+        db_url, row_ids = temp_db
+        raw_id = row_ids[0]
+
+        record_row_decision(
+            batch_id='test-batch-001',
+            raw_import_row_id=raw_id,
+            decision='needs_follow_up',
+            notes='Check data',
+            reviewer_name='Reviewer 025',
+            database_url=db_url,
+        )
+        record_row_decision(
+            batch_id='test-batch-001',
+            raw_import_row_id=raw_id,
+            decision='clear_decision',
+            reviewer_name='Reviewer 025',
+            database_url=db_url,
+        )
+
+        state = get_row_decision_state(
+            batch_id='test-batch-001',
+            raw_import_row_id=raw_id,
+            database_url=db_url,
+        )
+        assert state['has_decision'] is False
+        assert state['decision'] is None
+        assert state['last_event']['decision'] == 'clear_decision'
+        assert state['history'][0]['decision'] == 'needs_follow_up'
+        assert state['history'][0]['notes'] == 'Check data'
 
     def test_multiple_decisions_returns_latest(self, temp_db):
         """Test that multiple decisions return the latest one."""

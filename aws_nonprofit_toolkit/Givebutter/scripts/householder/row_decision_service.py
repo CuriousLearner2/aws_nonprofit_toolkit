@@ -419,11 +419,17 @@ def get_row_decision_state(
                 'timestamp': None,
                 'reviewer': None,
                 'interaction_sequence': 0,
+                'last_event': None,
                 'history': [],
             }
 
         decision_type, notes, sequence = _extract_row_status_decision_state(latest)
         has_decision = decision_type in ROW_HUMAN_DISPOSITIONS
+        last_event = (
+            _serialize_row_decision_history([latest])[0]
+            if decision_type == 'clear_decision'
+            else None
+        )
 
         return {
             'has_decision': has_decision,
@@ -432,6 +438,7 @@ def get_row_decision_state(
             'timestamp': latest.created_at.isoformat(),
             'reviewer': latest.reviewer,
             'interaction_sequence': sequence or 0,
+            'last_event': last_event,
             'history': _serialize_row_decision_history(row_decisions[1:]),
         }
 
