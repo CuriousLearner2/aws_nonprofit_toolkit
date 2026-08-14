@@ -18,7 +18,11 @@ from datetime import datetime
 
 from scripts.householder.date_validation_service import validate_review_date
 from scripts.householder.amount_validation_service import validate_review_amount
-from scripts.householder.email_validation_service import validate_review_email
+from scripts.householder.email_validation_service import (
+    build_email_validation_issue,
+    get_email_typo_suggestion,
+    validate_review_email,
+)
 from scripts.householder.phone_validation_service import validate_review_phone
 
 # Configure logging
@@ -294,81 +298,47 @@ def validate_email(record: Dict, header_map: Dict, rules: Dict, reference: Dict)
     if pd.isna(email) or str(email).strip() == '':
         return ('FAIL', "Email field is empty", "Verify email address for each record")
 
-    email_validation = validate_review_email(email, allow_blank=False)
-    if not email_validation.valid:
-        return ('FAIL', email_validation.blocking_error or "Invalid email format", "Fix email format: add @ symbol")
+    email_issue = build_email_validation_issue(email)
+    if email_issue and email_issue['severity'] == 'error':
+        return ('FAIL', email_issue['description'], "Fix email format: add @ symbol")
 
     email_str = str(email).strip()
     email_lower = email_str.lower()
-
-    # Check for typo patterns
     email_typos = {t['from']: t['to'] for t in rules.get('email_typos', [])}
-
     if '@' in email_lower:
         user_part, domain = email_lower.rsplit('@', 1)
-
-        # Domain must not be empty
         if not domain:
             return ('FAIL', "Invalid email format (missing domain after @)", "Fix email format: add domain after @ symbol")
 
-        # Check for exact typos first
+        # Preserve configured processor suggestions while the canonical result
+        # owns syntax/severity for the shared common-domain cases.
         if domain in email_typos:
             correct_domain = email_typos[domain]
-            suggestion = f"{user_part}@{correct_domain}"
-            return ('WARNING', "Email typo detected", f"Consider: {suggestion}")
+            return ('WARNING', "Email typo detected", f"Consider: {user_part}@{correct_domain}")
 
-        # Fuzzy match against common domain names (ignoring TLD)
+        suggestion_domain = get_email_typo_suggestion(email)
+        if email_issue and email_issue['severity'] == 'warning' and suggestion_domain:
+            return ('WARNING', "Email typo detected", f"Consider: {user_part}@{suggestion_domain}")
+
         common_domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'aol.com', 'protonmail.com', 'icloud.com']
-        if domain not in common_domains:  # Skip fuzzy matching for exact matches
-            # Extract domain name and TLD(s)
+        if domain not in common_domains:
             domain_parts = domain.split('.')
             if len(domain_parts) >= 2:
-                # Handle multi-level TLDs like .co.uk, .co.nz
                 multi_level_tlds = ['co.uk', 'co.nz', 'com.au', 'co.jp', 'com.br', 'co.in']
-                domain_name_with_tld = '.'.join(domain_parts)
                 potential_multi_tld = '.'.join(domain_parts[-2:])
-
-                # Check if this is a known multi-level TLD
                 if potential_multi_tld in multi_level_tlds:
-                    # Extract just the domain name part (ignore the multi-level TLD)
                     domain_name = '.'.join(domain_parts[:-2])
                 else:
                     domain_name = domain_parts[0]
-                    potential_multi_tld = None
-
-                # Check TLD characteristics first
-                tld = domain_parts[-1] if not potential_multi_tld else potential_multi_tld
-                tld_is_short = len(tld) <= 2  # Flag 2-letter TLDs like .ai, .io
-                tld_is_suspicious = any(
-                    tld.lower().startswith(s)
-                    for s in ['xn--', 'test', 'invalid', 'local', 'localhost']
-                ) or len(tld) > 6
-
                 for common_domain in common_domains:
                     common_name = common_domain.split('.')[0]
-                    # Compare domain names, not TLDs
                     similarity = SequenceMatcher(None, domain_name, common_name).ratio()
+                    if domain_name == common_name or (len(domain_name) <= 3 and similarity >= 0.50) or (len(domain_name) > 3 and similarity >= 0.55):
+                        return ('WARNING', f"Email domain '{domain}' looks like a typo for '{common_domain}'", f"Consider: {user_part}@{common_domain}")
 
-                    # If domain name matches exactly - ALWAYS suggest this domain
-                    # (exact match is strongest signal, even if TLD seems unusual)
-                    if domain_name == common_name:
-                        suggestion = f"{user_part}@{common_domain}"
-                        return ('WARNING', f"Email domain '{domain}' looks like a typo for '{common_domain}'", f"Consider: {suggestion}")
-                    # If domain name is very short (2-3 chars), be extra aggressive
-                    elif len(domain_name) <= 3 and similarity >= 0.50:
-                        suggestion = f"{user_part}@{common_domain}"
-                        return ('WARNING', f"Email domain '{domain}' looks like a typo for '{common_domain}'", f"Consider: {suggestion}")
-                    # If domain name is longer, use more lenient threshold (0.55 instead of 0.70)
-                    elif len(domain_name) > 3 and similarity >= 0.55:
-                        suggestion = f"{user_part}@{common_domain}"
-                        return ('WARNING', f"Email domain '{domain}' looks like a typo for '{common_domain}'", f"Consider: {suggestion}")
-
-        # Check domain against reference list
         valid_domains = reference.get('email_domains', [])
         valid_tlds = reference.get('email_tlds', [])
-
         if valid_domains and domain not in valid_domains:
-            # Check TLD at least
             tld = domain.split('.')[-1]
             if valid_tlds and tld not in valid_tlds:
                 return ('WARNING', None, f"Domain '{domain}' not in reference list")

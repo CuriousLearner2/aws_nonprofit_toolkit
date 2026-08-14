@@ -83,6 +83,34 @@ class EmailValidationResult:
     warnings: Tuple[str, ...] = field(default_factory=tuple)
 
 
+def build_email_validation_issue(value: Any) -> Optional[dict[str, str]]:
+    """Project the canonical email result into the review issue contract."""
+    result = validate_review_email(value, allow_blank=False)
+    if not result.valid:
+        return {
+            "description": result.blocking_error or EMAIL_FORMAT_ERROR,
+            "severity": "error",
+            "reason": "format",
+        }
+    if result.warnings:
+        return {
+            "description": result.warnings[0],
+            "severity": "warning",
+            "reason": "possible_typo",
+        }
+    return None
+
+
+def get_email_typo_suggestion(value: Any) -> Optional[str]:
+    """Return the canonical corrected domain for a known typo domain."""
+    text = "" if value is None else str(value).strip()
+    if "@" not in text:
+        return None
+    local_part, domain = text.rsplit("@", 1)
+    corrected_domain = COMMON_TYPO_DOMAINS.get(domain.lower())
+    return corrected_domain
+
+
 def _build_typo_warning(email_lower: str) -> Optional[str]:
     """Return a product-facing typo warning if the email looks suspicious."""
     if "@" not in email_lower:

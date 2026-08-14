@@ -42,6 +42,7 @@ from .ingestion_value_policy import (
     parse_amount,
     split_name,
 )
+from .email_validation_service import build_email_validation_issue
 
 logger = logging.getLogger(__name__)
 
@@ -544,6 +545,15 @@ def ingest_processed_csv(
                             field_name = "unknown"
                             issue_description = issue_text
 
+                        email_issue = None
+                        if field_name.strip().lower() == "email":
+                            email_issue = build_email_validation_issue(email)
+                            if email_issue is None:
+                                # A stale processor issue must not survive when
+                                # the canonical validator says the value is valid.
+                                continue
+                            issue_description = f"Email: {email_issue['description']}"
+
                         # Get suggestion from Suggested_Modifications if available
                         suggestions_str = str(row.get("Suggested_Modifications", "")).strip()
                         suggestion = None
@@ -562,10 +572,18 @@ def ingest_processed_csv(
                             payload_json={
                                 "field": field_name,
                                 "issue": issue_description,
-                                "reason": "format" if field_name.strip().lower() == "amount" else None,
+                                "reason": (
+                                    email_issue["reason"]
+                                    if email_issue
+                                    else "format" if field_name.strip().lower() == "amount" else None
+                                ),
                                 "suggestion": suggestion,
                                 "validation_tier": validation_tier,
-                                "severity": "error" if validation_tier == "FAIL" else "warning",
+                                "severity": (
+                                    email_issue["severity"]
+                                    if email_issue
+                                    else "error" if validation_tier == "FAIL" else "warning"
+                                ),
                             },
                         )
                         session.add(validation_item)

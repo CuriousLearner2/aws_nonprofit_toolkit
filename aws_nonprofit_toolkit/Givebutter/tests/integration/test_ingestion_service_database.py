@@ -33,7 +33,7 @@ class TestIngestionDatabaseIntegration:
         csv_file.write_text(
             "Name,Email,Phone,Amount,Date,Validation_Tier,Issues,Suggested_Modifications\n"
             "John Smith,john@gmail.com,5551234567,100.00,2026-06-12,PASS,None,\n"
-            "Jane Doe,jane@gmail.com,5559876543,200.00,2026-06-13,WARNING,Email: Email typo,Consider: jane@gmail.com"
+            "Jane Doe,jane@gmai.com,5559876543,200.00,2026-06-13,WARNING,Email: Email typo,Consider: jane@gmail.com"
         )
 
         # Create database

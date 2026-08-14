@@ -6,6 +6,7 @@ from processor import validate_email
 from scripts.householder.email_validation_service import (
     EMAIL_FORMAT_ERROR,
     EMAIL_REQUIRED_ERROR,
+    build_email_validation_issue,
     validate_review_email,
 )
 
@@ -207,3 +208,19 @@ class TestCanonicalEmailValidationService:
         assert result.valid is True
         assert result.warnings
         assert warning_fragment in result.warnings[0]
+
+    @pytest.mark.parametrize(
+        "email, expected_severity",
+        [
+            ("alice@", "error"),
+            ("@gmail.com", "error"),
+            ("alice@@gmail.com", "error"),
+            ("alice@gmai.com", "warning"),
+            ("alice@gmal.com", "warning"),
+            ("alice@gmial.com", "warning"),
+            ("alice@gmail.com", None),
+        ],
+    )
+    def test_email_issue_projection_has_one_canonical_severity(self, email, expected_severity):
+        issue = build_email_validation_issue(email)
+        assert (issue or {}).get("severity") == expected_severity

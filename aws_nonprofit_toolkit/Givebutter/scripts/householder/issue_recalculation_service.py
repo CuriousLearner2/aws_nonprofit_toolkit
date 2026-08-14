@@ -22,55 +22,16 @@ from .autosave_service import (
     validate_name_correction,
 )
 from .amount_validation_service import validate_review_amount
-from .email_validation_service import validate_review_email
+from .email_validation_service import (
+    build_email_validation_issue,
+    get_email_typo_suggestion,
+    validate_review_email,
+)
 from .date_validation_service import validate_review_date
 from .phone_validation_service import is_valid_phone, validate_review_phone
 from .issue_identity import normalize_validation_issue_field
 from .issue_reconciliation import reconcile_missing_address_issues
 import os
-
-# Top 30 recognized email domains - strict validation applied to these
-RECOGNIZED_EMAIL_DOMAINS = {
-    # Major global providers
-    'gmail.com',
-    'yahoo.com',
-    'outlook.com',
-    'hotmail.com',
-    'aol.com',
-    'icloud.com',
-    'mail.com',
-    'gmx.com',
-    'web.de',
-    'protonmail.com',
-    'proton.me',
-    'zoho.com',
-    'fastmail.com',
-    'mailbox.org',
-    'posteo.de',
-    # Regional variants
-    'yahoo.co.uk', 'yahoo.ca', 'yahoo.fr', 'yahoo.de', 'yahoo.it',
-    'outlook.co.uk', 'outlook.fr', 'outlook.de',
-    'hotmail.co.uk', 'hotmail.fr', 'hotmail.de',
-    # International providers
-    'mail.ru',
-    'yandex.com',
-    'qq.com',
-    'sina.com',
-    '163.com',
-}
-
-# Common typo domains - maps incorrect domain to correct domain
-COMMON_TYPO_DOMAINS = {
-    'gamil.com': 'gmail.com',      # i-l swap
-    'gmial.com': 'gmail.com',      # letter swap
-    'gmal.com': 'gmail.com',       # missing i
-    'gmai.com': 'gmail.com',       # incomplete
-    'yahooo.com': 'yahoo.com',     # extra o
-    'yaho.com': 'yahoo.com',       # missing o
-    'hotmial.com': 'hotmail.com',  # letter swap
-    'hotmal.com': 'hotmail.com',   # missing i
-}
-
 
 def _validation_issue_value_for_field(values: Dict[str, Any], field: Any) -> Any:
     canonical_field = normalize_validation_issue_field(field)
@@ -246,6 +207,19 @@ def recalculate_row_issues(
                 if normalized_field == 'address':
                     severity = 'warning'
 
+            # Reclassify persisted email issues from the canonical validator.
+            # Imported metadata can contain stale tiers, so stored severity
+            # must not make equivalent typo values drift between rows.
+            if normalized_field == 'email' and issue_reason in (
+                None, 'format', 'typo', 'possible_typo'
+            ):
+                email_issue = build_email_validation_issue(effective_value)
+                if email_issue is None:
+                    continue
+                severity = email_issue['severity']
+                issue_reason = email_issue['reason']
+                description = email_issue['description']
+
             # Check if issue is still valid with the effective value
             # Logic: if a correction was made to the field, we assume the issue is resolved
 
@@ -260,7 +234,7 @@ def recalculate_row_issues(
             # Add suggestion if it's a common typo domain
             if issue_field == 'email' and issue_reason in ('typo', 'possible_typo', 'format'):
                 suggestion = _get_email_suggestion(effective_value)
-                if suggestion:
+                if suggestion and 'did you mean' not in description.lower():
                     description += f" Did you mean {suggestion}?"
 
             current_issues.append({
@@ -607,19 +581,21 @@ def _validate_effective_values(effective_values: Dict[str, Any]) -> List[Dict[st
     # reviewed rows agree on syntax, warnings, and blocking behavior.
     if 'email' in effective_values:
         email_value = effective_values.get('email')
-        email_result = validate_review_email(email_value, allow_blank=False)
-        if not email_result.valid:
+        email_issue = build_email_validation_issue(email_value)
+        if email_issue and email_issue['severity'] == 'error':
             issues.append({
                 'field': 'email',
-                'description': email_result.blocking_error or 'Invalid email format',
-                'severity': 'error',
+                'description': email_issue['description'],
+                'severity': email_issue['severity'],
+                'reason': email_issue['reason'],
                 'is_new': True
             })
-        elif email_result.warnings:
+        elif email_issue:
             issues.append({
                 'field': 'email',
-                'description': email_result.warnings[0],
-                'severity': 'warning',
+                'description': email_issue['description'],
+                'severity': email_issue['severity'],
+                'reason': email_issue['reason'],
                 'is_new': True
             })
 
@@ -759,26 +735,7 @@ def _validate_address(address: str) -> Optional[Dict[str, Any]]:
 
 
 def _get_email_suggestion(email: str) -> Optional[str]:
-    """
-    Check if email has a common typo domain and return suggestion.
-
-    Args:
-        email: Email address to check
-
-    Returns:
-        Suggested correct domain, or None if no typo detected
-    """
-    if not email:
-        return None
-
-    try:
-        domain = email.lower().rsplit('@', 1)[1]
-        if domain in COMMON_TYPO_DOMAINS:
-            return COMMON_TYPO_DOMAINS[domain]
-    except (IndexError, AttributeError):
-        pass
-
-    return None
+    return get_email_typo_suggestion(email)
 
 
 def _legacy_issue_override_removed():
