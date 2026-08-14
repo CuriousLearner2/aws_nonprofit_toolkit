@@ -275,6 +275,114 @@ async def test_validation_inspect_modal_close_no_feedback(e2e_validation_databas
         session.close()
 
 
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_save_review_history_link_supersedes_save_modal(e2e_validation_database_and_app):
+    """Save review stays compact; Details owns full history and never stacks."""
+    from playwright.async_api import async_playwright
+
+    database_url, db_path, flask_app = e2e_validation_database_and_app
+    engine = create_db_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        batch = ImportBatch(
+            id='review-history-link-test',
+            filename='review_history_link.csv',
+            upload_timestamp=datetime.now(timezone.utc),
+            status='pending_review',
+            raw_row_count=1,
+        )
+        session.add(batch)
+        session.flush()
+        raw_row = RawImportRow(
+            batch_id=batch.id,
+            row_index=1,
+            raw_csv_data={'name': 'History User', 'email': 'invalid-email', 'amount': '100.00'},
+        )
+        session.add(raw_row)
+        session.flush()
+        session.add(ImportContact(
+            batch_id=batch.id,
+            raw_import_row_id=raw_row.id,
+            first_name='History',
+            last_name='User',
+            email='invalid-email',
+            amount=100.00,
+        ))
+        session.add(ReviewDecision(
+            batch_id=batch.id,
+            raw_import_row_id=raw_row.id,
+            decision='row_status:reject_row',
+            reviewed_values={
+                'reviewed_status': 'reject_row',
+                'notes': 'Keep prior review context',
+                'interaction_sequence': 1,
+            },
+            reviewer='Reviewer 025',
+        ))
+        session.commit()
+        raw_id = raw_row.id
+    finally:
+        session.close()
+
+    await start_flask_and_wait(
+        flask_app,
+        port=8004,
+        url='http://127.0.0.1:8004/imports/review-history-link-test/validation',
+    )
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        try:
+            await page.goto('http://127.0.0.1:8004/imports/review-history-link-test/validation')
+            row = page.locator('tr[data-raw-id]').first
+            await row.wait_for()
+            dropdown = row.locator('select.row-status-dropdown')
+            await page.wait_for_function(
+                "rawId => document.querySelector(`select.row-status-dropdown[data-raw-id=\"${rawId}\"]`)?.value === 'reject_row'",
+                arg=raw_id,
+            )
+
+            await dropdown.select_option('needs_follow_up')
+            modal = page.locator('#record-modal')
+            await modal.wait_for(state='visible')
+            context = await modal.locator('[data-testid="save-review-latest-context"]').inner_text()
+            assert 'Reject row' in context
+            assert 'Reviewer 025' in context
+            assert 'Keep prior review context' in context
+            assert await modal.locator('[data-action="view-full-history"]').count() == 1
+
+            await modal.locator('[data-action="view-full-history"]').click()
+            await page.wait_for_function(
+                "() => document.querySelector('#record-modal .modal-title')?.textContent === 'Record Details'"
+            )
+            assert await modal.locator('[data-testid="save-review-latest-context"]').count() == 0
+            assert 'Keep prior review context' in await modal.locator('#modal-record-content').inner_text()
+
+            await page.evaluate("() => window.closeModal('record-modal')")
+            await page.wait_for_function("() => !document.querySelector('#record-modal')?.classList.contains('show')")
+            assert await modal.locator('.modal-title').count() == 1
+            assert not await modal.evaluate("el => el.classList.contains('show')")
+
+            await dropdown.select_option('')
+            await modal.wait_for(state='visible')
+            assert await modal.locator('.modal-title').inner_text() == 'Save review'
+            await modal.locator('.reviewer-name-field').fill('Reviewer 025')
+            await modal.locator('button[id^="save-followup-notes-"]').click()
+            await page.wait_for_function("() => !document.querySelector('#record-modal')?.classList.contains('show')")
+            assert await dropdown.input_value() == ''
+
+            await page.locator('a[data-action="inspect-record"]').first.click()
+            await modal.wait_for(state='visible')
+            details = await modal.locator('#modal-record-content').inner_text()
+            assert 'Decision cleared by reviewer' in details
+            assert 'Keep prior review context' in details
+        finally:
+            await browser.close()
+
+
 # ==============================================================================
 # T3: APPROVAL MODAL - CANCEL WITHOUT OVERRIDE (DEFERRED)
 # ==============================================================================

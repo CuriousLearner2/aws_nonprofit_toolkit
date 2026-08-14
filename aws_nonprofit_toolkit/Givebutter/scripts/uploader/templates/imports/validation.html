@@ -704,6 +704,8 @@ async function loadRowDecisions() {
                 const tableDropdown = document.querySelector(`.row-status-dropdown[data-raw-id="${rawId}"]`);
                 if (tableDropdown) {
                     tableDropdown.dataset.currentNotes = data.notes || '';
+                    tableDropdown.dataset.currentReviewer = data.reviewer || '';
+                    tableDropdown.dataset.currentTimestamp = data.timestamp || '';
                     const editReviewButton = tableDropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
                     if (data.has_decision && HUMAN_ROW_DISPOSITIONS.has(data.decision)) {
                         row.dataset.disposition = data.decision;
@@ -1291,6 +1293,8 @@ function resetRowDispositionAfterPersistedEdit(row) {
     dropdown.dataset.hasDecision = 'false';
     dropdown.dataset.currentDecision = '';
     dropdown.dataset.currentNotes = '';
+    dropdown.dataset.currentReviewer = '';
+    dropdown.dataset.currentTimestamp = '';
     dropdown.dataset.systemDisposition = projected ? 'true' : 'false';
     dropdown.value = projected;
     dropdown.style.backgroundColor = '';
@@ -1731,6 +1735,8 @@ function applySavedRowDecision(dropdown, result, decision, notes, reviewerName) 
         dropdown.dataset.hasDecision = 'false';
         dropdown.dataset.systemDisposition = projected ? 'true' : 'false';
         dropdown.dataset.currentDecision = '';
+        dropdown.dataset.currentReviewer = '';
+        dropdown.dataset.currentTimestamp = '';
         const editReviewButton = dropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
         if (editReviewButton) editReviewButton.style.display = 'none';
         const dispositionMeta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
@@ -1743,6 +1749,8 @@ function applySavedRowDecision(dropdown, result, decision, notes, reviewerName) 
         result.row_status || decision.replace(/_/g, ' '),
         notes
     );
+    dropdown.dataset.currentReviewer = reviewerName || '';
+    dropdown.dataset.currentTimestamp = result.timestamp || '';
     dropdown.dataset.systemDisposition = 'false';
     const dispositionMeta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
     if (dispositionMeta) {
@@ -1762,6 +1770,8 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
     const previousValue = dropdown.dataset.currentDecision || dropdown.dataset.previousValue || '';
     const previousLabel = dropdown.dataset.previousLabel || getRowStatusLabel(row) || 'No issues';
     const currentNotes = dropdown.dataset.currentNotes || '';
+    const currentReviewer = dropdown.dataset.currentReviewer || '';
+    const currentTimestamp = dropdown.dataset.currentTimestamp || '';
     const selectedDecision = requestedDecision !== undefined ? requestedDecision : projectEffectiveDisposition(
         getRowStatusLabel(row),
         dropdown.dataset.hasDecision === 'true',
@@ -1791,10 +1801,14 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
     const optionsHtml = decisionOptions.map(([value, label]) =>
         `<option value="${value}" ${selectedDecision === value ? 'selected' : ''}>${label}</option>`
     ).join('');
+    const savedReviewContext = dropdown.dataset.hasDecision === 'true'
+        ? `<div data-testid="save-review-latest-context" style="margin: 0 0 14px; padding: 8px 10px; border: 1px solid #dbeafe; background: #eff6ff; border-radius: 3px; font-size: 12px; line-height: 1.4;"><strong>Latest saved review:</strong> ${escapeHtml(formatRowDecisionLabel(previousValue))}<br>${escapeHtml(currentReviewer || 'Reviewer not identified')} · ${escapeHtml(currentNotes || 'No reason recorded')} · ${escapeHtml(currentTimestamp)}<br><a href="#" data-action="view-full-history" style="color: #0051d5; font-weight: 600;">View full history</a></div>`
+        : '';
 
     modalBody.innerHTML = `
         <div data-testid="row-review-save-form">
             <p data-testid="review-save-guidance" style="margin: 0 0 14px; color: #4b5563; font-size: 12px; line-height: 1.5;">Your disposition guides what happens next. The reviewer name and reason are saved with the decision for audit history.</p>
+            ${savedReviewContext}
             <div style="margin-bottom: 14px;">
                 <label for="row-review-reviewer-${recordId}" style="display: block; font-weight: 600; margin-bottom: 4px;">Reviewer name <span aria-hidden="true" style="color: #b91c1c;">*</span></label>
                 <input class="reviewer-name-field" id="row-review-reviewer-${recordId}" type="text" autocomplete="off"
@@ -1830,6 +1844,13 @@ async function openRowReviewModal(recordId, dropdown, requestedDecision) {
     const notesRequirement = modal.querySelector('.notes-requirement');
     const saveBtn = document.getElementById(`save-followup-notes-${recordId}`);
     const cancelBtn = document.getElementById(`cancel-row-review-${recordId}`);
+    const historyLink = modal.querySelector('[data-action="view-full-history"]');
+
+    historyLink?.addEventListener('click', async function(event) {
+        event.preventDefault();
+        closeModal('record-modal');
+        await openRecordDetailsModal(recordId);
+    });
 
     decisionField?.addEventListener('change', () => {
         syncReviewNotesRequirement(modal, row, decisionField.value || '');
