@@ -77,26 +77,6 @@ def _get_validation_issue_field(payload, issue_type=None):
     return None
 
 
-def _batch_row_is_approved_with_overrides(batch, raw_import_row_id):
-    """
-    Check whether a raw row was explicitly approved with overrides.
-
-    Export readiness treats an approved override row as non-blocking so the
-    approval decision becomes visible after reload without mutating raw data.
-    """
-    if batch.approval_status != 'approved_with_overrides':
-        return False
-
-    if not batch.override_details:
-        return False
-
-    for override in batch.override_details.get('overrides', []):
-        if override.get('raw_import_row_id') == raw_import_row_id:
-            return True
-
-    return False
-
-
 def build_export_preview(
     import_id: str,
     config: Optional[Mapping[str, Any]] = None,
@@ -304,10 +284,6 @@ def build_export_preview(
             row_blockers = []
             row_warnings = []
             validation_decision_fields = set()
-            row_is_approved_with_overrides = _batch_row_is_approved_with_overrides(
-                batch,
-                contact.raw_import_row_id,
-            )
             row_human_disposition = row_human_dispositions.get(contact.raw_import_row_id)
             row_has_unresolved_validation = False
 
@@ -536,9 +512,6 @@ def build_export_preview(
 
                     row_has_unresolved_validation = True
 
-                    if row_is_approved_with_overrides:
-                        continue
-
                     # No decision - check severity
                     critical_issues = [
                         'missing_email', 'invalid_email', 'invalid_email_format',
@@ -552,22 +525,22 @@ def build_export_preview(
                     else:
                         row_warnings.append(f"Validation issue unresolved: {issue_type}")
 
-            if date_validation_issue and 'date' not in validation_decision_fields and not row_is_approved_with_overrides:
+            if date_validation_issue and 'date' not in validation_decision_fields:
                 row_blockers.append("Unresolved validation: date")
                 validation_issues.append(date_validation_issue)
                 validation_status = 'blocked'
                 row_has_unresolved_validation = True
-            if amount_validation_issue and 'amount' not in validation_decision_fields and not row_is_approved_with_overrides:
+            if amount_validation_issue and 'amount' not in validation_decision_fields:
                 row_blockers.append("Unresolved validation: amount")
                 validation_issues.append(amount_validation_issue)
                 validation_status = 'blocked'
                 row_has_unresolved_validation = True
-            if email_validation_issue and 'email' not in validation_decision_fields and not row_is_approved_with_overrides:
+            if email_validation_issue and 'email' not in validation_decision_fields:
                 row_blockers.append("Unresolved validation: email")
                 validation_issues.append(email_validation_issue)
                 validation_status = 'blocked'
                 row_has_unresolved_validation = True
-            if phone_validation_issue and 'phone' not in validation_decision_fields and not row_is_approved_with_overrides:
+            if phone_validation_issue and 'phone' not in validation_decision_fields:
                 row_blockers.append("Unresolved validation: phone")
                 validation_issues.append(phone_validation_issue)
                 validation_status = 'blocked'

@@ -146,11 +146,8 @@ class TestValidationRoute:
         assert 'row.hidden = !(matchesStatus && matchesIssueSearch);' in html
         assert 'Showing 5 of 5 rows' in html
 
-        has_overridden_rows = 'data-row-status="Overridden"' in html
-        if has_overridden_rows:
-            assert 'data-testid="validation-status-filter-overridden"' in html
-        else:
-            assert 'data-testid="validation-status-filter-overridden"' not in html
+        assert 'data-row-status="Overridden"' not in html
+        assert 'data-testid="validation-status-filter-overridden"' not in html
 
     def test_issue_filter_is_labeled_and_constrained(self, client_with_fixture):
         """Issue filtering remains discoverable and cannot overflow the page."""

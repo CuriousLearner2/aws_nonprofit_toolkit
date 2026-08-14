@@ -1273,57 +1273,6 @@ def cancel_review(filename):
         logger.error(f"Error cancelling review for {filename}: {e}")
         return jsonify({'error': 'Cancellation failed'}), 500
 
-@app.route('/test-override-dialog')
-def test_override_dialog():
-    """Test endpoint that serves review page with pre-populated FAIL records.
-
-    Used for E2E testing of override confirmation dialog without upload complexity.
-    """
-    # Create test CSV with FAIL tier records
-    test_data = {
-        'Donation ID': ['GB001', 'GB002', 'GB003', 'GB004'],
-        'Date': ['2026-06-01', '2026-06-01', '2026-06-01', '2026-06-01'],
-        'Name': ['John Smith', 'Jane Doe', 'Bob Wilson', 'Alice Brown'],
-        'Email': ['john@gmail.com', '', 'bob@example.com', 'alice@test.com'],
-        'Phone': ['5551234567', '5559876543', '5551112222', ''],
-        'Amount': ['100', '250', '', '0'],
-        'Campaign': ['Annual Giving', 'Annual Giving', 'Campaign X', 'Campaign X']
-    }
-
-    df = pd.DataFrame(test_data)
-
-    # Run validation to get tiers
-    from processor import process_csv
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as input_f:
-        df.to_csv(input_f.name, index=False)
-        input_path = input_f.name
-
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as output_f:
-        output_path = output_f.name
-
-    try:
-        process_csv(input_path, output_path)
-        result_df = pd.read_csv(output_path, dtype=str)
-
-        # Convert to records for rendering
-        records = []
-        for idx, row in result_df.iterrows():
-            record = row.to_dict()
-            record['idx'] = int(idx)
-            records.append(record)
-
-        # Render review template with test records
-        return render_template('review.html',
-                             test_mode=True,
-                             records=records,
-                             filename='test_override_records.csv')
-    except Exception as e:
-        logger.error(f"Error in test override dialog: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
 # ============================================================================
 # DonorTrust v1 Phase 0 Prototype Routes — Fixture-backed, no persistence
 # ============================================================================
@@ -1896,34 +1845,13 @@ def get_row_decision(import_id, raw_import_row_id):
 
 @app.route('/imports/<import_id>/approve-batch', methods=['POST'])
 def approve_import_batch(import_id):
-    """Approve batch with or without overrides (v1.1 Phase 2).
-
-    Two-mode workflow:
-
-    MODE 1 - Simple Approval (no remaining issues):
-      Request: { "approval_status": "approved" }
-      Response: { "success": true, "approval_status": "approved", ... }
-
-    MODE 2 - Check for Issues:
-      Request: { "approval_status": "approved_with_overrides", "rows_with_overrides": [] }
-      Response: { "success": false, "requires_override_confirmation": true, "remaining_issues": [...] }
-
-    MODE 3 - Confirm Override:
-      Request: { "approval_status": "approved_with_overrides", "rows_with_overrides": [{...}, ...] }
-      Response: { "success": true, "approval_status": "approved_with_overrides", ... }
-
-    Expected JSON:
-    {
-        'approval_status': 'approved' | 'approved_with_overrides',
-        'rows_with_overrides': [{'raw_import_row_id': int, 'row_index': int, 'issues': [...]}, ...]
-    }
-    """
+    """Approve a batch only after all blocking rows are resolved."""
     from householder.approval_service import approve_batch
     import os
 
     data = request.get_json() or {}
     approval_status = data.get('approval_status')
-    rows_with_overrides = data.get('rows_with_overrides', [])
+    rows_with_overrides = data.get('rows_with_overrides')
     reviewer = request.headers.get('X-Reviewer-ID')
     database_url = _get_runtime_database_url()
 
@@ -1941,43 +1869,19 @@ def approve_import_batch(import_id):
         }), 503
 
     try:
-        # MODE 2: Check for remaining issues (empty rows_with_overrides list)
-        if approval_status == 'approved_with_overrides' and not rows_with_overrides:
-            from householder.approval_service import check_batch_remaining_issues
-
-            try:
-                remaining_issues_by_row = check_batch_remaining_issues(
-                    batch_id=import_id,
-                    database_url=database_url
-                )
-
-                if remaining_issues_by_row:
-                    # Issues remain - need confirmation
-                    return jsonify({
-                        'success': False,
-                        'requires_override_confirmation': True,
-                        'remaining_issues': remaining_issues_by_row,
-                        'message': f'Batch has {len(remaining_issues_by_row)} row(s) with unresolved issues. Please confirm override.'
-                    }), 200
-                approval_status = 'approved'
-            except ValueError as e:
-                return jsonify({'error': str(e)}), 404
-
-        # MODE 1 or MODE 3: Perform actual approval
         result = approve_batch(
             batch_id=import_id,
             approval_status=approval_status,
-            rows_with_overrides=rows_with_overrides if rows_with_overrides else None,
+            rows_with_overrides=rows_with_overrides,
             reviewer=reviewer,
             database_url=database_url
         )
 
-        logger.info(f"Batch {import_id} approved: {approval_status}, overrides={result['override_count']}")
+        logger.info(f"Batch {import_id} approved: {approval_status}")
 
         return jsonify({
             'success': True,
             'approval_status': result['approval_status'],
-            'override_count': result['override_count'],
             'audit_log_id': result['audit_log_id'],
             'message': 'Batch approval recorded successfully'
         }), 200

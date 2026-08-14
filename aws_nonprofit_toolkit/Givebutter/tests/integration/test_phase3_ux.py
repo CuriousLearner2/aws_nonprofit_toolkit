@@ -390,7 +390,7 @@ class TestPhase3Autosave:
         result = json.loads(response.data)
         assert 'row_status' in result
         # Should show "No issues" after fixing email typo
-        assert result['row_status'] in ['No issues', 'Warning', 'Blocking', 'Overridden']
+        assert result['row_status'] in ['No issues', 'Warning', 'Blocking']
 
     def test_autosave_response_includes_issues(self, flask_client_phase3):
         """Autosave response includes updated issues list."""
@@ -455,26 +455,25 @@ class TestPhase3Autosave:
 class TestPhase3ApprovalWorkflow:
     """Test approval check and confirm workflow."""
 
-    def test_approve_check_mode_detects_issues(self, flask_client_phase3):
-        """Approve File check mode detects remaining issues."""
+    def test_file_level_override_payload_is_rejected(self, flask_client_phase3):
+        """File approval cannot bypass unresolved rows with a legacy override payload."""
         client, _, _, _ = flask_client_phase3
 
         response = client.post(
             '/imports/demo-phase3-test/approve-batch',
             json={
-                'approval_status': 'approved_with_overrides',
-                'rows_with_overrides': []
+                'approval_status': 'approved',
+                'rows_with_overrides': [{'raw_import_row_id': 'legacy'}]
             },
             content_type='application/json'
         )
 
+        assert response.status_code == 400
         result = json.loads(response.data)
-        assert result['requires_override_confirmation'] is True
-        assert 'remaining_issues' in result
-        assert len(result['remaining_issues']) >= 1  # At least Carol White with missing phone
+        assert 'File-level approval overrides are not supported' in result['error']
 
-    def test_approve_confirm_mode_persists_overrides(self, flask_client_phase3):
-        """Approve with Overrides persists approval_status and override_details."""
+    def test_legacy_file_override_payload_is_rejected(self, flask_client_phase3):
+        """Obsolete file-level override payloads are rejected."""
         client, database_url, engine, Session = flask_client_phase3
 
         # Get row with issue
@@ -486,11 +485,11 @@ class TestPhase3ApprovalWorkflow:
         raw_id = raw_row.id
         session.close()
 
-        # Confirm override
+        # Legacy file-level override payload must be rejected.
         response = client.post(
             '/imports/demo-phase3-test/approve-batch',
             json={
-                'approval_status': 'approved_with_overrides',
+                'approval_status': 'approved',
                 'rows_with_overrides': [
                     {
                         'raw_import_row_id': raw_id,
@@ -502,16 +501,9 @@ class TestPhase3ApprovalWorkflow:
             content_type='application/json'
         )
 
+        assert response.status_code == 400
         result = json.loads(response.data)
-        assert result['success'] is True
-
-        # Verify ImportBatch updated
-        session = Session()
-        batch = session.query(ImportBatch).filter_by(id='demo-phase3-test').first()
-        assert batch.approval_status == 'approved_with_overrides'
-        assert batch.override_details is not None
-        assert len(batch.override_details['overrides']) == 1
-        session.close()
+        assert 'File-level approval overrides are not supported' in result['error']
 
 
 class TestPhase3DataImmutability:

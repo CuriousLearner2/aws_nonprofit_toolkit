@@ -271,8 +271,7 @@ def recalculate_row_issues(
                 'source': payload.get('source'),
                 'description': description,
                 'message': description,
-                'severity': severity,
-                'overridden': _is_issue_overridden(batch, raw_import_row_id, issue_field)
+                'severity': severity
             })
 
         # Validate effective date even when there is no autosave proposal.
@@ -782,13 +781,9 @@ def _get_email_suggestion(email: str) -> Optional[str]:
     return None
 
 
-def _is_issue_overridden(
-    batch,
-    raw_import_row_id: int,
-    field: str,
-) -> bool:
+def _legacy_issue_override_removed():
     """
-    Check if an issue was overridden during batch approval.
+    File-level approval overrides are intentionally unsupported.
 
     Args:
         batch: ImportBatch object
@@ -798,19 +793,4 @@ def _is_issue_overridden(
     Returns:
         True if batch was approved with overrides for this field on this row
     """
-    if batch.approval_status != 'approved_with_overrides':
-        return False
-
-    if not batch.override_details:
-        return False
-
-    overrides = batch.override_details.get('overrides', [])
-    for override in overrides:
-        if override.get('raw_import_row_id') == raw_import_row_id:
-            # Found override for this row
-            # If field matches, mark as overridden
-            override_field = override.get('field')
-            if override_field == field or not override_field:
-                return True
-
     return False

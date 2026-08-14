@@ -1804,10 +1804,10 @@ class TestDeferDecision:
 class TestApprovalWarnings:
     """Test approval warning with unresolved issues."""
 
-    def test_approve_batch_with_unresolved_issues(
+    def test_approve_batch_with_unresolved_issues_is_blocked(
         self, flask_client_with_validation_batch
     ):
-        """Approving batch with unresolved FAIL issues should trigger override confirmation."""
+        """Approving batch with unresolved FAIL issues is blocked."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
         raw_id = raw_rows[7]
         _seed_unresolved_validation_issue(Session, 'validation-workflow-test-batch', raw_id)
@@ -1816,24 +1816,15 @@ class TestApprovalWarnings:
         response = client.post(
             f'/imports/validation-workflow-test-batch/approve-batch',
             json={
-                'approval_status': 'approved_with_overrides',
-                'rows_with_overrides': []
+                'approval_status': 'approved',
             }
         )
 
-        assert response.status_code == 200, (
-            f"Expected approval-check response, got {response.status_code}: {response.get_json()}"
+        assert response.status_code == 400, (
+            f"Unresolved issues must block approval, got {response.status_code}: {response.get_json()}"
         )
         data = response.get_json()
-        assert data['requires_override_confirmation'] is True, (
-            f"Unresolved FAIL issues must require override confirmation, got: {data}"
-        )
-        assert data.get('remaining_issues'), (
-            f"Unresolved FAIL issues must be exposed in remaining_issues, got: {data}"
-        )
-        assert data.get('success') is not True, (
-            f"Approval must not silently succeed when unresolved FAIL issues remain, got: {data}"
-        )
+        assert 'unresolved issues' in data['error'].lower()
 
     def test_warning_only_validation_issues_do_not_require_override_confirmation(
         self, flask_client_with_validation_batch
@@ -1852,21 +1843,15 @@ class TestApprovalWarnings:
         response = client.post(
             f'/imports/{batch_id}/approve-batch',
             json={
-                'approval_status': 'approved_with_overrides',
-                'rows_with_overrides': []
+                'approval_status': 'approved',
             }
         )
 
-        assert response.status_code == 200, (
-            f"Warning-only approval should not be blocked, got {response.status_code}: {response.get_json()}"
+        assert response.status_code == 400, (
+            f"Warning-only issue without a row disposition must block approval, got {response.status_code}: {response.get_json()}"
         )
         data = response.get_json()
-        assert data.get('requires_override_confirmation') is True, (
-            f"Warning-only validation issues require a row disposition, got: {data}"
-        )
-        assert data.get('success') is not True, (
-            f"Warning-only validation issues must not finalize without a disposition, got: {data}"
-        )
+        assert 'unresolved issues' in data['error'].lower()
 
         session = Session()
         try:
@@ -2154,9 +2139,7 @@ class TestApprovalWarningWorkflow:
         data = response.get_json()
         assert data['success'] is True, f"Expected success, got: {data}"
         assert data['approval_status'] == 'approved', f"Expected approved status, got: {data}"
-        assert data.get('requires_override_confirmation') is not True, (
-            f"Clean approval must not require override confirmation, got: {data}"
-        )
+        assert 'requires_override_confirmation' not in data
 
         session = Session()
         try:
@@ -2171,153 +2154,19 @@ class TestApprovalWarningWorkflow:
         finally:
             session.close()
 
-    def test_approve_batch_with_unresolved_issues_requires_override(
+    def test_approve_batch_with_unresolved_issues_requires_row_resolution(
         self, flask_client_with_validation_batch
     ):
-        """Batch with unresolved issues should approve when explicit overrides are supplied."""
-        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
+        """Unresolved rows must be resolved individually before file approval."""
+        client, _, _, Session, raw_rows = flask_client_with_validation_batch
         raw_id = raw_rows[7]
         _seed_unresolved_validation_issue(Session, 'validation-workflow-test-batch', raw_id)
-
-        override = {
-            'raw_import_row_id': raw_id,
-            'row_index': 8,
-            'issues': [
-                {
-                    'field': 'email',
-                    'reason': 'Marked as reviewed with override',
-                }
-            ],
-        }
-
         response = client.post(
-            f'/imports/validation-workflow-test-batch/approve-batch',
-            json={
-                'approval_status': 'approved_with_overrides',
-                'rows_with_overrides': [override]
-            }
+            '/imports/validation-workflow-test-batch/approve-batch',
+            json={'approval_status': 'approved'},
         )
-
-        assert response.status_code == 200, (
-            f"Expected approval success with explicit overrides, got {response.status_code}: {response.get_json()}"
-        )
-        data = response.get_json()
-        assert data['success'] is True, f"Expected success, got: {data}"
-        assert data['approval_status'] == 'approved_with_overrides', f"Expected approved_with_overrides, got: {data}"
-        assert data.get('override_count') == 1, f"Expected one override, got: {data}"
-
-    def test_approve_batch_with_explicit_override_derives_overridden_row_status(
-        self, flask_client_with_validation_batch
-    ):
-        """Explicit override approval should expose reviewer-facing Overridden row status."""
-        client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
-        raw_id = raw_rows[7]
-
-        session = Session()
-        try:
-            from scripts.householder.database_models import RawImportRow
-            original_row = session.query(RawImportRow).filter_by(id=raw_id).first()
-            original_raw_data = dict(original_row.raw_csv_data)
-        finally:
-            session.close()
-
-        _seed_unresolved_validation_issue(Session, 'validation-workflow-test-batch', raw_id)
-
-        override = {
-            'raw_import_row_id': raw_id,
-            'row_index': 8,
-            'issues': [
-                {
-                    'field': 'email',
-                    'reason': 'Marked as reviewed with override',
-                }
-            ],
-        }
-
-        response = client.post(
-            f'/imports/validation-workflow-test-batch/approve-batch',
-            json={
-                'approval_status': 'approved_with_overrides',
-                'rows_with_overrides': [override]
-            }
-        )
-
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['success'] is True
-        assert data['approval_status'] == 'approved_with_overrides'
-        assert data.get('override_count') == 1
-
-        from scripts.householder.row_status_service import derive_row_status, is_row_overridden
-        from scripts.householder.validation_service import get_validation_review
-
-        overridden_status = derive_row_status(
-            batch_id='validation-workflow-test-batch',
-            raw_import_row_id=raw_id,
-            database_url=database_url
-        )
-        assert overridden_status == 'Overridden', (
-            f"Explicit override approval should derive Overridden row status, got: {overridden_status}"
-        )
-        assert is_row_overridden(
-            batch_id='validation-workflow-test-batch',
-            raw_import_row_id=raw_id,
-            database_url=database_url
-        ) is True
-
-        review_data = get_validation_review(
-            'validation-workflow-test-batch',
-            config={
-                'HOUSEHOLDER_REPOSITORY': 'database',
-                'GIVEBUTTER_DATABASE_URL': database_url,
-            }
-        )
-        matching_record = next(
-            (
-                record for record in review_data.get('validation_issues', [])
-                if record.get('raw_import_row_id') == raw_id
-            ),
-            None,
-        )
-        assert matching_record is not None, (
-            f"Expected row to be present in validation review data, got: {review_data}"
-        )
-        assert matching_record.get('row_status') == 'Overridden', (
-            f"Validation review surface should expose Overridden, got: {matching_record}"
-        )
-
-        review_response = client.get('/imports/validation-workflow-test-batch/validation')
-        assert review_response.status_code == 200
-        review_html = review_response.data.decode('utf-8')
-        row_match = re.search(
-            rf'<tr\b[^>]*data-raw-id="{re.escape(str(raw_id))}"[^>]*>.*?</tr>',
-            review_html,
-            re.S,
-        )
-        assert row_match is not None, (
-            f"Expected overridden row to render in validation review page, got: {review_html}"
-        )
-        row_html = row_match.group(0)
-        assert 'row-overridden' in row_html, (
-            f"Rendered overridden row should include semantic class, got: {row_html}"
-        )
-        assert 'data-row-status="Overridden"' in row_html, (
-            f"Rendered overridden row should expose data-row-status, got: {row_html}"
-        )
-        assert 'Overridden' in row_html, (
-            f"Rendered overridden row should display Overridden status, got: {row_html}"
-        )
-
-        session = Session()
-        try:
-            from scripts.householder.database_models import RawImportRow
-            current_row = session.query(RawImportRow).filter_by(id=raw_id).first()
-            assert current_row.raw_csv_data == original_raw_data, (
-                f"Raw CSV data must remain unchanged, got: {current_row.raw_csv_data}"
-            )
-        finally:
-            session.close()
-
+        assert response.status_code == 400
+        assert 'unresolved issues' in response.get_json()['error'].lower()
 
 # ==============================================================================
 # TEST D: Export safety - Failed autosaves excluded, raw data unchanged
@@ -3045,18 +2894,15 @@ class TestDetailsModalControls:
         approval_response = client.post(
             f'/imports/validation-workflow-test-batch/approve-batch',
             json={
-                'approval_status': 'approved_with_overrides',
-                'rows_with_overrides': []
+                'approval_status': 'approved'
             }
         )
 
-        assert approval_response.status_code == 200, (
-            f"Approval should still resolve the seeded batch from app.config, got {approval_response.status_code}: {approval_response.get_json()}"
+        assert approval_response.status_code == 400, (
+            f"Approval should remain blocked by unresolved rows, got {approval_response.status_code}: {approval_response.get_json()}"
         )
         approval_data = approval_response.get_json()
-        assert approval_data.get('requires_override_confirmation') is True, (
-            f"Approval should find the seeded batch and report remaining issues, got: {approval_data}"
-        )
+        assert 'unresolved issues' in approval_data['error'].lower()
 
     def test_missing_database_configuration_shows_user_facing_copy(
         self, flask_client_with_validation_batch, monkeypatch
@@ -3098,8 +2944,7 @@ class TestDetailsModalControls:
         approval_response = client.post(
             f'/imports/validation-workflow-test-batch/approve-batch',
             json={
-                'approval_status': 'approved_with_overrides',
-                'rows_with_overrides': []
+                'approval_status': 'approved'
             }
         )
 

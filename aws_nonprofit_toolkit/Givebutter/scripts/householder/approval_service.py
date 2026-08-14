@@ -1,13 +1,12 @@
 """
 Approval Service for v1.1 Review Screen Refinement
 
-Handles batch approval with and without overrides.
-Persists approval_status and override_details to ImportBatch.
+Handles batch approval after all blocking rows have been resolved.
 Creates AuditLogRecord for approval action.
 Ensures raw data and review items remain unchanged.
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
@@ -19,59 +18,30 @@ from .database_models import (
 import os
 
 
-def _canonical_override_field(issues: Optional[List[Dict[str, Any]]]) -> Optional[str]:
-    """
-    Derive a stable field name for an override entry when the approval payload
-    clearly targets a single field.
-
-    Returns None for ambiguous or empty issue lists so we fail closed on
-    multi-field approvals instead of inventing a misleading canonical field.
-    """
-    if not issues:
-        return None
-
-    fields = []
-    for issue in issues:
-        field = issue.get('field')
-        if not field:
-            continue
-
-        normalized_field = str(field).strip().lower()
-        if normalized_field and normalized_field not in fields:
-            fields.append(normalized_field)
-
-    if len(fields) == 1:
-        return fields[0]
-
-    return None
-
-
 def approve_batch(
     batch_id: str,
     approval_status: str,
-    rows_with_overrides: Optional[List[Dict[str, Any]]] = None,
+    rows_with_overrides: Optional[list] = None,
     reviewer: Optional[str] = None,
     database_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Approve a batch with or without overrides.
+    Approve a batch only after all blocking rows have been resolved.
 
     Workflow:
     1. Validate batch exists and is not already approved
-    2. Validate approval_status is 'approved' or 'approved_with_overrides'
-    3. If approved_with_overrides, validate rows_with_overrides list
+    2. Validate approval_status is 'approved'
+    3. Reject any file-level override payload
     4. Update ImportBatch.approval_status
-    5. If approved_with_overrides, populate ImportBatch.override_details
-    6. Create AuditLogRecord for approval action
-    7. Return approval result with audit log id
+    5. Create AuditLogRecord for approval action
+    6. Return approval result with audit log id
 
     Does NOT mutate RawImportRow or ReviewItem.
 
     Args:
         batch_id: Import batch ID
-        approval_status: 'approved' or 'approved_with_overrides'
-        rows_with_overrides: List of rows with unresolved issues (for approved_with_overrides)
-                           Each item: {'raw_import_row_id': int, 'row_index': int, 'issues': [{'field': str, 'reason': str}, ...]}
+        approval_status: 'approved'
+        rows_with_overrides: legacy input, rejected when supplied
         reviewer: Optional reviewer identifier
         database_url: Database connection URL (optional)
 
@@ -81,13 +51,12 @@ def approve_batch(
             'success': bool,
             'approval_status': str,
             'batch_id': str,
-            'override_count': int,
             'audit_log_id': int,
             'timestamp': datetime
         }
 
     Raises:
-        ValueError: If batch not found, invalid approval_status, or invalid override list
+        ValueError: If batch not found, invalid approval_status, or unresolved issues remain
     """
     if database_url is None:
         database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
@@ -103,65 +72,24 @@ def approve_batch(
             raise ValueError(f"Import batch '{batch_id}' not found")
 
         # Validate approval_status
-        if approval_status not in ('approved', 'approved_with_overrides'):
-            raise ValueError(f"Invalid approval_status: {approval_status}")
+        if approval_status != 'approved':
+            raise ValueError('File-level approval overrides are not supported; resolve rows individually')
+        if rows_with_overrides:
+            raise ValueError('File-level approval overrides are not supported; resolve rows individually')
 
         # If already approved, don't re-approve
-        if batch.approval_status in ('approved', 'approved_with_overrides'):
+        if batch.approval_status == 'approved':
             raise ValueError(f"Batch '{batch_id}' is already {batch.approval_status}")
 
-        # Plain approval must not bypass unresolved blocking issues.
-        # The override path is the explicit reviewer acknowledgment for batches
-        # that still have unresolved blocking validation rows.
-        if approval_status == 'approved':
-            remaining_issues = check_batch_remaining_issues(
-                batch_id=batch_id,
-                database_url=database_url,
-            )
-            if remaining_issues:
-                raise ValueError(
-                    "Batch has unresolved issues; use approved_with_overrides to review them"
-                )
-
-        # Build override_details if needed
-        override_details = None
-        override_count = 0
-
-        if approval_status == 'approved_with_overrides':
-            if not rows_with_overrides:
-                raise ValueError("approved_with_overrides requires rows_with_overrides list")
-
-            # Validate each override entry
-            overrides = []
-            for row_override in rows_with_overrides:
-                row_id = row_override.get('raw_import_row_id')
-                row_index = row_override.get('row_index')
-                issues = row_override.get('issues', [])
-
-                # Verify row exists
-                row = session.query(RawImportRow).filter_by(id=row_id).first()
-                if not row:
-                    raise ValueError(f"Raw import row {row_id} not found")
-
-                # Build override detail entry
-                override_entry = {
-                    'raw_import_row_id': row_id,
-                    'row_index': row_index,
-                    'issues': issues  # List of {field, reason} dicts
-                }
-                canonical_field = _canonical_override_field(issues)
-                if canonical_field:
-                    override_entry['field'] = canonical_field
-                overrides.append(override_entry)
-                override_count += 1
-
-            # Persist override_details
-            override_details = {'overrides': overrides}
+        remaining_issues = check_batch_remaining_issues(
+            batch_id=batch_id,
+            database_url=database_url,
+        )
+        if remaining_issues:
+            raise ValueError('Batch has unresolved issues; resolve each row before approving')
 
         # Update batch approval status
         batch.approval_status = approval_status
-        if override_details:
-            batch.override_details = override_details
         batch.updated_at = datetime.now(timezone.utc)
 
         session.add(batch)
@@ -174,8 +102,6 @@ def approve_batch(
             actor=reviewer,
             details={
                 'approval_status': approval_status,
-                'override_count': override_count,
-                'override_details': override_details
             }
         )
         session.add(audit_record)
@@ -187,7 +113,6 @@ def approve_batch(
             'success': True,
             'approval_status': approval_status,
             'batch_id': batch_id,
-            'override_count': override_count,
             'audit_log_id': audit_record.id,
             'timestamp': datetime.now(timezone.utc)
         }
@@ -215,8 +140,7 @@ def get_batch_approval_status(
         {
             'batch_id': str,
             'approval_status': str or None,
-            'override_count': int,
-            'override_details': dict or None
+            'approval_status': str or None
         }
 
     Raises:
@@ -234,15 +158,9 @@ def get_batch_approval_status(
         if not batch:
             raise ValueError(f"Import batch '{batch_id}' not found")
 
-        override_count = 0
-        if batch.override_details:
-            override_count = len(batch.override_details.get('overrides', []))
-
         return {
             'batch_id': batch_id,
             'approval_status': batch.approval_status,
-            'override_count': override_count,
-            'override_details': batch.override_details
         }
 
     finally:
@@ -256,8 +174,7 @@ def check_batch_remaining_issues(
     """
     Check for remaining unresolved issues in batch.
 
-    Returns list of rows with remaining issues OR rows with follow-up/defer decisions
-    for approval override modal.
+    Returns rows whose effective gating still blocks finalization.
 
     Args:
         batch_id: Import batch ID
@@ -271,7 +188,7 @@ def check_batch_remaining_issues(
                 'row_index': int,
                 'issues': [{...}, ...],
                 'row_status': str,
-                'decision_warning': str (optional - for follow-up/defer rows)
+                'decision_warning': str
             }
         ]
 
@@ -340,15 +257,6 @@ def check_batch_remaining_issues(
                     'decision_warning': 'disposition_required',
                 })
                 continue
-            if projection.decision_warning == 'needs_follow_up':
-                remaining_issues_by_row.append({
-                    'raw_import_row_id': row.id,
-                    'row_index': row.row_index,
-                    'issues': [{'field': 'row_decision', 'reason': 'Marked as Needs follow-up'}],
-                    'row_status': row_status,
-                    'decision_warning': 'needs_follow_up'
-                })
-
         return remaining_issues_by_row
 
     finally:

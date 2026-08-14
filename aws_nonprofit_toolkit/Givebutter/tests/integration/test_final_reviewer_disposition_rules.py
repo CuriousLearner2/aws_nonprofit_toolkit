@@ -159,10 +159,10 @@ def test_issue_row_requires_human_accept_notes_and_preserves_issue(
     with app.test_client() as client:
         approval_check = client.post(
             f'/imports/{batch_id}/approve-batch',
-            json={'approval_status': 'approved_with_overrides', 'rows_with_overrides': []},
+            json={'approval_status': 'approved'},
         )
-        assert approval_check.status_code == 200
-        assert approval_check.get_json()['requires_override_confirmation'] is True
+        assert approval_check.status_code == 400
+        assert 'unresolved issues' in approval_check.get_json()['error']
 
         before = _post_row_decision(client, batch_id, issue_raw_id, 'accept_as_is')
         assert before.status_code == 400

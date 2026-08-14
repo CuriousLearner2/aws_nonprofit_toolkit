@@ -2,8 +2,8 @@
 Unit tests for approval_service - batch approval workflow.
 
 Tests:
-- Batch approval with and without overrides
-- Checking for remaining issues including follow-up and defer decisions
+- Batch approval after row-level decisions
+- Checking for remaining unresolved blockers
 - Audit log creation
 - Batch approval status queries
 """
@@ -24,7 +24,6 @@ from scripts.householder.approval_service import (
     check_batch_remaining_issues,
     get_batch_approval_status,
 )
-from scripts.householder.approval_override_policy import canonical_override_field
 from scripts.householder.row_decision_service import (
     record_row_decision,
 )
@@ -78,34 +77,6 @@ def temp_db():
 class TestApproveBatch:
     """Test batch approval workflow."""
 
-    def test_canonical_override_field_keeps_single_field(self):
-        """Approval override canonicalization preserves one normalized field."""
-        issues = [
-            {'field': ' Email ', 'reason': 'Invalid format'},
-            {'field': 'email', 'reason': 'Missing domain'},
-        ]
-
-        assert canonical_override_field(issues) == 'email'
-
-    def test_canonical_override_field_ignores_empty_fields(self):
-        """Blank field values do not create a misleading canonical field."""
-        issues = [
-            {'field': '', 'reason': 'Ignored blank'},
-            {'field': None, 'reason': 'Ignored null'},
-            {'field': '  ', 'reason': 'Ignored whitespace'},
-        ]
-
-        assert canonical_override_field(issues) is None
-
-    def test_canonical_override_field_returns_none_for_multiple_fields(self):
-        """Approval override canonicalization fails closed for multi-field issues."""
-        issues = [
-            {'field': 'email', 'reason': 'Invalid format'},
-            {'field': 'phone', 'reason': 'Invalid format'},
-        ]
-
-        assert canonical_override_field(issues) is None
-
     def test_approve_batch_simple(self, temp_db):
         """Test simple batch approval without overrides."""
         db_url, row_ids = temp_db
@@ -118,38 +89,7 @@ class TestApproveBatch:
 
         assert result['success'] is True
         assert result['approval_status'] == 'approved'
-        assert result['override_count'] == 0
         assert 'audit_log_id' in result
-
-    def test_approve_batch_with_overrides(self, temp_db):
-        """Test batch approval with overrides."""
-        db_url, row_ids = temp_db
-
-        overrides = [
-            {
-                'raw_import_row_id': row_ids[0],
-                'row_index': 1,
-                'issues': [{'field': 'email', 'reason': 'Invalid format'}]
-            }
-        ]
-
-        result = approve_batch(
-            batch_id='test-batch-001',
-            approval_status='approved_with_overrides',
-            rows_with_overrides=overrides,
-            database_url=db_url
-        )
-
-        assert result['success'] is True
-        assert result['approval_status'] == 'approved_with_overrides'
-        assert result['override_count'] == 1
-
-        status = get_batch_approval_status(
-            batch_id='test-batch-001',
-            database_url=db_url
-        )
-        assert status['override_details'] is not None
-        assert status['override_details']['overrides'][0]['field'] == 'email'
 
     def test_invalid_approval_status_raises_error(self, temp_db):
         """Test that invalid approval_status raises error."""
@@ -162,7 +102,7 @@ class TestApproveBatch:
                 database_url=db_url
             )
 
-        assert 'Invalid approval_status' in str(exc_info.value)
+        assert 'File-level approval overrides are not supported' in str(exc_info.value)
 
     def test_nonexistent_batch_raises_error(self, temp_db):
         """Test that nonexistent batch raises error."""
@@ -253,9 +193,7 @@ class TestCheckBatchRemainingIssues:
             database_url=db_url
         )
 
-        assert len(issues) == 1
-        assert issues[0]['raw_import_row_id'] == row_ids[0]
-        assert issues[0]['decision_warning'] == 'needs_follow_up'
+        assert issues == []
 
     def test_defer_decisions_are_rejected(self, temp_db):
         """Test that the removed defer decision is rejected."""
@@ -270,7 +208,7 @@ class TestCheckBatchRemainingIssues:
             )
 
     def test_multiple_rows_with_supported_decisions(self, temp_db):
-        """Test that supported decisions preserve the remaining follow-up row."""
+        """Follow-up and rejected rows do not block file approval."""
         db_url, row_ids = temp_db
 
         # Record follow-up for row 0
@@ -287,6 +225,7 @@ class TestCheckBatchRemainingIssues:
             batch_id='test-batch-001',
             raw_import_row_id=row_ids[1],
             decision='reject_row',
+            notes='Rejecting this row',
             database_url=db_url
         )
 
@@ -295,9 +234,7 @@ class TestCheckBatchRemainingIssues:
             database_url=db_url
         )
 
-        assert len(issues) == 1
-        assert issues[0]['raw_import_row_id'] == row_ids[0]
-        assert issues[0]['decision_warning'] == 'needs_follow_up'
+        assert issues == []
 
     def test_cleared_decisions_not_included(self, temp_db):
         """Test that rows with cleared decisions are not included."""
@@ -354,8 +291,6 @@ class TestGetBatchApprovalStatus:
 
         assert status['batch_id'] == 'test-batch-001'
         assert status['approval_status'] is None
-        assert status['override_count'] == 0
-        assert status['override_details'] is None
 
     def test_get_approval_status_approved(self, temp_db):
         """Test getting approval status of approved batch."""
@@ -373,31 +308,6 @@ class TestGetBatchApprovalStatus:
         )
 
         assert status['approval_status'] == 'approved'
-        assert status['override_count'] == 0
-
-    def test_get_approval_status_with_overrides(self, temp_db):
-        """Test getting approval status of batch with overrides."""
-        db_url, row_ids = temp_db
-
-        overrides = [
-            {'raw_import_row_id': row_ids[0], 'row_index': 1, 'issues': []},
-            {'raw_import_row_id': row_ids[1], 'row_index': 2, 'issues': []},
-        ]
-
-        approve_batch(
-            batch_id='test-batch-001',
-            approval_status='approved_with_overrides',
-            rows_with_overrides=overrides,
-            database_url=db_url
-        )
-
-        status = get_batch_approval_status(
-            batch_id='test-batch-001',
-            database_url=db_url
-        )
-
-        assert status['approval_status'] == 'approved_with_overrides'
-        assert status['override_count'] == 2
 
     def test_nonexistent_batch_raises_error(self, temp_db):
         """Test that nonexistent batch raises error."""

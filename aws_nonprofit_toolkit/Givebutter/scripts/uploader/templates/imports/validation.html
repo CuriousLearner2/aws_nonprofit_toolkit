@@ -26,7 +26,7 @@
         </span>
     </div>
 
-    {% set summary = namespace(blocking=0, warning=0, no_issues=0, has_overridden=false, first_blocking_row_id='') %}
+    {% set summary = namespace(blocking=0, warning=0, no_issues=0, first_blocking_row_id='') %}
     {% for record in validation_issues %}
         {% set row_status = record.row_status or 'No issues' %}
         {% if row_status == 'Blocking' %}
@@ -36,9 +36,6 @@
             {% endif %}
         {% elif row_status == 'Warning' %}
             {% set summary.warning = summary.warning + 1 %}
-        {% elif row_status == 'Overridden' %}
-            {% set summary.has_overridden = true %}
-            {% set summary.no_issues = summary.no_issues + 1 %}
         {% else %}
             {% set summary.no_issues = summary.no_issues + 1 %}
         {% endif %}
@@ -88,9 +85,6 @@
         <button type="button" class="status-filter-button" data-row-status-filter="Blocking" data-testid="validation-status-filter-blocking" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">Blocking</button>
         <button type="button" class="status-filter-button" data-row-status-filter="Warning" data-testid="validation-status-filter-warning" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">Warning</button>
         <button type="button" class="status-filter-button" data-row-status-filter="No issues" data-testid="validation-status-filter-no-issues" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">No issues</button>
-        {% if summary.has_overridden %}
-        <button type="button" class="status-filter-button" data-row-status-filter="Overridden" data-testid="validation-status-filter-overridden" style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; font-size: 12px; font-weight: 600; cursor: pointer;">Overridden</button>
-        {% endif %}
         <span data-testid="validation-visible-row-count" aria-live="polite" style="margin-left: auto; font-size: 12px; font-weight: 600; color: #6b7280;">Showing {{ validation_issues | length }} of {{ validation_issues | length }} rows</span>
     </div>
 
@@ -142,8 +136,7 @@
                 id="validation-row-{{ record.id }}"
                 data-row-status="{{ record.row_status or 'No issues' }}"
                 tabindex="-1"
-                class="validation-row{% if record.row_status == 'Overridden' %} row-overridden{% endif %}"
-                {% if record.row_status == 'Overridden' %}style="background-color: #eef2ff;"{% endif %}>
+                class="validation-row">
                 <!-- Read-only: Txn ID -->
                 <td style="font-weight: 500; background-color: #f9fafb;" title="{{ record.transaction_id or '' }}">{{ record.transaction_id }}</td>
 
@@ -311,21 +304,6 @@
         </div>
         <div class="modal-footer" id="modal-record-footer">
             <button type="button" class="btn btn-secondary" onclick="closeModal('record-modal')">Close</button>
-        </div>
-    </div>
-</div>
-
-<!-- Approval Check Modal -->
-<div id="approval-modal" class="modal">
-    <div class="modal-content" style="max-width: 600px;">
-        <div class="modal-header">
-            <h2 class="modal-title">Approve File</h2>
-        </div>
-        <div class="modal-body" id="modal-approval-content">
-            <!-- Populated by JavaScript -->
-        </div>
-        <div class="modal-footer" id="modal-approval-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeModal('approval-modal')">Cancel</button>
         </div>
     </div>
 </div>
@@ -897,17 +875,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const emptyState = document.getElementById('validation-status-filter-empty-state');
     const visibleRowCount = document.querySelector('[data-testid="validation-visible-row-count"]');
     const totalRowCount = rows.length;
-    const hasOverriddenRows = rows.some(row => row.dataset.rowStatus === 'Overridden');
 
     if (!filterButtons.length || !rows.length) {
         return;
-    }
-
-    if (!hasOverriddenRows) {
-        const overriddenButton = document.querySelector('[data-row-status-filter="Overridden"]');
-        if (overriddenButton) {
-            overriddenButton.remove();
-        }
     }
 
     function setActiveButton(activeValue) {
@@ -1998,148 +1968,24 @@ document.querySelectorAll('[data-action="inspect-record"]').forEach(link => {
     });
 });
 
-// Approve File button
+// Approve File is available only when row-level review has resolved blockers.
 document.getElementById('approve-file-btn').addEventListener('click', async function() {
     try {
         const response = await fetch(`/imports/${batchId}/approve-batch`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                approval_status: 'approved_with_overrides',
-                rows_with_overrides: []
-            }),
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({approval_status: 'approved'}),
         });
-
         const result = await response.json();
-
-        if (result.requires_override_confirmation) {
-            // Show approval modal with remaining issues
-            showApprovalModal(result.remaining_issues);
-        } else if (result.success) {
-            // Batch approved without issues
+        if (result.success) {
             alert('File approved successfully!');
             window.location.href = `/imports/${batchId}/dashboard`;
         } else {
-            alert('Error: ' + (result.error || 'Failed to approve file'));
+            alert(result.error || 'Resolve all blocking rows before approving the file.');
         }
     } catch (error) {
         alert('Error: ' + error.message);
     }
 });
-
-function showApprovalModal(remainingIssues) {
-    const modalBody = document.getElementById('modal-approval-content');
-    const modalFooter = document.getElementById('modal-approval-footer');
-
-    let issuesHtml = '<div style="margin-bottom: 20px;">';
-    issuesHtml += `<p style="color: #666; margin-bottom: 16px;">This file has ${remainingIssues.length} row(s) with unresolved issues. Blocking issues require explicit override confirmation before approval. Warnings are non-blocking and can remain visible without requiring an override.</p>`;
-    issuesHtml += '<div style="border: 1px solid #e5e7eb; border-radius: 3px; max-height: 300px; overflow-y: auto;">';
-
-    remainingIssues.forEach(rowIssue => {
-        issuesHtml += `<div style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
-            <strong>Row ${rowIssue.row_index}:</strong>
-            <div style="margin-top: 4px; font-size: 12px;">`;
-
-        rowIssue.issues.forEach(issue => {
-            const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
-            const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
-            issuesHtml += `<span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block; margin-right: 4px; margin-bottom: 4px;">
-                ${issue.field || 'unknown'} — ${issue.reason || 'issue'}
-            </span>`;
-        });
-
-        issuesHtml += '</div></div>';
-    });
-
-    issuesHtml += '</div></div>';
-
-    modalBody.innerHTML = issuesHtml;
-
-    // Update footer with approve button
-    modalFooter.innerHTML = `
-        <button type="button" class="btn btn-secondary" onclick="closeModal('approval-modal')" style="padding: 8px 16px; background-color: #6b7280; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Cancel</button>
-        <button type="button" id="confirm-override-btn" style="padding: 8px 16px; background-color: #10b981; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Approve with Overrides</button>
-    `;
-
-    document.getElementById('confirm-override-btn').addEventListener('click', async function() {
-        await confirmApprovalWithOverrides(remainingIssues);
-    });
-
-    openModal('approval-modal');
-}
-
-async function confirmApprovalWithOverrides(remainingIssues) {
-    const rowsWithOverrides = remainingIssues.map(rowIssue => ({
-        raw_import_row_id: rowIssue.raw_import_row_id,
-        row_index: rowIssue.row_index,
-        issues: rowIssue.issues
-    }));
-
-    try {
-        const response = await fetch(`/imports/${batchId}/approve-batch`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                approval_status: 'approved_with_overrides',
-                rows_with_overrides: rowsWithOverrides
-            }),
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            // Update affected rows to show Overridden status
-            rowsWithOverrides.forEach(override => {
-                const row = document.querySelector(`tr[data-raw-id="${override.raw_import_row_id}"]`);
-                if (row) {
-                    row.classList.add('row-overridden');
-                    row.setAttribute('data-row-status', 'Overridden');
-                    row.style.backgroundColor = '#eef2ff';
-
-                    // Update read-only validation status (preserve reviewer disposition)
-                    const dropdown = row.querySelector('.row-status-dropdown');
-                    if (dropdown) {
-                        const statusLabel = row.querySelector('.validation-status-label');
-                        if (statusLabel) {
-                            statusLabel.textContent = 'Overridden';
-                        }
-                        row.setAttribute('data-row-status', 'Overridden');
-                        dropdown.value = dropdown.dataset.currentDecision || '';
-                        dropdown.style.backgroundColor = '#e0e7ff';
-                    }
-
-                    const issuesCell = row.querySelector('.issues-cell');
-                    if (issuesCell && override.issues.length > 0) {
-                        let issuesHtml = '';
-                        override.issues.forEach(issue => {
-                            const bgColor = issue.severity === 'error' ? '#fee2e2' : '#fef3c7';
-                            const textColor = issue.severity === 'error' ? '#991b1b' : '#78350f';
-                            issuesHtml += `<div style="margin-bottom: 4px;">
-                                <span style="background-color: ${bgColor}; color: ${textColor}; padding: 2px 4px; border-radius: 2px; display: inline-block;">
-                                    ${issue.field || 'unknown'} — Overridden
-                                </span>
-                            </div>`;
-                        });
-                        issuesCell.innerHTML = issuesHtml;
-                    }
-                }
-            });
-
-            closeModal('approval-modal');
-            alert('File approved with overrides successfully!');
-            setTimeout(() => {
-                window.location.href = `/imports/${batchId}/dashboard`;
-            }, 1000);
-        } else {
-            alert('Error: ' + (result.error || 'Failed to approve file'));
-        }
-    } catch (error) {
-        alert('Error: ' + error.message);
-    }
-}
 </script>
 {% endblock %}

@@ -1319,184 +1319,6 @@ async def test_validation_error_preserves_review_status_dropdown(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_approval_with_overrides_preserves_row_status_dropdown(
-    e2e_database_and_app,
-):
-    """
-    GOAL: Verify that approval with overrides preserves the row status dropdown.
-
-    Regression test for bug in confirmApprovalWithOverrides (validation.html line 859):
-    was replacing statusCell.innerHTML with just a badge, destroying the dropdown element.
-
-    This test simulates the JavaScript behavior to verify the fix:
-    Instead of statusCell.innerHTML = badge, the fix uses dropdown.querySelector()
-    to update only the first option textContent to "Overridden".
-
-    This test verifies:
-    1. Row has a dropdown initially
-    2. After simulating approval with overrides, the dropdown is preserved
-    3. The dropdown's first option shows "Overridden"
-    4. The dropdown remains functional (not replaced with static badge)
-
-    Flow:
-    1. Seed database with a test row
-    2. Load validation page
-    3. Simulate approval with overrides by calling the update logic directly
-    4. Assert dropdown <select> exists (not replaced with badge)
-    5. Assert first option shows 'Overridden'
-    """
-    from playwright.async_api import async_playwright
-
-    database_url, db_path, flask_app = e2e_database_and_app
-
-    # Seed test data
-    engine = create_db_engine(database_url)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    server = None
-    flask_thread = None
-
-    try:
-        # Create batch
-        batch = ImportBatch(
-            id='approval-override-batch',
-            filename='approval_test.csv',
-            upload_timestamp=datetime.now(timezone.utc),
-            status='pending_review',
-            raw_row_count=1
-        )
-        session.add(batch)
-        session.flush()
-
-        # Create raw row
-        raw_row = RawImportRow(
-            batch_id='approval-override-batch',
-            row_index=1,
-            raw_csv_data={
-                'name': 'Frank Test',
-                'date': '2026-01-25',
-                'email': 'frank@example.com',
-                'phone': '(555) 111-2222',
-                'amount': '150.00',
-                'address': '789 Test Ln'
-            }
-        )
-        session.add(raw_row)
-        session.flush()
-        raw_row_id = raw_row.id
-
-        # Create ImportContact
-        import_contact = ImportContact(
-            batch_id='approval-override-batch',
-            raw_import_row_id=raw_row_id,
-            first_name='Frank',
-            last_name='Test',
-            email='frank@example.com',
-            phone='(555) 111-2222',
-            address_line1='789 Test Ln',
-            amount=150.00
-        )
-        session.add(import_contact)
-        session.flush()
-        session.commit()
-
-        batch_id = 'approval-override-batch'
-        server, flask_thread, base_url = start_flask_server(flask_app)
-        wait_for_flask_ready(base_url, batch_id)
-
-        # Launch browser
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
-
-            try:
-                # Navigate to validation page
-                await page.goto(f'{base_url}/imports/{batch_id}/validation')
-
-                # Wait for table to load
-                await page.wait_for_selector('table tbody tr', timeout=5000)
-
-                # ===== PART 1: Verify Initial Dropdown =====
-                print(f"\n=== PART 1: Verify Initial Dropdown ===")
-
-                dropdown = await page.query_selector('select.row-status-dropdown')
-                assert dropdown is not None, "Dropdown should exist initially"
-                print(f"✓ Dropdown exists initially")
-
-                # ===== PART 2: Simulate Approval with Overrides =====
-                print(f"\n=== PART 2: Simulate Approval with Overrides ===")
-
-                # Execute JavaScript to simulate the approval response handling
-                # This mimics the fixed confirmApprovalWithOverrides() function
-                await page.evaluate("""
-                () => {
-                    const rawId = 1;
-                    const row = document.querySelector(`tr[data-raw-id="${rawId}"]`);
-                    if (row) {
-                        // This is the FIXED code pattern (preserves dropdown)
-                        const dropdown = row.querySelector('.row-status-dropdown');
-                        if (dropdown) {
-                            const firstOption = dropdown.querySelector('option:first-child');
-                            if (firstOption) {
-                                firstOption.textContent = 'Overridden';
-                            }
-                            dropdown.value = '';
-                            dropdown.style.backgroundColor = '#e0e7ff';
-                        }
-                    }
-                }
-                """)
-
-                print("✓ Simulated approval with overrides")
-
-                # ===== PART 3: Verify Dropdown Preservation =====
-                print(f"\n=== PART 3: Verify Dropdown Preservation ===")
-
-                # C1: Dropdown <select> element still exists (not replaced with static badge)
-                dropdown_after = await page.query_selector('select.row-status-dropdown')
-                assert dropdown_after is not None, \
-                    "C1 FAILED: Dropdown was replaced with badge (should be preserved)"
-                print("✓ C1: Dropdown <select> element still exists")
-
-                # C2: Dropdown is visible
-                is_visible = await dropdown_after.is_visible()
-                assert is_visible, "C2 FAILED: Dropdown should be visible"
-                print("✓ C2: Dropdown is visible")
-
-                # C3: First option shows 'Overridden'
-                first_option_after = await dropdown_after.query_selector('option:first-child')
-                first_option_text = await first_option_after.inner_text()
-                assert first_option_text == 'Overridden', \
-                    f"C3 FAILED: First option should show 'Overridden', got: '{first_option_text}'"
-                print(f"✓ C3: First option shows 'Overridden'")
-
-                # C4: Dropdown is still enabled and interactive
-                is_enabled = await dropdown_after.is_enabled()
-                assert is_enabled, "C4 FAILED: Dropdown should still be enabled"
-                print("✓ C4: Dropdown is still enabled")
-
-                # C5: Dropdown contains expected options (not replaced with static badge)
-                all_options = await dropdown_after.query_selector_all('option')
-                assert len(all_options) > 1, \
-                    f"C5 FAILED: Dropdown should have multiple options, got {len(all_options)}"
-                print(f"✓ C5: Dropdown has {len(all_options)} options (still functional)")
-
-                # C6: Verify background color changed (visual indicator)
-                bg_color = await dropdown_after.evaluate("el => window.getComputedStyle(el).backgroundColor")
-                print(f"✓ C6: Dropdown background color updated to: {bg_color}")
-
-                print(f"\n=== ALL APPROVAL DROPDOWN PRESERVATION TESTS PASSED ===")
-
-            finally:
-                await browser.close()
-
-    finally:
-        stop_flask_server(server, flask_thread)
-        session.close()
-
-
-@pytest.mark.e2e
-@pytest.mark.asyncio
 async def test_details_modal_displays_read_only_controls(
     e2e_database_and_app,
 ):
@@ -8105,6 +7927,7 @@ async def test_validation_jump_link_highlights_first_blocking_row():
 
 
 @pytest.mark.e2e
+@pytest.mark.skip(reason='File-level approval override flow was removed; row dispositions are the only override path.')
 @pytest.mark.asyncio
 async def test_sticky_action_bar_with_approval_modal(
     e2e_database_and_app,
@@ -8218,7 +8041,7 @@ async def test_sticky_action_bar_with_approval_modal(
                         content_type='application/json',
                         body=(
                             '{'
-                            '"requires_override_confirmation": true,'
+                            '"error": "File approval is blocked until rows are resolved",'
                             '"remaining_issues": ['
                             '{'
                             f'"raw_import_row_id": {first_raw_row_id},'
@@ -8280,9 +8103,9 @@ async def test_sticky_action_bar_with_approval_modal(
                 assert await approve_btn_after_modal.is_visible(), "Approve button disappeared when modal triggered"
                 print("✓ Approve button still in DOM when modal triggered")
 
-                confirm_btn = await page.query_selector('#approval-modal #confirm-override-btn')
-                assert confirm_btn is not None, "Confirm override button not found in approval modal"
-                print("✓ Approval modal opened with confirm override control")
+                confirm_btn = await page.query_selector('#approve-file-btn')
+                assert confirm_btn is not None, "Approve File control not found"
+                print("✓ Approval control remains available while the batch is blocked")
 
                 # Check button is still in viewport (not scrolled away or hidden behind modal)
                 button_box_after = await approve_btn_after_modal.bounding_box()
@@ -8308,140 +8131,6 @@ async def test_sticky_action_bar_with_approval_modal(
                 print("✓ Approve button remains visible after modal is closed")
 
                 print("\n=== STICKY ACTION BAR MODAL INTERACTION TEST PASSED ===")
-
-            finally:
-                await browser.close()
-
-    finally:
-        stop_flask_server(server, flask_thread)
-        session.close()
-
-
-@pytest.mark.e2e
-@pytest.mark.asyncio
-async def test_approval_overrides_preserve_blocked_readiness_after_reload(
-    e2e_database_and_app,
-):
-    """
-    Verify browser approval with overrides persists the approval transaction and
-    preserves the unresolved issue as a readiness blocker after reload.
-
-    This proves the durable chain:
-    user action -> approval route -> service persistence -> batch approval state
-    -> readiness view model -> browser-visible blocked state -> reload.
-    """
-    from playwright.async_api import async_playwright
-
-    database_url, db_path, flask_app = e2e_database_and_app
-    engine = create_db_engine(database_url)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    server = None
-    flask_thread = None
-
-    batch_id = 'approval-readiness-batch'
-    raw_row_id = None
-
-    try:
-        raw_row_id = await seed_validation_batch(
-            session,
-            batch_id=batch_id,
-            filename='approval_readiness.csv',
-            field_values={
-                'name': 'Ready Reviewer',
-                'date': '2026-06-18',
-                'email': '',
-                'phone': '(555) 444-4444',
-                'amount': '275.00',
-                'address': '123 Readiness Rd',
-            },
-        )
-
-        review_item = ReviewItem(
-            batch_id=batch_id,
-            item_type='validation',
-            confidence=1.0,
-            payload_json={
-                'field': 'email',
-                'reason': 'missing',
-                'description': 'Missing email address',
-                'severity': 'error',
-            },
-        )
-        session.add(review_item)
-        session.flush()
-        contact_id = session.query(ImportContact).filter_by(batch_id=batch_id).one().id
-        session.add(
-            ReviewItemSubject(
-                review_item_id=review_item.id,
-                subject_type='import_contact_snapshot',
-                subject_id=contact_id,
-                role='primary',
-            )
-        )
-        session.commit()
-
-        server, flask_thread, base_url = start_flask_server(flask_app)
-        wait_for_flask_ready(base_url, batch_id)
-
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
-
-            try:
-                await page.goto(f'{base_url}/imports/{batch_id}/validation')
-                await page.wait_for_selector('table tbody tr', timeout=5000)
-
-                approve_button = page.locator('.validation-sticky-action-bar #approve-file-btn')
-                assert await approve_button.count() == 1, 'Approve File button should render'
-                assert await approve_button.is_visible(), 'Approve File button should be visible'
-
-                await approve_button.click()
-                await page.wait_for_selector('#approval-modal', state='visible', timeout=5000)
-
-                confirm_button = page.locator('#approval-modal #confirm-override-btn')
-                assert await confirm_button.count() == 1, 'Confirm override button should render'
-                await confirm_button.wait_for(state='visible', timeout=5000)
-
-                page.once('dialog', lambda dialog: dialog.accept())
-                await confirm_button.click()
-                await page.wait_for_url(f'**/imports/{batch_id}/dashboard', timeout=10000)
-
-                session.expire_all()
-                batch = session.query(ImportBatch).filter_by(id=batch_id).one()
-                assert batch.approval_status == 'approved_with_overrides'
-                assert batch.override_details is not None
-                overrides = batch.override_details.get('overrides', [])
-                assert len(overrides) == 1
-                assert overrides[0]['raw_import_row_id'] == raw_row_id
-                assert overrides[0]['field'] == 'email'
-                assert overrides[0]['issues']
-                assert overrides[0]['issues'][0]['field'] == 'email'
-
-                raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).one()
-                assert raw_row.raw_csv_data['email'] == ''
-
-                await page.goto(f'{base_url}/imports/{batch_id}/readiness')
-                await page.wait_for_selector('h1', timeout=5000)
-                await page.locator('h2', has_text='Export Blocked').wait_for(
-                    state='visible',
-                    timeout=5000,
-                )
-                assert await page.locator('[data-testid="readiness-related-links"]').count() == 1
-                related_export_link = page.locator(
-                    '[data-testid="readiness-related-links"] a[href$="/exports"]'
-                )
-                assert await related_export_link.count() == 1
-                assert await related_export_link.first.inner_text() == 'Export Console'
-                assert await page.locator('a[href$="/exports"]', has_text='Open Export Console').count() == 0
-
-                await page.reload()
-                await page.wait_for_selector('h1', timeout=5000)
-                await page.locator('h2', has_text='Export Blocked').wait_for(
-                    state='visible',
-                    timeout=5000,
-                )
-                assert 'Export Blocked' in await page.inner_text('body')
 
             finally:
                 await browser.close()

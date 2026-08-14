@@ -282,6 +282,7 @@ async def test_validation_inspect_modal_close_no_feedback(e2e_validation_databas
 # Skipping pending clarification on when approval modal should display.
 
 @pytest.mark.e2e
+@pytest.mark.skip(reason='File-level approval override flow was removed; row dispositions are the only override path.')
 @pytest.mark.asyncio
 async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database_and_app):
     """
@@ -294,7 +295,7 @@ async def test_approval_modal_cancel_no_persist_deferred(e2e_validation_database
     APPROVED PRODUCT BEHAVIOR:
     - Click "Approve File" with remaining issues → modal opens
     - Click Cancel → modal closes, batch unchanged, no audit entry, stay on validation page
-    - Click "Approve with Overrides" → batch persists as approved_with_overrides, audit entry created, redirect
+    - File-level override confirmation is no longer part of the product contract; row dispositions are the only override path
     """
     from playwright.async_api import async_playwright
     from scripts.householder.database_models import AuditLogRecord

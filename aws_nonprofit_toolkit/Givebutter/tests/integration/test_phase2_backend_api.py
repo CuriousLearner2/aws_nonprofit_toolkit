@@ -7,7 +7,7 @@ Tests for:
 3. Effective values derivation
 4. Row status derivation
 5. Issue recalculation
-6. Approval flows (approved, approved_with_overrides)
+6. Approval flows (approved; row-level dispositions only)
 7. Audit logging
 """
 
@@ -27,7 +27,7 @@ from householder.database_models import (
     ReviewDecision, AuditLogRecord, Base
 )
 from householder.autosave_service import autosave_row_corrections, get_effective_values
-from householder.row_status_service import derive_row_status, is_row_overridden
+from householder.row_status_service import derive_row_status
 from householder.issue_recalculation_service import recalculate_row_issues, is_issue_resolved
 from householder.approval_service import approve_batch, get_batch_approval_status
 from householder.readiness_service import get_export_readiness
@@ -454,11 +454,10 @@ class TestApprovalFlows:
 
         assert result['success'] is True
         assert result['approval_status'] == 'approved'
-        assert result['override_count'] == 0
         assert result['audit_log_id'] > 0
 
-    def test_approve_batch_with_overrides(self, sample_batch):
-        """Approve batch with overrides (remaining issues)."""
+    def test_file_level_override_payload_is_rejected(self, sample_batch):
+        """Legacy file-level override payloads are rejected."""
         rows_with_overrides = [
             {
                 'raw_import_row_id': sample_batch['row2_id'],
@@ -467,27 +466,13 @@ class TestApprovalFlows:
             }
         ]
 
-        result = approve_batch(
-            batch_id=sample_batch['batch_id'],
-            approval_status='approved_with_overrides',
-            rows_with_overrides=rows_with_overrides,
-            database_url=sample_batch['db_url']
-        )
-
-        assert result['success'] is True
-        assert result['approval_status'] == 'approved_with_overrides'
-        assert result['override_count'] == 1
-        assert result['audit_log_id'] > 0
-
-        # Verify override_details persisted
-        status = get_batch_approval_status(
-            batch_id=sample_batch['batch_id'],
-            database_url=sample_batch['db_url']
-        )
-
-        assert status['approval_status'] == 'approved_with_overrides'
-        assert status['override_count'] == 1
-        assert status['override_details'] is not None
+        with pytest.raises(ValueError, match='File-level approval overrides are not supported'):
+            approve_batch(
+                batch_id=sample_batch['batch_id'],
+                approval_status='approved',
+                rows_with_overrides=rows_with_overrides,
+                database_url=sample_batch['db_url']
+            )
 
     def test_cannot_re_approve_batch(self, clean_sample_batch):
         """Cannot re-approve already approved batch."""
@@ -506,58 +491,6 @@ class TestApprovalFlows:
                 database_url=clean_sample_batch['db_url']
             )
 
-    def test_is_row_overridden(self, sample_batch):
-        """Check if row is in override_details."""
-        # Before approval: not overridden
-        assert is_row_overridden(
-            batch_id=sample_batch['batch_id'],
-            raw_import_row_id=sample_batch['row2_id'],
-            database_url=sample_batch['db_url']
-        ) is False
-
-        # Approve with overrides
-        approve_batch(
-            batch_id=sample_batch['batch_id'],
-            approval_status='approved_with_overrides',
-            rows_with_overrides=[{
-                'raw_import_row_id': sample_batch['row2_id'],
-                'row_index': 2,
-                'issues': [{'field': 'phone', 'reason': 'missing'}]
-            }],
-            database_url=sample_batch['db_url']
-        )
-
-        # After approval: overridden
-        assert is_row_overridden(
-            batch_id=sample_batch['batch_id'],
-            raw_import_row_id=sample_batch['row2_id'],
-            database_url=sample_batch['db_url']
-        ) is True
-
-    def test_approved_overrides_make_export_readiness_ready(self, sample_batch):
-        """Approved override rows should no longer block export readiness."""
-        rows_with_overrides = [
-            {
-                'raw_import_row_id': sample_batch['row2_id'],
-                'row_index': 2,
-                'issues': [{'field': 'phone', 'reason': 'missing'}]
-            }
-        ]
-
-        approve_batch(
-            batch_id=sample_batch['batch_id'],
-            approval_status='approved_with_overrides',
-            rows_with_overrides=rows_with_overrides,
-            database_url=sample_batch['db_url']
-        )
-
-        readiness = get_export_readiness(
-            sample_batch['batch_id'],
-            config={'GIVEBUTTER_DATABASE_URL': sample_batch['db_url']}
-        )
-
-        assert readiness.is_export_ready is True
-        assert readiness.blocker_count == 0
 
 
 class TestAuditLogging:

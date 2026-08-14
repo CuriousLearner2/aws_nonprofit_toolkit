@@ -187,17 +187,17 @@ class TestValidationDecisionUI:
         assert 'Warnings' in html
         assert 'Validation status' in html
 
-    def test_approval_modal_explains_blocking_vs_warning(self, flask_client_with_validation_items):
-        """Approval modal explains that blocking issues require override confirmation."""
+    def test_file_approval_offers_no_override_modal(self, flask_client_with_validation_items):
+        """File approval exposes no stale override controls."""
         client, database_url, engine, Session, validation_items = flask_client_with_validation_items
 
         response = client.get('/imports/IMP-2025-0101-A/validation')
         assert response.status_code == 200
         html = response.data.decode('utf-8')
 
-        assert 'Blocking issues require explicit override confirmation before approval.' in html
-        assert 'Warnings are non-blocking and can remain visible without requiring an override.' in html
-        assert 'Approve with Overrides' in html
+        assert 'Approve File' in html
+        assert 'approval-modal' not in html
+        assert 'Approve with Overrides' not in html
 
     def test_validation_page_displays_row_status(self, flask_client_with_validation_items):
         """Validation page shows row status from Phase 2 derivation (Phase 3)."""
