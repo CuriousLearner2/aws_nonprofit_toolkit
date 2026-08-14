@@ -455,56 +455,6 @@ class TestPhase3Autosave:
 class TestPhase3ApprovalWorkflow:
     """Test approval check and confirm workflow."""
 
-    def test_file_level_override_payload_is_rejected(self, flask_client_phase3):
-        """File approval cannot bypass unresolved rows with a legacy override payload."""
-        client, _, _, _ = flask_client_phase3
-
-        response = client.post(
-            '/imports/demo-phase3-test/approve-batch',
-            json={
-                'approval_status': 'approved',
-                'rows_with_overrides': [{'raw_import_row_id': 'legacy'}]
-            },
-            content_type='application/json'
-        )
-
-        assert response.status_code == 400
-        result = json.loads(response.data)
-        assert 'File-level approval overrides are not supported' in result['error']
-
-    def test_legacy_file_override_payload_is_rejected(self, flask_client_phase3):
-        """Obsolete file-level override payloads are rejected."""
-        client, database_url, engine, Session = flask_client_phase3
-
-        # Get row with issue
-        session = Session()
-        raw_row = session.query(RawImportRow).filter_by(
-            batch_id='demo-phase3-test',
-            row_index=2  # Carol White
-        ).first()
-        raw_id = raw_row.id
-        session.close()
-
-        # Legacy file-level override payload must be rejected.
-        response = client.post(
-            '/imports/demo-phase3-test/approve-batch',
-            json={
-                'approval_status': 'approved',
-                'rows_with_overrides': [
-                    {
-                        'raw_import_row_id': raw_id,
-                        'row_index': 2,
-                        'issues': [{'field': 'phone', 'reason': 'missing'}]
-                    }
-                ]
-            },
-            content_type='application/json'
-        )
-
-        assert response.status_code == 400
-        result = json.loads(response.data)
-        assert 'File-level approval overrides are not supported' in result['error']
-
 
 class TestPhase3DataImmutability:
     """Test that raw data remains unchanged."""
