@@ -305,7 +305,12 @@ def build_export_preview(
                         csv_data = json.loads(csv_data)
                     except Exception:
                         csv_data = {}
-                transaction_id = csv_data.get('transaction_id') or csv_data.get('TransactionID')
+                transaction_id = (
+                    csv_data.get('transaction_id')
+                    or csv_data.get('Transaction ID')
+                    or csv_data.get('Donation ID')
+                    or csv_data.get('TransactionID')
+                )
                 raw_date = csv_data.get('date') or csv_data.get('Date')
                 raw_email = csv_data.get('email') or csv_data.get('Email')
                 raw_phone = csv_data.get('phone') or csv_data.get('Phone')
