@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from .write_repository_contracts import ValidationDecisionResult
 from .repository_provider import get_import_repository
-from .row_status_policy import derive_row_status
+from .row_status_service import derive_row_status
 
 
 def validate_name_correction(value: Any) -> Optional[str]:
@@ -386,7 +386,7 @@ def build_fixture_autosave_response(
             for field, error_msg in errors.items()
         ]
         issues = _merge_issues(validation_issues + current_issues)
-        row_status = derive_row_status(issues)
+        row_status = derive_row_status(issues=issues)
 
         return {
             "status_code": 400,
@@ -408,7 +408,7 @@ def build_fixture_autosave_response(
     ]
     new_validation_issues = _validate_effective_values(effective_values)
     issues = _merge_issues(remaining_current_issues + new_validation_issues)
-    row_status = derive_row_status(issues)
+    row_status = derive_row_status(issues=issues)
 
     return {
         "status_code": 200,

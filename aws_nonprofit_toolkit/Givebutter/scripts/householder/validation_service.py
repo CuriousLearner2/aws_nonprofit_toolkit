@@ -14,7 +14,6 @@ import os
 from .repository_provider import get_import_repository
 from .issue_recalculation_service import recalculate_row_issues, _validate_effective_values
 from .row_status_service import derive_row_status
-from .row_status_policy import derive_row_status as derive_row_status_from_issues
 from .row_decision_service import project_effective_disposition
 
 
@@ -127,13 +126,13 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     # Shouldn't reach here, but be safe
                     record['issues'] = []
 
-                # Set row_status by delegating to the canonical row-status policy.
+                # Set row_status through the canonical row-status service.
                 if not record.get('row_status'):
-                    record['row_status'] = derive_row_status_from_issues(record.get('issues', []))
+                    record['row_status'] = derive_row_status(issues=record.get('issues', []))
         else:
             # No issue in this record
-            record['row_status'] = 'No issues'
             record['issues'] = []
+            record['row_status'] = derive_row_status(issues=record['issues'])
 
     valid_disposition_filters = {
         'all', 'none', 'accept_as_is', 'needs_follow_up', 'reject_row',
