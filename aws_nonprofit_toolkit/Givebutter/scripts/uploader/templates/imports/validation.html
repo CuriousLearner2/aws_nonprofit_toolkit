@@ -302,6 +302,7 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/validation_filter_state.js') }}"></script>
 <script>
 const batchId = '{{ batch.id }}';
 
@@ -814,15 +815,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        window.householderValidationStatusFilter = window.householderValidationStatusFilter || 'all';
-
         function matchesIssueAndSearch(row) {
-            const selectedValidationStatus = window.householderValidationStatusFilter || 'all';
+            const selectedValidationStatus = window.householderValidationStatusSelection || [];
             const selectedDisposition = dispositionFilter?.value || 'all';
             const rowDisposition = row.dataset.disposition || '';
             const searchTerm = (searchInput?.value || '').trim().toLowerCase();
-            const matchesValidationStatus = selectedValidationStatus === 'all'
-                || row.dataset.rowStatus === selectedValidationStatus;
+            const matchesValidationStatus = window.householderValidationFilterState.matches(
+                row.dataset.rowStatus,
+                selectedValidationStatus,
+            );
             const matchesDisposition = selectedDisposition === 'all'
                 || (selectedDisposition === 'none' && !rowDisposition)
                 || rowDisposition === selectedDisposition;
@@ -835,10 +836,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         function applyIssueFilter() {
-            const statusFilter = window.householderValidationStatusFilter || 'all';
             const allRows = Array.from(document.querySelectorAll('tr.validation-row[data-issues-json]'));
             allRows.forEach(row => {
-                const matchesStatus = statusFilter === 'all' || row.dataset.rowStatus === statusFilter;
+                const matchesStatus = window.householderValidationFilterState.matches(
+                    row.dataset.rowStatus,
+                    window.householderValidationStatusSelection || [],
+                );
                 row.hidden = !(matchesStatus && matchesIssueAndSearch(row));
             });
             const visibleCount = allRows.filter(row => !row.hidden).length;
@@ -861,29 +864,45 @@ document.addEventListener('DOMContentLoaded', function() {
     const visibleRowCount = document.querySelector('[data-testid="validation-visible-row-count"]');
     const totalRowCount = rows.length;
 
-    if (!filterButtons.length || !rows.length) {
+    if (!filterButtons.length) {
         return;
     }
 
-    function setActiveButton(activeValue) {
+    if (!rows.length) {
         filterButtons.forEach(button => {
-            const isActive = button.dataset.rowStatusFilter === activeValue;
+            button.setAttribute('aria-pressed', button.dataset.rowStatusFilter === 'all' ? 'true' : 'false');
+        });
+        return;
+    }
+
+    function setActiveButtons(selection) {
+        filterButtons.forEach(button => {
+            const action = button.dataset.rowStatusFilter;
+            const isActive = action === 'all'
+                ? selection.length === 0
+                : selection.includes(action);
             button.classList.toggle('is-active', isActive);
             button.style.background = isActive ? '#eff6ff' : '#fff';
             button.style.borderColor = isActive ? '#2563eb' : '#d1d5db';
             button.style.color = isActive ? '#1d4ed8' : '#374151';
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
     }
 
-    function applyStatusFilter(statusValue) {
-        window.householderValidationStatusFilter = statusValue;
+    function applyStatusFilter(action) {
+        const current = window.householderValidationStatusSelection || [];
+        const selection = window.householderValidationFilterState.transition(current, action);
+        window.householderValidationStatusSelection = selection;
 
         if (window.householderValidationApplyIssueFilter) {
             window.householderValidationApplyIssueFilter();
         }
 
         rows.forEach(row => {
-            const matchesStatus = statusValue === 'all' || row.dataset.rowStatus === statusValue;
+            const matchesStatus = window.householderValidationFilterState.matches(
+                row.dataset.rowStatus,
+                selection,
+            );
             const matchesIssueSearch = !window.householderValidationMatchesIssueAndSearch
                 || window.householderValidationMatchesIssueAndSearch(row);
             row.hidden = !(matchesStatus && matchesIssueSearch);
@@ -899,7 +918,7 @@ document.addEventListener('DOMContentLoaded', function() {
             visibleRowCount.textContent = `Showing ${visibleCount} of ${totalRowCount} rows`;
         }
 
-        setActiveButton(statusValue);
+        setActiveButtons(selection);
     }
 
     filterButtons.forEach(button => {
@@ -908,6 +927,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    window.householderValidationStatusSelection = [];
     applyStatusFilter('all');
 });
 

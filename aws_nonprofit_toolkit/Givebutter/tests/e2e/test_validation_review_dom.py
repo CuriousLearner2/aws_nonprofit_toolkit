@@ -832,7 +832,8 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
             assert await page.locator(f'tr[data-raw-id="{row_ids[0]}"]').is_visible()
             assert not await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
             await page.locator('[data-testid="validation-status-filter-warning"]').click()
-            assert await page.locator('tr.validation-row:not([hidden])').count() == 4
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 5
+            assert await page.locator(f'tr[data-raw-id="{row_ids[0]}"]').is_visible()
             assert await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
             assert await page.locator(f'tr[data-raw-id="{row_ids[3]}"]').is_visible()
             assert await page.locator(f'tr[data-raw-id="{row_ids[4]}"]').is_visible()

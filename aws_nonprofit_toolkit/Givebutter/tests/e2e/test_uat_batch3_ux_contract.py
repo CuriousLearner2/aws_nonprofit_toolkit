@@ -110,12 +110,28 @@ async def test_validation_help_modal_and_filters_are_compact_and_composable(e2e_
                 assert await page.locator("tr.validation-row:not([hidden])").count() == 1
                 await search.fill("Blocking Search")
                 assert await page.locator("tr.validation-row:not([hidden])").count() == 1
+                await search.fill("")
+                await page.locator("[data-testid='validation-status-filter-warning']").click()
+                assert await page.locator("tr.validation-row:not([hidden])").count() == 2
+                assert await page.locator("[data-testid='validation-status-filter-blocking']").get_attribute("aria-pressed") == "true"
+                assert await page.locator("[data-testid='validation-status-filter-warning']").get_attribute("aria-pressed") == "true"
+                await page.locator("#disposition-filter").select_option("none")
+                assert await page.locator("tr.validation-row:not([hidden])").count() == 2
+                await search.fill("Blocking Search")
+                assert await page.locator("tr.validation-row:not([hidden])").count() == 1
                 await page.locator("[data-testid='validation-status-filter-all']").click()
                 await search.fill("")
-                await page.locator("#disposition-filter").select_option("needs_follow_up")
-                assert await page.locator("tr.validation-row:not([hidden])").count() == 1
+                await page.locator("#disposition-filter").select_option("all")
                 await page.locator("[data-testid='validation-status-filter-no-issues']").click()
                 assert await page.locator("tr.validation-row:not([hidden])").count() == 1
+                assert await page.locator("[data-testid='validation-status-filter-no-issues']").get_attribute("aria-pressed") == "true"
+                assert await page.locator("[data-testid='validation-status-filter-blocking']").get_attribute("aria-pressed") == "false"
+                assert await page.locator("[data-testid='validation-status-filter-warning']").get_attribute("aria-pressed") == "false"
+                await page.locator("[data-testid='validation-status-filter-blocking']").click()
+                assert await page.locator("tr.validation-row:not([hidden])").count() == 1
+                assert await page.locator("[data-testid='validation-status-filter-no-issues']").get_attribute("aria-pressed") == "false"
+                await page.locator("[data-testid='validation-status-filter-all']").click()
+                assert await page.locator("tr.validation-row:not([hidden])").count() == 3
                 await search.fill("Clean Search")
                 assert await page.locator("tr.validation-row:not([hidden])").count() == 1
                 assert await page.locator("[data-testid='validation-scope-banner']").evaluate(
