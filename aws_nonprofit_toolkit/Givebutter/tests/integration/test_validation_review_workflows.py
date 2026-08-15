@@ -691,10 +691,10 @@ class TestEmailValidationSync:
 class TestPhoneValidationSync:
     """Test phone validation error and row status sync."""
 
-    def test_autosave_invalid_phone_returns_blocking_status(
+    def test_autosave_phone_like_uncertainty_returns_warning_status(
         self, flask_client_with_validation_batch
     ):
-        """Invalid phone autosave should return Blocking status."""
+        """Phone-like uncertainty is saved with a non-blocking warning."""
         client, database_url, engine, Session, raw_rows = flask_client_with_validation_batch
         raw_id = raw_rows[1]
 
@@ -707,17 +707,17 @@ class TestPhoneValidationSync:
             }
         )
 
-        # Should fail validation
-        assert response.status_code == 400
+        assert response.status_code == 200
         data = response.get_json()
 
-        # Status must not be "No issues"
-        assert data['row_status'] != 'No issues', \
-            f"Phone invalid but row_status is 'No issues'. Got: {data['row_status']}"
+        assert data['success'] is True
+        assert data['row_status'] == 'Warning'
+        assert data['effective_values']['phone'] == '(555) 123-45'
 
-        # Issues should include phone
-        assert any(i.get('field') == 'phone' for i in data['issues']), \
-            "Phone issue should be in issues list"
+        phone_issues = [issue for issue in data['issues'] if issue.get('field') == 'phone']
+        assert phone_issues
+        assert phone_issues[0]['severity'] == 'warning'
+        assert phone_issues[0]['reason'] == 'Could not verify format'
 
     def test_autosave_valid_phone_clears_errors(
         self, flask_client_with_validation_batch

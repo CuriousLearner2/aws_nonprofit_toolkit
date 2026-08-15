@@ -154,17 +154,14 @@ class TestValidationRoute:
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
         html = response.data.decode('utf-8', errors='ignore')
 
-        assert '<label for="validation-status-filter"' in html
-        assert '>Filter by Validation Status</label>' in html
-        assert 'aria-label="Filter by Validation Status"' in html
-        assert 'value="No issues"' in html
-        assert 'value="Warning"' in html
-        assert 'value="Blocking"' in html
-        assert 'All statuses' in html
-        assert 'width: 220px' in html
-        assert 'max-width: 100%' in html
+        assert '<label for="validation-status-filter"' not in html
+        assert 'Filter by Validation Status' not in html
+        assert 'data-testid="validation-status-filter-all"' in html
+        assert 'data-testid="validation-status-filter-blocking"' in html
+        assert 'data-testid="validation-status-filter-warning"' in html
+        assert 'data-testid="validation-status-filter-no-issues"' in html
         assert 'householderValidationMatchesIssueAndSearch' in html
-        assert 'row.hidden = !(matchesStatus && matchesIssueAndSearch(row));' in html
+        assert 'row.hidden = !(matchesStatus && matchesIssueSearch);' in html
 
     def test_validation_contains_action_column(self, client_with_fixture):
         """Test that validation table contains action links."""
@@ -390,15 +387,12 @@ class TestValidationIssuesRendering:
             # Verify the test contact appears in the response
             assert 'TEST-INVALID-PHONE' in response_text
 
-            # Verify phone validation error is detected and rendered with field='phone'
-            # The validation_service._validate_effective_values() detects invalid phone
-            # and formats it as: {'field': 'phone', 'description': 'Invalid phone format', ...}
-            # Template renders: phone — Invalid phone format
-            assert 'phone' in response_text and 'Invalid phone format' in response_text
+            # Verify the canonical warning-first phone policy is detected and
+            # rendered with field='phone'.
+            assert 'phone' in response_text and 'Could not verify format' in response_text
 
             # Verify it doesn't render with unknown field
-            # If field was lost, would show: unknown — Invalid phone format
-            assert 'unknown — Invalid phone format' not in response_text
+            assert 'unknown — Could not verify format' not in response_text
 
         finally:
             # Restore original CONTACTS
