@@ -94,6 +94,14 @@ def _blank_address_raw(database_url, raw_row_id):
         data = dict(row.raw_csv_data)
         data["Address 1"] = ""
         row.raw_csv_data = data
+        # The fixture represents a source row whose address is blank. Keep
+        # the normalized contact snapshot aligned with that source state so
+        # recalculation does not legitimately restore the imported value.
+        contact = session.query(ImportContact).filter_by(
+            batch_id=row.batch_id,
+            raw_import_row_id=raw_row_id,
+        ).one()
+        contact.address_line1 = ""
         session.commit()
     finally:
         session.close()

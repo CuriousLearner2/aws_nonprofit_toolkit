@@ -144,7 +144,7 @@ class TestAutosaveValidationSync:
         corrected_values,
         expected_field,
     ):
-        """Editable-field policy should block invalid name/address in both repository modes."""
+        """Name validation blocks, while address clearing follows source capability."""
         client, database_url, engine, Session, rows = request.getfixturevalue(fixture_name)
         raw_id = rows[0]
 
@@ -175,6 +175,18 @@ class TestAutosaveValidationSync:
                 issue.get('field') == 'phone' and issue.get('severity') == 'warning'
                 for issue in data['issues']
             )
+            return
+
+        if expected_field == 'address':
+            # Clearing a reviewed address is a valid correction. The
+            # address-capable source policy, not field-format validation,
+            # determines whether a warning is projected. These fixtures have
+            # no recognized address source, so no warning is expected.
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data['success'] is True
+            if fixture_name == 'flask_client_with_batch_database_mode':
+                assert not any(issue.get('field') == 'address' for issue in data['issues'])
             return
 
         assert response.status_code == 400
