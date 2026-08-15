@@ -1205,26 +1205,28 @@ async function autosaveField(input) {
             statusSpan.style.color = '#ef4444';
             input.style.borderColor = '#ef4444';
 
-            // Update validation status and Issues from the error response
-            try {
-                const errorData = await response.json();
-                if (errorData.row_status || errorData.issues !== undefined) {
-                    // Track the failed-autosave validation error for this field
-                    const validationError = errorData.issues.find(issue => issue.field === field);
-                    if (validationError) {
-                        addActiveError(parseInt(rawId), field, validationError.reason, validationError.severity);
-                    }
-
-                    // Update Issues display: persisted issues + active errors combined and deduplicated
-                    const issuesCell = row.querySelector('.issues-cell');
-                    if (issuesCell && errorData.issues !== undefined) {
-                        renderIssuesCell(issuesCell, errorData.issues, true, errorData.row_status);
-                        applyAutosaveProjection(row, errorData);
-                    }
-                }
-            } catch (e) {
-                console.error('Error parsing validation response:', e);
+            // A rejected correction is not durable. Restore the last saved
+            // value while keeping the visible failure feedback; the persisted
+            // row projection must not be replaced by the rejected attempt.
+            const savedValue = sessionEditValues[fieldId] ?? focusTimeValues[fieldId];
+            if (savedValue !== undefined) {
+                input.value = savedValue;
             }
+
+            // Do not project the rejected response into the row.  Re-apply the
+            // existing durable projection so a concurrent initial decision
+            // load cannot leave visible helper/filter/gating state partial.
+            const dropdown = row.querySelector('.row-status-dropdown');
+            const currentStatus = getRowStatusLabel(row);
+            const currentDisposition = dropdown?.value || '';
+            applyClientRowGatingProjection(row, currentStatus, currentDisposition);
+            const dispositionMeta = dropdown?.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
+            if (dispositionMeta && dropdown?.dataset.hasDecision !== 'true') {
+                dispositionMeta.textContent = currentDisposition === 'accept_as_is'
+                    ? 'System Accept as-is'
+                    : 'No disposition';
+            }
+            window.householderValidationApplyIssueFilter?.();
         }
     } catch (error) {
         // Clear in-flight request on network error
@@ -1719,6 +1721,14 @@ function setSavedRowReviewState(dropdown, decision, label, notes) {
     }
 }
 
+function applyClientRowGatingProjection(row, rowStatus, effectiveDisposition) {
+    if (!row) return;
+    const unresolvedBlocking = rowStatus === 'Blocking' && !effectiveDisposition;
+    const excludedDisposition = ['needs_follow_up', 'reject_row'].includes(effectiveDisposition);
+    row.dataset.exportEligible = String(!unresolvedBlocking && !excludedDisposition);
+    row.dataset.approvalBlocked = String(unresolvedBlocking);
+}
+
 function closeRowReviewModal(dropdownState) {
     if (dropdownState?.dropdown) {
         const { dropdown, previousValue, previousLabel } = dropdownState;
@@ -1775,6 +1785,7 @@ function applySavedRowDecision(dropdown, result, decision, notes, reviewerName) 
         const systemStatus = result.row_status || 'No issues';
         const projected = projectEffectiveDisposition(systemStatus, false, '');
         setSavedRowReviewState(dropdown, projected, systemStatus, '');
+        applyClientRowGatingProjection(dropdown.closest('tr'), systemStatus, projected);
         dropdown.dataset.hasDecision = 'false';
         dropdown.dataset.systemDisposition = projected ? 'true' : 'false';
         dropdown.dataset.currentDecision = '';
@@ -1791,6 +1802,11 @@ function applySavedRowDecision(dropdown, result, decision, notes, reviewerName) 
         decision,
         result.row_status || decision.replace(/_/g, ' '),
         notes
+    );
+    applyClientRowGatingProjection(
+        dropdown.closest('tr'),
+        result.row_status || decision.replace(/_/g, ' '),
+        decision,
     );
     dropdown.dataset.currentReviewer = reviewerName || '';
     dropdown.dataset.currentTimestamp = result.timestamp || '';
