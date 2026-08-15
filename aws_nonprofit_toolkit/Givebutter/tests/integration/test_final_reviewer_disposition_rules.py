@@ -232,7 +232,10 @@ def test_clear_is_only_saved_human_revision_and_restores_issue_default(
     preview = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
     issue_row = next(row for row in preview.export_rows if row.source_row_index == 2)
     assert state['has_decision'] is False
-    assert state['history'][0]['decision'] == 'needs_follow_up'
+    assert [entry['decision'] for entry in state['history']] == [
+        'clear_decision',
+        'needs_follow_up',
+    ]
     assert issue_row.validation_issues
     assert issue_row.export_blocked is True
     session = Session()
