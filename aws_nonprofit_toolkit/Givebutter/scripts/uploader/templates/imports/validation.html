@@ -92,11 +92,12 @@
     <div style="display: flex; width: 100%; max-width: calc(100vw - 102px); box-sizing: border-box; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; align-items: center;">
         <label for="search-records" style="font-size: 12px; font-weight: 600; color: #374151;">Search records</label>
         <input type="text" id="search-records" aria-label="Search records" placeholder="Search by name, email, phone..." style="min-width: 0; flex: 1 1 0; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
-        <label for="issue-filter" style="font-size: 12px; font-weight: 600; color: #374151;">Filter by issue</label>
-        <select id="issue-filter" aria-label="Filter by issue" style="width: 220px; max-width: 100%; flex: 0 1 220px; box-sizing: border-box; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
-            <option value="">All Issues</option>
-            <option value="missing-required">Missing Required Field</option>
-            <option value="format-invalid">Invalid Format</option>
+        <label for="validation-status-filter" style="font-size: 12px; font-weight: 600; color: #374151;">Filter by Validation Status</label>
+        <select id="validation-status-filter" aria-label="Filter by Validation Status" style="width: 220px; max-width: 100%; flex: 0 1 220px; box-sizing: border-box; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
+            <option value="all">All statuses</option>
+            <option value="No issues">No issues</option>
+            <option value="Warning">Warning</option>
+            <option value="Blocking">Blocking</option>
         </select>
         <label for="disposition-filter" style="font-size: 12px; font-weight: 600; color: #374151;">Filter by disposition</label>
         <select id="disposition-filter" aria-label="Filter by disposition" style="width: 180px; max-width: 100%; flex: 0 1 180px; box-sizing: border-box; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
@@ -132,6 +133,7 @@
             <tr data-record-id="{{ record.id }}"
                 data-raw-id="{{ record.raw_import_row_id }}"
                 data-issues-json='{{ record.issues | tojson | forceescape }}'
+                data-disposition="{{ record.disposition or '' }}"
                 data-testid="row-{{ record.id }}"
                 id="validation-row-{{ record.id }}"
                 data-row-status="{{ record.row_status or 'No issues' }}"
@@ -805,18 +807,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-    const issueFilter = document.getElementById('issue-filter');
+    const validationStatusFilter = document.getElementById('validation-status-filter');
     const dispositionFilter = document.getElementById('disposition-filter');
     const searchInput = document.getElementById('search-records');
     const issueRows = Array.from(document.querySelectorAll('tr.validation-row[data-issues-json]'));
 
-    if (issueFilter && issueRows.length) {
-        const issueTypeMatches = {
-            'missing-required': issue => /missing|required|blank|empty/i.test(issue.reason || issue.description || ''),
-            'format-invalid': issue => /invalid|format/i.test(issue.reason || issue.description || ''),
-            'length-exceeded': issue => /length|long|short|characters?/i.test(issue.reason || issue.description || ''),
-        };
-
+    if (validationStatusFilter && issueRows.length) {
         function rowIssues(row) {
             try {
                 return JSON.parse(row.dataset.issuesJson || '[]');
@@ -828,23 +824,21 @@ document.addEventListener('DOMContentLoaded', function() {
         window.householderValidationStatusFilter = window.householderValidationStatusFilter || 'all';
 
         function matchesIssueAndSearch(row) {
-            const selectedType = issueFilter.value;
+            const selectedValidationStatus = validationStatusFilter.value;
             const selectedDisposition = dispositionFilter?.value || 'all';
             const rowDisposition = row.dataset.disposition || '';
             const searchTerm = (searchInput?.value || '').trim().toLowerCase();
+            const matchesValidationStatus = selectedValidationStatus === 'all'
+                || row.dataset.rowStatus === selectedValidationStatus;
             const matchesDisposition = selectedDisposition === 'all'
                 || (selectedDisposition === 'none' && !rowDisposition)
                 || rowDisposition === selectedDisposition;
-            const matchesIssue = !selectedType || rowIssues(row).some(issue => {
-                if (issue.issue_type === selectedType || issue.issueType === selectedType) return true;
-                return issueTypeMatches[selectedType]?.(issue) || false;
-            });
             const searchableValues = [
                 row.textContent,
                 ...Array.from(row.querySelectorAll('input, textarea, select')).map(field => field.value || field.textContent || ''),
             ];
             const matchesSearch = !searchTerm || searchableValues.some(value => value.toLowerCase().includes(searchTerm));
-            return matchesDisposition && matchesIssue && matchesSearch;
+            return matchesValidationStatus && matchesDisposition && matchesSearch;
         }
 
         function applyIssueFilter() {
@@ -863,7 +857,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         window.householderValidationMatchesIssueAndSearch = matchesIssueAndSearch;
         window.householderValidationApplyIssueFilter = applyIssueFilter;
-        issueFilter.addEventListener('change', applyIssueFilter);
+        validationStatusFilter.addEventListener('change', applyIssueFilter);
         dispositionFilter?.addEventListener('change', applyIssueFilter);
         searchInput?.addEventListener('input', applyIssueFilter);
         applyIssueFilter();

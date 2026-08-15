@@ -2969,6 +2969,42 @@ class TestDetailsModalControls:
 # TEST F: Cancel behavior - Modal Cancel should not create ReviewDecision/audit
 # ==============================================================================
 
+def test_validation_disposition_filter_returns_each_saved_canonical_state(
+    flask_client_with_validation_batch,
+):
+    """Fresh validation requests filter the projected canonical disposition."""
+    client, _, _, _, raw_rows = flask_client_with_validation_batch
+    decisions = {
+        raw_rows[0]: 'accept_as_is',
+        raw_rows[1]: 'needs_follow_up',
+        raw_rows[2]: 'reject_row',
+    }
+    for raw_id, decision in decisions.items():
+        response = client.post(
+            '/imports/validation-workflow-test-batch/row-decision',
+            json={
+                'raw_import_row_id': raw_id,
+                'decision': decision,
+                'notes': f'Filter regression {decision}',
+                'reviewer_name': 'Filter Reviewer',
+                'interaction_sequence': 1,
+            },
+        )
+        assert response.status_code == 200, response.get_json()
+
+    def row_ids_for(disposition):
+        response = client.get(
+            f'/imports/validation-workflow-test-batch/validation?disposition={disposition}'
+        )
+        assert response.status_code == 200
+        return re.findall(r'<tr[^>]+data-raw-id="(\d+)"', response.get_data(as_text=True))
+
+    assert row_ids_for('accept_as_is') == [str(raw_rows[0])]
+    assert row_ids_for('needs_follow_up') == [str(raw_rows[1])]
+    assert row_ids_for('reject_row') == [str(raw_rows[2])]
+    assert set(row_ids_for('none')) == {str(raw_rows[3]), str(raw_rows[4]), str(raw_rows[5]), str(raw_rows[6]), str(raw_rows[7]), str(raw_rows[8])}
+
+
 class TestCancelBehavior:
     """Test that modal Cancel button does not create decisions or audit entries."""
 

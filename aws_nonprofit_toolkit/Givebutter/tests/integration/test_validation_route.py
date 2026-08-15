@@ -103,8 +103,8 @@ class TestValidationRoute:
     def test_validation_contains_validation_status_column(self, client_with_fixture):
         """Test that validation table displays validation status/badges."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
-        # Check for issue type badges
-        assert b'format-invalid' in response.data or b'missing-required' in response.data
+        # Check for the projected validation status values.
+        assert b'Blocking' in response.data or b'Warning' in response.data
 
     def test_validation_contains_review_summary_strip(self, client_with_fixture):
         """Test that validation page renders a compact review summary strip."""
@@ -149,14 +149,18 @@ class TestValidationRoute:
         assert 'data-row-status="Overridden"' not in html
         assert 'data-testid="validation-status-filter-overridden"' not in html
 
-    def test_issue_filter_is_labeled_and_constrained(self, client_with_fixture):
-        """Issue filtering remains discoverable and cannot overflow the page."""
+    def test_validation_status_filter_is_labeled_and_constrained(self, client_with_fixture):
+        """Validation status filtering exposes the supported row statuses."""
         response = client_with_fixture.get('/imports/IMP-2025-0101-A/validation')
         html = response.data.decode('utf-8', errors='ignore')
 
-        assert '<label for="issue-filter"' in html
-        assert '>Filter by issue</label>' in html
-        assert 'aria-label="Filter by issue"' in html
+        assert '<label for="validation-status-filter"' in html
+        assert '>Filter by Validation Status</label>' in html
+        assert 'aria-label="Filter by Validation Status"' in html
+        assert 'value="No issues"' in html
+        assert 'value="Warning"' in html
+        assert 'value="Blocking"' in html
+        assert 'All statuses' in html
         assert 'width: 220px' in html
         assert 'max-width: 100%' in html
         assert 'householderValidationMatchesIssueAndSearch' in html

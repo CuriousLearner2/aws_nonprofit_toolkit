@@ -45,9 +45,12 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
     if config:
         database_url = config.get('GIVEBUTTER_DATABASE_URL')
 
-    # Enrich validation_issues with row_status and issues using recalculation service
+    # Enrich validation_issues with row_status, projected disposition, and issues.
+    from .row_decision_service import get_row_decision_state
+
     for record in result.get('validation_issues', []):
         raw_import_row_id = record.get('raw_import_row_id')
+        record['disposition'] = record.get('disposition') or ''
 
         if raw_import_row_id:
             try:
@@ -75,6 +78,14 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     for issue in all_issues
                 ]
                 record['row_status'] = row_status
+                if database_url:
+                    decision_state = get_row_decision_state(
+                        import_id, raw_import_row_id, database_url
+                    )
+                    record['disposition'] = (
+                        decision_state.get('decision')
+                        if decision_state.get('has_decision') else ''
+                    ) or ''
             except (ValueError, Exception):
                 # Fall back to fixture-provided data if batch/row not in database
                 # (e.g., when using fixture repository with synthetic row IDs)
@@ -119,15 +130,14 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
             record['row_status'] = 'No issues'
             record['issues'] = []
 
-    if disposition_filter == 'needs_follow_up':
-        from .row_decision_service import get_row_decision_state
-        filtered = []
-        for record in result.get('validation_issues', []):
-            raw_id = record.get('raw_import_row_id')
-            if raw_id and database_url:
-                state = get_row_decision_state(import_id, raw_id, database_url)
-                if state.get('decision') == 'needs_follow_up':
-                    filtered.append(record)
-        result['validation_issues'] = filtered
+    valid_disposition_filters = {
+        'all', 'none', 'accept_as_is', 'needs_follow_up', 'reject_row',
+    }
+    if disposition_filter in valid_disposition_filters and disposition_filter != 'all':
+        target = '' if disposition_filter == 'none' else disposition_filter
+        result['validation_issues'] = [
+            record for record in result.get('validation_issues', [])
+            if (record.get('disposition') or '') == target
+        ]
 
     return result

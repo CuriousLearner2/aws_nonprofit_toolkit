@@ -764,8 +764,8 @@ async def test_validation_presentation_guidance_and_input_widths(e2e_database_an
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_issue_filter_only_shows_matching_rows_and_preserves_data(e2e_database_and_app):
-    """Filtering Missing Required Field hides unrelated rows without persistence."""
+async def test_validation_status_and_disposition_filters_compose(e2e_database_and_app):
+    """Validation-status and disposition filters hide unrelated rows without persistence."""
     from playwright.async_api import async_playwright
 
     database_url, db_path, flask_app = e2e_database_and_app
@@ -774,14 +774,15 @@ async def test_issue_filter_only_shows_matching_rows_and_preserves_data(e2e_data
     session = Session()
     batch_id = 'issue-filter-regression'
     session.add(ImportBatch(
-        id=batch_id, filename='issue-filter.csv', upload_timestamp=datetime.now(timezone.utc),
-        status='pending_review', raw_row_count=2,
+        id=batch_id, filename='validation-status-filter.csv', upload_timestamp=datetime.now(timezone.utc),
+        status='pending_review', raw_row_count=3,
     ))
     session.flush()
     rows = []
     for index, values in enumerate((
         {'name': '', 'email': 'jordan@example.com', 'phone': '4155552671', 'address': '1 Main St'},
-        {'name': 'Jordan Lee', 'email': 'jordan.lee@com', 'phone': '4155552671', 'address': '2 Main St'},
+        {'name': 'Jordan Lee', 'email': 'jordan@gmai.com', 'phone': '4155552671', 'address': '2 Main St'},
+        {'name': 'Jordan Clean', 'email': 'jordan.clean@example.com', 'phone': '4155552671', 'address': '3 Main St'},
     ), start=1):
         row = RawImportRow(batch_id=batch_id, row_index=index, raw_csv_data=values)
         session.add(row)
@@ -797,12 +798,13 @@ async def test_issue_filter_only_shows_matching_rows_and_preserves_data(e2e_data
             payload_json=(
                 {'field': 'name', 'reason': 'missing', 'description': 'Missing Required Field', 'severity': 'error'}
                 if index == 1 else
-                {'field': 'email', 'reason': 'format', 'description': 'Invalid email format', 'severity': 'error'}
+                {'field': 'email', 'reason': 'possible_typo', 'description': 'Possible email typo', 'severity': 'warning'}
             ),
         )
-        session.add(item)
-        session.flush()
-        session.add(ReviewItemSubject(review_item_id=item.id, subject_type='import_contact_snapshot', subject_id=contact.id))
+        if index < 3:
+            session.add(item)
+            session.flush()
+            session.add(ReviewItemSubject(review_item_id=item.id, subject_type='import_contact_snapshot', subject_id=contact.id))
         rows.append(row)
     session.commit()
     row_ids = [row.id for row in rows]
@@ -815,16 +817,38 @@ async def test_issue_filter_only_shows_matching_rows_and_preserves_data(e2e_data
             page = await browser.new_page()
             await page.goto(f'{base_url}/imports/{batch_id}/validation')
             await page.wait_for_selector('tr.validation-row')
-            issue_filter = page.locator('#issue-filter')
-            await issue_filter.select_option('missing-required')
+            status_filter = page.locator('#validation-status-filter')
+            assert await page.get_by_label('Filter by Validation Status').count() == 1
+            assert await status_filter.locator('option').all_text_contents() == [
+                'All statuses', 'No issues', 'Warning', 'Blocking'
+            ]
+            await status_filter.select_option('Blocking')
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[0]}"]').is_visible()
             assert not await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
-            await issue_filter.select_option('format-invalid')
+            await status_filter.select_option('Warning')
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
-            await issue_filter.select_option('')
-            assert await page.locator('tr.validation-row:not([hidden])').count() == 2
+            await status_filter.select_option('No issues')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 1
+            assert await page.locator(f'tr[data-raw-id="{row_ids[2]}"]').is_visible()
+            await status_filter.select_option('all')
+            disposition_filter = page.locator('#disposition-filter')
+            assert await disposition_filter.locator('option').all_text_contents() == [
+                'All dispositions', 'No disposition', 'Accept as-is', 'Needs follow-up', 'Reject row'
+            ]
+            await disposition_filter.select_option('none')
+            await status_filter.select_option('Warning')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 1
+            assert await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
+            await status_filter.select_option('all')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 3
+            await page.locator('#search-records').fill('Jordan Clean')
+            await status_filter.select_option('No issues')
+            await disposition_filter.select_option('none')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 1
+            assert await page.locator(f'tr[data-raw-id="{row_ids[2]}"]').is_visible()
+            assert not await page.locator(f'tr[data-raw-id="{row_ids[0]}"]').is_visible()
 
             session = Session()
             assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
@@ -7129,17 +7153,17 @@ async def test_validation_review_keyboard_tab_order_and_focus_visibility(
 
                 assert search_found, "T FAILED: Could not reach search input within first 40 tabs"
 
-                # Continue Tab to find issue filter dropdown
+                # Continue Tab to find validation status filter dropdown
                 filter_found = False
                 for i in range(10, 20):
                     await page.press('body', 'Tab')
                     await asyncio.sleep(0.2)
                     active = await page.evaluate("() => document.activeElement?.id || document.activeElement?.className || 'unknown'")
                     print(f"Tab {i} -> {active}")
-                    if 'issue-filter' in active:
-                        focused_elements.append(('issue-filter', active))
+                    if 'validation-status-filter' in active:
+                        focused_elements.append(('validation-status-filter', active))
                         filter_found = True
-                        print(f"✓ T{i}: Issue filter dropdown reachable")
+                        print(f"✓ T{i}: Validation status filter dropdown reachable")
                         break
 
                 if not filter_found:
