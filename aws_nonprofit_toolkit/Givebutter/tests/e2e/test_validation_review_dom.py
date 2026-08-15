@@ -56,6 +56,7 @@ from scripts.householder.database_models import (
     create_db_engine,
 )
 from scripts.uploader.app import app
+from scripts.householder.row_decision_service import record_row_decision
 
 
 # ============================================================================
@@ -775,7 +776,7 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
     batch_id = 'issue-filter-regression'
     session.add(ImportBatch(
         id=batch_id, filename='validation-status-filter.csv', upload_timestamp=datetime.now(timezone.utc),
-        status='pending_review', raw_row_count=3,
+        status='pending_review', raw_row_count=6,
     ))
     session.flush()
     rows = []
@@ -783,6 +784,9 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
         {'name': '', 'email': 'jordan@example.com', 'phone': '4155552671', 'address': '1 Main St'},
         {'name': 'Jordan Lee', 'email': 'jordan@gmai.com', 'phone': '4155552671', 'address': '2 Main St'},
         {'name': 'Jordan Clean', 'email': 'jordan.clean@example.com', 'phone': '4155552671', 'address': '3 Main St'},
+        {'name': 'Jordan Accepted', 'email': 'jordan@gmal.com', 'phone': '4155552671', 'address': '4 Main St'},
+        {'name': 'Jordan Followup', 'email': 'jordan@gmial.com', 'phone': '4155552671', 'address': '5 Main St'},
+        {'name': 'Jordan Rejected', 'email': 'jordan@gmai.com', 'phone': '4155552671', 'address': '6 Main St'},
     ), start=1):
         row = RawImportRow(batch_id=batch_id, row_index=index, raw_csv_data=values)
         session.add(row)
@@ -801,7 +805,7 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
                 {'field': 'email', 'reason': 'possible_typo', 'description': 'Possible email typo', 'severity': 'warning'}
             ),
         )
-        if index < 3:
+        if index != 3:
             session.add(item)
             session.flush()
             session.add(ReviewItemSubject(review_item_id=item.id, subject_type='import_contact_snapshot', subject_id=contact.id))
@@ -809,6 +813,9 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
     session.commit()
     row_ids = [row.id for row in rows]
     session.close()
+    record_row_decision(batch_id, row_ids[3], 'accept_as_is', notes='Accepted after review', reviewer_name='Filter Reviewer', interaction_sequence=1, database_url=database_url)
+    record_row_decision(batch_id, row_ids[4], 'needs_follow_up', notes='Follow up after review', reviewer_name='Filter Reviewer', interaction_sequence=1, database_url=database_url)
+    record_row_decision(batch_id, row_ids[5], 'reject_row', notes='Reject after review', reviewer_name='Filter Reviewer', interaction_sequence=1, database_url=database_url)
 
     server, flask_thread, base_url = start_flask_server(flask_app)
     try:
@@ -827,8 +834,11 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
             assert await page.locator(f'tr[data-raw-id="{row_ids[0]}"]').is_visible()
             assert not await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
             await status_filter.select_option('Warning')
-            assert await page.locator('tr.validation-row:not([hidden])').count() == 1
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 4
             assert await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
+            assert await page.locator(f'tr[data-raw-id="{row_ids[3]}"]').is_visible()
+            assert await page.locator(f'tr[data-raw-id="{row_ids[4]}"]').is_visible()
+            assert await page.locator(f'tr[data-raw-id="{row_ids[5]}"]').is_visible()
             await status_filter.select_option('No issues')
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[2]}"]').is_visible()
@@ -837,21 +847,48 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
             assert await disposition_filter.locator('option').all_text_contents() == [
                 'All dispositions', 'No disposition', 'Accept as-is', 'Needs follow-up', 'Reject row'
             ]
+            await disposition_filter.select_option('accept_as_is')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 2
+            assert await page.locator(f'tr[data-raw-id="{row_ids[2]}"]').is_visible()
+            assert await page.locator(f'tr[data-raw-id="{row_ids[3]}"]').is_visible()
+            await disposition_filter.select_option('needs_follow_up')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 1
+            assert await page.locator(f'tr[data-raw-id="{row_ids[4]}"]').is_visible()
+            await disposition_filter.select_option('reject_row')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 1
+            assert await page.locator(f'tr[data-raw-id="{row_ids[5]}"]').is_visible()
             await disposition_filter.select_option('none')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 2
             await status_filter.select_option('Warning')
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
             await status_filter.select_option('all')
-            assert await page.locator('tr.validation-row:not([hidden])').count() == 3
+            await disposition_filter.select_option('all')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 6
+            await page.locator('#search-records').fill('')
+            live_row = page.locator(f'tr[data-raw-id="{row_ids[3]}"]')
+            await live_row.locator('.row-status-dropdown').select_option('needs_follow_up')
+            modal = page.locator('#record-modal')
+            await modal.wait_for()
+            await modal.locator('.reviewer-name-field').fill('Live Filter Reviewer')
+            await modal.locator('textarea[id^="followup-notes-"]').fill('Live filter update')
+            await modal.locator('button[id^="save-followup-notes-"]').click()
+            await page.wait_for_function(
+                f"""() => document.querySelector('tr[data-raw-id=\"{row_ids[3]}\"] .row-status-dropdown')?.value === 'needs_follow_up'"""
+            )
+            await disposition_filter.select_option('needs_follow_up')
+            assert await page.locator('tr.validation-row:not([hidden])').count() == 2
+            assert await live_row.is_visible()
+            await disposition_filter.select_option('all')
             await page.locator('#search-records').fill('Jordan Clean')
             await status_filter.select_option('No issues')
-            await disposition_filter.select_option('none')
+            await disposition_filter.select_option('accept_as_is')
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[2]}"]').is_visible()
             assert not await page.locator(f'tr[data-raw-id="{row_ids[0]}"]').is_visible()
 
             session = Session()
-            assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
+            assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 4
             session.close()
             await browser.close()
     finally:

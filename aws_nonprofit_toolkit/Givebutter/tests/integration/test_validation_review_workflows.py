@@ -2999,10 +2999,13 @@ def test_validation_disposition_filter_returns_each_saved_canonical_state(
         assert response.status_code == 200
         return re.findall(r'<tr[^>]+data-raw-id="(\d+)"', response.get_data(as_text=True))
 
-    assert row_ids_for('accept_as_is') == [str(raw_rows[0])]
+    assert set(row_ids_for('accept_as_is')) == {
+        str(raw_rows[0]), str(raw_rows[4]), str(raw_rows[5]),
+        str(raw_rows[6]), str(raw_rows[8]),
+    }
     assert row_ids_for('needs_follow_up') == [str(raw_rows[1])]
     assert row_ids_for('reject_row') == [str(raw_rows[2])]
-    assert set(row_ids_for('none')) == {str(raw_rows[3]), str(raw_rows[4]), str(raw_rows[5]), str(raw_rows[6]), str(raw_rows[7]), str(raw_rows[8])}
+    assert set(row_ids_for('none')) == {str(raw_rows[3]), str(raw_rows[7])}
 
 
 class TestCancelBehavior:

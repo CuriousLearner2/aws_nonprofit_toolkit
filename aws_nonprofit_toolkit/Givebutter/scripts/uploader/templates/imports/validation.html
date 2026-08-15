@@ -643,6 +643,7 @@ function updateRowStatusFromIssues(row, allIssues) {
             // System projection: clean rows are implicitly accepted; rows
             // with issues remain unresolved until a human disposition exists.
             const projected = projectEffectiveDisposition(rowStatus, false, '');
+            row.dataset.disposition = projected;
             dropdown.value = projected;
             dropdown.dataset.systemDisposition = projected ? 'true' : 'false';
             dropdown.dataset.currentDecision = '';
@@ -719,9 +720,9 @@ async function loadRowDecisions() {
                         tableDropdown.style.backgroundColor = '#fef3c7';
                         if (editReviewButton) editReviewButton.style.display = 'inline-block';
                     } else {
-                        row.dataset.disposition = '';
                         tableDropdown.setAttribute('data-has-decision', 'false');
                         const projected = projectEffectiveDisposition(getRowStatusLabel(row), false, '');
+                        row.dataset.disposition = projected;
                         tableDropdown.dataset.systemDisposition = projected ? 'true' : 'false';
                         tableDropdown.value = projected;
                         tableDropdown.style.backgroundColor = '';
@@ -1283,7 +1284,7 @@ function resetRowDispositionAfterPersistedEdit(row) {
     if (!dropdown) return;
     const rowStatus = getRowStatusLabel(row);
     const projected = projectEffectiveDisposition(rowStatus, false, '');
-    row.dataset.disposition = '';
+    row.dataset.disposition = projected;
     dropdown.dataset.hasDecision = 'false';
     dropdown.dataset.currentDecision = '';
     dropdown.dataset.currentNotes = '';
@@ -1660,6 +1661,11 @@ function setSavedRowReviewState(dropdown, decision, label, notes) {
     dropdown.dataset.previousLabel = label || 'No issues';
     dropdown.style.backgroundColor = decision ? '#fef3c7' : 'white';
     dropdown.setAttribute('data-has-decision', decision ? 'true' : 'false');
+    row.dataset.disposition = projectEffectiveDisposition(
+        label || 'No issues',
+        Boolean(decision),
+        decision || '',
+    );
 
     const editReviewButton = dropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
     if (editReviewButton) {

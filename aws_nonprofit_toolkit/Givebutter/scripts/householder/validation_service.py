@@ -15,6 +15,7 @@ from .repository_provider import get_import_repository
 from .issue_recalculation_service import recalculate_row_issues, _validate_effective_values
 from .row_status_service import derive_row_status
 from .row_status_policy import derive_row_status as derive_row_status_from_issues
+from .row_decision_service import project_effective_disposition
 
 
 def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None, disposition_filter: Optional[str] = None) -> Dict[str, Any]:
@@ -82,9 +83,13 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     decision_state = get_row_decision_state(
                         import_id, raw_import_row_id, database_url
                     )
-                    record['disposition'] = (
+                    human_disposition = (
                         decision_state.get('decision')
-                        if decision_state.get('has_decision') else ''
+                        if decision_state.get('has_decision') else None
+                    )
+                    record['disposition'] = project_effective_disposition(
+                        row_status=row_status,
+                        human_disposition=human_disposition,
                     ) or ''
             except (ValueError, Exception):
                 # Fall back to fixture-provided data if batch/row not in database
