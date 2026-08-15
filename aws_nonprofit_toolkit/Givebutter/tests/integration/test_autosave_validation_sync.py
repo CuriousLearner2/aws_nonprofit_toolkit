@@ -170,6 +170,7 @@ class TestAutosaveValidationSync:
             data = response.get_json()
             assert data['success'] is True
             assert data['row_status'] == 'Warning'
+            assert {'row_status', 'effective_disposition', 'export_eligible', 'approval_blocked'} <= set(data['projection'])
             assert any(
                 issue.get('field') == 'phone' and issue.get('severity') == 'warning'
                 for issue in data['issues']
@@ -228,6 +229,7 @@ class TestAutosaveValidationSync:
         assert data['success'] is False
         assert 'row_status' in data
         assert data['row_status'] == 'Blocking'
+        assert {'row_status', 'effective_disposition', 'export_eligible', 'approval_blocked'} <= set(data['projection'])
         assert 'issues' in data
         assert isinstance(data['issues'], list)
         assert len(data['issues']) > 0
@@ -592,6 +594,28 @@ class TestAutosaveValidationSync:
         amount_issue = next((i for i in data['issues'] if i.get('field') == 'amount'), None)
         assert amount_issue is not None
         assert 'Invalid amount format' in amount_issue['reason']
+
+    def test_invalid_amount_response_contains_canonical_projection(self, flask_client_with_batch_database_mode):
+        """UAT-028: amount issue and post-edit gating share one projection."""
+        client, _, _, _, rows = flask_client_with_batch_database_mode
+
+        response = client.post(
+            '/imports/sync-test-batch/autosave',
+            json={
+                'raw_import_row_id': rows[0],
+                'corrected_values': {'amount': ''},
+            },
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        projection = data['projection']
+        assert data['row_status'] == 'Blocking'
+        assert projection['row_status'] == data['row_status']
+        assert projection['effective_disposition'] == ''
+        assert projection['export_eligible'] is False
+        assert projection['approval_blocked'] is True
+        assert any(issue['field'] == 'amount' for issue in data['issues'])
 
     def test_invalid_amount_zero_appears_in_issues(self, flask_client_with_batch):
         """Zero amount appears in Issues column after autosave."""

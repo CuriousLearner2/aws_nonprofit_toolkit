@@ -597,7 +597,7 @@ function requiresReviewNotes(decision, row) {
 }
 
 // Render Issues cell with grouped summary while preserving the complete issue list for Details.
-function renderIssuesCell(issuesCell, persistedIssues, updateRowStatus = true) {
+function renderIssuesCell(issuesCell, persistedIssues, updateRowStatus = true, authoritativeRowStatus = null) {
     const rawId = issuesCell.closest('tr').getAttribute('data-raw-id');
     // Store persisted issues on the element for later retrieval (used by cancelFieldEdit)
     issuesCell._persistedIssues = persistedIssues || [];
@@ -608,7 +608,7 @@ function renderIssuesCell(issuesCell, persistedIssues, updateRowStatus = true) {
 
     // Also update validation status based on merged issues
     if (updateRowStatus) {
-        updateRowStatusFromIssues(issuesCell.closest('tr'), allIssues);
+        updateRowStatusFromIssues(issuesCell.closest('tr'), allIssues, authoritativeRowStatus);
     }
 }
 
@@ -620,8 +620,8 @@ function initializeValidationIssuePresentation() {
 }
 
 // Update the read-only validation status without changing reviewer disposition
-function updateRowStatusFromIssues(row, allIssues) {
-    const rowStatus = calculateRowStatus(allIssues);
+function updateRowStatusFromIssues(row, allIssues, authoritativeRowStatus = null) {
+    const rowStatus = authoritativeRowStatus || calculateRowStatus(allIssues);
     const statusLabel = row.querySelector('.validation-status-label');
     if (statusLabel) {
         statusLabel.textContent = rowStatus;
@@ -1218,7 +1218,8 @@ async function autosaveField(input) {
                     // Update Issues display: persisted issues + active errors combined and deduplicated
                     const issuesCell = row.querySelector('.issues-cell');
                     if (issuesCell && errorData.issues !== undefined) {
-                        renderIssuesCell(issuesCell, errorData.issues);
+                        renderIssuesCell(issuesCell, errorData.issues, true, errorData.row_status);
+                        applyAutosaveProjection(row, errorData);
                     }
                 }
             } catch (e) {
@@ -1282,12 +1283,46 @@ function updateRowFromAutosave(row, result, editedField) {
     // renderIssuesCell will also recalculate validation status from merged issues
     const issuesCell = row.querySelector('.issues-cell');
     if (issuesCell && result.issues !== undefined) {
-        renderIssuesCell(issuesCell, result.issues);
+        renderIssuesCell(issuesCell, result.issues, true, result.row_status);
     }
 
     if (result.disposition_invalidated) {
         resetRowDispositionAfterPersistedEdit(row);
     }
+    applyAutosaveProjection(row, result);
+}
+
+function applyAutosaveProjection(row, result) {
+    const projection = result.projection || {};
+    const rowStatus = projection.row_status || result.row_status;
+    if (rowStatus) {
+        updateRowStatusFromIssues(row, getRowIssuesData(row), rowStatus);
+    }
+
+    const dropdown = row.querySelector('.row-status-dropdown');
+    if (dropdown && Object.prototype.hasOwnProperty.call(projection, 'effective_disposition')) {
+        const effectiveDisposition = projection.effective_disposition || '';
+        row.dataset.disposition = effectiveDisposition;
+        dropdown.value = effectiveDisposition;
+        dropdown.dataset.hasDecision = projection.has_human_decision ? 'true' : 'false';
+        dropdown.dataset.currentDecision = projection.current_decision || '';
+        dropdown.dataset.currentNotes = projection.current_notes || '';
+        dropdown.dataset.currentReviewer = projection.current_reviewer || '';
+        dropdown.dataset.currentTimestamp = projection.current_timestamp || '';
+        dropdown.dataset.systemDisposition = projection.has_human_decision ? 'false' : 'true';
+        const meta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
+        if (meta && !projection.has_human_decision && !result.disposition_invalidated) {
+            meta.textContent = effectiveDisposition === 'accept_as_is'
+                ? 'System Accept as-is'
+                : 'No disposition';
+        }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(projection, 'export_eligible')) {
+        row.dataset.exportEligible = projection.export_eligible ? 'true' : 'false';
+        row.dataset.approvalBlocked = projection.approval_blocked ? 'true' : 'false';
+    }
+    window.householderValidationApplyIssueFilter?.();
 }
 
 function resetRowDispositionAfterPersistedEdit(row) {

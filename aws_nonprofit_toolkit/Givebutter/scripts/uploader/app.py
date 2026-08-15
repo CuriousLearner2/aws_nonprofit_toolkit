@@ -164,6 +164,83 @@ def _get_runtime_repository_config() -> dict:
     return runtime_config
 
 
+def _build_post_edit_projection(
+    *,
+    batch_id: str,
+    raw_import_row_id: int,
+    issues: list[dict],
+    row_status: str,
+    database_url: str,
+) -> dict:
+    """Return the canonical row projection for immediate UI refresh."""
+    from householder.approval_remaining_issues_policy import project_row_gating
+    from householder.database_models import RawImportRow, create_db_engine
+    from householder.row_decision_service import (
+        get_row_decision_state,
+        project_effective_disposition,
+    )
+    from sqlalchemy.orm import sessionmaker
+
+    decision_state = get_row_decision_state(batch_id, raw_import_row_id, database_url)
+    human_disposition = (
+        decision_state['decision'] if decision_state.get('has_decision') else None
+    )
+    effective_disposition = project_effective_disposition(
+        row_status=row_status,
+        human_disposition=human_disposition,
+    )
+
+    session = sessionmaker(bind=create_db_engine(database_url))()
+    try:
+        raw_row = session.query(RawImportRow).filter_by(
+            id=raw_import_row_id,
+            batch_id=batch_id,
+        ).first()
+        row_index = raw_row.row_index if raw_row is not None else 0
+    finally:
+        session.close()
+
+    gating = project_row_gating(
+        raw_import_row_id=raw_import_row_id,
+        row_index=row_index,
+        row_status=row_status,
+        has_unresolved_validation=any(
+            issue.get('severity') == 'error' for issue in issues
+        ),
+        human_disposition=effective_disposition,
+    )
+    return {
+        'row_status': row_status,
+        'effective_disposition': effective_disposition or '',
+        'has_human_decision': bool(decision_state.get('has_decision')),
+        'current_decision': decision_state.get('decision'),
+        'current_notes': decision_state.get('notes'),
+        'current_reviewer': decision_state.get('reviewer'),
+        'current_timestamp': decision_state.get('timestamp'),
+        'export_eligible': gating.export_included and not gating.export_blocked,
+        'export_blocked': gating.export_blocked,
+        'approval_blocked': gating.export_blocked,
+    }
+
+
+def _build_fallback_post_edit_projection(issues: list[dict], row_status: str) -> dict:
+    """Build the same client projection when no database state is available."""
+    has_blocking_issue = any(issue.get('severity') == 'error' for issue in issues)
+    effective_disposition = 'accept_as_is' if row_status == 'No issues' else ''
+    return {
+        'row_status': row_status,
+        'effective_disposition': effective_disposition,
+        'has_human_decision': False,
+        'current_decision': None,
+        'current_notes': None,
+        'current_reviewer': None,
+        'current_timestamp': None,
+        'export_eligible': not has_blocking_issue,
+        'export_blocked': has_blocking_issue,
+        'approval_blocked': has_blocking_issue,
+    }
+
+
 def _processing_metadata_path(processing_path: Path) -> Path:
     """Return the durable metadata sidecar path for a processing CSV."""
     return processing_path.with_suffix(processing_path.suffix + ".meta.json")
@@ -1523,6 +1600,10 @@ def autosave_row_corrections(import_id):
             corrected_values=corrected_values,
         )
         status_code = fixture_result.pop('status_code', 200)
+        fixture_result['projection'] = _build_fallback_post_edit_projection(
+            fixture_result.get('issues', []),
+            fixture_result.get('row_status', 'No issues'),
+        )
         return jsonify(fixture_result), status_code
 
     try:
@@ -1569,6 +1650,13 @@ def autosave_row_corrections(import_id):
                 }
                 for issue in all_issues
             ]
+            projection = _build_post_edit_projection(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id,
+                issues=formatted_issues,
+                row_status=row_status,
+                database_url=database_url,
+            )
 
             # Return validation error - don't save
             logger.info(f"Row {raw_import_row_id} autosave validation failed: {errors}")
@@ -1578,7 +1666,8 @@ def autosave_row_corrections(import_id):
                 'validation_errors': errors,
                 'message': 'Corrections not saved - please fix validation errors',
                 'row_status': row_status,
-                'issues': formatted_issues
+                'issues': formatted_issues,
+                'projection': projection,
             }), 400
 
         # Save corrections (only if validation passed)
@@ -1626,6 +1715,13 @@ def autosave_row_corrections(import_id):
             }
             for issue in issues
         ]
+        projection = _build_post_edit_projection(
+            batch_id=import_id,
+            raw_import_row_id=raw_import_row_id,
+            issues=formatted_issues,
+            row_status=row_status,
+            database_url=database_url,
+        )
 
         return jsonify({
             'success': True,
@@ -1635,6 +1731,7 @@ def autosave_row_corrections(import_id):
             'issues': formatted_issues,
             'saved_at': datetime.now(timezone.utc).isoformat(),
             'disposition_invalidated': result.disposition_invalidated,
+            'projection': projection,
             'message': 'Autosave completed successfully'
         }), 200
     except ValueError as e:
@@ -1661,6 +1758,13 @@ def autosave_row_corrections(import_id):
                 }
                 for issue in issues
             ]
+            projection = _build_post_edit_projection(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id,
+                issues=formatted_issues,
+                row_status=row_status,
+                database_url=database_url,
+            )
         except Exception:
             # If we can't get issues (e.g., row doesn't exist in fixture mode),
             # return empty issues but still include the field for JavaScript to process
@@ -1670,11 +1774,13 @@ def autosave_row_corrections(import_id):
         if row_status == 'Blocking' and not formatted_issues:
             formatted_issues = [_build_blocking_autosave_issue(str(e))]
             row_status = 'Blocking'
+        projection = _build_fallback_post_edit_projection(formatted_issues, row_status)
 
         return jsonify({
             'error': str(e),
             'issues': formatted_issues,
-            'row_status': row_status
+            'row_status': row_status,
+            'projection': projection,
         }), 400
     except Exception as e:
         logger.error(f"Error during autosave: {str(e)}")
@@ -1699,6 +1805,13 @@ def autosave_row_corrections(import_id):
                 }
                 for issue in issues
             ]
+            projection = _build_post_edit_projection(
+                batch_id=import_id,
+                raw_import_row_id=raw_import_row_id,
+                issues=formatted_issues,
+                row_status=row_status,
+                database_url=database_url,
+            )
         except Exception:
             formatted_issues = []
             row_status = 'Blocking'
@@ -1706,11 +1819,13 @@ def autosave_row_corrections(import_id):
         if row_status == 'Blocking' and not formatted_issues:
             formatted_issues = [_build_blocking_autosave_issue(str(e))]
             row_status = 'Blocking'
+        projection = _build_fallback_post_edit_projection(formatted_issues, row_status)
 
         return jsonify({
             'error': 'Autosave failed',
             'issues': formatted_issues,
-            'row_status': row_status
+            'row_status': row_status,
+            'projection': projection,
         }), 500
 
 
