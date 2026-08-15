@@ -195,69 +195,50 @@ def check_batch_remaining_issues(
     Raises:
         ValueError: If batch not found
     """
-    from .row_status_service import derive_row_status
+    from .export_preview_service import build_export_preview
     from .issue_recalculation_service import recalculate_row_issues
-    from .row_decision_service import (
-        get_row_decision_state,
-        project_effective_disposition,
-    )
-    from .approval_remaining_issues_policy import project_row_gating
 
     if database_url is None:
         database_url = os.environ.get('GIVEBUTTER_DATABASE_URL', 'sqlite:///./givebutter.db')
 
+    # Export preview is the canonical batch projection. Approval must not
+    # re-derive blockers or interpret legacy disposition/override states.
+    preview = build_export_preview(
+        batch_id,
+        config={'GIVEBUTTER_DATABASE_URL': database_url},
+    )
+    blocked_rows = [row for row in preview.export_rows if row.export_blocked]
+    if not blocked_rows:
+        return []
+
+    # Preserve the existing diagnostic response shape for the approval API.
+    # The gating decision above comes exclusively from preview; recalculation
+    # here only supplies the row-level issue details for the response.
     engine = create_engine(database_url, echo=False)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
-
     try:
-        batch = session.query(ImportBatch).filter_by(id=batch_id).first()
-        if not batch:
-            raise ValueError(f"Import batch '{batch_id}' not found")
-
-        # Get all raw rows in batch
-        rows = session.query(RawImportRow).filter_by(batch_id=batch_id).all()
-
-        remaining_issues_by_row = []
-        for row in rows:
+        rows_by_index = {
+            row.row_index: row
+            for row in session.query(RawImportRow).filter_by(batch_id=batch_id).all()
+        }
+        remaining = []
+        for preview_row in blocked_rows:
+            raw_row = rows_by_index.get(preview_row.source_row_index)
+            if raw_row is None:
+                continue
             issues = recalculate_row_issues(
                 batch_id=batch_id,
-                raw_import_row_id=row.id,
-                database_url=database_url
-            )
-            row_status = derive_row_status(
-                batch_id=batch_id,
-                raw_import_row_id=row.id,
-                database_url=database_url
-            )
-
-            decision_state = get_row_decision_state(
-                batch_id=batch_id,
-                raw_import_row_id=row.id,
+                raw_import_row_id=raw_row.id,
                 database_url=database_url,
             )
-            human_disposition = decision_state.get('decision') if decision_state.get('has_decision') else None
-            effective_disposition = project_effective_disposition(
-                row_status=row_status,
-                human_disposition=human_disposition,
-            )
-            projection = project_row_gating(
-                raw_import_row_id=row.id,
-                row_index=row.row_index,
-                row_status=row_status,
-                has_unresolved_validation=bool(issues),
-                human_disposition=effective_disposition,
-            )
-            if projection.export_blocked:
-                remaining_issues_by_row.append({
-                    'raw_import_row_id': row.id,
-                    'row_index': row.row_index,
-                    'issues': issues,
-                    'row_status': row_status,
-                    'decision_warning': 'disposition_required',
-                })
-                continue
-        return remaining_issues_by_row
-
+            remaining.append({
+                'raw_import_row_id': raw_row.id,
+                'row_index': raw_row.row_index,
+                'issues': issues,
+                'row_status': preview_row.validation_status,
+                'decision_warning': 'disposition_required',
+            })
+        return remaining
     finally:
         session.close()

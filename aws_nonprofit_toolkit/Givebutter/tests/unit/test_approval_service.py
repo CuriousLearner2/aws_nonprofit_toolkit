@@ -10,6 +10,8 @@ Tests:
 
 import pytest
 import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 from datetime import datetime, timezone
 from sqlalchemy import create_engine
@@ -174,6 +176,32 @@ class TestCheckBatchRemainingIssues:
         )
 
         assert issues == []
+
+    def test_approval_blockers_are_consumed_from_export_preview(self, temp_db):
+        """Approval uses the same blocked-row projection as export/readiness."""
+        db_url, row_ids = temp_db
+        preview_row = SimpleNamespace(
+            source_row_index=1,
+            validation_status='Blocking',
+            export_blocked=True,
+        )
+        preview = SimpleNamespace(export_rows=(preview_row,))
+
+        with patch(
+            'scripts.householder.export_preview_service.build_export_preview',
+            return_value=preview,
+        ) as build_preview:
+            remaining = check_batch_remaining_issues(
+                batch_id='test-batch-001',
+                database_url=db_url,
+            )
+
+        build_preview.assert_called_once_with(
+            'test-batch-001',
+            config={'GIVEBUTTER_DATABASE_URL': db_url},
+        )
+        assert [row['raw_import_row_id'] for row in remaining] == [row_ids[0]]
+        assert remaining[0]['row_status'] == 'Blocking'
 
     def test_includes_rows_with_follow_up_decisions(self, temp_db):
         """Test that rows with follow-up decisions are included in remaining issues."""
