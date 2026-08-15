@@ -34,6 +34,7 @@ from .service_contracts import (
 )
 from .amount_validation_service import validate_review_amount
 from .export_config import EXPORT_CARD_DEFINITIONS
+from .address_policy import has_address_source
 
 
 def get_db_session(database_url: str = 'sqlite:///./givebutter.db') -> Session:
@@ -379,7 +380,7 @@ class DatabaseImportRepository:
 
             # Import effective values function and issue recalculation
             from .autosave_service import get_effective_values, has_explicit_reviewed_value
-            from .issue_recalculation_service import recalculate_row_issues, has_recognized_address_source
+            from .issue_recalculation_service import recalculate_row_issues
 
             # Build validation rows from contacts
             validation_rows = []
@@ -388,7 +389,7 @@ class DatabaseImportRepository:
                 # Fetch transaction_id from raw import row
                 raw_row = session.query(RawImportRow).filter_by(id=contact.raw_import_row_id).first()
                 raw_csv_data = raw_row.raw_csv_data if raw_row else {}
-                address_visible = has_recognized_address_source(raw_csv_data)
+                address_visible = has_address_source(raw_csv_data)
                 batch_address_visible = batch_address_visible or address_visible
                 transaction_id = (
                     raw_csv_data.get('Transaction ID')

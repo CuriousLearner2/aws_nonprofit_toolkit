@@ -31,6 +31,7 @@ from .date_validation_service import validate_review_date
 from .phone_validation_service import is_valid_phone, validate_review_phone
 from .issue_identity import normalize_validation_issue_field
 from .issue_reconciliation import reconcile_missing_address_issues
+from .address_policy import evaluate_address_issue, has_address_source
 import os
 
 def _validation_issue_value_for_field(values: Dict[str, Any], field: Any) -> Any:
@@ -49,11 +50,8 @@ def _validation_issue_value_for_field(values: Dict[str, Any], field: Any) -> Any
 
 
 def has_recognized_address_source(raw_data: Dict[str, Any]) -> bool:
-    """Return whether the imported row schema contains an address field."""
-    return any(
-        normalize_validation_issue_field(key) == 'address'
-        for key in (raw_data or {})
-    )
+    """Compatibility wrapper for the canonical source-capability helper."""
+    return has_address_source(raw_data)
 
 
 def recalculate_row_issues(
@@ -703,35 +701,8 @@ def _validate_amount(amount: Any) -> Optional[Dict[str, Any]]:
 
 
 def _validate_address(address: str) -> Optional[Dict[str, Any]]:
-    """
-    Validate address field and return a warning if it is missing or malformed.
-
-    Validation Review only requires that an address be present. It does not
-    require ZIP, city, or state completeness on this screen, but it should not
-    silently treat malformed city/state fragments as clean addresses.
-    """
-    if address is None or str(address).strip().casefold() in {'', 'nan', 'none', 'null'}:
-        return {
-            'field': 'address',
-            'reason': 'missing',
-            'description': 'Missing address',
-            'severity': 'warning',
-            'is_new': True,
-        }
-
-    normalized = " ".join(str(address).strip().split())
-    if normalized.count(",") == 1:
-        suffix = normalized.split(",", 1)[1].strip()
-        if re.fullmatch(r"[A-Za-z .'-]+\s+[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?", suffix):
-            return {
-                'field': 'address',
-                'reason': 'malformed',
-                'description': 'Malformed address',
-                'severity': 'warning',
-                'is_new': True,
-            }
-
-    return None
+    """Compatibility wrapper for the canonical address evaluator."""
+    return evaluate_address_issue(address)
 
 
 def _get_email_suggestion(email: str) -> Optional[str]:

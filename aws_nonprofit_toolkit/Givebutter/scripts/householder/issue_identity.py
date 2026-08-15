@@ -1,15 +1,9 @@
 from collections.abc import Mapping
 from typing import Any
 
-_ADDRESS_FIELD_ALIASES = {
-    'address',
-    'address 1',
-    'address_1',
-    'address line 1',
-    'address_line_1',
-    'street address',
-    'street_address',
-}
+from .address_policy import ADDRESS_SOURCE_ALIASES
+
+_ADDRESS_FIELD_ALIASES = {alias.casefold() for alias in ADDRESS_SOURCE_ALIASES}
 
 
 def normalize_validation_issue_field(field: Any) -> str:

@@ -26,6 +26,7 @@ from .issue_recalculation_service import is_issue_resolved
 from .issue_recalculation_service import recalculate_row_issues
 from .approval_remaining_issues_policy import project_row_gating
 from .row_decision_service import ROW_HUMAN_DISPOSITIONS, project_effective_disposition
+from .address_policy import get_address_source_value
 from .service_contracts import ExportRow, ExportPreviewResult
 
 
@@ -495,7 +496,7 @@ def build_export_preview(
                         'amount': raw_amount,
                         'email': raw_email,
                         'phone': raw_phone,
-                        'address': raw_row.raw_csv_data.get('Address 1') if raw_row and isinstance(raw_row.raw_csv_data, dict) else None,
+                        'address': get_address_source_value(raw_row.raw_csv_data) if raw_row else None,
                     }
 
                     effective_issue_value = field_values.get(resolved_issue_field)

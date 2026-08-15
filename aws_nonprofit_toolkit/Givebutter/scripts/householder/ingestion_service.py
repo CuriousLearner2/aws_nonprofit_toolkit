@@ -44,6 +44,7 @@ from .ingestion_value_policy import (
 )
 from .email_validation_service import build_email_validation_issue
 from .phone_validation_service import build_phone_validation_issue
+from .address_policy import find_address_source_column
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +330,10 @@ def build_header_mapping_for_ingestion(df_columns: List[str]) -> Dict[str, str]:
                 if fuzzy_name.lower() in lowercase_columns:
                     mapping[key] = lowercase_columns[fuzzy_name.lower()]
                     break
+
+    address_source_column = find_address_source_column(df_columns)
+    if address_source_column is not None:
+        mapping["address_1"] = address_source_column
 
     return mapping
 
