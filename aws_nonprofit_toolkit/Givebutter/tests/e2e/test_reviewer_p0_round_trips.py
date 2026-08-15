@@ -196,14 +196,14 @@ async def test_clear_human_disposition_preserves_history_and_projection(e2e_data
                 async def accept_dialog(dialog):
                     await dialog.accept()
                 page.once('dialog', accept_dialog)
-                await row.locator('select.row-status-dropdown').select_option('clear_decision')
+                await row.locator('select.row-status-dropdown').select_option('')
                 modal = page.locator('#record-modal')
                 await modal.wait_for(state='visible')
                 await modal.locator('.reviewer-name-field').fill(REVIEWER)
                 await modal.locator('button[id^="save-followup-notes-"]').click()
                 await modal.wait_for(state='hidden')
                 await page.wait_for_function(
-                    "() => document.querySelector('.row-disposition-meta')?.innerText.includes('No saved reviewer decision')"
+                    "() => document.querySelector('.row-disposition-meta')?.innerText.includes('Decision cleared by reviewer')"
                 )
                 after = await page.request.get(f'{base_url}/imports/{batch_id}/row-decision/{raw_ids[0]}')
                 after_state = await after.json()
@@ -217,9 +217,9 @@ async def test_clear_human_disposition_preserves_history_and_projection(e2e_data
                 session.close()
                 await page.reload()
                 await page.wait_for_function(
-                    "() => document.querySelector('.row-disposition-meta')?.innerText.includes('No saved reviewer decision')"
+                    "() => document.querySelector('.row-disposition-meta')?.innerText.includes('Decision cleared by reviewer')"
                 )
-                assert 'No saved reviewer decision' in await page.locator('.row-disposition-meta').inner_text()
+                assert 'Decision cleared by reviewer' in await page.locator('.row-disposition-meta').inner_text()
             finally:
                 await browser.close()
     finally:

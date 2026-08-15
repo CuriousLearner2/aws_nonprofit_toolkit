@@ -147,11 +147,18 @@ async def _save_row_disposition(page, row_index: int, value: str, *, reviewer="C
     await notes_field.fill(notes)
     await modal.locator('button[id^="save-followup-notes-"]').click()
     await modal.wait_for(state="hidden", timeout=5000)
-    await page.wait_for_function(
-        "([index, expected]) => document.querySelectorAll('select.row-status-dropdown')[index]?.value === expected",
-        arg=[row_index, value],
-        timeout=5000,
-    )
+    if value:
+        await page.wait_for_function(
+            "([index, expected]) => document.querySelectorAll('select.row-status-dropdown')[index]?.value === expected",
+            arg=[row_index, value],
+            timeout=5000,
+        )
+    else:
+        await page.wait_for_function(
+            "([index]) => document.querySelectorAll('.row-disposition-meta')[index]?.textContent.includes('Decision cleared by reviewer')",
+            arg=[row_index],
+            timeout=5000,
+        )
     return row
 
 
@@ -633,18 +640,15 @@ async def test_clearing_saved_human_dispositions_restores_system_defaults(e2e_da
                 await _save_row_disposition(page, 1, "reject_row", notes="Temporary issue-row decision")
 
                 for index in (0, 1):
-                    row = page.locator("tr.validation-row").nth(index)
-                    await row.locator('[data-action="inspect-record"]').click()
-                    modal = page.locator("#record-modal")
-                    await modal.wait_for(state="visible", timeout=5000)
-
-                    clear = modal.locator('select[id^="row-review-decision-"]')
-                    assert await clear.count() == 1, "Saved human disposition must expose Clear decision"
-                    await modal.locator('.reviewer-name-field').fill("Contract Reviewer")
-                    page.once("dialog", lambda dialog: dialog.accept())
-                    await clear.select_option("clear_decision")
-                    await modal.locator('button[id^="save-record-review-"]').click()
-                    await modal.wait_for(state="hidden", timeout=5000)
+                    # No disposition is the current reviewer-facing reset path;
+                    # internal clear_decision audit events remain compatibility data.
+                    await _save_row_disposition(
+                        page,
+                        index,
+                        "",
+                        reviewer="Contract Reviewer",
+                        notes="Reset through No disposition",
+                    )
 
                 await page.reload()
                 rows = page.locator("tr.validation-row")

@@ -214,6 +214,7 @@ async def test_saved_human_disposition_is_invalidated_by_persisted_edits(e2e_dat
                     timeout=5000,
                 )
                 assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
+                assert "Disposition reset after saved edit" in await row.locator(".row-disposition-meta").inner_text()
 
                 session.expire_all()
                 assert session.query(ReviewDecision).filter_by(
@@ -235,7 +236,7 @@ async def test_saved_human_disposition_is_invalidated_by_persisted_edits(e2e_dat
                 await row.wait_for()
                 assert await row.locator(".validation-status-label").inner_text() == "No issues"
                 assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
-                assert "No saved reviewer decision" in await row.locator(".row-disposition-meta").inner_text()
+                assert "Decision cleared by reviewer" in await row.locator(".row-disposition-meta").inner_text()
 
                 # Reintroducing a persisted address warning invalidates the human disposition.
                 address = row.locator('input[data-field="address"]')

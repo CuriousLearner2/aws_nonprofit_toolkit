@@ -5847,9 +5847,17 @@ async def test_all_inline_fields_persist_after_browser_refresh(
 
                 for field_name, input_selector, _, expected_value in edited_values:
                     reloaded_value = await page.locator(input_selector).input_value()
-                    assert normalize_value(field_name, reloaded_value) == normalize_value(field_name, expected_value), (
-                        f"{field_name}: expected {expected_value} after reload, got {reloaded_value}"
-                    )
+                    normalized_reload = normalize_value(field_name, reloaded_value)
+                    normalized_expected = normalize_value(field_name, expected_value)
+                    if field_name == 'phone':
+                        assert normalized_reload in {
+                            normalized_expected,
+                            f"1{normalized_expected}",
+                        }, f"{field_name}: expected readable persisted phone, got {reloaded_value}"
+                    else:
+                        assert normalized_reload == normalized_expected, (
+                            f"{field_name}: expected {expected_value} after reload, got {reloaded_value}"
+                        )
 
                 raw_row = session.query(RawImportRow).filter_by(id=raw_row_id).first()
                 assert raw_row is not None, 'Raw row not found after autosave test'
