@@ -43,6 +43,7 @@ from .ingestion_value_policy import (
     split_name,
 )
 from .email_validation_service import build_email_validation_issue
+from .phone_validation_service import build_phone_validation_issue
 
 logger = logging.getLogger(__name__)
 
@@ -481,7 +482,8 @@ def ingest_processed_csv(
 
             # Extract phone (digits only)
             phone_col = header_mapping.get("phone")
-            phone = row.get(phone_col) if phone_col else None
+            phone_input = row.get(phone_col) if phone_col else None
+            phone = phone_input
             if phone:
                 phone = extract_digits_from_phone(phone)
                 if not phone:  # If extraction resulted in empty string
@@ -554,6 +556,15 @@ def ingest_processed_csv(
                                 continue
                             issue_description = f"Email: {email_issue['description']}"
 
+                        phone_issue = None
+                        if field_name.strip().lower() == "phone":
+                            phone_issue = build_phone_validation_issue(phone_input)
+                            if phone_issue is None:
+                                # A stale processor issue must not survive when
+                                # the canonical validator says the value is valid.
+                                continue
+                            issue_description = f"Phone: {phone_issue['description']}"
+
                         # Get suggestion from Suggested_Modifications if available
                         suggestions_str = str(row.get("Suggested_Modifications", "")).strip()
                         suggestion = None
@@ -575,6 +586,8 @@ def ingest_processed_csv(
                                 "reason": (
                                     email_issue["reason"]
                                     if email_issue
+                                    else phone_issue["reason"]
+                                    if phone_issue
                                     else "format" if field_name.strip().lower() == "amount" else None
                                 ),
                                 "suggestion": suggestion,
@@ -582,6 +595,8 @@ def ingest_processed_csv(
                                 "severity": (
                                     email_issue["severity"]
                                     if email_issue
+                                    else phone_issue["severity"]
+                                    if phone_issue
                                     else "error" if validation_tier == "FAIL" else "warning"
                                 ),
                             },

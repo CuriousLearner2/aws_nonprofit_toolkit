@@ -158,6 +158,24 @@ def validate_review_phone(
     )
 
 
+def build_phone_validation_issue(value: Any) -> Optional[dict[str, str]]:
+    """Project the canonical phone result into the review issue contract."""
+    result = validate_review_phone(value, allow_blank=False, default_region=DEFAULT_PHONE_REGION)
+    if result.warnings:
+        return {
+            "description": result.warnings[0],
+            "severity": "warning",
+            "reason": "format",
+        }
+    if not result.valid:
+        return {
+            "description": result.blocking_error or PHONE_FORMAT_ERROR,
+            "severity": "error",
+            "reason": "format",
+        }
+    return None
+
+
 def validate_phone(
     phone_number: str,
     country: str = DEFAULT_PHONE_REGION,
