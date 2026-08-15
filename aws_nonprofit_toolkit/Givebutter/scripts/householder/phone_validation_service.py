@@ -15,7 +15,7 @@ DEFAULT_PHONE_REGION = "US"
 PHONE_REQUIRED_ERROR = "Phone number is empty"
 PHONE_FORMAT_ERROR = "Invalid phone format"
 PHONE_COUNTRY_CODE_WARNING = "International numbers should include a country code."
-PHONE_REVIEW_WARNING = "Phone format could not be confidently verified; review before export."
+PHONE_REVIEW_WARNING = "Could not verify format"
 PHONE_MAX_STORAGE_LENGTH = 255
 
 

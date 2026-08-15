@@ -2,6 +2,7 @@
 import pytest
 from householder.phone_validation_service import (
     validate_review_phone,
+    build_phone_validation_issue,
     validate_phone,
     is_valid_phone,
     format_phone,
@@ -210,6 +211,7 @@ class TestPhoneValidationService:
         result = validate_review_phone('1234567')
         assert result.valid is True
         assert PHONE_REVIEW_WARNING in result.warnings
+        assert build_phone_validation_issue('1234567')['description'] == 'Could not verify format'
 
     @pytest.mark.parametrize('value', ['+999123456789', '+91 123'])
     def test_malformed_phone_like_international_number_warns(self, value):

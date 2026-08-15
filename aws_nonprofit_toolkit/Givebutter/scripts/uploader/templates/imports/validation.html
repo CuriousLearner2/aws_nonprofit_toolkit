@@ -91,14 +91,7 @@
     <!-- Filter & Controls -->
     <div style="display: flex; width: 100%; max-width: calc(100vw - 102px); box-sizing: border-box; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; align-items: center;">
         <label for="search-records" style="font-size: 12px; font-weight: 600; color: #374151;">Search records</label>
-        <input type="text" id="search-records" aria-label="Search records" placeholder="Search by name, email, phone..." style="min-width: 0; flex: 1 1 0; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
-        <label for="validation-status-filter" style="font-size: 12px; font-weight: 600; color: #374151;">Filter by Validation Status</label>
-        <select id="validation-status-filter" aria-label="Filter by Validation Status" style="width: 220px; max-width: 100%; flex: 0 1 220px; box-sizing: border-box; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
-            <option value="all">All statuses</option>
-            <option value="No issues">No issues</option>
-            <option value="Warning">Warning</option>
-            <option value="Blocking">Blocking</option>
-        </select>
+        <input type="text" id="search-records" aria-label="Search records by Name, Email, Phone, Amount, Address, Date, or Transaction ID" placeholder="Search Name, Email, Phone, Amount, Address, Date, or Transaction ID" style="min-width: 360px; flex: 1 1 520px; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
         <label for="disposition-filter" style="font-size: 12px; font-weight: 600; color: #374151;">Filter by disposition</label>
         <select id="disposition-filter" aria-label="Filter by disposition" style="width: 180px; max-width: 100%; flex: 0 1 180px; box-sizing: border-box; padding: 8px; border: 1px solid #d0d0d0; border-radius: 3px; font-size: 13px;">
             <option value="all">All dispositions</option>
@@ -808,12 +801,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-    const validationStatusFilter = document.getElementById('validation-status-filter');
     const dispositionFilter = document.getElementById('disposition-filter');
     const searchInput = document.getElementById('search-records');
     const issueRows = Array.from(document.querySelectorAll('tr.validation-row[data-issues-json]'));
 
-    if (validationStatusFilter && issueRows.length) {
+    if (issueRows.length) {
         function rowIssues(row) {
             try {
                 return JSON.parse(row.dataset.issuesJson || '[]');
@@ -825,7 +817,7 @@ document.addEventListener('DOMContentLoaded', function() {
         window.householderValidationStatusFilter = window.householderValidationStatusFilter || 'all';
 
         function matchesIssueAndSearch(row) {
-            const selectedValidationStatus = validationStatusFilter.value;
+            const selectedValidationStatus = window.householderValidationStatusFilter || 'all';
             const selectedDisposition = dispositionFilter?.value || 'all';
             const rowDisposition = row.dataset.disposition || '';
             const searchTerm = (searchInput?.value || '').trim().toLowerCase();
@@ -858,7 +850,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         window.householderValidationMatchesIssueAndSearch = matchesIssueAndSearch;
         window.householderValidationApplyIssueFilter = applyIssueFilter;
-        validationStatusFilter.addEventListener('change', applyIssueFilter);
         dispositionFilter?.addEventListener('change', applyIssueFilter);
         searchInput?.addEventListener('input', applyIssueFilter);
         applyIssueFilter();

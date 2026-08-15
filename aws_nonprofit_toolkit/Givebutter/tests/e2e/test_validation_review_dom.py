@@ -824,25 +824,23 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
             page = await browser.new_page()
             await page.goto(f'{base_url}/imports/{batch_id}/validation')
             await page.wait_for_selector('tr.validation-row')
-            status_filter = page.locator('#validation-status-filter')
-            assert await page.get_by_label('Filter by Validation Status').count() == 1
-            assert await status_filter.locator('option').all_text_contents() == [
-                'All statuses', 'No issues', 'Warning', 'Blocking'
-            ]
-            await status_filter.select_option('Blocking')
+            status_filter = page.locator('[data-testid="validation-status-filter-blocking"]')
+            assert await page.locator('#validation-status-filter').count() == 0
+            assert await page.locator('[data-row-status-filter]').count() == 4
+            await status_filter.click()
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[0]}"]').is_visible()
             assert not await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
-            await status_filter.select_option('Warning')
+            await page.locator('[data-testid="validation-status-filter-warning"]').click()
             assert await page.locator('tr.validation-row:not([hidden])').count() == 4
             assert await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
             assert await page.locator(f'tr[data-raw-id="{row_ids[3]}"]').is_visible()
             assert await page.locator(f'tr[data-raw-id="{row_ids[4]}"]').is_visible()
             assert await page.locator(f'tr[data-raw-id="{row_ids[5]}"]').is_visible()
-            await status_filter.select_option('No issues')
+            await page.locator('[data-testid="validation-status-filter-no-issues"]').click()
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[2]}"]').is_visible()
-            await status_filter.select_option('all')
+            await page.locator('[data-testid="validation-status-filter-all"]').click()
             disposition_filter = page.locator('#disposition-filter')
             assert await disposition_filter.locator('option').all_text_contents() == [
                 'All dispositions', 'No disposition', 'Accept as-is', 'Needs follow-up', 'Reject row'
@@ -859,10 +857,10 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
             assert await page.locator(f'tr[data-raw-id="{row_ids[5]}"]').is_visible()
             await disposition_filter.select_option('none')
             assert await page.locator('tr.validation-row:not([hidden])').count() == 2
-            await status_filter.select_option('Warning')
+            await page.locator('[data-testid="validation-status-filter-warning"]').click()
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[1]}"]').is_visible()
-            await status_filter.select_option('all')
+            await page.locator('[data-testid="validation-status-filter-all"]').click()
             await disposition_filter.select_option('all')
             assert await page.locator('tr.validation-row:not([hidden])').count() == 6
             await page.locator('#search-records').fill('')
@@ -881,7 +879,7 @@ async def test_validation_status_and_disposition_filters_compose(e2e_database_an
             assert await live_row.is_visible()
             await disposition_filter.select_option('all')
             await page.locator('#search-records').fill('Jordan Clean')
-            await status_filter.select_option('No issues')
+            await page.locator('[data-testid="validation-status-filter-no-issues"]').click()
             await disposition_filter.select_option('accept_as_is')
             assert await page.locator('tr.validation-row:not([hidden])').count() == 1
             assert await page.locator(f'tr[data-raw-id="{row_ids[2]}"]').is_visible()
