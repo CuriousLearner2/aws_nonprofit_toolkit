@@ -136,6 +136,23 @@ class TestLaneRulesTestOnly:
         assert is_clean is True
         assert len(conflicts) == 0
 
+    def test_test_only_dependency_manifest_allowed(self):
+        """Test-only lane allows only the root test dependency manifest."""
+        is_clean, conflicts, categorized = check_lane_scope.check_lane_scope(
+            'test-only', ['requirements-test.txt']
+        )
+        assert is_clean is True
+        assert conflicts == []
+        assert categorized['test_dependency'] == ['requirements-test.txt']
+
+    def test_test_only_unrelated_dependency_manifests_blocked(self):
+        """Other dependency manifests remain outside the test-only lane."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope(
+            'test-only', ['requirements.txt', 'nested/requirements-test.txt']
+        )
+        assert is_clean is False
+        assert any(category == 'other' for category, _ in conflicts)
+
     def test_test_only_product_blocked(self):
         """Test-only lane blocks product files."""
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('test-only', ['scripts/householder/repository.py'])
@@ -199,6 +216,22 @@ class TestLaneRulesWorkflowCI:
         """Workflow-CI lane allows scripts/ci/* files."""
         is_clean, conflicts, _ = check_lane_scope.check_lane_scope('workflow-ci', ['scripts/ci/check_scope.py'])
         assert is_clean is True
+
+    def test_workflow_ci_test_dependency_manifest_allowed(self):
+        """Workflow-CI lane may carry the exact test dependency manifest."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope(
+            'workflow-ci', ['requirements-test.txt']
+        )
+        assert is_clean is True
+        assert conflicts == []
+
+    def test_product_test_dependency_manifest_blocked(self):
+        """Product lane cannot carry test dependency changes."""
+        is_clean, conflicts, _ = check_lane_scope.check_lane_scope(
+            'product', ['requirements-test.txt']
+        )
+        assert is_clean is False
+        assert any(category == 'test_dependency' for category, _ in conflicts)
 
     def test_workflow_ci_exports_uat_runtime_output_allowed(self):
         """Workflow-CI lane allows exports_uat runtime output."""

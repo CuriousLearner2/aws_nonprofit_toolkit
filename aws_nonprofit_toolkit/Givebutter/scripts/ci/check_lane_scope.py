@@ -197,7 +197,7 @@ def classify_file(filepath):
     """
     Classify a file into a semantic category.
 
-    Returns: one of 'workflow', 'ci', 'product', 'tests', 'docs', 'schema', 'runtime_output', 'other'
+    Returns: one of 'workflow', 'ci', 'product', 'tests', 'test_dependency', 'docs', 'schema', 'runtime_output', 'other'
     """
     # Workflow files
     if filepath.startswith('.claude/') or filepath.startswith('.github/') or filepath == '.gitignore' or filepath.startswith('.codex/agents/'):
@@ -218,6 +218,11 @@ def classify_file(filepath):
     # Test files
     if filepath.startswith('tests/'):
         return 'tests'
+
+    # Test-only dependency manifest. Keep this exact and root-scoped so other
+    # manifests remain miscellaneous files and continue to fail closed.
+    if filepath == 'requirements-test.txt':
+        return 'test_dependency'
 
     # Documentation files
     if filepath.startswith('docs/') or (filepath.endswith('.md') and not filepath.startswith('.claude/')):
@@ -315,10 +320,10 @@ def check_lane_scope(lane, changed_files, allow_schema=False, simulate=False, ve
             conflicts.append(('any', f'{lane} tasks do not allow edits'))
 
     elif lane == 'test-only':
-        # Allow tests only
+        # Allow tests and the exact test-only dependency manifest only.
         for category in categorized.keys():
-            if category != 'tests':
-                conflicts.append((category, f'test-only allows tests/** only, not {category} files'))
+            if category not in {'tests', 'test_dependency'}:
+                conflicts.append((category, f'test-only allows tests/** and requirements-test.txt only, not {category} files'))
 
     elif lane == 'workflow-ci':
         # Allow workflow, ci, and CI-script tests
@@ -351,6 +356,8 @@ def check_lane_scope(lane, changed_files, allow_schema=False, simulate=False, ve
                     conflicts.append(('runtime_output', 'product does not allow runtime output files; split into separate workflow-ci task'))
             elif category == 'other':
                 conflicts.append(('other', 'product does not allow miscellaneous files'))
+            elif category == 'test_dependency':
+                conflicts.append(('test_dependency', 'product does not allow test-only dependency manifests; use test-only or workflow-ci lane'))
 
     is_clean = len(conflicts) == 0
     return is_clean, conflicts, categorized
