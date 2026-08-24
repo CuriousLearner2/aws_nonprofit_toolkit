@@ -16,6 +16,8 @@ def test_gate_contains_all_required_existing_components():
         "fresh-session/reload smoke",
         "approval/export checks",
         "realistic corpus smoke",
+        "Hypothesis reviewer state-machine suite",
+        "fault-injection reviewer-state suite",
     ]
 
 
@@ -57,3 +59,13 @@ def test_corpus_component_includes_100_row_and_edge_case_coverage():
     assert "test_contact_validation_projection.py" in command
     assert "test_international_phone_contract.py" in command
     assert "test_address_issue_integrity_dom.py" in command
+
+
+def test_required_reviewer_state_suites_use_the_existing_tests():
+    by_name = {component.name: component for component in components()}
+    assert "tests/e2e/test_hypothesis_reviewer_state_machine.py" in by_name[
+        "Hypothesis reviewer state-machine suite"
+    ].command
+    assert "tests/e2e/test_reviewer_fault_injection.py" in by_name[
+        "fault-injection reviewer-state suite"
+    ].command

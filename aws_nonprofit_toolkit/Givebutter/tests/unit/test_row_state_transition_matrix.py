@@ -374,6 +374,7 @@ async def test_real_failed_edit_and_review_lifecycle_are_durable(e2e_database_an
                 await issue.wait_for()
                 await issue.locator('[data-action="inspect-record"]').click()
                 entries = page.locator("#record-modal section").filter(has_text="Review history").last.locator("article")
+                await entries.first.wait_for(state="visible")
                 reloaded = [await entries.nth(i).inner_text() for i in range(await entries.count())]
                 assert reloaded == history
 

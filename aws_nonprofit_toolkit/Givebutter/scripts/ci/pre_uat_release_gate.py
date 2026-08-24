@@ -68,6 +68,16 @@ def components() -> tuple[Component, ...]:
             _pytest(*CORPUS_TARGETS),
             360,
         ),
+        Component(
+            "Hypothesis reviewer state-machine suite",
+            e2e("tests/e2e/test_hypothesis_reviewer_state_machine.py"),
+            360,
+        ),
+        Component(
+            "fault-injection reviewer-state suite",
+            e2e("tests/e2e/test_reviewer_fault_injection.py"),
+            360,
+        ),
     )
 
 
