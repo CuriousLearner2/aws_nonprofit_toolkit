@@ -733,7 +733,7 @@ async function loadRowDecisions() {
                         if (editReviewButton) editReviewButton.style.display = 'inline-block';
                     } else {
                         tableDropdown.setAttribute('data-has-decision', 'false');
-                        const projected = projectEffectiveDisposition(getRowStatusLabel(row), false, '');
+                        const projected = data.effective_disposition || projectEffectiveDisposition(getRowStatusLabel(row), false, '');
                         row.dataset.disposition = projected;
                         tableDropdown.dataset.systemDisposition = projected ? 'true' : 'false';
                         tableDropdown.value = projected;

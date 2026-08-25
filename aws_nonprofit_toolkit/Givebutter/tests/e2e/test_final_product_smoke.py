@@ -106,6 +106,10 @@ async def test_upload_review_fresh_session_approval_and_export_smoke(
                 fresh_rows = fresh.locator("tr.validation-row")
                 await fresh_rows.nth(4).wait_for()
                 assert await fresh_rows.nth(2).locator('input[data-field="email"]').input_value() == "blocking.resolved@example.com"
+                await fresh.wait_for_function(
+                    "expected => Array.from(document.querySelectorAll('select.row-status-dropdown')).map(select => select.value).join('|') === expected.join('|')",
+                    arg=["accept_as_is", "accept_as_is", "accept_as_is", "needs_follow_up", "reject_row"],
+                )
                 assert [await fresh_rows.nth(i).locator("select.row-status-dropdown").input_value() for i in range(5)] == [
                     "accept_as_is", "accept_as_is", "accept_as_is", "needs_follow_up", "reject_row"
                 ]

@@ -338,7 +338,7 @@ def test_preview_warning_counts_match_audit_snapshot(preview_consistency_db):
     row = RawImportRow(
         batch_id='IMP-WARN-001',
         row_index=1,
-        raw_csv_data={'transaction_id': 'TXN-001', 'first_name': 'Test', 'last_name': 'User', 'email': 'test@test.com', 'amount': '100.00'},
+        raw_csv_data={'transaction_id': 'TXN-001', 'first_name': 'Test', 'last_name': 'User', 'email': 'test@test.com', 'phone': '12345', 'amount': '100.00'},
     )
     session.add(row)
     session.flush()
@@ -350,6 +350,7 @@ def test_preview_warning_counts_match_audit_snapshot(preview_consistency_db):
         first_name='Test',
         last_name='User',
         email='test@test.com',
+        phone='12345',
         amount=100.00,
     )
     session.add(contact)
@@ -370,15 +371,16 @@ def test_preview_warning_counts_match_audit_snapshot(preview_consistency_db):
     ))
     session.commit()
 
-    # Build preview: the warning blocks until the row has a disposition.
-    blocked_preview = build_export_preview('IMP-WARN-001', config={'GIVEBUTTER_DATABASE_URL': database_url})
+    # A warning-only phone row remains eligible without a human disposition;
+    # the shared reviewer projection and export preview must agree.
+    warning_preview = build_export_preview('IMP-WARN-001', config={'GIVEBUTTER_DATABASE_URL': database_url})
 
-    # A warning-bearing row needs a saved reviewer disposition before export.
-    assert blocked_preview.is_export_ready is False, (
-        "Unresolved validation warning must block export until disposition"
+    assert warning_preview.is_export_ready is True, (
+        "Warning-only phone validation must not block export"
     )
-    assert blocked_preview.warning_count > 0, (
-        f"Expected warning_count > 0, got {blocked_preview.warning_count}"
+    assert warning_preview.row_count == 1
+    assert warning_preview.warning_count > 0, (
+        f"Expected warning_count > 0, got {warning_preview.warning_count}"
     )
 
     session.add(ReviewDecision(

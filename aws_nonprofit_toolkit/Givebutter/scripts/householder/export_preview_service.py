@@ -24,8 +24,8 @@ from .date_validation_service import validate_review_date
 from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .issue_recalculation_service import recalculate_row_issues
-from .approval_remaining_issues_policy import project_row_gating
-from .row_decision_service import ROW_HUMAN_DISPOSITIONS, project_effective_disposition
+from .row_decision_service import ROW_HUMAN_DISPOSITIONS
+from .reviewer_state_service import project_reviewer_row_state
 from .address_policy import get_address_source_value
 from .service_contracts import ExportRow, ExportPreviewResult
 
@@ -633,27 +633,38 @@ def build_export_preview(
             # Compile export warnings
             row_blockers = list(dict.fromkeys(row_blockers))
 
-            gating = project_row_gating(
+            reviewer_row_status = (
+                'Blocking' if row_blockers else
+                'Warning' if row_has_unresolved_validation else
+                'No issues'
+            )
+            row_projection = project_reviewer_row_state(
+                batch_id=import_id,
                 raw_import_row_id=contact.raw_import_row_id,
                 row_index=row_index,
-                row_status=validation_status,
-                has_unresolved_validation=row_has_unresolved_validation,
-                human_disposition=project_effective_disposition(
-                    row_status=validation_status,
-                    human_disposition=row_human_disposition,
-                ),
+                row_status=reviewer_row_status,
+                # The shared projection treats warnings as reviewer-visible but
+                # non-blocking.  Use the already-computed blocker set as the
+                # gating input so preview cannot reintroduce the old broad
+                # unresolved-validation rule.
+                has_unresolved_validation=bool(row_blockers),
+                decision_state={
+                    'has_decision': row_human_disposition in ROW_HUMAN_DISPOSITIONS,
+                    'decision': row_human_disposition,
+                    'history': [],
+                },
                 base_blockers=row_blockers,
             )
 
             # Follow-up and rejected rows remain in the batch, but are not part
             # of the current export.
-            if not gating.export_included:
-                if gating.decision_warning == 'needs_follow_up':
+            if not row_projection.export_included:
+                if row_human_disposition == 'needs_follow_up':
                     needs_follow_up_count += 1
                 else:
                     rejected_count += 1
                 continue
-            row_blockers = list(gating.blockers)
+            row_blockers = list(row_projection.blockers)
             row_warnings = list(dict.fromkeys(row_warnings))
             validation_issues = list(dict.fromkeys(validation_issues))
             export_warnings = list(dict.fromkeys(
@@ -688,7 +699,7 @@ def build_export_preview(
                 household_decision=household_decision_status,
                 household_warnings=tuple(household_warnings),
                 export_warnings=tuple(export_warnings),
-                export_blocked=len(row_blockers) > 0,
+                export_blocked=row_projection.export_blocked,
                 export_derived_at=datetime.now(timezone.utc),
             )
 

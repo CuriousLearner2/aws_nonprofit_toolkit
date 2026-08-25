@@ -14,7 +14,7 @@ import os
 from .repository_provider import get_import_repository
 from .issue_recalculation_service import recalculate_row_issues, _validate_effective_values
 from .row_status_service import derive_row_status
-from .row_decision_service import project_effective_disposition
+from .reviewer_state_service import project_reviewer_row_state
 
 
 def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = None, disposition_filter: Optional[str] = None) -> Dict[str, Any]:
@@ -45,8 +45,7 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
     if config:
         database_url = config.get('GIVEBUTTER_DATABASE_URL')
 
-    # Enrich validation_issues with row_status, projected disposition, and issues.
-    from .row_decision_service import get_row_decision_state
+    # Enrich every row through the single reviewer-state projection.
 
     for record in result.get('validation_issues', []):
         raw_import_row_id = record.get('raw_import_row_id')
@@ -61,12 +60,7 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     database_url=database_url,
                 )
 
-                # Get row status
-                row_status = derive_row_status(
-                    import_id,
-                    raw_import_row_id,
-                    database_url=database_url,
-                )
+                row_status = derive_row_status(issues=all_issues)
 
                 # Format issues for template
                 record['issues'] = [
@@ -77,19 +71,20 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     }
                     for issue in all_issues
                 ]
-                record['row_status'] = row_status
-                if database_url:
-                    decision_state = get_row_decision_state(
-                        import_id, raw_import_row_id, database_url
-                    )
-                    human_disposition = (
-                        decision_state.get('decision')
-                        if decision_state.get('has_decision') else None
-                    )
-                    record['disposition'] = project_effective_disposition(
-                        row_status=row_status,
-                        human_disposition=human_disposition,
-                    ) or ''
+                projection = project_reviewer_row_state(
+                    batch_id=import_id,
+                    raw_import_row_id=raw_import_row_id,
+                    database_url=database_url,
+                    issues=all_issues,
+                    row_status=row_status,
+                )
+                projected = projection.to_dict()
+                # Keep the template/API issue contract (field, reason,
+                # severity); the projection's raw issue snapshot may use
+                # validator-native ``description`` instead of ``reason``.
+                projected['issues'] = record['issues']
+                record.update(projected)
+                record['disposition'] = projection.effective_disposition
             except (ValueError, Exception):
                 # Fall back to fixture-provided data if batch/row not in database
                 # (e.g., when using fixture repository with synthetic row IDs)
@@ -127,12 +122,27 @@ def get_validation_review(import_id: str, config: Optional[Mapping[str, Any]] = 
                     record['issues'] = []
 
                 # Set row_status through the canonical row-status service.
-                if not record.get('row_status'):
-                    record['row_status'] = derive_row_status(issues=record.get('issues', []))
+                projection = project_reviewer_row_state(
+                    batch_id=None,
+                    raw_import_row_id=raw_import_row_id or 0,
+                    issues=record.get('issues', []),
+                    row_status=record.get('row_status') or derive_row_status(issues=record.get('issues', [])),
+                    decision_state={"has_decision": False, "history": []},
+                )
+                record.update(projection.to_dict())
+                record['disposition'] = projection.effective_disposition
         else:
             # No issue in this record
             record['issues'] = []
-            record['row_status'] = derive_row_status(issues=record['issues'])
+            projection = project_reviewer_row_state(
+                batch_id=None,
+                raw_import_row_id=0,
+                issues=[],
+                row_status='No issues',
+                decision_state={"has_decision": False, "history": []},
+            )
+            record.update(projection.to_dict())
+            record['disposition'] = projection.effective_disposition
 
     valid_disposition_filters = {
         'all', 'none', 'accept_as_is', 'needs_follow_up', 'reject_row',

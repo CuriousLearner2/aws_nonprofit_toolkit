@@ -173,22 +173,9 @@ def _build_post_edit_projection(
     database_url: str,
 ) -> dict:
     """Return the canonical row projection for immediate UI refresh."""
-    from householder.approval_remaining_issues_policy import project_row_gating
     from householder.database_models import RawImportRow, create_db_engine
-    from householder.row_decision_service import (
-        get_row_decision_state,
-        project_effective_disposition,
-    )
+    from householder.reviewer_state_service import project_reviewer_row_state
     from sqlalchemy.orm import sessionmaker
-
-    decision_state = get_row_decision_state(batch_id, raw_import_row_id, database_url)
-    human_disposition = (
-        decision_state['decision'] if decision_state.get('has_decision') else None
-    )
-    effective_disposition = project_effective_disposition(
-        row_status=row_status,
-        human_disposition=human_disposition,
-    )
 
     session = sessionmaker(bind=create_db_engine(database_url))()
     try:
@@ -200,45 +187,27 @@ def _build_post_edit_projection(
     finally:
         session.close()
 
-    gating = project_row_gating(
+    projection = project_reviewer_row_state(
+        batch_id=batch_id,
         raw_import_row_id=raw_import_row_id,
-        row_index=row_index,
+        database_url=database_url,
+        issues=issues,
         row_status=row_status,
-        has_unresolved_validation=any(
-            issue.get('severity') == 'error' for issue in issues
-        ),
-        human_disposition=effective_disposition,
+        row_index=row_index,
     )
-    return {
-        'row_status': row_status,
-        'effective_disposition': effective_disposition or '',
-        'has_human_decision': bool(decision_state.get('has_decision')),
-        'current_decision': decision_state.get('decision'),
-        'current_notes': decision_state.get('notes'),
-        'current_reviewer': decision_state.get('reviewer'),
-        'current_timestamp': decision_state.get('timestamp'),
-        'export_eligible': gating.export_included and not gating.export_blocked,
-        'export_blocked': gating.export_blocked,
-        'approval_blocked': gating.export_blocked,
-    }
+    return projection.to_dict()
 
 
 def _build_fallback_post_edit_projection(issues: list[dict], row_status: str) -> dict:
     """Build the same client projection when no database state is available."""
-    has_blocking_issue = any(issue.get('severity') == 'error' for issue in issues)
-    effective_disposition = 'accept_as_is' if row_status == 'No issues' else ''
-    return {
-        'row_status': row_status,
-        'effective_disposition': effective_disposition,
-        'has_human_decision': False,
-        'current_decision': None,
-        'current_notes': None,
-        'current_reviewer': None,
-        'current_timestamp': None,
-        'export_eligible': not has_blocking_issue,
-        'export_blocked': has_blocking_issue,
-        'approval_blocked': has_blocking_issue,
-    }
+    from householder.reviewer_state_service import project_reviewer_row_state
+    return project_reviewer_row_state(
+        batch_id=None,
+        raw_import_row_id=0,
+        issues=issues,
+        row_status=row_status,
+        decision_state={'has_decision': False, 'history': []},
+    ).to_dict()
 
 
 def _processing_metadata_path(processing_path: Path) -> Path:
@@ -1938,17 +1907,19 @@ def get_row_decision(import_id, raw_import_row_id):
         'timestamp': str (ISO) or null
     }
     """
-    from householder.row_decision_service import get_row_decision_state
+    from householder.issue_recalculation_service import recalculate_row_issues
+    from householder.reviewer_state_service import project_reviewer_row_state
     database_url = _get_runtime_database_url()
 
     try:
-        decision_data = get_row_decision_state(
+        issues = recalculate_row_issues(import_id, raw_import_row_id, database_url)
+        projection = project_reviewer_row_state(
             batch_id=import_id,
             raw_import_row_id=raw_import_row_id,
             database_url=database_url,
-        )
-
-        return jsonify(decision_data), 200
+            issues=issues,
+        ).to_dict()
+        return jsonify(projection), 200
 
     except ValueError as e:
         logger.warning(f"Error fetching row decision: {str(e)}")
