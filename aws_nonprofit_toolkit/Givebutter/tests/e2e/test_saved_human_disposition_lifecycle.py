@@ -214,7 +214,7 @@ async def test_saved_human_disposition_is_invalidated_by_persisted_edits(e2e_dat
                     timeout=5000,
                 )
                 assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
-                assert "Disposition reset after saved edit" in await row.locator(".row-disposition-meta").inner_text()
+                assert await row.locator(".row-disposition-meta").inner_text() == ""
 
                 session.expire_all()
                 assert session.query(ReviewDecision).filter_by(
@@ -236,7 +236,7 @@ async def test_saved_human_disposition_is_invalidated_by_persisted_edits(e2e_dat
                 await row.wait_for()
                 assert await row.locator(".validation-status-label").inner_text() == "No issues"
                 assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
-                assert "Decision cleared by reviewer" in await row.locator(".row-disposition-meta").inner_text()
+                assert await row.locator(".row-disposition-meta").inner_text() == ""
 
                 # Reintroducing a persisted address warning invalidates the human disposition.
                 address = row.locator('input[data-field="address"]')
@@ -306,10 +306,12 @@ async def test_transient_invalid_edit_restores_persisted_clean_projection(e2e_da
                 await email.fill("transient-invalid")
                 await email.evaluate("element => element.blur()")
                 await page.wait_for_function(
-                    "() => document.querySelector('tr.validation-row .validation-status-label')?.textContent.trim() === 'Blocking'",
+                    "() => document.querySelector('tr.validation-row [data-testid^=\"email-status-\"]')?.textContent.trim() === 'Error'",
                     timeout=5000,
                 )
-                assert await row.locator(".row-status-dropdown").input_value() == ""
+                assert await email.input_value() == original_email
+                assert await row.locator(".validation-status-label").inner_text() == "No issues"
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
                 assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
 
                 # The rejected invalid correction is not part of persisted export/readiness state.
@@ -510,10 +512,12 @@ async def test_autosave_failure_then_retry_recomputes_persisted_state(e2e_databa
                 await email.fill("retry-invalid")
                 await email.evaluate("element => element.blur()")
                 await page.wait_for_function(
-                    "() => document.querySelector('.validation-status-label')?.textContent.trim() === 'Blocking'",
+                    "() => document.querySelector('tr.validation-row [data-testid^=\"email-status-\"]')?.textContent.trim() === 'Error'",
                     timeout=5000,
                 )
-                assert await row.locator(".row-status-dropdown").input_value() == ""
+                assert await email.input_value() == original_email
+                assert await row.locator(".validation-status-label").inner_text() == "No issues"
+                assert await row.locator(".row-status-dropdown").input_value() == "accept_as_is"
                 assert session.query(ReviewDecision).filter_by(batch_id=batch_id).count() == 0
                 assert session.query(RawImportRow).filter_by(id=raw.id).one().raw_csv_data["email"] == original_email
 

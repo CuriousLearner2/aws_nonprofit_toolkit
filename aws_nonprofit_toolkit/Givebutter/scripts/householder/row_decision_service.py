@@ -102,14 +102,26 @@ def _get_latest_row_status_decision(session, batch_id: str, raw_import_row_id: i
     )
 
 
-def invalidate_human_disposition_after_edit(session, batch_id: str, raw_import_row_id: int) -> bool:
+def invalidate_human_disposition_after_edit(
+    session,
+    batch_id: str,
+    raw_import_row_id: int,
+    *,
+    edit_changes=None,
+    effective_disposition=None,
+) -> bool:
     """Append a clear marker when a persisted edit supersedes a human decision."""
     latest = _get_latest_row_status_decision(session, batch_id, raw_import_row_id)
     decision_type, _, sequence = _extract_row_status_decision_state(latest)
     if decision_type not in ROW_HUMAN_DISPOSITIONS:
         return False
 
-    reviewed_values = {'invalidation_reason': 'persisted_edit'}
+    reviewed_values = {
+        'invalidation_reason': 'persisted_edit',
+        'edit_changes': edit_changes or [],
+    }
+    if effective_disposition:
+        reviewed_values['effective_disposition'] = effective_disposition
     if sequence is not None:
         reviewed_values['interaction_sequence'] = sequence
     session.add(ReviewDecision(
@@ -145,6 +157,8 @@ def _serialize_row_decision_history(decisions):
     history = []
     for decision in decisions:
         decision_type, notes, sequence = _extract_row_status_decision_state(decision)
+        reviewed_values = decision.reviewed_values or {}
+        is_edit_event = reviewed_values.get('invalidation_reason') == 'persisted_edit'
         history.append({
             'decision_id': decision.id,
             'decision': decision_type,
@@ -152,6 +166,10 @@ def _serialize_row_decision_history(decisions):
             'reviewer': decision.reviewer,
             'timestamp': decision.created_at.isoformat(),
             'interaction_sequence': sequence or 0,
+            'event_type': 'edit' if is_edit_event else ('reset' if decision_type == 'clear_decision' else 'disposition'),
+            'edit_changes': reviewed_values.get('edit_changes', []) if is_edit_event else [],
+            'effective_disposition': reviewed_values.get('effective_disposition'),
+            'invalidation_reason': reviewed_values.get('invalidation_reason'),
         })
     return history
 

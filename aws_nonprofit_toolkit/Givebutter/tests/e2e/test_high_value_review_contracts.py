@@ -91,7 +91,7 @@ async def test_review_history_sequence_is_complete_after_fresh_session(e2e_datab
                 )).json()
                 assert fresh["history"] == state["history"]
                 assert await page.locator(".row-status-dropdown").input_value() == ""
-                assert await page.locator(".row-disposition-meta").inner_text() == "Decision cleared by reviewer"
+                assert await page.locator(".row-disposition-meta").inner_text() == ""
             finally:
                 await browser.close()
     finally:

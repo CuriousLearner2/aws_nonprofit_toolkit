@@ -197,7 +197,7 @@
                         <option value="needs_follow_up">Needs follow-up</option>
                         <option value="reject_row">Reject row</option>
                         </select>
-                    <div class="row-disposition-meta" data-testid="row-disposition-meta-{{ record.id }}" style="margin-top: 4px; max-width: 180px; color: #6b7280; font-size: 10px; line-height: 1.3;">No disposition</div>
+                    <div class="row-disposition-meta" data-testid="row-disposition-meta-{{ record.id }}" style="display: none; margin-top: 4px; max-width: 180px; color: #6b7280; font-size: 10px; line-height: 1.3;"></div>
                 </td>
 
                 <!-- Read-only: Issues -->
@@ -354,6 +354,24 @@ function formatAmountForDisplay(value) {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     })}`;
+}
+
+function formatLocalTimestamp(timestamp) {
+    if (!timestamp) return '';
+    const parsed = new Date(timestamp);
+    return Number.isNaN(parsed.getTime())
+        ? String(timestamp)
+        : parsed.toLocaleString([], {
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', second: '2-digit',
+            fractionalSecondDigits: 3,
+        });
+}
+
+function setDispositionMeta(dispositionMeta, text) {
+    if (!dispositionMeta) return;
+    dispositionMeta.textContent = text || '';
+    dispositionMeta.style.display = text ? '' : 'none';
 }
 
 function amountHasOverPrecision(value) {
@@ -725,14 +743,12 @@ async function loadRowDecisions() {
                     const dispositionMeta = tableDropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
                     if (dispositionMeta) {
                         if (data.has_decision && HUMAN_ROW_DISPOSITIONS.has(data.decision)) {
-                            const details = [data.reviewer, data.notes, data.timestamp]
+                            const details = [data.reviewer, formatLocalTimestamp(data.timestamp)]
                                 .filter(Boolean)
                                 .join(' · ');
-                            dispositionMeta.textContent = details || 'Saved reviewer disposition';
-                        } else if (data.last_event?.decision === 'clear_decision') {
-                            dispositionMeta.textContent = 'Decision cleared by reviewer';
+                            setDispositionMeta(dispositionMeta, details);
                         } else {
-                            dispositionMeta.textContent = 'No disposition';
+                            setDispositionMeta(dispositionMeta, '');
                         }
                     }
                     window.householderValidationApplyIssueFilter?.();
@@ -1222,9 +1238,7 @@ async function autosaveField(input) {
             applyClientRowGatingProjection(row, currentStatus, currentDisposition);
             const dispositionMeta = dropdown?.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
             if (dispositionMeta && dropdown?.dataset.hasDecision !== 'true') {
-                dispositionMeta.textContent = currentDisposition === 'accept_as_is'
-                    ? 'System Accept as-is'
-                    : 'No disposition';
+                setDispositionMeta(dispositionMeta, '');
             }
             window.householderValidationApplyIssueFilter?.();
         }
@@ -1313,10 +1327,14 @@ function applyAutosaveProjection(row, result) {
         dropdown.dataset.currentTimestamp = projection.current_timestamp || '';
         dropdown.dataset.systemDisposition = projection.has_human_decision ? 'false' : 'true';
         const meta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
-        if (meta && !projection.has_human_decision && !result.disposition_invalidated) {
-            meta.textContent = effectiveDisposition === 'accept_as_is'
-                ? 'System Accept as-is'
-                : 'No disposition';
+        if (meta) {
+            setDispositionMeta(
+                meta,
+                projection.has_human_decision
+                    ? [projection.current_reviewer, formatLocalTimestamp(projection.current_timestamp)]
+                        .filter(Boolean).join(' · ')
+                    : '',
+            );
         }
     }
 
@@ -1344,7 +1362,7 @@ function resetRowDispositionAfterPersistedEdit(row) {
     const editReviewButton = dropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
     if (editReviewButton) editReviewButton.style.display = 'none';
     const meta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
-    if (meta) meta.textContent = 'Disposition reset after saved edit';
+    setDispositionMeta(meta, '');
     window.householderValidationApplyIssueFilter?.();
 }
 
@@ -1448,19 +1466,40 @@ function buildRecordHistoryHtml(history) {
     }
 
     return history.map(entry => {
-        const isReset = entry.decision === 'clear_decision';
-        const label = isReset ? 'Decision cleared by reviewer' : formatRowDecisionLabel(entry.decision);
-        const notes = isReset
-            ? 'The prior human disposition was reset; the current state follows validation.'
-            : (entry.notes || '<span style="color: #6b7280; font-style: italic;">No notes</span>');
+        const isEdit = entry.event_type === 'edit';
+        const isReset = entry.decision === 'clear_decision' && !isEdit;
+        const changes = Array.isArray(entry.edit_changes) ? entry.edit_changes : [];
+        const label = isEdit
+            ? changes.map(change => `${escapeHtml(formatHistoryFieldLabel(change.field))} updated from ${escapeHtml(change.old_value || 'blank')} to ${escapeHtml(change.new_value || 'blank')}`).join('<br>')
+            : (isReset ? 'Decision cleared by reviewer' : formatRowDecisionLabel(entry.decision));
+        const notes = isEdit
+            ? `Current disposition: ${escapeHtml(formatRowDecisionLabel(entry.effective_disposition || 'no_disposition'))}`
+            : (isReset
+                ? 'The prior human disposition was reset; the current state follows validation.'
+                : (entry.notes || '<span style="color: #6b7280; font-style: italic;">No notes</span>'));
+        const footer = isEdit
+            ? formatLocalTimestamp(entry.timestamp)
+            : `${entry.reviewer || 'Reviewer not identified'} · ${formatLocalTimestamp(entry.timestamp)}`;
         return `
         <article style="position: relative; padding: 0 0 12px 17px; border-left: 2px solid #dbeafe;">
             <span style="position: absolute; left: -6px; top: 2px; width: 8px; height: 8px; border: 2px solid #fff; border-radius: 50%; background: #93c5fd; box-shadow: 0 0 0 1px #60a5fa;"></span>
-            <div style="font-weight: 700;">${escapeHtml(label)}</div>
-            <div style="margin: 4px 0; color: #374151; line-height: 1.35;">${isReset ? notes : escapeHtml(notes)}</div>
-            <div style="color: #6b7280; font-size: 12px;">${escapeHtml(entry.reviewer || 'Reviewer not identified')} · ${escapeHtml(entry.timestamp || '')}</div>
+            <div style="font-weight: 700;">${isEdit ? label : escapeHtml(label)}</div>
+            <div style="margin: 4px 0; color: #374151; line-height: 1.35;">${isEdit || isReset ? notes : escapeHtml(notes)}</div>
+            <div style="color: #6b7280; font-size: 12px;">${escapeHtml(footer)}</div>
         </article>`;
     }).join('');
+}
+
+function formatHistoryFieldLabel(field) {
+    const labels = {
+        name: 'Name',
+        email: 'Email',
+        phone: 'Phone',
+        amount: 'Amount',
+        address: 'Address',
+        date: 'Date',
+    };
+    return labels[field] || String(field || 'Field');
 }
 
 function buildRecordSummaryHtml(row, recordId, decisionData) {
@@ -1794,7 +1833,7 @@ function applySavedRowDecision(dropdown, result, decision, notes, reviewerName) 
         const editReviewButton = dropdown.closest('.row-status-cell')?.querySelector('.edit-row-review');
         if (editReviewButton) editReviewButton.style.display = 'none';
         const dispositionMeta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
-        if (dispositionMeta) dispositionMeta.textContent = 'Decision cleared by reviewer';
+        setDispositionMeta(dispositionMeta, '');
         return;
     }
     setSavedRowReviewState(
@@ -1813,9 +1852,9 @@ function applySavedRowDecision(dropdown, result, decision, notes, reviewerName) 
     dropdown.dataset.systemDisposition = 'false';
     const dispositionMeta = dropdown.closest('.row-status-cell')?.querySelector('.row-disposition-meta');
     if (dispositionMeta) {
-        dispositionMeta.textContent = [reviewerName, notes, result.timestamp]
+        setDispositionMeta(dispositionMeta, [reviewerName, formatLocalTimestamp(result.timestamp)]
             .filter(Boolean)
-            .join(' · ') || 'Saved reviewer disposition';
+            .join(' · '));
     }
 }
 

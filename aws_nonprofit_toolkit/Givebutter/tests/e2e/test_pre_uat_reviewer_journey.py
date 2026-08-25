@@ -99,16 +99,13 @@ async def _assert_full_projection(
         assert await row.get_attribute("data-approval-blocked") == str(expected_approval_blocked).lower()
 
     if reviewer is None:
-        if disposition == "accept_as_is" and status == "No issues":
-            meta = await row.locator(".row-disposition-meta").inner_text()
-            assert "System Accept as-is" in meta or "No disposition" in meta
-        elif not disposition:
-            meta = await row.locator(".row-disposition-meta").inner_text()
-            assert "No disposition" in meta or "Decision cleared by reviewer" in meta
+        # System and unresolved states are represented by the dropdown only;
+        # secondary reviewer metadata is reserved for saved human decisions.
+        assert await row.locator(".row-disposition-meta").inner_text() == ""
     else:
         meta = await row.locator(".row-disposition-meta").inner_text()
         assert reviewer in meta
-        assert reason and reason in meta
+        assert reason not in meta
 
     filter_value = disposition or "none"
     disposition_filter = page.locator("#disposition-filter")
@@ -186,7 +183,8 @@ async def _save_human_decision(page, row, decision: str, reason: str = REASON, *
     await expect(modal).to_be_hidden(timeout=10000)
     await expect(dropdown).to_have_value(decision)
     meta = await row.locator(".row-disposition-meta").inner_text()
-    assert REVIEWER in meta and reason in meta
+    assert REVIEWER in meta
+    assert reason not in meta
     await _assert_full_projection(page, row, status=status, disposition=decision, export_eligible=export_eligible, reviewer=REVIEWER, reason=reason)
 
 
@@ -354,8 +352,8 @@ async def test_pre_uat_reviewer_journey(flask_app_database_mode, tmp_path):
             assert "Decision cleared by reviewer" in history_entry_text[4]
             assert "Accept as-is" in history_entry_text[5]
             assert "Accepted after warning review" in history_entry_text[5]
-            assert all(REVIEWER in entry for entry in history_entry_text[:6])
-            assert all(re.search(r"20\d\d-\d\d-\d\dT", entry) for entry in history_entry_text[:6])
+            assert all("Reviewer not identified" not in entry for entry in history_entry_text[:6])
+            assert all(re.search(r"\d{1,2}/\d{1,2}/20\d\d", entry) for entry in history_entry_text[:6])
             assert len(history_entry_text) == len(set(history_entry_text))
             await modal.locator("#modal-record-footer button").first.click()
             await expect(modal).to_be_hidden()

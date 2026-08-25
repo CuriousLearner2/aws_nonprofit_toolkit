@@ -98,6 +98,14 @@ def autosave_row_corrections(
                 f"Raw import row {raw_import_row_id} does not belong to batch '{batch_id}'"
             )
 
+        # Capture the prior effective values before appending this correction.
+        # They are audit metadata only; raw import data remains untouched.
+        prior_effective_values = get_effective_values(
+            batch_id=batch_id,
+            raw_import_row_id=raw_import_row_id,
+            database_url=database_url,
+        )
+
         # Create autosave ReviewDecision (append-only)
         # Row-level autosave doesn't link to a specific ReviewItem
         # Instead, creates a row-level decision with reviewed_values
@@ -124,9 +132,39 @@ def autosave_row_corrections(
             reviewer=reviewer
         )
         session.add(decision)
-        disposition_invalidated = invalidate_human_disposition_after_edit(
-            session, batch_id, raw_import_row_id
+        edit_changes = [
+            {
+                'field': field,
+                'old_value': prior_effective_values.get(field, ''),
+                'new_value': reviewed_values.get(field, ''),
+            }
+            for field in corrected_values
+        ]
+        from .issue_recalculation_service import recalculate_row_issues
+        projected_issues = recalculate_row_issues(
+            batch_id=batch_id,
+            raw_import_row_id=raw_import_row_id,
+            proposed_values=corrected_values,
+            database_url=database_url,
         )
+        projected_status = derive_row_status(
+            batch_id=batch_id,
+            raw_import_row_id=raw_import_row_id,
+            issues=projected_issues,
+            database_url=database_url,
+        )
+        projected_disposition = (
+            'accept_as_is' if projected_status == 'No issues' else 'no_disposition'
+        )
+        disposition_invalidated = False
+        latest_human = invalidate_human_disposition_after_edit(
+            session,
+            batch_id,
+            raw_import_row_id,
+            edit_changes=edit_changes,
+            effective_disposition=projected_disposition,
+        )
+        disposition_invalidated = latest_human
         session.commit()
 
         return ValidationDecisionResult(

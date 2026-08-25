@@ -203,8 +203,9 @@ async def test_clear_human_disposition_preserves_history_and_projection(e2e_data
                 await modal.locator('button[id^="save-followup-notes-"]').click()
                 await modal.wait_for(state='hidden')
                 await page.wait_for_function(
-                    "() => document.querySelector('.row-disposition-meta')?.innerText.includes('Decision cleared by reviewer')"
+                    "() => document.querySelector('.row-status-dropdown')?.dataset.hasDecision === 'false'"
                 )
+                assert await page.locator('.row-disposition-meta').inner_text() == ''
                 after = await page.request.get(f'{base_url}/imports/{batch_id}/row-decision/{raw_ids[0]}')
                 after_state = await after.json()
                 assert after_state['has_decision'] is False
@@ -217,9 +218,9 @@ async def test_clear_human_disposition_preserves_history_and_projection(e2e_data
                 session.close()
                 await page.reload()
                 await page.wait_for_function(
-                    "() => document.querySelector('.row-disposition-meta')?.innerText.includes('Decision cleared by reviewer')"
+                    "() => ['', 'no_disposition', 'accept_as_is'].includes(document.querySelector('.row-status-dropdown')?.value) && document.querySelector('.row-disposition-meta')?.innerText.trim() === ''"
                 )
-                assert 'Decision cleared by reviewer' in await page.locator('.row-disposition-meta').inner_text()
+                assert await page.locator('.row-disposition-meta').inner_text() == ''
             finally:
                 await browser.close()
     finally:

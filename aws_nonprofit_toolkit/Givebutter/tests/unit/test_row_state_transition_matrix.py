@@ -353,21 +353,26 @@ async def test_real_failed_edit_and_review_lifecycle_are_durable(e2e_database_an
                 # The successful edit invalidates the prior human decision via
                 # an append-only correction event; the original review remains
                 # the oldest event.
-                assert "Decision cleared" in history[2]
+                assert "Amount updated from" in history[2]
+                assert "Current disposition:" in history[2]
                 assert "Reject matrix" in history[3]
-                assert "Decision cleared" in history[4]
+                assert "updated from" in history[4]
                 assert "Follow up matrix" in history[5]
-                assert all(re.search(r"20\d\d-\d\d-\d\dT", entry) for entry in history)
+                assert all(re.search(r"\d{1,2}/\d{1,2}/20\d\d", entry) for entry in history)
                 assert all(
                     ("Matrix Reviewer" in entry and "matrix" in entry.lower())
-                    or "Decision cleared" in entry
+                    or "updated from" in entry
                     for entry in history
                 )
                 assert len(history) == len(set(history))
                 assert "Reject matrix again" in history[1]
                 assert "Reject matrix" in history[3]
                 assert "Follow up matrix" in history[5]
-                assert all("Matrix Reviewer" in entry for entry in history if "Decision cleared" not in entry)
+                assert all(
+                    "Matrix Reviewer" in entry
+                    for entry in history
+                    if "Decision cleared" not in entry and "updated from" not in entry
+                )
                 await modal.locator("#modal-record-footer button").first.click()
                 await page.reload()
                 issue = page.locator(f"#validation-row-{issue_id}")

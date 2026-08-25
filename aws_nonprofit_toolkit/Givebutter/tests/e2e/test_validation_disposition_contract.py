@@ -155,7 +155,7 @@ async def _save_row_disposition(page, row_index: int, value: str, *, reviewer="C
         )
     else:
         await page.wait_for_function(
-            "([index]) => document.querySelectorAll('.row-disposition-meta')[index]?.textContent.includes('Decision cleared by reviewer')",
+            "([index]) => document.querySelectorAll('select.row-status-dropdown')[index]?.dataset.hasDecision === 'false' && document.querySelectorAll('.row-disposition-meta')[index]?.textContent.trim() === ''",
             arg=[row_index],
             timeout=5000,
         )
