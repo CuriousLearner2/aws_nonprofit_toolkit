@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', function () {
             e.preventDefault();
             const action = this.getAttribute('data-action');
             const itemId = this.getAttribute('data-item-id');
+            if (action === 'inspect-record') return;
             handleAction(action, itemId);
         });
     });

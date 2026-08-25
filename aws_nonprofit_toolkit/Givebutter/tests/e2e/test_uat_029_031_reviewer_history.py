@@ -48,6 +48,7 @@ async def test_reviewer_metadata_and_edit_history_survive_reload(e2e_database_an
         await row.locator('a[data-action="inspect-record"]').click()
         modal = page.locator("#record-modal")
         await modal.wait_for(state="visible")
+        assert not any("Action: inspect-record" in text for text in await page.locator(".toast").all_inner_texts())
         history = modal.locator("#modal-record-content article")
         texts = await history.all_inner_texts()
         assert any(label in text and "Current disposition:" in text for text in texts)
