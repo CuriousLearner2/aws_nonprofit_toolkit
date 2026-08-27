@@ -21,6 +21,7 @@ Database session management is isolated from models.
 """
 
 from datetime import datetime, timezone
+import os
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -205,6 +206,15 @@ def create_db_engine(database_url: str = None):
     """
     if database_url is None:
         database_url = 'sqlite:///./givebutter.db'
+
+    automated_test = (
+        os.getenv('HOUSEHOLDER_AUTOMATED_TEST') == '1'
+        or bool(os.getenv('PYTEST_CURRENT_TEST'))
+    )
+    if automated_test and database_url == 'sqlite:///./givebutter.db':
+        raise RuntimeError(
+            'Automated Householder tests require an explicit ephemeral database URL'
+        )
 
     engine = create_engine(database_url, echo=False)
     return engine
