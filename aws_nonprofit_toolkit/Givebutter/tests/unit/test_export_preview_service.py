@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.householder.export_preview_service import build_export_preview
 from scripts.householder.database_models import (
-    Base, ImportBatch, RawImportRow, ImportContact, ReviewItem, ReviewDecision, ReviewItemSubject
+    Base, ImportBatch, RawImportRow, ImportContact, ReviewItem, ReviewDecision, ReviewItemSubject, AuditLogRecord
 )
 from sqlalchemy.orm import sessionmaker
 from scripts.householder.database_models import create_db_engine
@@ -251,7 +251,7 @@ class TestExportPreviewNormalizationDecisions:
         row = result.export_rows[0]
 
         assert row.email == 'john@example.com'
-        assert any('normalization deferred' in w.lower() for w in row.normalization_warnings)
+        assert any('legacy unresolved' in w.lower() for w in row.normalization_warnings)
 
     def test_pending_normalization_keeps_original_and_warns(self, seeded_batch, temp_db):
         """Test that pending normalization keeps original and adds warning."""
@@ -377,6 +377,95 @@ class TestExportPreviewValidationDecisions:
 
         assert row.validation_status == 'deferred'
         assert any('unresolved' in w.lower() for w in row.export_warnings)
+
+    def test_legacy_defer_is_visible_blocking_and_superseded_append_only(self, seeded_batch, temp_db):
+        """Historical defer remains auditable, blocks export, and is replaced by a later decision."""
+        database_url, contact_id, batch_id = seeded_batch
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+        item = ReviewItem(batch_id=batch_id, item_type='validation',
+                          payload_json={'issue_type': 'invalid_email', 'severity': 'warning'})
+        session.add(item)
+        session.flush()
+        legacy = ReviewDecision(batch_id=batch_id, review_item_id=item.id, decision='defer')
+        session.add(legacy)
+        session.flush()
+        item_id = item.id
+        legacy_id = legacy.id
+        session.add(AuditLogRecord(batch_id=batch_id, action_type='decision_recorded',
+                                   action_timestamp=datetime.now(timezone.utc), decision_id=legacy.id,
+                                   details={'decision': 'defer'}))
+        session.commit()
+        session.close()
+
+        blocked = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        assert blocked.is_export_ready is False
+        assert blocked.blocked_count == 1
+        assert any('legacy' in blocker.lower() for blocker in blocked.blockers)
+
+        session = Session()
+        session.add(ReviewDecision(batch_id=batch_id, review_item_id=item_id, decision='accept_issue'))
+        session.commit()
+        assert session.query(ReviewDecision).filter_by(id=legacy_id).one().decision == 'defer'
+        assert session.query(AuditLogRecord).filter_by(decision_id=legacy_id).count() == 1
+        session.close()
+
+        resolved = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        assert resolved.is_export_ready is True
+
+    def test_legacy_row_defer_blocks_until_current_row_decision(self, seeded_batch, temp_db):
+        """Legacy row defer is readable and blocks export until superseded."""
+        database_url, contact_id, batch_id = seeded_batch
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+        raw_id = session.query(RawImportRow).filter_by(batch_id=batch_id).one().id
+        legacy = ReviewDecision(batch_id=batch_id, raw_import_row_id=raw_id,
+                                decision='row_status:defer',
+                                reviewed_values={'reviewed_status': 'defer'})
+        session.add(legacy)
+        session.flush()
+        session.add(AuditLogRecord(batch_id=batch_id, action_type='decision_recorded',
+                                   decision_id=legacy.id, details={'decision_value': 'defer'}))
+        session.commit()
+        legacy_id = legacy.id
+        session.close()
+
+        blocked = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        assert blocked.is_export_ready is False
+        assert any('row decision' in blocker.lower() for blocker in blocked.blockers)
+
+        session = Session()
+        session.add(ReviewDecision(batch_id=batch_id, raw_import_row_id=raw_id,
+                                   decision='row_status:accept_as_is',
+                                   reviewer='operator@example.org',
+                                   reviewed_values={'reviewed_status': 'accept_as_is', 'notes': 'Reviewed'}))
+        session.commit()
+        assert session.query(ReviewDecision).filter_by(id=legacy_id).one().decision == 'row_status:defer'
+        assert session.query(AuditLogRecord).filter_by(decision_id=legacy_id).count() == 1
+        session.close()
+
+        resolved = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        assert resolved.is_export_ready is True
+
+    def test_legacy_row_defer_without_reviewed_metadata_still_blocks(self, seeded_batch, temp_db):
+        """A legacy row defer must block even when its old metadata is incomplete."""
+        database_url, _, batch_id = seeded_batch
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+        raw_id = session.query(RawImportRow).filter_by(batch_id=batch_id).one().id
+        session.add(ReviewDecision(
+            batch_id=batch_id,
+            raw_import_row_id=raw_id,
+            decision='row_status:defer',
+            reviewed_values=None,
+        ))
+        session.commit()
+        session.close()
+
+        preview = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+
+        assert preview.is_export_ready is False
+        assert any('legacy unresolved row decision' in blocker.lower() for blocker in preview.blockers)
 
     def test_pending_critical_validation_creates_blocker(self, seeded_batch, temp_db):
         """Test that pending critical validation creates blocker."""
@@ -1002,3 +1091,84 @@ class TestExportPreviewValidationPayloadFormats:
         # Unknown issue type should not be treated as critical blocker
         assert row.validation_status == 'pending'
         assert not row.export_blocked
+
+    def test_malformed_deferred_normalization_payload_remains_blocked(self, seeded_batch, temp_db):
+        """
+        Regression test: malformed legacy deferred-normalization payload must not crash
+        export preview and must keep row blocked.
+
+        Tests the fix for: silent exception handler that was allowing rows with corrupted
+        deferred normalization payloads to bypass blocker detection.
+        """
+        database_url, contact_id, batch_id = seeded_batch
+        Session = sessionmaker(bind=temp_db[1])
+        session = Session()
+
+        # Create a normalization item
+        norm_item = ReviewItem(
+            batch_id=batch_id,
+            item_type='normalization',
+            payload_json={'field': 'email', 'normalized_value': 'test@example.com'},
+        )
+        session.add(norm_item)
+        session.flush()
+        norm_item_id = norm_item.id
+
+        # Link normalization to contact
+        norm_subject = ReviewItemSubject(
+            review_item_id=norm_item_id,
+            subject_type='import_contact_snapshot',
+            subject_id=contact_id,
+            role='primary',
+        )
+        session.add(norm_subject)
+        session.flush()
+
+        # Create a DEFERRED normalization decision with MALFORMED reviewed_values
+        # Instead of a dict, use a string or nested structure that can't be parsed
+        deferred_decision = ReviewDecision(
+            batch_id=batch_id,
+            review_item_id=norm_item_id,
+            decision='defer',
+            reviewed_values='NOT_A_DICT',  # Malformed: string instead of dict
+        )
+        session.add(deferred_decision)
+        session.commit()
+        deferred_decision_id = deferred_decision.id
+        session.close()
+
+        # Test 1: Export preview must not crash
+        result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        assert result is not None
+
+        # Test 2: Row must remain blocked (not exportable)
+        assert result.is_export_ready is False
+
+        # Test 3: A clear blocker message must be present
+        row = result.export_rows[0]
+        assert row.export_blocked
+        blockers_str = ' '.join(row.export_warnings or []) + ' '.join(result.blockers or [])
+        assert any('legacy' in b.lower() and 'normalization' in b.lower()
+                   for b in (result.blockers or []))
+
+        # Test 4: Valid legacy defer behavior is unchanged
+        # Verify that a correctly-formed deferred normalization still works
+        session = Session()
+        session.query(ReviewDecision).filter_by(id=deferred_decision_id).delete()
+
+        valid_deferred_decision = ReviewDecision(
+            batch_id=batch_id,
+            review_item_id=norm_item_id,
+            decision='defer',
+            reviewed_values={'field': 'email', 'normalized_value': 'test@example.com'},
+        )
+        session.add(valid_deferred_decision)
+        session.commit()
+        session.close()
+
+        result_valid = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
+        assert result_valid.is_export_ready is False  # Still blocked, as expected
+        row_valid = result_valid.export_rows[0]
+        assert row_valid.export_blocked
+        assert any('legacy' in b.lower() and 'normalization' in b.lower()
+                   for b in (result_valid.blockers or []))

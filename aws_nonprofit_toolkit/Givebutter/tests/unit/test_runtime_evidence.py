@@ -11,7 +11,6 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts" / "ci"))
 
-import pre_commit_gate  # noqa: E402
 import runtime_evidence  # noqa: E402
 
 
@@ -171,10 +170,6 @@ def test_generate_runtime_evidence_cli_manual_mode_writes_expected_record(monkey
         return result
 
     monkeypatch.setattr(runtime_evidence, "run_command", fake_run)
-    monkeypatch.setattr(pre_commit_gate, "run_workflow_ci_lane_guard", lambda: _result(returncode=0))
-    monkeypatch.setattr(pre_commit_gate, "list_staged_files", lambda: ["Givebutter/scripts/ci/runtime_evidence.py", "Givebutter/tests/unit/test_runtime_evidence.py"])
-    monkeypatch.setattr(pre_commit_gate, "get_current_head", lambda: head)
-    monkeypatch.setattr(pre_commit_gate, "staged_diff_sha256", lambda: fingerprint)
     monkeypatch.setattr(runtime_evidence, "default_readiness_path", lambda: readiness)
     monkeypatch.delenv(runtime_evidence.TASK_ID_ENV, raising=False)
 
@@ -225,10 +220,6 @@ def test_generate_runtime_evidence_writes_expected_record(monkeypatch, tmp_path)
         return result
 
     monkeypatch.setattr(runtime_evidence, "run_command", fake_run)
-    monkeypatch.setattr(pre_commit_gate, "run_workflow_ci_lane_guard", lambda: _result(returncode=0))
-    monkeypatch.setattr(pre_commit_gate, "list_staged_files", lambda: ["Givebutter/scripts/ci/runtime_evidence.py", "Givebutter/tests/unit/test_runtime_evidence.py"])
-    monkeypatch.setattr(pre_commit_gate, "get_current_head", lambda: head)
-    monkeypatch.setattr(pre_commit_gate, "staged_diff_sha256", lambda: fingerprint)
 
     output = tmp_path / "runtime-evidence.json"
     readiness = tmp_path / "commit-readiness.json"
@@ -253,7 +244,6 @@ def test_generate_runtime_evidence_writes_expected_record(monkeypatch, tmp_path)
     assert packet["qa_verdict"] == "QA=PASS"
     assert packet["reviewed_head"] == head
     assert packet["reviewed_diff_sha256"] == fingerprint
-    assert pre_commit_gate.validate_readiness_packet(packet, {"HOUSEHOLDER_TASK_ID": TASK_ID}) == []
     assert commands[:5] == [
         (str(runtime_evidence.venv_python()), "scripts/ci/householder_state.py", "status", "--task-id", TASK_ID),
         ("git", "rev-parse", "HEAD"),

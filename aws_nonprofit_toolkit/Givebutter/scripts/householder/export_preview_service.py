@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Optional, Mapping, Any
 import hashlib
 import json
+import logging
 
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
@@ -24,6 +25,8 @@ from .date_validation_service import validate_review_date
 from .phone_validation_service import validate_review_phone
 from .issue_recalculation_service import is_issue_resolved
 from .service_contracts import ExportRow, ExportPreviewResult
+
+logger = logging.getLogger(__name__)
 
 
 def _get_validation_issue_type(payload):
@@ -191,6 +194,7 @@ def build_export_preview(
         duplicate_decisions = {}
         household_decisions = {}
         row_level_autosave_decisions = {}
+        row_level_decisions = {}
 
         for decision in session.query(ReviewDecision).filter_by(
             batch_id=import_id
@@ -198,6 +202,13 @@ def build_export_preview(
             # Handle row-level autosave decisions (review_item_id=None)
             if decision.review_item_id is None:
                 raw_row_id = decision.raw_import_row_id
+                current_row_decision = row_level_decisions.get(raw_row_id)
+                if (
+                    current_row_decision is None
+                    or (decision.created_at, decision.id)
+                    > (current_row_decision.created_at, current_row_decision.id)
+                ):
+                    row_level_decisions[raw_row_id] = decision
                 if raw_row_id not in row_level_autosave_decisions:
                     row_level_autosave_decisions[raw_row_id] = {}
                 # Merge all reviewed_values for this row (later decisions override earlier)
@@ -294,6 +305,23 @@ def build_export_preview(
                 contact.raw_import_row_id,
             )
 
+            # Legacy row-level defer decisions remain immutable history, but
+            # are unresolved in the current export projection. A later
+            # current decision naturally supersedes this value because the
+            # row-level projection is built from the latest append-only row
+            # decision.
+            row_autosave_values = row_level_autosave_decisions.get(contact.raw_import_row_id) or {}
+            row_decision = row_level_decisions.get(contact.raw_import_row_id)
+            row_decision_is_legacy_defer = (
+                row_decision is not None
+                and (
+                    row_decision.decision in {'defer', 'row_status:defer'}
+                    or row_autosave_values.get('reviewed_status') == 'defer'
+                )
+            )
+            if row_decision_is_legacy_defer:
+                row_blockers.append('Legacy unresolved row decision')
+
             # Start with original snapshot values
             raw_row = raw_rows.get(contact.raw_import_row_id)
             row_index = raw_row.row_index if raw_row else None
@@ -334,7 +362,6 @@ def build_export_preview(
             }
 
             # Apply row-level autosave corrections (merged reviewed_values from all autosaves for this row)
-            row_autosave_values = row_level_autosave_decisions.get(contact.raw_import_row_id)
             if row_autosave_values:
                 field_values.update(row_autosave_values)
 
@@ -388,9 +415,15 @@ def build_export_preview(
                     try:
                         payload = norm_decision.reviewed_values or {}
                         field = payload.get('field', 'unknown')
-                        normalization_warnings.append(f"Field {field} normalization deferred")
-                    except Exception:
-                        pass
+                        normalization_warnings.append(f"Field {field} normalization has a legacy unresolved decision")
+                        row_blockers.append(f"Unresolved legacy normalization: {field}")
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to extract field from deferred normalization (batch={import_id}, "
+                            f"item={norm_item.id}, contact={contact.id}): {type(e).__name__}. "
+                            f"Treating as unresolved blocker."
+                        )
+                        row_blockers.append("Unresolved legacy normalization (payload error)")
 
             # Apply household/duplicate decision reviewed field values
             # (household confirmed or duplicate same_person may include field corrections)
@@ -470,7 +503,8 @@ def build_export_preview(
                         validation_status = 'dismissed'
                     elif val_decision.decision == 'defer':
                         validation_status = 'deferred'
-                        row_warnings.append(f"Validation issue unresolved: {issue_type}")
+                        row_warnings.append(f"Validation issue has a legacy unresolved decision: {issue_type}")
+                        row_blockers.append(f"Unresolved legacy validation: {resolved_issue_field or issue_type}")
                 else:
                     issue_type_lower = str(issue_type).lower() if issue_type else ''
                     raw_value_lookup = {
@@ -545,7 +579,8 @@ def build_export_preview(
                         duplicate_decision = 'different_people'
                     elif dup_decision.decision == 'defer':
                         duplicate_decision = 'deferred'
-                        duplicate_warnings.append("Duplicate pair unresolved")
+                        duplicate_warnings.append("Duplicate pair has a legacy unresolved decision")
+                        row_blockers.append("Unresolved legacy duplicate decision")
                 else:
                     # No decision - warn
                     duplicate_warnings.append("Duplicate pair unresolved")
@@ -573,7 +608,8 @@ def build_export_preview(
                         household_decision_status = 'rejected'
                     elif hh_decision.decision == 'defer':
                         household_decision_status = 'deferred'
-                        household_warnings.append("Household grouping unresolved")
+                        household_warnings.append("Household grouping has a legacy unresolved decision")
+                        row_blockers.append("Unresolved legacy household decision")
                 else:
                     # No decision - warn
                     household_warnings.append("Household grouping unresolved")
