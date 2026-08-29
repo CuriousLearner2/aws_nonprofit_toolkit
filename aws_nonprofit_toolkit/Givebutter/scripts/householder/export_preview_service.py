@@ -416,7 +416,6 @@ def build_export_preview(
                         payload = norm_decision.reviewed_values or {}
                         field = payload.get('field', 'unknown')
                         normalization_warnings.append(f"Field {field} normalization has a legacy unresolved decision")
-                        row_blockers.append(f"Unresolved legacy normalization: {field}")
                     except Exception as e:
                         logger.warning(
                             f"Failed to extract field from deferred normalization (batch={import_id}, "
@@ -504,7 +503,6 @@ def build_export_preview(
                     elif val_decision.decision == 'defer':
                         validation_status = 'deferred'
                         row_warnings.append(f"Validation issue has a legacy unresolved decision: {issue_type}")
-                        row_blockers.append(f"Unresolved legacy validation: {resolved_issue_field or issue_type}")
                 else:
                     issue_type_lower = str(issue_type).lower() if issue_type else ''
                     raw_value_lookup = {
@@ -580,7 +578,6 @@ def build_export_preview(
                     elif dup_decision.decision == 'defer':
                         duplicate_decision = 'deferred'
                         duplicate_warnings.append("Duplicate pair has a legacy unresolved decision")
-                        row_blockers.append("Unresolved legacy duplicate decision")
                 else:
                     # No decision - warn
                     duplicate_warnings.append("Duplicate pair unresolved")
@@ -609,7 +606,6 @@ def build_export_preview(
                     elif hh_decision.decision == 'defer':
                         household_decision_status = 'deferred'
                         household_warnings.append("Household grouping has a legacy unresolved decision")
-                        row_blockers.append("Unresolved legacy household decision")
                 else:
                     # No decision - warn
                     household_warnings.append("Household grouping unresolved")

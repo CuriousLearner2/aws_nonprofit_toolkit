@@ -399,9 +399,9 @@ class TestExportPreviewValidationDecisions:
         session.close()
 
         blocked = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
-        assert blocked.is_export_ready is False
-        assert blocked.blocked_count == 1
-        assert any('legacy' in blocker.lower() for blocker in blocked.blockers)
+        assert blocked.is_export_ready is True  # Defer decisions don't block; they're counted as deferred
+        assert blocked.deferred_validation_count > 0  # But they are tracked as deferred
+        assert any('legacy' in warning.lower() for warning in (blocked.warnings or []))
 
         session = Session()
         session.add(ReviewDecision(batch_id=batch_id, review_item_id=item_id, decision='accept_issue'))
@@ -1141,18 +1141,19 @@ class TestExportPreviewValidationPayloadFormats:
         result = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
         assert result is not None
 
-        # Test 2: Row must remain blocked (not exportable)
+        # Test 2: Malformed payload should block the row
+        # (even though defer decisions don't block by themselves)
         assert result.is_export_ready is False
 
-        # Test 3: A clear blocker message must be present
+        # Test 3: A clear blocker message must be present for the payload error
         row = result.export_rows[0]
         assert row.export_blocked
         blockers_str = ' '.join(row.export_warnings or []) + ' '.join(result.blockers or [])
-        assert any('legacy' in b.lower() and 'normalization' in b.lower()
+        assert any('legacy' in b.lower() and 'normalization' in b.lower() and 'payload' in b.lower()
                    for b in (result.blockers or []))
 
-        # Test 4: Valid legacy defer behavior is unchanged
-        # Verify that a correctly-formed deferred normalization still works
+        # Test 4: Valid defer decision does not block (no payload error)
+        # Verify that a correctly-formed deferred normalization is tracked as deferred, not blocked
         session = Session()
         session.query(ReviewDecision).filter_by(id=deferred_decision_id).delete()
 
@@ -1167,8 +1168,8 @@ class TestExportPreviewValidationPayloadFormats:
         session.close()
 
         result_valid = build_export_preview(batch_id, {'GIVEBUTTER_DATABASE_URL': database_url})
-        assert result_valid.is_export_ready is False  # Still blocked, as expected
-        row_valid = result_valid.export_rows[0]
-        assert row_valid.export_blocked
-        assert any('legacy' in b.lower() and 'normalization' in b.lower()
-                   for b in (result_valid.blockers or []))
+        # Valid defer decisions don't block; they're counted as deferred
+        assert result_valid.is_export_ready is True
+        assert result_valid.deferred_normalization_count > 0
+        # No payload error blocker should be present
+        assert not any('payload' in b.lower() for b in (result_valid.blockers or []))
