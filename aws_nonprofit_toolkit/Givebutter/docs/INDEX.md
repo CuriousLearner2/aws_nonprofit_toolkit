@@ -1,7 +1,12 @@
 # Documentation Index
 ## Your Guide to All Givebutter Project Docs
 
-Welcome! This page helps you find exactly what you need. Choose a section below or pick your role.
+**⚠️ IMPORTANT:** This project contains TWO distinct systems. Choose yours below:
+
+- **🔷 Householder (DonorTrust v1)** — Current production import review system (Phase 1B complete)
+- **🔶 Givebutter Processor** — Legacy donation processing system (reference/historical)
+
+Start with the section that matches your system.
 
 ---
 
@@ -14,31 +19,35 @@ Welcome! This page helps you find exactly what you need. Choose a section below 
 
 ---
 
-## DonorTrust v1 / Householder
+## DonorTrust v1 / Householder (CURRENT PRODUCT)
 
 ### Overview
 
-DonorTrust v1 is a Flask-based import review system that helps organizations identify duplicate donors, normalize data inconsistencies, and group donors into households before export.
+**Householder v1** is a Flask-based import review system that helps organizations identify duplicate donors, normalize data inconsistencies, and group donors into households before export.
 
-**Current Status:** Phase 0 ✓ ACCEPTED | Phase 1A-Step 1 ✓ ACCEPTED | Phase 1A-Step 2 ✓ ACCEPTED | Phase 1A-Step 3 ✓ ACCEPTED | Phase 1A-Step 4 ✓ ACCEPTED
+**Current Status:** Phase 1B ✓ COMPLETE — Production ready. All 8-screen workflow fully functional with validation, corrections, decisions, and export generation.
 
-### For Product & Design
+### For Operators (Non-Technical Users)
 
-**Start here:**
-1. **[Householder PRD v2.6](PRDs/Householder/Householder_PRD-v2.6-UX-aligned.md)** — Product specification with UX requirements
-2. **[UX Summary](ux/UX_SUMMARY.md)** — 8-screen canonical workflow
-3. **[Phase 0 Acceptance Record](completion-records/phase0/PHASE0_ACCEPTANCE_RECORD.md)** — Final spec of accepted prototype
+**⭐ START HERE:**
+1. **[HOUSEHOLDER_OPERATOR_GUIDE.md](HOUSEHOLDER_OPERATOR_GUIDE.md)** — Step-by-step instructions to run the app and complete full workflow
+2. **[CURRENT_P1_WORKFLOW.md](CURRENT_P1_WORKFLOW.md)** — Understand what Householder does and key concepts
 
-### For Developers
+**Then if needed:**
+3. [CODE_MAP.md](CODE_MAP.md) — Where things are if you need technical help
 
-**Start here:**
-1. **[IMPLEMENTATION_GUIDE.md](implementation/IMPLEMENTATION_GUIDE.md)** — Overview of all phases, architecture constraints, how to run Phase 0
-2. **[Phase 1A Service Boundary Plan](implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md)** — Architecture for service-layer abstraction
-3. **Phase 1A Progress:**
-   - [Step 1: /imports](completion-records/phase1a/PHASE1A_STEP1_COMPLETION_RECORD.md) ✓
-   - [Step 2: /dashboard](implementation/PHASE1A_STEP2_COMPLETION_RECORD.md) ✓
-   - [Step 3: /validation](implementation/PHASE1A_STEP3_COMPLETION_RECORD.md) ✓
-   - [Step 4: /normalizations](implementation/PHASE1A_STEP4_COMPLETION_RECORD.md) ✓
+### For Developers & Architects
+
+**⭐ START HERE:**
+1. **[CURRENT_P1_WORKFLOW.md](CURRENT_P1_WORKFLOW.md)** — Understand P1 scope, workflow, and key data semantics
+2. **[CODE_MAP.md](CODE_MAP.md)** — Trace each use case from UI to service to tests (verified against HEAD)
+3. **[IMPLEMENTATION_GUIDE.md](implementation/IMPLEMENTATION_GUIDE.md)** — Phase overview and architecture
+
+**For detailed context:**
+- [Phase 1A Service Boundary Plan](implementation/PHASE1A_SERVICE_BOUNDARY_PLAN.md) — Service-layer architecture
+- [Phase 1B Status](HOUSEHOLDER_V1_PHASE_1B_STATUS.md) — Feature completion details
+- [Householder PRD v2.6](PRDs/Householder/Householder_PRD-v2.6-UX-aligned.md) — Product specification
+- [UX Summary](ux/UX_SUMMARY.md) — 8-screen workflow reference
 
 ### Key Docs
 
@@ -97,15 +106,15 @@ Then visit: http://127.0.0.1:8000/imports
 
 ---
 
-## Givebutter Processor System
+## Givebutter Processor System (REFERENCE / HISTORICAL)
+
+⚠️ **Note:** The Processor is a legacy system. For current Householder production use, see the section above.
 
 ### Overview
 
-The Givebutter Processor is a donation processing system that validates, flags, and categorizes donor records using configurable validation rules.
+The Givebutter Processor is an older donation processing system that validates, flags, and categorizes donor records using configurable validation rules.
 
-### For Operators
-
-**Current Status:** Active (V2 dual-validation architecture)
+**Status:** Reference documentation only. Active Householder system takes priority.
 
 ## 🎯 Quick Navigation by Role
 
