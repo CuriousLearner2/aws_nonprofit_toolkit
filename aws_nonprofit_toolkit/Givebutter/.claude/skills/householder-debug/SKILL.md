@@ -149,6 +149,19 @@ and the failed verification must be marked **BLOCKING**.
 * Preserve append-only audit history.
 * Preserve the principle: The system suggests. The reviewer decides. Raw data stays unchanged.
 
+## Git Safety: Destructive Working-Tree Operations
+
+Never use destructive commands (`git clean`, `git checkout .`, `git restore .`, `git reset --hard`, or equivalents) solely to obtain a clean working tree or prepare a commit/push.
+
+If unexpected tracked modifications or untracked files are present:
+
+1. Stop and report the exact dirty paths.
+2. Determine whether they belong to the current task.
+3. Preserve them unless their disposal is already explicitly authorized.
+4. Require explicit user approval before discarding any potentially meaningful work.
+
+A request to "verify working tree is clean" or "push the commit" is NOT authorization to discard local changes.
+
 ## Review-screen / autosave invariant
 
 For review-screen, inline-editing, autosave, validation, approval, and export work, enforce these invariants:
