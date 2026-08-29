@@ -445,7 +445,11 @@ def test_blocked_export_error_message_format(client, tmp_path):
 # Export Directory Configuration Tests
 
 def test_missing_export_output_dir_config(client):
-    """P0 fix: missing EXPORT_OUTPUT_DIR produces clear actionable error."""
+    """Test export behavior when EXPORT_OUTPUT_DIR is missing from config.
+
+    Note: Seed fixture creates IMP-TEST-001 with 5+ unresolved items,
+    so export fails with blocker error (400) before config validation is reached.
+    """
     from scripts.uploader.app import app as flask_app
 
     # Remove or unset EXPORT_OUTPUT_DIR
@@ -454,11 +458,10 @@ def test_missing_export_output_dir_config(client):
 
     response = client.post('/imports/IMP-TEST-001/exports/generate')
 
-    # Fixture data has unresolved issues, so returns 400 (export blocked) not 500 (config error)
+    # Seed data has blockers, so export fails with 400 (ExportBlockedError) before
+    # config validation. Config error would return 500 only if batch had no blockers.
     assert response.status_code == 400
     data = response.get_json()
-
-    # Verify blocker message
     assert 'Export blocked' in data['error']
 
 

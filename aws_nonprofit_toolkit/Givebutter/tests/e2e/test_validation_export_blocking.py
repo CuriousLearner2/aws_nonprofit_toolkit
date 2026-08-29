@@ -963,18 +963,19 @@ async def test_deferred_validation_remains_export_relevant(e2e_database_and_app)
         print("✓ F2: ReviewDecision created with decision='defer'")
 
         # F3: Build export preview AFTER deferral
+        # Defer decisions are BLOCKING (hard block, not confirmable per product invariant)
         preview_after = build_export_preview('validation-deferred-batch-f', {'GIVEBUTTER_DATABASE_URL': database_url})
-        assert preview_after.blocked_count == 0, \
-            f"F3 FAILED: Export preview should have 0 blockers after deferral, got {preview_after.blocked_count}"
-        print("✓ F3: Blocker removed after deferral (blocked_count=0)")
+        assert preview_after.blocked_count == 1, \
+            f"F3 FAILED: Defer decision must block. Expected blocked_count=1, got {preview_after.blocked_count}"
+        print("✓ F3: Defer decision blocks export (blocked_count=1)")
 
-        # F4: Verify export row validation_status is 'deferred' (not 'blocked', not 'clean')
+        # F4: Verify export row shows blocker (defer decisions block until superseded)
         assert len(preview_after.export_rows) == 1, \
             f"F4 FAILED: Export should have 1 row, got {len(preview_after.export_rows)}"
         export_row = preview_after.export_rows[0]
-        assert export_row.validation_status == 'deferred', \
-            f"F4 FAILED: validation_status should be 'deferred', got '{export_row.validation_status}'"
-        print("✓ F4: Export row validation_status='deferred' (not hidden)")
+        assert export_row.export_blocked, \
+            f"F4 FAILED: Defer decision must block row export"
+        print("✓ F4: Export row blocked by defer decision")
 
         # F5: Verify deferred warning is present in normalization_warnings or validation_issues (status remains visible)
         has_deferred_indicator = (
@@ -1027,21 +1028,21 @@ async def test_deferred_validation_remains_export_relevant(e2e_database_and_app)
 
                     await page.wait_for_selector('h1', timeout=5000)
 
-                    # F7: Verify export button is enabled (not blocked by deferred issue)
+                    # F7: Verify export button is DISABLED (defer decisions block per product invariant)
                     export_btn = await page.query_selector('#generate-export-btn')
                     assert export_btn is not None, "F7 FAILED: Export button should exist"
                     is_disabled = await export_btn.is_disabled() if export_btn else False
-                    assert not is_disabled, "F7 FAILED: Export button should be enabled (deferred is not blocking)"
-                    print("✓ F7: Export button enabled (deferred issue does not block export)")
+                    assert is_disabled, "F7 FAILED: Export button should be disabled (defer decision blocks)"
+                    print("✓ F7: Export button disabled (defer decision blocks export)")
 
-                    # F8: Verify deferred status is visible in browser preview
+                    # F8: Verify deferred status is visible in browser preview as blocker
                     page_text = await page.inner_text('body')
-                    has_deferred_indicator = ('deferred' in page_text.lower() or 'unresolved' in page_text.lower())
-                    assert has_deferred_indicator, \
-                        "F8 FAILED: Deferred status should be visible in browser preview (not hidden)"
-                    print("✓ F8: Deferred status visible in browser export preview (not hidden)")
+                    has_blocker_indicator = ('blocked' in page_text.lower() or 'unresolved' in page_text.lower())
+                    assert has_blocker_indicator, \
+                        "F8 FAILED: Blocker status should be visible in browser preview"
+                    print("✓ F8: Blocker status visible in browser export preview")
 
-                    print("\n=== TEST F: DEFERRED VALIDATION REMAINS EXPORT RELEVANT PASSED ===")
+                    print("\n=== TEST F: DEFER DECISION BLOCKS EXPORT (PRODUCT INVARIANT) PASSED ===")
 
                 finally:
                     await browser.close()
@@ -1058,6 +1059,7 @@ async def test_deferred_validation_remains_export_relevant(e2e_database_and_app)
 # TEST G: Export warning appears for deferred validation issues
 # ==============================================================================
 
+@pytest.mark.skip(reason="Tests old behavior: defer decisions are now unconditionally blocking per product invariant")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_warning_appears_for_deferred_validation(e2e_database_and_app):
@@ -1227,6 +1229,7 @@ async def test_export_warning_appears_for_deferred_validation(e2e_database_and_a
 # TEST H: Export blocked when deferred validation confirmation unchecked
 # ==============================================================================
 
+@pytest.mark.skip(reason="Tests old behavior: defer decisions are now unconditionally blocking per product invariant")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_blocked_when_validation_confirmation_unchecked(e2e_database_and_app):
@@ -1396,6 +1399,7 @@ async def test_export_blocked_when_validation_confirmation_unchecked(e2e_databas
 # TEST I: Export button enabled when deferred validation confirmation checked
 # ==============================================================================
 
+@pytest.mark.skip(reason="Tests old behavior: defer decisions are now unconditionally blocking per product invariant")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_export_button_enabled_when_validation_confirmation_checked(e2e_database_and_app):
@@ -1697,6 +1701,7 @@ async def test_clean_validation_export_skips_confirmation(e2e_database_and_app):
 # TEST K: Mixed validation + household warnings require independent confirmations
 # ==============================================================================
 
+@pytest.mark.skip(reason="Tests old behavior: defer decisions are now unconditionally blocking per product invariant")
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_mixed_validation_household_export_warnings(e2e_database_and_app):

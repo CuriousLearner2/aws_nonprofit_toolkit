@@ -282,35 +282,14 @@ def test_preview_deferred_counts_match_audit_snapshot(preview_consistency_db):
     preview = build_export_preview('IMP-DEFERRED-001', config={'GIVEBUTTER_DATABASE_URL': database_url})
 
     # Verify preview shows deferred validation count
+    # (Defer decisions are tracked but block export per product invariant)
     assert preview.deferred_validation_count > 0, (
         f"Expected deferred validation count > 0, got {preview.deferred_validation_count}"
     )
 
-    # Generate export with confirmation
-    result = generate_export_file(
-        import_id='IMP-DEFERRED-001',
-        output_dir=export_dir,
-        reviewer='test_user',
-        config={'GIVEBUTTER_DATABASE_URL': database_url},
-        confirmed_unresolved_validations=True,
-    )
-
-    # Fetch audit record
-    record = session.query(AuditLogRecord).filter_by(id=result.audit_log_id).first()
-    assert record is not None
-
-    audit_details = record.details
-    audit_deferred_counts = audit_details.get('deferred_counts', {})
-
-    # Verify deferred counts match
-    assert audit_deferred_counts.get('deferred_validation_count') == preview.deferred_validation_count, (
-        f"Audit deferred_validation_count {audit_deferred_counts.get('deferred_validation_count')} "
-        f"does not match preview {preview.deferred_validation_count}"
-    )
-
-    # Verify confirmation flag is set
-    assert audit_details['confirmations'].get('confirmed_unresolved_validations') is True, (
-        "Audit confirmation flag not set"
+    # Verify defer decision blocks export (hard block, not confirmable)
+    assert preview.is_export_ready is False, (
+        "Defer decision must block export per product invariant"
     )
 
     session.close()
@@ -462,9 +441,12 @@ def test_deferred_validation_blocks_export_without_confirmation(preview_consiste
         f"Expected deferred_validation_count > 0, got {preview.deferred_validation_count}"
     )
 
-    # Attempt export WITHOUT confirmation; should fail
-    from scripts.householder.export_file_service import ExportUnresolvedValidationWarningError
-    with pytest.raises(ExportUnresolvedValidationWarningError) as exc_info:
+    # Defer decisions must hard-block export per product invariant.
+    # Confirmation flags do NOT bypass legacy defer (they remain unresolved until superseded).
+    from scripts.householder.export_file_service import ExportBlockedError
+
+    # Attempt export WITHOUT confirmation; should fail with blocker
+    with pytest.raises(ExportBlockedError):
         generate_export_file(
             import_id='IMP-DEFER-TEST-001',
             output_dir=export_dir,
@@ -473,30 +455,19 @@ def test_deferred_validation_blocks_export_without_confirmation(preview_consiste
             confirmed_unresolved_validations=False,
         )
 
-    assert exc_info.value.deferred_count > 0
+    # Attempt export WITH confirmation; should ALSO fail (defer cannot be confirmed)
+    with pytest.raises(ExportBlockedError):
+        generate_export_file(
+            import_id='IMP-DEFER-TEST-001',
+            output_dir=export_dir,
+            reviewer='test_user',
+            config={'GIVEBUTTER_DATABASE_URL': database_url},
+            confirmed_unresolved_validations=True,
+        )
 
-    # Verify no export was created yet
+    # Verify no export was created
     audit_records = session.query(AuditLogRecord).filter_by(batch_id='IMP-DEFER-TEST-001').all()
-    assert len(audit_records) == 0, "No audit record should exist before confirmation"
-
-    # Now export WITH confirmation; should succeed
-    result = generate_export_file(
-        import_id='IMP-DEFER-TEST-001',
-        output_dir=export_dir,
-        reviewer='test_user',
-        config={'GIVEBUTTER_DATABASE_URL': database_url},
-        confirmed_unresolved_validations=True,
-    )
-
-    # Verify export file was created
-    assert os.path.exists(result.file_path), f"Export file not created: {result.file_path}"
-
-    # Verify audit record was created with confirmation flag
-    record = session.query(AuditLogRecord).filter_by(id=result.audit_log_id).first()
-    assert record is not None
-    assert record.details['confirmations']['confirmed_unresolved_validations'] is True, (
-        "Confirmation flag should be True in audit record"
-    )
+    assert len(audit_records) == 0, "Defer decision must block; no export should be created even with confirmation"
 
     session.close()
 
